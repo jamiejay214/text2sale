@@ -2,88 +2,60 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, CreditCard, FileText, ShieldCheck } from "lucide-react";
-
-type Plan = {
-  key: "starter" | "textalot" | "elite";
-  name: string;
-  price: number;
-  freeCredits: number;
-  messageCost: number;
-  accent: string;
-  badge: string;
-};
-
-type AccountRecord = {
-  id: string;
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-  referralCode?: string;
-  plan: Plan;
-  credits: number;
-  createdAt: string;
-  verified: boolean;
-  einNumber: string;
-  einCertificateName: string;
-  workflowNote?: string;
-};
+import { CheckCircle2, CreditCard, FileText, ShieldCheck, ArrowLeft } from "lucide-react";
+import { supabase } from "@/lib/supabase";
+import { fetchProfile, updateProfile } from "@/lib/supabase-data";
+import type { Profile } from "@/lib/types";
 
 export default function VerifyPage() {
   const router = useRouter();
-  const [account, setAccount] = useState<AccountRecord | null>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [einNumber, setEinNumber] = useState("");
   const [einFileName, setEinFileName] = useState("");
   const [message, setMessage] = useState("");
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const raw = localStorage.getItem("textalot_pending_signup");
-    if (!raw) {
-      router.push("/");
-      return;
-    }
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        router.push("/");
+        return;
+      }
 
-    const parsed = JSON.parse(raw) as AccountRecord;
-    setAccount(parsed);
-    setEinNumber(parsed.einNumber || "");
-    setEinFileName(parsed.einCertificateName || "");
+      const p = await fetchProfile(session.user.id);
+      if (!p) {
+        router.push("/");
+        return;
+      }
+
+      setProfile(p);
+      setLoading(false);
+    })();
   }, [router]);
 
   const creditDiscountPreview = useMemo(() => {
     const base = 100;
     const discount = 0.1;
     const final = base - base * discount;
-    return {
-      discountPercent: 10,
-      final,
-    };
+    return { discountPercent: 10, final };
   }, []);
 
-  const updateStoredAccount = (updates: Partial<AccountRecord>) => {
-    if (!account) return;
-
-    const updated = { ...account, ...updates };
-    setAccount(updated);
-    localStorage.setItem("textalot_pending_signup", JSON.stringify(updated));
-    localStorage.setItem("textalot_current_user", JSON.stringify(updated));
-
-    const all = JSON.parse(localStorage.getItem("textalot_accounts") || "[]");
-    const updatedAll = all.map((item: AccountRecord) =>
-      item.id === updated.id ? updated : item
-    );
-    localStorage.setItem("textalot_accounts", JSON.stringify(updatedAll));
+  const persistProfile = async (updates: Partial<Profile>) => {
+    if (!profile) return;
+    const merged = { ...profile, ...updates };
+    setProfile(merged);
+    await updateProfile(profile.id, updates);
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     setEinFileName(file.name);
-    updateStoredAccount({ einCertificateName: file.name });
   };
 
-  const handleSubmitVerification = () => {
-    if (!account) return;
+  const handleSubmitVerification = async () => {
+    if (!profile) return;
     if (!einNumber.trim()) {
       setMessage("EIN number is required.");
       return;
@@ -93,43 +65,54 @@ export default function VerifyPage() {
       return;
     }
 
-    updateStoredAccount({
-      einNumber,
-      einCertificateName: einFileName,
-      verified: true,
-    });
-
+    await persistProfile({ verified: true });
     setMessage("Verification submitted successfully.");
   };
 
-  const handlePurchaseCredits = (amount: number) => {
-    if (!account) return;
+  const handlePurchaseCredits = async (amount: number) => {
+    if (!profile) return;
 
     const discounted = amount >= 100 ? amount * 0.9 : amount;
-    const purchasedCredits = discounted;
 
-    updateStoredAccount({
-      credits: Number(account.credits) + purchasedCredits,
+    const newBalance = Number(profile.wallet_balance) + discounted;
+    const entry: import("@/lib/types").UsageHistoryItem = {
+      id: crypto.randomUUID(),
+      type: "fund_add",
+      amount: discounted,
+      description: `Purchased $${amount} in credits${amount >= 100 ? " (10% discount)" : ""}`,
+      createdAt: new Date().toISOString(),
+    };
+    const newHistory = [...(profile.usage_history || []), entry];
+
+    await persistProfile({
+      wallet_balance: newBalance,
+      usage_history: newHistory,
     });
 
     setMessage(
       amount >= 100
-        ? `Credits purchased with 10% discount. $${amount} became $${discounted.toFixed(
-            2
-          )}.`
+        ? `Credits purchased with 10% discount. $${amount} became $${discounted.toFixed(2)}.`
         : `Credits purchased: $${discounted.toFixed(2)}.`
     );
   };
 
-  if (!account) return null;
+  if (loading || !profile) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white flex items-center justify-center">
+        <div className="text-zinc-400">Loading...</div>
+      </main>
+    );
+  }
+
+  const plan = profile.plan || { name: "Text2Sale Package", price: 39.99, messageCost: 0.012 };
 
   return (
-    <main className="min-h-screen bg-[#f6f7fb] text-slate-900">
+    <main className="min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <div className="mb-8 flex items-center justify-between">
           <div>
             <div className="text-3xl font-bold tracking-tight">Verify your account</div>
-            <div className="mt-2 text-sm text-slate-500">
+            <div className="mt-2 text-sm text-zinc-400">
               Confirm your information, upload your EIN certificate, and activate your workspace.
             </div>
           </div>
@@ -137,13 +120,14 @@ export default function VerifyPage() {
           <div className="flex gap-3">
             <button
               onClick={() => router.push("/")}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+              className="rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-sm font-medium text-zinc-300 shadow-sm hover:bg-zinc-800 transition"
             >
-              Back Home
+              <ArrowLeft className="mr-1 inline h-4 w-4" />
+              Back
             </button>
             <button
               onClick={() => router.push("/dashboard")}
-              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium shadow-sm hover:bg-slate-50"
+              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition"
             >
               Go to Dashboard
             </button>
@@ -151,50 +135,48 @@ export default function VerifyPage() {
         </div>
 
         <div className="grid gap-8 lg:grid-cols-[1fr_0.9fr]">
-          <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
+          {/* Left column — Info + EIN */}
+          <section className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
             <div className="mb-6 text-2xl font-bold">Submitted Information</div>
 
             <div className="grid gap-4 sm:grid-cols-2">
-              <InfoCard label="First Name" value={account.firstName} />
-              <InfoCard label="Last Name" value={account.lastName} />
-              <InfoCard label="Phone Number" value={account.phone} />
-              <InfoCard label="Email" value={account.email} />
-              <InfoCard label="Referral Code" value={account.referralCode || "None"} />
-              <InfoCard label="Selected Plan" value={account.plan.name} />
+              <InfoCard label="First Name" value={profile.first_name} />
+              <InfoCard label="Last Name" value={profile.last_name} />
+              <InfoCard label="Phone Number" value={profile.phone} />
+              <InfoCard label="Email" value={profile.email} />
+              <InfoCard label="Referral Code" value={profile.referral_code || "None"} />
+              <InfoCard label="Selected Plan" value={plan.name} />
             </div>
 
-            <div className="mt-8 rounded-3xl bg-slate-50 p-6 ring-1 ring-slate-200">
+            <div className="mt-8 rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6">
               <div className="mb-4 flex items-center gap-2 text-lg font-semibold">
-                <ShieldCheck className="h-5 w-5 text-slate-900" />
+                <ShieldCheck className="h-5 w-5 text-violet-400" />
                 EIN Verification
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm font-medium">EIN Number</label>
+                  <label className="mb-2 block text-sm font-medium text-zinc-300">EIN Number</label>
                   <input
                     value={einNumber}
-                    onChange={(e) => {
-                      setEinNumber(e.target.value);
-                      updateStoredAccount({ einNumber: e.target.value });
-                    }}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 outline-none transition focus:border-slate-900"
+                    onChange={(e) => setEinNumber(e.target.value)}
+                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
                     placeholder="12-3456789"
                   />
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium">
+                  <label className="mb-2 block text-sm font-medium text-zinc-300">
                     EIN Certificate Upload
                   </label>
-                  <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-dashed border-slate-400 bg-white px-4 py-3 text-sm text-slate-600 hover:bg-slate-50">
+                  <label className="flex cursor-pointer items-center justify-between rounded-2xl border border-dashed border-zinc-600 bg-zinc-800 px-4 py-3 text-sm text-zinc-400 hover:bg-zinc-700/60 transition">
                     <span>{einFileName || "Upload EIN certificate"}</span>
                     <input
                       type="file"
                       className="hidden"
                       onChange={handleFileUpload}
                     />
-                    <span className="rounded-xl bg-slate-900 px-3 py-2 text-white">
+                    <span className="rounded-xl bg-violet-600 px-3 py-2 text-white text-xs font-medium">
                       Upload
                     </span>
                   </label>
@@ -203,90 +185,90 @@ export default function VerifyPage() {
 
               <button
                 onClick={handleSubmitVerification}
-                className="mt-5 w-full rounded-2xl bg-slate-900 px-5 py-4 text-base font-semibold text-white transition hover:bg-slate-800"
+                className="mt-5 w-full rounded-2xl bg-violet-600 px-5 py-4 text-base font-semibold text-white transition hover:bg-violet-700"
               >
                 Submit Verification
               </button>
             </div>
 
             {message && (
-              <div className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+              <div className="mt-5 rounded-2xl border border-emerald-800 bg-emerald-950/60 px-4 py-3 text-sm text-emerald-300">
                 {message}
               </div>
             )}
           </section>
 
-          <section className="rounded-3xl bg-white p-8 shadow-sm ring-1 ring-slate-200">
+          {/* Right column — Account + Credits */}
+          <section className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
             <div className="mb-6 text-2xl font-bold">Account + Credits</div>
 
             <div className="space-y-4">
-              <div className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
-                <div className="text-sm text-slate-500">Plan</div>
-                <div className="mt-1 text-xl font-bold">{account.plan.name}</div>
-                <div className="mt-2 text-sm text-slate-600">
-                  ${account.plan.price.toFixed(2)}/month • {account.plan.freeCredits} free
-                  credits • ${account.plan.messageCost.toFixed(3)} per message
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-5">
+                <div className="text-sm text-zinc-400">Plan</div>
+                <div className="mt-1 text-xl font-bold">{plan.name}</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  ${plan.price.toFixed(2)}/month &bull; ${plan.messageCost.toFixed(3)} per message
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
-                <div className="text-sm text-slate-500">Current Credits</div>
-                <div className="mt-1 text-3xl font-bold">{account.credits}</div>
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-5">
+                <div className="text-sm text-zinc-400">Wallet Balance</div>
+                <div className="mt-1 text-3xl font-bold text-emerald-400">
+                  ${Number(profile.wallet_balance).toFixed(2)}
+                </div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-5">
                 <div className="mb-3 flex items-center gap-2 text-lg font-semibold">
-                  <CreditCard className="h-5 w-5 text-slate-900" />
-                  Buy Credits
+                  <CreditCard className="h-5 w-5 text-violet-400" />
+                  Add Funds
                 </div>
 
                 <div className="space-y-3">
                   <button
                     onClick={() => handlePurchaseCredits(50)}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left font-medium hover:bg-slate-50"
+                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-left font-medium text-zinc-200 hover:bg-zinc-700 transition"
                   >
-                    Buy $50 in credits
+                    Add $50.00
                   </button>
 
                   <button
                     onClick={() => handlePurchaseCredits(100)}
-                    className="w-full rounded-2xl border border-emerald-300 bg-emerald-50 px-4 py-3 text-left font-medium text-emerald-800 hover:bg-emerald-100"
+                    className="w-full rounded-2xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-left font-medium text-emerald-300 hover:bg-emerald-950/60 transition"
                   >
-                    Buy $100 in credits → 10% off = $90
+                    Add $100.00 &rarr; 10% off = $90.00
                   </button>
 
                   <button
                     onClick={() => handlePurchaseCredits(250)}
-                    className="w-full rounded-2xl border border-slate-300 bg-white px-4 py-3 text-left font-medium hover:bg-slate-50"
+                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-left font-medium text-zinc-200 hover:bg-zinc-700 transition"
                   >
-                    Buy $250 in credits
+                    Add $250.00
                   </button>
                 </div>
 
-                <div className="mt-4 rounded-2xl bg-white p-4 ring-1 ring-slate-200">
-                  <div className="text-sm font-semibold text-slate-700">
-                    Discount Example
-                  </div>
-                  <div className="mt-2 text-sm text-slate-600">
-                    $100 in credits gets {creditDiscountPreview.discountPercent}% off, so
-                    you only pay ${creditDiscountPreview.final.toFixed(2)}.
+                <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-800/40 p-4">
+                  <div className="text-sm font-semibold text-zinc-300">Discount Example</div>
+                  <div className="mt-2 text-sm text-zinc-400">
+                    $100 in credits gets {creditDiscountPreview.discountPercent}% off, so you only
+                    pay ${creditDiscountPreview.final.toFixed(2)}.
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-2xl bg-slate-50 p-5 ring-1 ring-slate-200">
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-5">
                 <div className="mb-3 flex items-center gap-2 text-lg font-semibold">
-                  <FileText className="h-5 w-5 text-slate-900" />
+                  <FileText className="h-5 w-5 text-violet-400" />
                   Verification Status
                 </div>
                 <div className="flex items-center gap-3 text-sm">
                   <CheckCircle2
                     className={`h-5 w-5 ${
-                      account.verified ? "text-emerald-600" : "text-slate-300"
+                      profile.verified ? "text-emerald-400" : "text-zinc-600"
                     }`}
                   />
-                  <span className={account.verified ? "text-emerald-700" : "text-slate-500"}>
-                    {account.verified ? "Verified" : "Pending verification"}
+                  <span className={profile.verified ? "text-emerald-400" : "text-zinc-500"}>
+                    {profile.verified ? "Verified" : "Pending verification"}
                   </span>
                 </div>
               </div>
@@ -300,9 +282,9 @@ export default function VerifyPage() {
 
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-4 ring-1 ring-slate-200">
-      <div className="text-sm text-slate-500">{label}</div>
-      <div className="mt-1 text-base font-semibold text-slate-900">{value}</div>
+    <div className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-4">
+      <div className="text-sm text-zinc-400">{label}</div>
+      <div className="mt-1 text-base font-semibold text-white">{value}</div>
     </div>
   );
 }

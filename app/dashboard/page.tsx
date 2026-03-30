@@ -1,15 +1,42 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Papa from "papaparse";
+import { supabase } from "@/lib/supabase";
+import { logoutUser } from "@/lib/auth";
+import {
+  fetchProfile, updateProfile,
+  fetchContacts as dbFetchContacts, insertContact as dbInsertContact,
+  updateContact as dbUpdateContact, deleteContact as dbDeleteContact,
+  fetchCampaigns as dbFetchCampaigns, insertCampaign as dbInsertCampaign,
+  updateCampaign as dbUpdateCampaign, deleteCampaign as dbDeleteCampaign,
+  fetchConversations as dbFetchConversations, fetchMessages,
+  insertMessage, updateConversation as dbUpdateConversation,
+  addUsageEntry, addOwnedNumber,
+} from "@/lib/supabase-data";
+import type {
+  Profile, Contact, Campaign, Conversation, Message,
+  UsageHistoryItem, OwnedNumber,
+} from "@/lib/types";
 
-type UsageHistoryItem = {
+// Adapter types — keep the camelCase names the JSX uses
+type AccountRecord = {
   id: string;
-  type: "charge" | "credit_add" | "credit_remove" | "fund_add" | "number_purchase";
-  amount: number;
-  description: string;
+  role?: "user" | "admin";
+  firstName: string;
+  lastName: string;
+  phone: string;
+  email: string;
+  credits: number;
+  verified: boolean;
+  paused: boolean;
+  workflowNote?: string;
+  usageHistory: UsageHistoryItem[];
+  plan: { name: string; price: number; messageCost: number };
   createdAt: string;
-  status?: "succeeded" | "failed";
+  walletBalance?: number;
+  ownedNumbers?: OwnedNumber[];
 };
 
 type ContactRecord = {
@@ -45,20 +72,7 @@ type CampaignRecord = {
   failed: number;
   status: "Draft" | "Sending" | "Completed" | "Paused";
   message?: string;
-  logs?: {
-    id: string;
-    createdAt: string;
-    attempted: number;
-    success: number;
-    failed: number;
-    notes: string;
-  }[];
-};
-
-type OwnedNumber = {
-  id: string;
-  number: string;
-  alias: string;
+  logs?: { id: string; createdAt: string; attempted: number; success: number; failed: number; notes: string }[];
 };
 
 type ConversationMessage = {
@@ -79,132 +93,56 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type AccountRecord = {
-  id: string;
-  role?: "user" | "admin";
-  firstName: string;
-  lastName: string;
-  phone: string;
-  email: string;
-  password: string;
-  referralCode?: string;
-  credits: number;
-  verified: boolean;
-  paused: boolean;
-  workflowNote?: string;
-  usageHistory: UsageHistoryItem[];
-  plan: {
-    name: string;
-    price: number;
-    messageCost: number;
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "activity";
+type NewCampaignForm = { name: string; message: string };
+
+// Convert DB rows to camelCase adapter types
+function profileToAccount(p: Profile): AccountRecord {
+  return {
+    id: p.id, role: p.role, firstName: p.first_name, lastName: p.last_name,
+    phone: p.phone, email: p.email, credits: p.credits, verified: p.verified,
+    paused: p.paused, workflowNote: p.workflow_note,
+    usageHistory: p.usage_history || [], plan: p.plan,
+    createdAt: p.created_at, walletBalance: p.wallet_balance,
+    ownedNumbers: p.owned_numbers || [],
   };
-  createdAt: string;
-  walletBalance?: number;
-  ownedNumbers?: OwnedNumber[];
-};
-
-type DashboardTab =
-  | "overview"
-  | "conversations"
-  | "campaigns"
-  | "contacts"
-  | "numbers"
-  | "billing"
-  | "activity";
-
-type NewCampaignForm = {
-  name: string;
-  message: string;
-};
-
-function loadCurrentUser(): AccountRecord | null {
-  if (typeof window === "undefined") return null;
-
-  try {
-    const raw = localStorage.getItem("textalot_current_user");
-    return raw ? (JSON.parse(raw) as AccountRecord) : null;
-  } catch {
-    return null;
-  }
 }
 
-function loadAccounts(): AccountRecord[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem("textalot_accounts");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function contactToRecord(c: Contact): ContactRecord {
+  return {
+    id: c.id, firstName: c.first_name, lastName: c.last_name, phone: c.phone,
+    email: c.email || undefined, city: c.city || undefined, state: c.state || undefined,
+    tags: c.tags, notes: c.notes || undefined, dnc: c.dnc,
+    campaign: c.campaign || undefined, createdAt: c.created_at,
+    address: c.address || undefined, zip: c.zip || undefined,
+    leadSource: c.lead_source || undefined, quote: c.quote || undefined,
+    policyId: c.policy_id || undefined, timeline: c.timeline || undefined,
+    householdSize: c.household_size || undefined, dateOfBirth: c.date_of_birth || undefined,
+    age: c.age || undefined,
+  };
 }
 
-function loadCampaigns(): CampaignRecord[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem("textalot_campaigns");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function campaignToRecord(c: Campaign): CampaignRecord {
+  return {
+    id: c.id, name: c.name, audience: c.audience, sent: c.sent,
+    replies: c.replies, failed: c.failed, status: c.status,
+    message: c.message || undefined, logs: c.logs || [],
+  };
 }
 
-function loadContacts(): ContactRecord[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem("textalot_contacts");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function messageToRecord(m: Message): ConversationMessage {
+  return {
+    id: m.id, direction: m.direction, body: m.body,
+    createdAt: m.created_at, status: m.status,
+  };
 }
 
-function loadConversations(): ConversationRecord[] {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem("textalot_conversations");
-    const parsed = raw ? JSON.parse(raw) : [];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveCurrentUser(user: AccountRecord | null) {
-  if (typeof window === "undefined") return;
-
-  if (!user) {
-    localStorage.removeItem("textalot_current_user");
-    return;
-  }
-
-  localStorage.setItem("textalot_current_user", JSON.stringify(user));
-}
-
-function saveAccounts(accounts: AccountRecord[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("textalot_accounts", JSON.stringify(accounts));
-}
-
-function saveCampaigns(campaigns: CampaignRecord[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("textalot_campaigns", JSON.stringify(campaigns));
-}
-
-function saveContacts(contacts: ContactRecord[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("textalot_contacts", JSON.stringify(contacts));
-}
-
-function saveConversations(conversations: ConversationRecord[]) {
-  if (typeof window === "undefined") return;
-  localStorage.setItem("textalot_conversations", JSON.stringify(conversations));
+function convToRecord(c: Conversation, msgs: ConversationMessage[]): ConversationRecord {
+  return {
+    id: c.id, contactId: c.contact_id, preview: c.preview,
+    unread: c.unread, lastMessageAt: c.last_message_at,
+    starred: c.starred, messages: msgs,
+  };
 }
 
 function formatCurrency(value: number) {
@@ -257,212 +195,14 @@ function getInitials(firstName?: string, lastName?: string) {
   return `${first}${last}`.toUpperCase() || "?";
 }
 
-function buildDemoContacts(): ContactRecord[] {
-  const now = new Date().toISOString();
-
-  return [
-    {
-      id: "contact_demo_1",
-      firstName: "Aldophus",
-      lastName: "Green",
-      phone: "(912) 542-2316",
-      email: "aldophusgreen37@gmail.com",
-      city: "Augusta",
-      state: "GA",
-      address: "241 N Main St",
-      zip: "30901",
-      tags: ["Lead", "DNC Review"],
-      notes: "Asked for PPO quote. Wants morning follow-up.",
-      dnc: false,
-      campaign: "Georgia Warm Leads",
-      createdAt: now,
-      leadSource: "Website Lead",
-      quote: "$0 Deductible PPO",
-      policyId: "",
-      timeline: "Follow up tomorrow",
-      householdSize: "1",
-      dateOfBirth: "12/11/1974",
-      age: "51",
-    },
-    {
-      id: "contact_demo_2",
-      firstName: "Frank",
-      lastName: "Spencer",
-      phone: "(404) 555-8821",
-      email: "frank.spencer@example.com",
-      city: "Atlanta",
-      state: "GA",
-      address: "187 Peachtree Ave",
-      zip: "30303",
-      tags: ["Marketplace"],
-      notes: "Asked about premium comparison.",
-      dnc: false,
-      campaign: "Recent Upload",
-      createdAt: now,
-      leadSource: "Facebook Lead",
-      quote: "",
-      policyId: "",
-      timeline: "Call back Friday",
-      householdSize: "3",
-      dateOfBirth: "08/04/1985",
-      age: "40",
-    },
-    {
-      id: "contact_demo_3",
-      firstName: "Wendell",
-      lastName: "Phillips",
-      phone: "(305) 555-7744",
-      email: "wendell@example.com",
-      city: "Miami",
-      state: "FL",
-      address: "918 Biscayne Blvd",
-      zip: "33132",
-      tags: ["Follow Up"],
-      notes: "Mentioned doctor network concern.",
-      dnc: false,
-      campaign: "Florida Leads",
-      createdAt: now,
-      leadSource: "Inbound Form",
-      quote: "",
-      policyId: "",
-      timeline: "Waiting on spouse info",
-      householdSize: "2",
-      dateOfBirth: "03/15/1978",
-      age: "48",
-    },
-    {
-      id: "contact_demo_4",
-      firstName: "Briana",
-      lastName: "Ebron",
-      phone: "(786) 555-1133",
-      email: "briana@example.com",
-      city: "Hollywood",
-      state: "FL",
-      address: "78 Surf Rd",
-      zip: "33019",
-      tags: ["Not Interested"],
-      notes: "Requested fewer texts.",
-      dnc: false,
-      campaign: "Old Leads",
-      createdAt: now,
-      leadSource: "Purchased Lead",
-      quote: "",
-      policyId: "",
-      timeline: "",
-      householdSize: "1",
-      dateOfBirth: "11/22/1990",
-      age: "35",
-    },
-  ];
-}
-
-function buildDemoConversations(): ConversationRecord[] {
-  const today = new Date();
-  const minutesAgo = (mins: number) => new Date(today.getTime() - mins * 60 * 1000).toISOString();
-
-  return [
-    {
-      id: "conv_demo_1",
-      contactId: "contact_demo_1",
-      preview: "Yes",
-      unread: 1,
-      lastMessageAt: minutesAgo(1),
-      starred: true,
-      messages: [
-        {
-          id: "msg_1",
-          direction: "outbound",
-          body: "How's it going Aldophus, may I send you a quick quote for a $0 deductible PPO plan from leading companies in Ga?",
-          createdAt: minutesAgo(4),
-          status: "delivered",
-        },
-        {
-          id: "msg_2",
-          direction: "inbound",
-          body: "Yes",
-          createdAt: minutesAgo(1),
-          status: "received",
-        },
-      ],
-    },
-    {
-      id: "conv_demo_2",
-      contactId: "contact_demo_2",
-      preview: "AUTO REPLY------ THIS IS FRAN...",
-      unread: 1,
-      lastMessageAt: minutesAgo(3),
-      messages: [
-        {
-          id: "msg_3",
-          direction: "outbound",
-          body: "Frank, are you still looking for better health coverage options this month?",
-          createdAt: minutesAgo(8),
-          status: "delivered",
-        },
-        {
-          id: "msg_4",
-          direction: "inbound",
-          body: "AUTO REPLY------ THIS IS FRANK. Please text later.",
-          createdAt: minutesAgo(3),
-          status: "received",
-        },
-      ],
-    },
-    {
-      id: "conv_demo_3",
-      contactId: "contact_demo_3",
-      preview: "Can I call you at this number",
-      unread: 1,
-      lastMessageAt: minutesAgo(10),
-      messages: [
-        {
-          id: "msg_5",
-          direction: "outbound",
-          body: "I found a plan option that may lower your monthly cost.",
-          createdAt: minutesAgo(16),
-          status: "delivered",
-        },
-        {
-          id: "msg_6",
-          direction: "inbound",
-          body: "Can I call you at this number",
-          createdAt: minutesAgo(10),
-          status: "received",
-        },
-      ],
-    },
-    {
-      id: "conv_demo_4",
-      contactId: "contact_demo_4",
-      preview: "Not briana stop texting this num...",
-      unread: 1,
-      lastMessageAt: minutesAgo(17),
-      messages: [
-        {
-          id: "msg_7",
-          direction: "outbound",
-          body: "Briana, did you still want me to send over PPO options?",
-          createdAt: minutesAgo(21),
-          status: "delivered",
-        },
-        {
-          id: "msg_8",
-          direction: "inbound",
-          body: "Not briana stop texting this number",
-          createdAt: minutesAgo(17),
-          status: "received",
-        },
-      ],
-    },
-  ];
-}
+// No more demo data builders — data comes from Supabase
 
 export default function DashboardPage() {
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
   const [currentUser, setCurrentUser] = useState<AccountRecord | null>(null);
-  const [accounts, setAccounts] = useState<AccountRecord[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
@@ -475,55 +215,66 @@ export default function DashboardPage() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [composerText, setComposerText] = useState("");
+  const [contactSearch, setContactSearch] = useState("");
+  const [showAddContact, setShowAddContact] = useState(false);
+  const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
+  const [campaignSearch, setCampaignSearch] = useState("");
+  const [launchingCampaignId, setLaunchingCampaignId] = useState<string | null>(null);
+  const [showTemplates, setShowTemplates] = useState(false);
+  const csvInputRef = useRef<HTMLInputElement>(null);
+
+  const messageTemplates = [
+    "Hi {firstName}, are you still looking for health coverage options this month?",
+    "Hey {firstName}, I found a plan that could lower your monthly cost. Want me to send details?",
+    "Hi {firstName}, just following up on your inquiry. Is this still a good time to connect?",
+    "Hello {firstName}, I have some $0 deductible PPO options available in your area.",
+  ];
 
   useEffect(() => {
-    setMounted(true);
+    const loadData = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        router.replace("/");
+        return;
+      }
 
-    const user = loadCurrentUser();
-    if (!user) {
-      router.replace("/");
-      return;
-    }
+      const uid = session.user.id;
+      setUserId(uid);
 
-    if (user.paused) {
-      router.replace("/");
-      return;
-    }
+      const profile = await fetchProfile(uid);
+      if (!profile || profile.paused) {
+        router.replace("/");
+        return;
+      }
 
-    const loadedAccounts = loadAccounts();
-    const loadedCampaigns = loadCampaigns();
-    let loadedContacts = loadContacts();
-    let loadedConversations = loadConversations();
+      setCurrentUser(profileToAccount(profile));
 
-    if (loadedContacts.length === 0) {
-      loadedContacts = buildDemoContacts();
-      saveContacts(loadedContacts);
-    }
+      const [dbContacts, dbCampaigns, dbConversations] = await Promise.all([
+        dbFetchContacts(uid),
+        dbFetchCampaigns(uid),
+        dbFetchConversations(uid),
+      ]);
 
-    if (loadedConversations.length === 0) {
-      loadedConversations = buildDemoConversations();
-      saveConversations(loadedConversations);
-    }
+      setContacts(dbContacts.map(contactToRecord));
+      setCampaigns(dbCampaigns.map(campaignToRecord));
 
-    const freshUser =
-      loadedAccounts.find((account) => account.id === user.id) ?? user;
+      // Load messages for each conversation
+      const convRecords: ConversationRecord[] = await Promise.all(
+        dbConversations.map(async (conv) => {
+          const msgs = await fetchMessages(conv.id);
+          return convToRecord(conv, msgs.map(messageToRecord));
+        })
+      );
 
-    setCurrentUser(freshUser);
-    setAccounts(loadedAccounts);
-    setCampaigns(loadedCampaigns);
-    setContacts(loadedContacts);
-    setConversations(loadedConversations);
+      setConversations(convRecords);
+      if (convRecords.length > 0) {
+        setSelectedConversationId(convRecords[0].id);
+      }
 
-    if (loadedConversations.length > 0) {
-      setSelectedConversationId(loadedConversations[0].id);
-    }
+      setMounted(true);
+    };
 
-    if (
-      loadedAccounts.length > 0 &&
-      loadedAccounts.some((account) => account.id === freshUser.id)
-    ) {
-      saveCurrentUser(freshUser);
-    }
+    loadData();
   }, [router]);
 
   const userCampaigns = useMemo(() => {
@@ -551,6 +302,26 @@ export default function DashboardPage() {
     if (attempted === 0) return 0;
     return (totalSent / attempted) * 100;
   }, [totalSent, totalFailed]);
+
+  const replyRate = useMemo(() => {
+    if (totalSent === 0) return 0;
+    return (totalReplies / totalSent) * 100;
+  }, [totalReplies, totalSent]);
+
+  const filteredContacts = useMemo(() => {
+    const q = contactSearch.trim().toLowerCase();
+    if (!q) return contacts;
+    return contacts.filter((c) => {
+      const name = `${c.firstName} ${c.lastName}`.toLowerCase();
+      return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q);
+    });
+  }, [contacts, contactSearch]);
+
+  const filteredCampaigns = useMemo(() => {
+    const q = campaignSearch.trim().toLowerCase();
+    if (!q) return userCampaigns;
+    return userCampaigns.filter((c) => c.name.toLowerCase().includes(q));
+  }, [userCampaigns, campaignSearch]);
 
   const recentActivity = useMemo(() => {
     if (!currentUser?.usageHistory) return [];
@@ -606,91 +377,70 @@ export default function DashboardPage() {
 
   const selectedContact = selectedConversation?.contact || null;
 
-  const handleLogout = () => {
-    saveCurrentUser(null);
+  const handleLogout = async () => {
+    await logoutUser();
     router.push("/");
   };
 
-  const handleAddFunds = (amount: number) => {
-    if (!currentUser) return;
+  // Helper to persist profile updates to Supabase and update local state
+  const persistProfile = useCallback(async (updates: Record<string, unknown>) => {
+    if (!userId) return null;
+    const updated = await updateProfile(userId, updates);
+    if (updated) setCurrentUser(profileToAccount(updated));
+    return updated;
+  }, [userId]);
+
+  const handleAddFunds = async (amount: number) => {
+    if (!currentUser || !userId) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
 
     const entry: UsageHistoryItem = {
-      id: `fund_${Date.now()}`,
-      type: "fund_add",
-      amount,
+      id: `fund_${Date.now()}`, type: "fund_add", amount,
       description: "User added wallet funds",
-      createdAt: new Date().toISOString(),
-      status: "succeeded",
+      createdAt: new Date().toISOString(), status: "succeeded",
     };
 
-    const updatedUser: AccountRecord = {
-      ...currentUser,
-      walletBalance: Number(((currentUser.walletBalance || 0) + amount).toFixed(2)),
-      usageHistory: [entry, ...(currentUser.usageHistory || [])],
-    };
-
-    const updatedAccounts = accounts.map((account) =>
-      account.id === currentUser.id ? updatedUser : account
-    );
-
-    setCurrentUser(updatedUser);
-    setAccounts(updatedAccounts);
-    saveAccounts(updatedAccounts);
-    saveCurrentUser(updatedUser);
+    await persistProfile({
+      wallet_balance: Number(((currentUser.walletBalance || 0) + amount).toFixed(2)),
+      usage_history: addUsageEntry(currentUser.usageHistory || [], entry),
+    });
 
     setMessage(`✅ Added ${formatCurrency(amount)} to wallet`);
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  const handleCreateCampaign = () => {
+  const handleCreateCampaign = async () => {
+    if (!userId) return;
     if (!newCampaignForm.name.trim()) {
       setMessage("❌ Campaign name is required");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-
     if (!newCampaignForm.message.trim()) {
       setMessage("❌ Campaign message is required");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
 
-    const newCampaign: CampaignRecord = {
-      id: `campaign_${Date.now()}`,
-      name: newCampaignForm.name.trim(),
-      audience: contacts.filter((contact) => !contact.dnc).length,
-      sent: 0,
-      replies: 0,
-      failed: 0,
-      status: "Draft",
-      message: newCampaignForm.message.trim(),
-      logs: [],
-    };
-
-    const updatedCampaigns = [newCampaign, ...campaigns];
-    setCampaigns(updatedCampaigns);
-    saveCampaigns(updatedCampaigns);
-
-    setNewCampaignForm({
-      name: "",
-      message: "",
+    const result = await dbInsertCampaign({
+      user_id: userId, name: newCampaignForm.name.trim(),
+      audience: contacts.filter((c) => !c.dnc).length,
+      sent: 0, replies: 0, failed: 0, status: "Draft",
+      message: newCampaignForm.message.trim(), logs: [],
     });
 
-    setMessage("✅ Campaign created");
+    if (result) {
+      setCampaigns((prev) => [campaignToRecord(result), ...prev]);
+      setNewCampaignForm({ name: "", message: "" });
+      setMessage("✅ Campaign created");
+    } else {
+      setMessage("❌ Failed to create campaign");
+    }
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  const handleCreateDemoContacts = () => {
-    const starterContacts = buildDemoContacts();
-    setContacts(starterContacts);
-    saveContacts(starterContacts);
-    setMessage("✅ Demo contacts loaded");
-    window.setTimeout(() => setMessage(""), 2500);
-  };
-
-  const handleCreateDemoNumber = () => {
-    if (!currentUser) return;
+  const handleCreateDemoNumber = async () => {
+    if (!currentUser || !userId) return;
 
     const walletBalance = currentUser.walletBalance || 0;
     if (walletBalance < 1) {
@@ -706,93 +456,255 @@ export default function DashboardPage() {
     };
 
     const purchaseEntry: UsageHistoryItem = {
-      id: `number_${Date.now()}`,
-      type: "number_purchase",
-      amount: 1,
+      id: `number_${Date.now()}`, type: "number_purchase", amount: 1,
       description: "Purchased phone number",
-      createdAt: new Date().toISOString(),
-      status: "succeeded",
+      createdAt: new Date().toISOString(), status: "succeeded",
     };
 
-    const updatedUser: AccountRecord = {
-      ...currentUser,
-      walletBalance: Number((walletBalance - 1).toFixed(2)),
-      ownedNumbers: [newNumber, ...(currentUser.ownedNumbers || [])],
-      usageHistory: [purchaseEntry, ...(currentUser.usageHistory || [])],
-    };
-
-    const updatedAccounts = accounts.map((account) =>
-      account.id === currentUser.id ? updatedUser : account
-    );
-
-    setCurrentUser(updatedUser);
-    setAccounts(updatedAccounts);
-    saveAccounts(updatedAccounts);
-    saveCurrentUser(updatedUser);
+    await persistProfile({
+      wallet_balance: Number((walletBalance - 1).toFixed(2)),
+      owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
+      usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
+    });
 
     setMessage("✅ Number purchased");
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  const handleSelectConversation = (conversationId: string) => {
+  const handleSelectConversation = async (conversationId: string) => {
     setSelectedConversationId(conversationId);
     setComposerText("");
 
-    const updated = conversations.map((conversation) =>
-      conversation.id === conversationId ? { ...conversation, unread: 0 } : conversation
+    setConversations((prev) =>
+      prev.map((c) => c.id === conversationId ? { ...c, unread: 0 } : c)
     );
-
-    setConversations(updated);
-    saveConversations(updated);
+    await dbUpdateConversation(conversationId, { unread: 0 });
   };
 
-  const handleSendConversationMessage = () => {
+  const handleSendConversationMessage = async () => {
     if (!selectedConversation || !composerText.trim()) {
       setMessage("❌ Type a message first");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
 
+    const body = composerText.trim();
     const now = new Date().toISOString();
 
-    const newMessage: ConversationMessage = {
-      id: `msg_${Date.now()}`,
-      direction: "outbound",
-      body: composerText.trim(),
-      createdAt: now,
-      status: "sent",
-    };
-
-    const updatedConversations = conversations.map((conversation) => {
-      if (conversation.id !== selectedConversation.id) return conversation;
-
-      return {
-        ...conversation,
-        preview: composerText.trim(),
-        lastMessageAt: now,
-        messages: [...conversation.messages, newMessage],
-      };
+    const dbMsg = await insertMessage({
+      conversation_id: selectedConversation.id,
+      direction: "outbound", body, status: "sent",
     });
 
-    setConversations(updatedConversations);
-    saveConversations(updatedConversations);
+    if (dbMsg) {
+      const newMsg: ConversationMessage = messageToRecord(dbMsg);
+      setConversations((prev) =>
+        prev.map((c) => c.id !== selectedConversation.id ? c : {
+          ...c, preview: body, lastMessageAt: now,
+          messages: [...c.messages, newMsg],
+        })
+      );
+      await dbUpdateConversation(selectedConversation.id, {
+        preview: body, last_message_at: now,
+      });
+    }
+
     setComposerText("");
     setMessage("✅ Message queued");
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  const handleUpdateSelectedContactField = (
+  const handleUpdateSelectedContactField = async (
     field: keyof ContactRecord,
     value: string
   ) => {
     if (!selectedContact) return;
 
-    const updatedContacts = contacts.map((contact) =>
-      contact.id === selectedContact.id ? { ...contact, [field]: value } : contact
+    setContacts((prev) =>
+      prev.map((c) => c.id === selectedContact.id ? { ...c, [field]: value } : c)
     );
 
-    setContacts(updatedContacts);
-    saveContacts(updatedContacts);
+    // Map camelCase field to snake_case for DB
+    const fieldMap: Record<string, string> = {
+      firstName: "first_name", lastName: "last_name", dateOfBirth: "date_of_birth",
+      leadSource: "lead_source", policyId: "policy_id", householdSize: "household_size",
+    };
+    const dbField = fieldMap[field] || field;
+    await dbUpdateContact(selectedContact.id, { [dbField]: value });
+  };
+
+  const handleAddContact = async () => {
+    if (!userId) return;
+    if (!addContactForm.firstName.trim() || !addContactForm.phone.trim()) {
+      setMessage("❌ First name and phone are required");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    const result = await dbInsertContact({
+      user_id: userId,
+      first_name: addContactForm.firstName.trim(),
+      last_name: addContactForm.lastName.trim(),
+      phone: addContactForm.phone.trim(),
+      email: addContactForm.email.trim(),
+      city: addContactForm.city.trim(),
+      state: addContactForm.state.trim(),
+      tags: [], notes: "", dnc: false, campaign: "", address: "", zip: "",
+      lead_source: "", quote: "", policy_id: "", timeline: "",
+      household_size: "", date_of_birth: "", age: "",
+    });
+
+    if (result) {
+      setContacts((prev) => [contactToRecord(result), ...prev]);
+      setAddContactForm({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
+      setShowAddContact(false);
+      setMessage("✅ Contact added");
+    } else {
+      setMessage("❌ Failed to add contact");
+    }
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleDeleteContact = async (id: string) => {
+    const ok = await dbDeleteContact(id);
+    if (ok) {
+      setContacts((prev) => prev.filter((c) => c.id !== id));
+      setMessage("✅ Contact deleted");
+    } else {
+      setMessage("❌ Failed to delete contact");
+    }
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleToggleDNC = async (id: string) => {
+    const contact = contacts.find((c) => c.id === id);
+    if (!contact) return;
+    const newDnc = !contact.dnc;
+    setContacts((prev) => prev.map((c) => c.id === id ? { ...c, dnc: newDnc } : c));
+    await dbUpdateContact(id, { dnc: newDnc });
+  };
+
+  const handleDeleteCampaign = async (id: string) => {
+    const ok = await dbDeleteCampaign(id);
+    if (ok) {
+      setCampaigns((prev) => prev.filter((c) => c.id !== id));
+      setMessage("✅ Campaign deleted");
+    } else {
+      setMessage("❌ Failed to delete campaign");
+    }
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleLaunchCampaign = async (campaignId: string) => {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign || !currentUser || !userId) return;
+
+    const audience = contacts.filter((c) => !c.dnc).length;
+    const cost = audience * (currentUser.plan.messageCost || 0.012);
+    const walletBalance = currentUser.walletBalance || 0;
+
+    if (walletBalance < cost) {
+      setMessage(`❌ Insufficient funds. Need ${formatCurrency(cost)} to send to ${audience} contacts`);
+      window.setTimeout(() => setMessage(""), 3500);
+      return;
+    }
+
+    setLaunchingCampaignId(campaignId);
+
+    const chargeEntry: UsageHistoryItem = {
+      id: `charge_${Date.now()}`, type: "charge", amount: cost,
+      description: `Campaign "${campaign.name}" — ${audience} messages`,
+      createdAt: new Date().toISOString(), status: "succeeded",
+    };
+
+    // Deduct funds + update campaign status
+    await persistProfile({
+      wallet_balance: Number((walletBalance - cost).toFixed(2)),
+      usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
+    });
+    await dbUpdateCampaign(campaignId, { status: "Sending", audience });
+    setCampaigns((prev) => prev.map((c) =>
+      c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
+    ));
+
+    setMessage(`✅ Campaign launched — sending to ${audience} contacts`);
+    window.setTimeout(() => setMessage(""), 3000);
+
+    // Simulate completion
+    window.setTimeout(async () => {
+      const sent = Math.floor(audience * 0.97);
+      const failed = audience - sent;
+      const replies = Math.floor(sent * 0.08);
+      const logs = [{ id: `log_${Date.now()}`, createdAt: new Date().toISOString(), attempted: audience, success: sent, failed, notes: "Completed" }];
+
+      await dbUpdateCampaign(campaignId, { status: "Completed", sent, failed, replies, audience, logs });
+      setCampaigns((prev) => prev.map((c) =>
+        c.id === campaignId ? { ...c, status: "Completed" as const, sent, failed, replies, audience, logs } : c
+      ));
+      setLaunchingCampaignId(null);
+    }, 3000);
+  };
+
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!userId) return;
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        if (!results.data.length) {
+          setMessage("❌ No rows found in CSV");
+          window.setTimeout(() => setMessage(""), 2500);
+          return;
+        }
+
+        const rows = results.data
+          .map((row) => ({
+            user_id: userId,
+            first_name: row["First Name"] || row["firstName"] || row["first_name"] || "",
+            last_name: row["Last Name"] || row["lastName"] || row["last_name"] || "",
+            phone: row["Phone"] || row["phone"] || row["Phone Number"] || row["phone_number"] || "",
+            email: row["Email"] || row["email"] || "",
+            city: row["City"] || row["city"] || "",
+            state: row["State"] || row["state"] || "",
+            address: row["Address"] || row["address"] || "",
+            zip: row["Zip"] || row["zip"] || row["ZIP"] || "",
+            lead_source: row["Lead Source"] || row["leadSource"] || row["lead_source"] || "",
+            tags: [] as string[], notes: "", dnc: false, campaign: "",
+            quote: "", policy_id: "", timeline: "", household_size: "",
+            date_of_birth: "", age: "",
+          }))
+          .filter((c) => c.first_name || c.phone);
+
+        // Batch insert
+        const { data, error } = await supabase.from("contacts").insert(rows).select();
+        if (error || !data) {
+          setMessage("❌ Failed to import contacts");
+          window.setTimeout(() => setMessage(""), 2500);
+          return;
+        }
+
+        const imported = (data as Contact[]).map(contactToRecord);
+        setContacts((prev) => [...imported, ...prev]);
+        setMessage(`✅ Imported ${imported.length} contacts`);
+        window.setTimeout(() => setMessage(""), 2500);
+      },
+      error: () => {
+        setMessage("❌ Failed to parse CSV");
+        window.setTimeout(() => setMessage(""), 2500);
+      },
+    });
+
+    e.target.value = "";
+  };
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendConversationMessage();
+    }
   };
 
   if (!mounted) {
@@ -881,17 +793,11 @@ export default function DashboardPage() {
           <div className="space-y-8">
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Credits</div>
-                <div className="mt-3 text-4xl font-bold text-emerald-400">
-                  {currentUser.credits}
-                </div>
-              </div>
-
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <div className="text-sm text-zinc-400">Wallet Balance</div>
-                <div className="mt-3 text-4xl font-bold">
+                <div className="mt-3 text-4xl font-bold text-emerald-400">
                   {formatCurrency(currentUser.walletBalance || 0)}
                 </div>
+                <div className="mt-2 text-xs text-zinc-500">{currentUser.credits} credits</div>
               </div>
 
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -899,13 +805,23 @@ export default function DashboardPage() {
                 <div className="mt-3 text-4xl font-bold text-sky-400">
                   {deliveryRate.toFixed(1)}%
                 </div>
+                <div className="mt-2 text-xs text-zinc-500">{totalSent} sent · {totalFailed} failed</div>
               </div>
 
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Owned Numbers</div>
-                <div className="mt-3 text-4xl font-bold text-violet-400">
-                  {currentUser.ownedNumbers?.length || 0}
+                <div className="text-sm text-zinc-400">Reply Rate</div>
+                <div className="mt-3 text-4xl font-bold text-amber-400">
+                  {replyRate.toFixed(1)}%
                 </div>
+                <div className="mt-2 text-xs text-zinc-500">{totalReplies} replies</div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <div className="text-sm text-zinc-400">Contacts · Numbers</div>
+                <div className="mt-3 text-4xl font-bold text-violet-400">
+                  {contacts.length} · {currentUser.ownedNumbers?.length || 0}
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">{contacts.filter(c => c.dnc).length} on DNC list</div>
               </div>
             </div>
 
@@ -1129,9 +1045,27 @@ export default function DashboardPage() {
                   </div>
 
                   <div className="border-t border-zinc-800 px-5 py-4">
+                    {showTemplates && (
+                      <div className="mb-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-3 space-y-2">
+                        <div className="text-xs font-semibold text-zinc-400 px-1">Templates — click to use</div>
+                        {messageTemplates.map((tpl, i) => {
+                          const preview = tpl.replace("{firstName}", selectedContact?.firstName || "there");
+                          return (
+                            <button
+                              key={i}
+                              onClick={() => { setComposerText(preview); setShowTemplates(false); }}
+                              className="w-full rounded-xl bg-zinc-700/60 px-4 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-700"
+                            >
+                              {preview}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div className="mb-2 flex items-center gap-5 text-xs text-zinc-500">
+                      <span>Chars: {composerText.length}</span>
                       <span>Segments: {Math.max(1, Math.ceil(composerText.length / 160 || 1))}</span>
-                      <span>Encoding: SMS</span>
                       <span>
                         Cost:{" "}
                         {formatCurrency(
@@ -1139,22 +1073,24 @@ export default function DashboardPage() {
                             (currentUser.plan.messageCost || 0)
                         )}
                       </span>
-                      <span>Type: SMS</span>
                     </div>
 
                     <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
                       <textarea
                         value={composerText}
                         onChange={(e) => setComposerText(e.target.value)}
-                        placeholder="Insert text here ..."
+                        onKeyDown={handleComposerKeyDown}
+                        placeholder="Insert text here ... (Enter to send, Shift+Enter for newline)"
                         className="h-28 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
                       />
 
                       <div className="mt-3 flex items-center justify-between">
-                        <label className="flex items-center gap-2 text-sm text-zinc-400">
-                          <input type="checkbox" checked readOnly className="accent-green-500" />
-                          Enter sends message.
-                        </label>
+                        <button
+                          onClick={() => setShowTemplates((v) => !v)}
+                          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+                        >
+                          Templates
+                        </button>
 
                         <div className="flex items-center gap-3">
                           <button className="rounded-2xl border border-zinc-700 px-4 py-3 text-sm hover:bg-zinc-800">
@@ -1404,7 +1340,7 @@ export default function DashboardPage() {
                 />
 
                 <textarea
-                  placeholder="Write your message..."
+                  placeholder="Write your message... Use {firstName} for personalization"
                   value={newCampaignForm.message}
                   onChange={(e) =>
                     setNewCampaignForm((prev) => ({ ...prev, message: e.target.value }))
@@ -1413,67 +1349,109 @@ export default function DashboardPage() {
                 />
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
-                  Characters: {newCampaignForm.message.length} • Segments:{" "}
-                  {Math.max(1, Math.ceil(newCampaignForm.message.length / 160))}
+                  <div>Characters: {newCampaignForm.message.length} · Segments: {Math.max(1, Math.ceil(newCampaignForm.message.length / 160))}</div>
+                  <div className="mt-1">
+                    Audience: {contacts.filter(c => !c.dnc).length} active contacts ·{" "}
+                    Est. cost: {formatCurrency(contacts.filter(c => !c.dnc).length * (currentUser.plan.messageCost || 0.012))}
+                  </div>
                 </div>
 
                 <button
                   onClick={handleCreateCampaign}
                   className="w-full rounded-2xl bg-violet-600 py-4 hover:bg-violet-700"
                 >
-                  Create Campaign
+                  Save as Draft
                 </button>
               </div>
             </div>
 
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <div className="mb-5 flex items-center justify-between">
+              <div className="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                 <h2 className="text-2xl font-bold">Campaigns</h2>
-                <span className="text-sm text-zinc-400">{userCampaigns.length} total</span>
+                <input
+                  value={campaignSearch}
+                  onChange={(e) => setCampaignSearch(e.target.value)}
+                  placeholder="Search..."
+                  className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm outline-none placeholder:text-zinc-500"
+                />
               </div>
 
               <div className="space-y-4">
-                {userCampaigns.map((campaign) => (
-                  <div
-                    key={campaign.id}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-800/60 p-5"
-                  >
-                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                      <div>
-                        <div className="text-lg font-semibold">{campaign.name}</div>
-                        <div className="text-sm text-zinc-400">
-                          Status: {campaign.status}
+                {filteredCampaigns.map((campaign) => {
+                  const isLaunching = launchingCampaignId === campaign.id;
+                  const canLaunch = campaign.status === "Draft" || campaign.status === "Paused";
+                  const statusColor =
+                    campaign.status === "Completed" ? "text-emerald-400" :
+                    campaign.status === "Sending" ? "text-amber-400" :
+                    campaign.status === "Paused" ? "text-zinc-400" :
+                    "text-zinc-400";
+                  return (
+                    <div
+                      key={campaign.id}
+                      className="rounded-2xl border border-zinc-800 bg-zinc-800/60 p-5"
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="flex-1 min-w-0">
+                          <div className="text-lg font-semibold truncate">{campaign.name}</div>
+                          <div className={`text-sm font-medium ${statusColor}`}>
+                            {isLaunching ? "Sending…" : campaign.status}
+                          </div>
+                          {campaign.message && (
+                            <div className="mt-1 truncate text-xs text-zinc-500">{campaign.message}</div>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
+                            {campaign.audience} contacts
+                          </span>
+                          {canLaunch && (
+                            <button
+                              onClick={() => handleLaunchCampaign(campaign.id)}
+                              disabled={isLaunching}
+                              className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
+                            >
+                              Launch
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteCampaign(campaign.id)}
+                            className="rounded-xl px-3 py-2 text-sm text-zinc-500 hover:bg-red-900/40 hover:text-red-300"
+                          >
+                            ✕
+                          </button>
                         </div>
                       </div>
-                      <div className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                        Audience {campaign.audience}
+
+                      <div className="mt-4 grid gap-3 md:grid-cols-3">
+                        <div className="rounded-2xl bg-zinc-900 p-4">
+                          <div className="text-xs text-zinc-400">Sent</div>
+                          <div className="mt-1 text-xl font-bold">{campaign.sent}</div>
+                        </div>
+                        <div className="rounded-2xl bg-zinc-900 p-4">
+                          <div className="text-xs text-zinc-400">Replies</div>
+                          <div className="mt-1 text-xl font-bold text-emerald-400">
+                            {campaign.replies}
+                            {campaign.sent > 0 && (
+                              <span className="ml-1 text-xs text-zinc-400">
+                                ({((campaign.replies / campaign.sent) * 100).toFixed(0)}%)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl bg-zinc-900 p-4">
+                          <div className="text-xs text-zinc-400">Failed</div>
+                          <div className="mt-1 text-xl font-bold text-red-400">
+                            {campaign.failed}
+                          </div>
+                        </div>
                       </div>
                     </div>
+                  );
+                })}
 
-                    <div className="mt-4 grid gap-3 md:grid-cols-3">
-                      <div className="rounded-2xl bg-zinc-900 p-4">
-                        <div className="text-xs text-zinc-400">Sent</div>
-                        <div className="mt-1 text-xl font-bold">{campaign.sent}</div>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-900 p-4">
-                        <div className="text-xs text-zinc-400">Replies</div>
-                        <div className="mt-1 text-xl font-bold text-emerald-400">
-                          {campaign.replies}
-                        </div>
-                      </div>
-                      <div className="rounded-2xl bg-zinc-900 p-4">
-                        <div className="text-xs text-zinc-400">Failed</div>
-                        <div className="mt-1 text-xl font-bold text-red-400">
-                          {campaign.failed}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-
-                {userCampaigns.length === 0 && (
+                {filteredCampaigns.length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    No campaigns yet.
+                    {campaignSearch ? "No campaigns match your search." : "No campaigns yet. Create one to get started."}
                   </div>
                 )}
               </div>
@@ -1487,50 +1465,145 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-2xl font-bold">Contacts</h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Manage uploaded leads and campaign contacts.
+                  {contacts.length} total · {contacts.filter(c => !c.dnc).length} active · {contacts.filter(c => c.dnc).length} DNC
                 </p>
               </div>
 
-              <button
-                onClick={handleCreateDemoContacts}
-                className="rounded-2xl bg-violet-600 px-5 py-3 hover:bg-violet-700"
-              >
-                Reload Demo Contacts
-              </button>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  value={contactSearch}
+                  onChange={(e) => setContactSearch(e.target.value)}
+                  placeholder="Search contacts..."
+                  className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
+                />
+                <button
+                  onClick={() => setShowAddContact((v) => !v)}
+                  className="rounded-2xl bg-violet-600 px-5 py-3 text-sm hover:bg-violet-700"
+                >
+                  + Add Contact
+                </button>
+                <button
+                  onClick={() => csvInputRef.current?.click()}
+                  className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
+                >
+                  Import CSV
+                </button>
+                <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+                <button
+                  onClick={async () => {
+                    if (!userId) return;
+                    const fresh = await dbFetchContacts(userId);
+                    setContacts(fresh.map(contactToRecord));
+                    setMessage("✅ Contacts refreshed");
+                    window.setTimeout(() => setMessage(""), 2500);
+                  }}
+                  className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
+                >
+                  Refresh
+                </button>
+              </div>
             </div>
 
+            {showAddContact && (
+              <div className="mb-6 rounded-2xl border border-zinc-700 bg-zinc-800 p-5">
+                <h3 className="mb-4 font-semibold">Add Contact</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <input
+                    placeholder="First name *"
+                    value={addContactForm.firstName}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, firstName: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                  <input
+                    placeholder="Last name"
+                    value={addContactForm.lastName}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, lastName: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                  <input
+                    placeholder="Phone *"
+                    value={addContactForm.phone}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, phone: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                  <input
+                    placeholder="Email"
+                    value={addContactForm.email}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, email: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                  <input
+                    placeholder="City"
+                    value={addContactForm.city}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, city: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                  <input
+                    placeholder="State"
+                    value={addContactForm.state}
+                    onChange={(e) => setAddContactForm((p) => ({ ...p, state: e.target.value }))}
+                    className="rounded-xl border border-zinc-600 bg-zinc-700 px-4 py-3 text-sm outline-none placeholder:text-zinc-400"
+                  />
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button onClick={handleAddContact} className="rounded-xl bg-violet-600 px-5 py-2 text-sm hover:bg-violet-700">Save</button>
+                  <button onClick={() => setShowAddContact(false)} className="rounded-xl border border-zinc-600 px-5 py-2 text-sm hover:bg-zinc-700">Cancel</button>
+                </div>
+              </div>
+            )}
+
             <div className="overflow-hidden rounded-2xl border border-zinc-800">
-              <div className="grid grid-cols-6 bg-zinc-800 px-5 py-4 text-sm font-medium text-zinc-300">
+              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_90px_80px_60px] bg-zinc-800 px-5 py-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <div>Name</div>
                 <div>Phone</div>
                 <div>Email</div>
                 <div>Location</div>
                 <div>Campaign</div>
                 <div>Status</div>
+                <div></div>
               </div>
 
               <div className="divide-y divide-zinc-800">
-                {contacts.map((contact) => (
+                {filteredContacts.map((contact) => (
                   <div
                     key={contact.id}
-                    className="grid grid-cols-6 px-5 py-4 text-sm text-zinc-200"
+                    className="grid grid-cols-[1fr_1fr_1fr_1fr_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
                   >
-                    <div>
+                    <div className="font-medium">
                       {contact.firstName} {contact.lastName}
                     </div>
-                    <div>{contact.phone}</div>
-                    <div>{contact.email || "—"}</div>
-                    <div>
+                    <div className="font-mono text-xs text-zinc-300">{contact.phone}</div>
+                    <div className="truncate text-zinc-400">{contact.email || "—"}</div>
+                    <div className="text-zinc-400">
                       {[contact.city, contact.state].filter(Boolean).join(", ") || "—"}
                     </div>
-                    <div>{contact.campaign || "—"}</div>
-                    <div>{contact.dnc ? "DNC" : "Active"}</div>
+                    <div className="truncate text-xs text-zinc-400">{contact.campaign || "—"}</div>
+                    <div>
+                      <button
+                        onClick={() => handleToggleDNC(contact.id)}
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          contact.dnc
+                            ? "bg-red-500/20 text-red-300 hover:bg-red-500/30"
+                            : "bg-emerald-900/50 text-emerald-300 hover:bg-emerald-900/80"
+                        }`}
+                      >
+                        {contact.dnc ? "DNC" : "Active"}
+                      </button>
+                    </div>
+                    <div>
+                      <button
+                        onClick={() => handleDeleteContact(contact.id)}
+                        className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-red-900/40 hover:text-red-300"
+                      >
+                        ✕
+                      </button>
+                    </div>
                   </div>
                 ))}
 
-                {contacts.length === 0 && (
+                {filteredContacts.length === 0 && (
                   <div className="px-5 py-8 text-center text-zinc-500">
-                    No contacts found.
+                    {contactSearch ? "No contacts match your search." : "No contacts yet. Import a CSV or add manually."}
                   </div>
                 )}
               </div>
@@ -1691,7 +1764,11 @@ export default function DashboardPage() {
       </div>
 
       {message && (
-        <div className="fixed bottom-8 right-8 rounded-2xl bg-emerald-900 px-6 py-4 text-emerald-200 shadow-2xl">
+        <div className={`fixed bottom-8 right-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium ${
+          message.startsWith("❌")
+            ? "bg-red-950 text-red-200 ring-1 ring-red-800"
+            : "bg-emerald-950 text-emerald-200 ring-1 ring-emerald-800"
+        }`}>
           {message}
         </div>
       )}
