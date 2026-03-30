@@ -19,6 +19,9 @@ export type Profile = {
   usage_history: UsageHistoryItem[];
   owned_numbers: OwnedNumber[];
   plan: Plan;
+  subscription_status: "active" | "canceling" | "past_due" | "inactive";
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
   created_at: string;
 };
 

@@ -37,6 +37,7 @@ type AccountRecord = {
   createdAt: string;
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
+  subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
 };
 
 type ContactRecord = {
@@ -106,6 +107,7 @@ function profileToAccount(p: Profile): AccountRecord {
     usageHistory: p.usage_history || [], plan: p.plan,
     createdAt: p.created_at, walletBalance: p.wallet_balance,
     ownedNumbers: p.owned_numbers || [],
+    subscriptionStatus: p.subscription_status || "inactive",
   };
 }
 
@@ -296,6 +298,20 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
+      // Handle Stripe subscription success redirect
+      const subStatus = params.get("subscription");
+      if (subStatus === "success") {
+        const refreshed = await fetchProfile(uid);
+        if (refreshed) setCurrentUser(profileToAccount(refreshed));
+        setMessage("✅ Subscription activated! Welcome to Text2Sale.");
+        window.setTimeout(() => setMessage(""), 4000);
+        window.history.replaceState({}, "", "/dashboard");
+      } else if (subStatus === "cancelled") {
+        setMessage("Subscription signup cancelled");
+        window.setTimeout(() => setMessage(""), 3000);
+        window.history.replaceState({}, "", "/dashboard");
+      }
+
       setMounted(true);
     };
 
@@ -438,6 +454,60 @@ export default function DashboardPage() {
         window.location.href = data.url;
       } else {
         setMessage(`❌ ${data.error || "Payment failed"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+      }
+    } catch {
+      setMessage("❌ Could not connect to payment service");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handleSubscribe = async () => {
+    if (!currentUser || !userId) return;
+    setMessage("Redirecting to subscription checkout...");
+
+    try {
+      const res = await fetch("/api/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, userEmail: currentUser.email }),
+      });
+
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        setMessage(`❌ ${data.error || "Subscription failed"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+      }
+    } catch {
+      setMessage("❌ Could not connect to payment service");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  const handleCancelSubscription = async () => {
+    if (!userId) return;
+    if (!window.confirm("Are you sure you want to cancel your subscription? You'll keep access until the end of your billing period.")) return;
+
+    setMessage("Cancelling subscription...");
+
+    try {
+      const res = await fetch("/api/cancel-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setCurrentUser({ ...currentUser!, subscriptionStatus: "canceling" });
+        setMessage("✅ Subscription will cancel at end of billing period");
+        window.setTimeout(() => setMessage(""), 4000);
+      } else {
+        setMessage(`❌ ${data.error || "Cancel failed"}`);
         window.setTimeout(() => setMessage(""), 3000);
       }
     } catch {
@@ -1954,17 +2024,62 @@ export default function DashboardPage() {
 
         {activeTab === "billing" && (
           <div className="grid gap-8 lg:grid-cols-2">
+            {/* Subscription Section */}
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Billing</h2>
+              <h2 className="text-2xl font-bold">Subscription</h2>
 
               <div className="mt-5 space-y-4">
                 <div className="rounded-2xl bg-zinc-800 p-5">
                   <div className="text-sm text-zinc-400">Plan</div>
                   <div className="mt-2 text-2xl font-bold">{currentUser.plan.name}</div>
                   <div className="mt-2 text-zinc-400">
-                    {formatCurrency(currentUser.plan.price)} per month
+                    {formatCurrency(currentUser.plan.price)} / month
                   </div>
                 </div>
+
+                <div className="rounded-2xl bg-zinc-800 p-5">
+                  <div className="text-sm text-zinc-400">Status</div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${
+                      currentUser.subscriptionStatus === "active" ? "bg-green-500" :
+                      currentUser.subscriptionStatus === "canceling" ? "bg-yellow-500" :
+                      currentUser.subscriptionStatus === "past_due" ? "bg-red-500" :
+                      "bg-zinc-500"
+                    }`} />
+                    <span className="text-lg font-semibold capitalize">
+                      {currentUser.subscriptionStatus === "canceling"
+                        ? "Canceling (active until period end)"
+                        : currentUser.subscriptionStatus || "Inactive"}
+                    </span>
+                  </div>
+                </div>
+
+                {currentUser.subscriptionStatus === "active" && (
+                  <button
+                    onClick={handleCancelSubscription}
+                    className="w-full rounded-2xl border border-red-800 px-5 py-3 text-red-400 hover:bg-red-950/50"
+                  >
+                    Cancel Subscription
+                  </button>
+                )}
+
+                {(!currentUser.subscriptionStatus || currentUser.subscriptionStatus === "inactive") && (
+                  <button
+                    onClick={handleSubscribe}
+                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 text-lg font-semibold hover:bg-violet-700"
+                  >
+                    Subscribe — {formatCurrency(currentUser.plan.price)}/month
+                  </button>
+                )}
+
+                {currentUser.subscriptionStatus === "past_due" && (
+                  <button
+                    onClick={handleSubscribe}
+                    className="w-full rounded-2xl bg-red-600 px-5 py-4 text-lg font-semibold hover:bg-red-700"
+                  >
+                    Update Payment Method
+                  </button>
+                )}
 
                 <div className="rounded-2xl bg-zinc-800 p-5">
                   <div className="text-sm text-zinc-400">Message Cost</div>
@@ -1973,43 +2088,48 @@ export default function DashboardPage() {
                   </div>
                   <div className="mt-2 text-zinc-400">Per outbound text segment</div>
                 </div>
-
-                <div className="rounded-2xl bg-zinc-800 p-5">
-                  <div className="text-sm text-zinc-400">Wallet Balance</div>
-                  <div className="mt-2 text-2xl font-bold">
-                    {formatCurrency(currentUser.walletBalance || 0)}
-                  </div>
-                </div>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Add Funds</h2>
-
-              <div className="mt-5 grid gap-3">
-                <button
-                  onClick={() => handleAddFunds(25)}
-                  className="rounded-2xl bg-violet-600 px-5 py-4 hover:bg-violet-700"
-                >
-                  Add $25
-                </button>
-                <button
-                  onClick={() => handleAddFunds(50)}
-                  className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
-                >
-                  Add $50
-                </button>
-                <button
-                  onClick={() => handleAddFunds(100)}
-                  className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
-                >
-                  Add $100
-                </button>
+            {/* Wallet & Add Funds Section */}
+            <div className="space-y-8">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Wallet Balance</h2>
+                <div className="mt-4 text-4xl font-bold text-green-400">
+                  {formatCurrency(currentUser.walletBalance || 0)}
+                </div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  Used to pay for outbound messages at {formatCurrency(currentUser.plan.messageCost)} each
+                </div>
               </div>
 
-              <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 text-sm text-zinc-400">
-                This is local demo billing for now. Real Stripe or payment integration
-                comes next.
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Add Funds</h2>
+
+                <div className="mt-5 grid gap-3">
+                  <button
+                    onClick={() => handleAddFunds(25)}
+                    className="rounded-2xl bg-violet-600 px-5 py-4 hover:bg-violet-700"
+                  >
+                    Add $25
+                  </button>
+                  <button
+                    onClick={() => handleAddFunds(50)}
+                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
+                  >
+                    Add $50
+                  </button>
+                  <button
+                    onClick={() => handleAddFunds(100)}
+                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
+                  >
+                    Add $100
+                  </button>
+                </div>
+
+                <div className="mt-5 text-xs text-zinc-500">
+                  Payments are securely processed via Stripe. Your card details never touch our servers.
+                </div>
               </div>
             </div>
           </div>
