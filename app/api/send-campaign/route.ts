@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Fetch non-DNC contacts for this user
     const { data: contacts, error: contactsErr } = await supabase
       .from("contacts")
-      .select("id, first_name, last_name, phone")
+      .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes")
       .eq("user_id", userId)
       .eq("dnc", false);
 
@@ -63,7 +63,20 @@ export async function POST(req: NextRequest) {
         const personalizedBody = messageTemplate
           .replace(/\{firstName\}/gi, contact.first_name || "")
           .replace(/\{lastName\}/gi, contact.last_name || "")
-          .replace(/\{phone\}/gi, contact.phone || "");
+          .replace(/\{phone\}/gi, contact.phone || "")
+          .replace(/\{email\}/gi, contact.email || "")
+          .replace(/\{city\}/gi, contact.city || "")
+          .replace(/\{state\}/gi, contact.state || "")
+          .replace(/\{address\}/gi, contact.address || "")
+          .replace(/\{zip\}/gi, contact.zip || "")
+          .replace(/\{leadSource\}/gi, contact.lead_source || "")
+          .replace(/\{quote\}/gi, contact.quote || "")
+          .replace(/\{policyId\}/gi, contact.policy_id || "")
+          .replace(/\{timeline\}/gi, contact.timeline || "")
+          .replace(/\{householdSize\}/gi, contact.household_size || "")
+          .replace(/\{dateOfBirth\}/gi, contact.date_of_birth || "")
+          .replace(/\{age\}/gi, contact.age || "")
+          .replace(/\{notes\}/gi, contact.notes || "");
 
         const toDigits = contact.phone.replace(/\D/g, "");
         const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
