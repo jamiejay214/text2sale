@@ -1,0 +1,162 @@
+import { NextRequest, NextResponse } from "next/server";
+import twilio from "twilio";
+import { createClient } from "@supabase/supabase-js";
+
+const accountSid = process.env.TWILIO_ACCOUNT_SID!;
+const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export async function POST(req: NextRequest) {
+  try {
+    const { campaignId, userId, fromNumber, messageTemplate } = await req.json();
+
+    if (!campaignId || !userId || !fromNumber || !messageTemplate) {
+      return NextResponse.json(
+        { success: false, error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    const client = twilio(accountSid, authToken);
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Fetch non-DNC contacts for this user
+    const { data: contacts, error: contactsErr } = await supabase
+      .from("contacts")
+      .select("id, first_name, last_name, phone")
+      .eq("user_id", userId)
+      .eq("dnc", false);
+
+    if (contactsErr || !contacts || contacts.length === 0) {
+      return NextResponse.json(
+        { success: false, error: "No eligible contacts found" },
+        { status: 404 }
+      );
+    }
+
+    // Normalize from number
+    const fromDigits = fromNumber.replace(/\D/g, "");
+    const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
+
+    let sent = 0;
+    let failed = 0;
+    let replies = 0;
+    const errors: string[] = [];
+
+    // Send to each contact
+    for (const contact of contacts) {
+      try {
+        // Personalize message
+        const personalizedBody = messageTemplate
+          .replace(/\{firstName\}/gi, contact.first_name || "")
+          .replace(/\{lastName\}/gi, contact.last_name || "")
+          .replace(/\{phone\}/gi, contact.phone || "");
+
+        const toDigits = contact.phone.replace(/\D/g, "");
+        const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
+
+        await client.messages.create({
+          to: toE164,
+          from: fromE164,
+          body: personalizedBody,
+        });
+
+        sent++;
+
+        // Tag the contact with this campaign
+        await supabase
+          .from("contacts")
+          .update({ campaign: campaignId })
+          .eq("id", contact.id);
+
+        // Create/update conversation for tracking replies
+        const { data: existingConv } = await supabase
+          .from("conversations")
+          .select("id")
+          .eq("contact_id", contact.id)
+          .eq("user_id", userId)
+          .single();
+
+        if (!existingConv) {
+          const { data: newConv } = await supabase
+            .from("conversations")
+            .insert({
+              user_id: userId,
+              contact_id: contact.id,
+              preview: personalizedBody.slice(0, 100),
+              unread: 0,
+              last_message_at: new Date().toISOString(),
+            })
+            .select()
+            .single();
+
+          if (newConv) {
+            await supabase.from("messages").insert({
+              conversation_id: newConv.id,
+              direction: "outbound",
+              body: personalizedBody,
+              status: "sent",
+            });
+          }
+        } else {
+          await supabase
+            .from("conversations")
+            .update({
+              preview: personalizedBody.slice(0, 100),
+              last_message_at: new Date().toISOString(),
+            })
+            .eq("id", existingConv.id);
+
+          await supabase.from("messages").insert({
+            conversation_id: existingConv.id,
+            direction: "outbound",
+            body: personalizedBody,
+            status: "sent",
+          });
+        }
+      } catch (err: unknown) {
+        failed++;
+        const msg = err instanceof Error ? err.message : "Send failed";
+        errors.push(`${contact.phone}: ${msg}`);
+      }
+    }
+
+    // Update campaign stats
+    const logs = [{
+      id: `log_${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      attempted: contacts.length,
+      success: sent,
+      failed,
+      notes: failed > 0 ? `${errors.length} errors` : "All sent successfully",
+    }];
+
+    await supabase
+      .from("campaigns")
+      .update({
+        status: "Completed",
+        audience: contacts.length,
+        sent,
+        failed,
+        replies,
+        logs,
+      })
+      .eq("id", campaignId);
+
+    return NextResponse.json({
+      success: true,
+      sent,
+      failed,
+      total: contacts.length,
+      errors: errors.slice(0, 10), // Return first 10 errors
+    });
+  } catch (error: unknown) {
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Campaign send error:", errMsg);
+    return NextResponse.json(
+      { success: false, error: errMsg },
+      { status: 500 }
+    );
+  }
+}

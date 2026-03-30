@@ -271,6 +271,25 @@ export default function DashboardPage() {
         setSelectedConversationId(convRecords[0].id);
       }
 
+      // Handle Stripe payment success redirect
+      const params = new URLSearchParams(window.location.search);
+      const paymentStatus = params.get("payment");
+      const paymentAmount = parseFloat(params.get("amount") || "0");
+
+      if (paymentStatus === "success" && paymentAmount > 0) {
+        // Re-fetch profile to get updated wallet balance from webhook
+        const refreshed = await fetchProfile(uid);
+        if (refreshed) setCurrentUser(profileToAccount(refreshed));
+        setMessage(`✅ Payment successful — $${paymentAmount.toFixed(2)} added to wallet`);
+        window.setTimeout(() => setMessage(""), 4000);
+        // Clean URL
+        window.history.replaceState({}, "", "/dashboard");
+      } else if (paymentStatus === "cancelled") {
+        setMessage("Payment cancelled");
+        window.setTimeout(() => setMessage(""), 3000);
+        window.history.replaceState({}, "", "/dashboard");
+      }
+
       setMounted(true);
     };
 
@@ -394,19 +413,31 @@ export default function DashboardPage() {
     if (!currentUser || !userId) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
 
-    const entry: UsageHistoryItem = {
-      id: `fund_${Date.now()}`, type: "fund_add", amount,
-      description: "User added wallet funds",
-      createdAt: new Date().toISOString(), status: "succeeded",
-    };
+    setMessage("Redirecting to payment...");
 
-    await persistProfile({
-      wallet_balance: Number(((currentUser.walletBalance || 0) + amount).toFixed(2)),
-      usage_history: addUsageEntry(currentUser.usageHistory || [], entry),
-    });
+    try {
+      const res = await fetch("/api/create-checkout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          amount,
+          userId,
+          userEmail: currentUser.email,
+        }),
+      });
 
-    setMessage(`✅ Added ${formatCurrency(amount)} to wallet`);
-    window.setTimeout(() => setMessage(""), 2500);
+      const data = await res.json();
+
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        setMessage(`❌ ${data.error || "Payment failed"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+      }
+    } catch {
+      setMessage("❌ Could not connect to payment service");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   const handleCreateCampaign = async () => {
@@ -444,31 +475,52 @@ export default function DashboardPage() {
 
     const walletBalance = currentUser.walletBalance || 0;
     if (walletBalance < 1) {
-      setMessage("❌ Add funds before buying a number");
+      setMessage("❌ Add at least $1.00 to your wallet first");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
 
-    const newNumber: OwnedNumber = {
-      id: `num_${Date.now()}`,
-      number: "(888) 555-10" + Math.floor(Math.random() * 90 + 10),
-      alias: `Sales Line ${((currentUser.ownedNumbers?.length || 0) + 1).toString()}`,
-    };
+    setMessage("Purchasing number from Twilio...");
 
-    const purchaseEntry: UsageHistoryItem = {
-      id: `number_${Date.now()}`, type: "number_purchase", amount: 1,
-      description: "Purchased phone number",
-      createdAt: new Date().toISOString(), status: "succeeded",
-    };
+    try {
+      const res = await fetch("/api/buy-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ areaCode: "" }),
+      });
 
-    await persistProfile({
-      wallet_balance: Number((walletBalance - 1).toFixed(2)),
-      owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
-      usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
-    });
+      const data = await res.json();
 
-    setMessage("✅ Number purchased");
-    window.setTimeout(() => setMessage(""), 2500);
+      if (!data.success) {
+        setMessage(`❌ ${data.error || "Failed to buy number"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+
+      const newNumber: OwnedNumber = {
+        id: data.sid || `num_${Date.now()}`,
+        number: data.number,
+        alias: `Sales Line ${((currentUser.ownedNumbers?.length || 0) + 1).toString()}`,
+      };
+
+      const purchaseEntry: UsageHistoryItem = {
+        id: `number_${Date.now()}`, type: "number_purchase", amount: 1,
+        description: `Purchased number ${data.number}`,
+        createdAt: new Date().toISOString(), status: "succeeded",
+      };
+
+      await persistProfile({
+        wallet_balance: Number((walletBalance - 1).toFixed(2)),
+        owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
+        usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
+      });
+
+      setMessage(`✅ Number ${data.number} purchased`);
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("❌ Could not connect to Twilio");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   const handleSelectConversation = async (conversationId: string) => {
@@ -482,7 +534,7 @@ export default function DashboardPage() {
   };
 
   const handleSendConversationMessage = async () => {
-    if (!selectedConversation || !composerText.trim()) {
+    if (!selectedConversation || !composerText.trim() || !currentUser) {
       setMessage("❌ Type a message first");
       window.setTimeout(() => setMessage(""), 2500);
       return;
@@ -491,6 +543,58 @@ export default function DashboardPage() {
     const body = composerText.trim();
     const now = new Date().toISOString();
 
+    // Get the contact's phone and a from number
+    const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
+
+    if (!contact?.phone) {
+      setMessage("❌ Contact has no phone number");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    if (!fromNumber) {
+      setMessage("❌ Buy a phone number first before sending messages");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    // Check wallet balance
+    const cost = currentUser.plan.messageCost || 0.012;
+    if ((currentUser.walletBalance || 0) < cost) {
+      setMessage("❌ Insufficient funds. Add funds to your wallet.");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    setComposerText("");
+
+    // Send via Twilio
+    try {
+      const res = await fetch("/api/send-sms", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: contact.phone,
+          from: fromNumber,
+          body,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!data.success) {
+        setMessage(`❌ ${data.error || "Failed to send"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+    } catch {
+      setMessage("❌ Could not connect to SMS service");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    // Save to DB
     const dbMsg = await insertMessage({
       conversation_id: selectedConversation.id,
       direction: "outbound", body, status: "sent",
@@ -509,8 +613,18 @@ export default function DashboardPage() {
       });
     }
 
-    setComposerText("");
-    setMessage("✅ Message queued");
+    // Deduct message cost
+    const chargeEntry: UsageHistoryItem = {
+      id: `msg_${Date.now()}`, type: "charge", amount: cost,
+      description: `SMS to ${contact.phone}`,
+      createdAt: now, status: "succeeded",
+    };
+    await persistProfile({
+      wallet_balance: Number(((currentUser.walletBalance || 0) - cost).toFixed(2)),
+      usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
+    });
+
+    setMessage("✅ Message sent");
     window.setTimeout(() => setMessage(""), 2500);
   };
 
@@ -599,7 +713,20 @@ export default function DashboardPage() {
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign || !currentUser || !userId) return;
 
+    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
+    if (!fromNumber) {
+      setMessage("❌ Buy a phone number first before launching a campaign");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
     const audience = contacts.filter((c) => !c.dnc).length;
+    if (audience === 0) {
+      setMessage("❌ No eligible contacts (all on DNC list or none imported)");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
     const cost = audience * (currentUser.plan.messageCost || 0.012);
     const walletBalance = currentUser.walletBalance || 0;
 
@@ -627,22 +754,40 @@ export default function DashboardPage() {
       c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
     ));
 
-    setMessage(`✅ Campaign launched — sending to ${audience} contacts`);
-    window.setTimeout(() => setMessage(""), 3000);
+    setMessage(`✅ Campaign launched — sending ${audience} messages via Twilio...`);
 
-    // Simulate completion
-    window.setTimeout(async () => {
-      const sent = Math.floor(audience * 0.97);
-      const failed = audience - sent;
-      const replies = Math.floor(sent * 0.08);
-      const logs = [{ id: `log_${Date.now()}`, createdAt: new Date().toISOString(), attempted: audience, success: sent, failed, notes: "Completed" }];
+    // Send via Twilio API
+    try {
+      const res = await fetch("/api/send-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaignId,
+          userId,
+          fromNumber,
+          messageTemplate: campaign.message,
+        }),
+      });
 
-      await dbUpdateCampaign(campaignId, { status: "Completed", sent, failed, replies, audience, logs });
-      setCampaigns((prev) => prev.map((c) =>
-        c.id === campaignId ? { ...c, status: "Completed" as const, sent, failed, replies, audience, logs } : c
-      ));
-      setLaunchingCampaignId(null);
-    }, 3000);
+      const data = await res.json();
+
+      if (data.success) {
+        setCampaigns((prev) => prev.map((c) =>
+          c.id === campaignId ? {
+            ...c, status: "Completed" as const,
+            sent: data.sent, failed: data.failed, audience: data.total,
+          } : c
+        ));
+        setMessage(`✅ Campaign complete — ${data.sent} sent, ${data.failed} failed`);
+      } else {
+        setMessage(`❌ Campaign error: ${data.error}`);
+      }
+    } catch {
+      setMessage("❌ Could not connect to SMS service");
+    }
+
+    setLaunchingCampaignId(null);
+    window.setTimeout(() => setMessage(""), 4000);
   };
 
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
