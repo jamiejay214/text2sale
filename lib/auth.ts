@@ -77,10 +77,32 @@ export async function signupUser(input: {
     return { success: false as const, message: "Signup failed. Please try again." };
   }
 
+  // If email confirmation is enabled, there's no session yet.
+  // Auto sign-in after signup to get a session.
+  if (!data.session) {
+    const { data: signInData, error: signInError } =
+      await supabase.auth.signInWithPassword({
+        email: input.email.trim(),
+        password: input.password,
+      });
+
+    if (signInError || !signInData.session) {
+      return {
+        success: false as const,
+        message: "Account created but sign-in failed. Please confirm your email or try logging in.",
+      };
+    }
+  }
+
   // Small delay to let the trigger create the profile
   await new Promise((r) => setTimeout(r, 500));
 
-  const profile = await fetchProfile(data.user.id);
+  const session = await getSession();
+  if (!session?.user) {
+    return { success: false as const, message: "Account created. Please log in." };
+  }
+
+  const profile = await fetchProfile(session.user.id);
   return { success: true as const, user: profile };
 }
 
