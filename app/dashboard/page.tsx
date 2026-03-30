@@ -229,7 +229,9 @@ export default function DashboardPage() {
   const [campaignSearch, setCampaignSearch] = useState("");
   const [launchingCampaignId, setLaunchingCampaignId] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showFieldPicker, setShowFieldPicker] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
+  const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
 
   const messageTemplates = [
     "Hi {firstName}, are you still looking for health coverage options this month?",
@@ -514,6 +516,43 @@ export default function DashboardPage() {
       setMessage("❌ Could not connect to payment service");
       window.setTimeout(() => setMessage(""), 3000);
     }
+  };
+
+  const personalizationFields = [
+    { tag: "{firstName}", label: "First Name" },
+    { tag: "{lastName}", label: "Last Name" },
+    { tag: "{phone}", label: "Phone" },
+    { tag: "{email}", label: "Email" },
+    { tag: "{address}", label: "Address" },
+    { tag: "{city}", label: "City" },
+    { tag: "{state}", label: "State" },
+    { tag: "{zip}", label: "Zip Code" },
+    { tag: "{age}", label: "Age" },
+    { tag: "{dateOfBirth}", label: "Date of Birth" },
+    { tag: "{householdSize}", label: "Household Size" },
+    { tag: "{leadSource}", label: "Lead Source" },
+    { tag: "{quote}", label: "Quote" },
+    { tag: "{policyId}", label: "Policy ID" },
+    { tag: "{timeline}", label: "Timeline" },
+    { tag: "{notes}", label: "Notes" },
+  ];
+
+  const insertField = (tag: string) => {
+    const textarea = campaignTextareaRef.current;
+    if (!textarea) {
+      setNewCampaignForm((prev) => ({ ...prev, message: prev.message + tag }));
+      return;
+    }
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = newCampaignForm.message;
+    const newText = text.substring(0, start) + tag + text.substring(end);
+    setNewCampaignForm((prev) => ({ ...prev, message: newText }));
+    // Restore cursor position after the inserted tag
+    requestAnimationFrame(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + tag.length;
+    });
   };
 
   const handleCreateCampaign = async () => {
@@ -1603,13 +1642,42 @@ export default function DashboardPage() {
                 />
 
                 <textarea
-                  placeholder="Write your message... Use {firstName} for personalization"
+                  ref={campaignTextareaRef}
+                  placeholder="Write your message... Click a field below to insert personalization tags"
                   value={newCampaignForm.message}
                   onChange={(e) =>
                     setNewCampaignForm((prev) => ({ ...prev, message: e.target.value }))
                   }
                   className="h-40 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
                 />
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <button
+                    type="button"
+                    onClick={() => setShowFieldPicker(!showFieldPicker)}
+                    className="flex items-center gap-2 text-sm font-medium text-violet-400 hover:text-violet-300"
+                  >
+                    <span>{showFieldPicker ? "▾" : "▸"}</span>
+                    Insert Personalization Field
+                  </button>
+                  {showFieldPicker && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {personalizationFields.map((field) => (
+                        <button
+                          key={field.tag}
+                          type="button"
+                          onClick={() => insertField(field.tag)}
+                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-violet-600 hover:bg-violet-950/40 hover:text-violet-300 transition"
+                        >
+                          {field.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 text-xs text-zinc-500">
+                    Tags like <code className="text-violet-400">{"{firstName}"}</code> are replaced with each contact&apos;s data when sent
+                  </div>
+                </div>
 
                 {(currentUser.ownedNumbers || []).length > 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
