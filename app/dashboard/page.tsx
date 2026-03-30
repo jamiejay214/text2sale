@@ -94,7 +94,8 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "activity";
-type NewCampaignForm = { name: string; message: string };
+type NewCampaignForm = { name: string; message: string; selectedNumbers: string[] };
+type AvailableNumber = { raw: string; display: string; locality: string; region: string };
 
 // Convert DB rows to camelCase adapter types
 function profileToAccount(p: Profile): AccountRecord {
@@ -211,7 +212,12 @@ export default function DashboardPage() {
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
     message: "",
+    selectedNumbers: [],
   });
+  const [numberSearch, setNumberSearch] = useState("");
+  const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
+  const [searchingNumbers, setSearchingNumbers] = useState(false);
+  const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [composerText, setComposerText] = useState("");
@@ -462,7 +468,7 @@ export default function DashboardPage() {
 
     if (result) {
       setCampaigns((prev) => [campaignToRecord(result), ...prev]);
-      setNewCampaignForm({ name: "", message: "" });
+      setNewCampaignForm({ name: "", message: "", selectedNumbers: [] });
       setMessage("✅ Campaign created");
     } else {
       setMessage("❌ Failed to create campaign");
@@ -470,7 +476,38 @@ export default function DashboardPage() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  const handleCreateDemoNumber = async () => {
+  const handleSearchNumbers = async () => {
+    setSearchingNumbers(true);
+    setAvailableNumbers([]);
+
+    try {
+      const res = await fetch("/api/search-numbers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ areaCode: numberSearch.trim() }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        setAvailableNumbers(data.numbers || []);
+        if (data.numbers?.length === 0) {
+          setMessage("No numbers found for that area code. Try another.");
+          window.setTimeout(() => setMessage(""), 3000);
+        }
+      } else {
+        setMessage(`❌ ${data.error || "Search failed"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+      }
+    } catch {
+      setMessage("❌ Could not connect to Twilio");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+
+    setSearchingNumbers(false);
+  };
+
+  const handleBuyNumber = async (phoneNumber: string, displayNumber: string) => {
     if (!currentUser || !userId) return;
 
     const walletBalance = currentUser.walletBalance || 0;
@@ -480,13 +517,13 @@ export default function DashboardPage() {
       return;
     }
 
-    setMessage("Purchasing number from Twilio...");
+    setBuyingNumber(phoneNumber);
 
     try {
       const res = await fetch("/api/buy-number", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ areaCode: "" }),
+        body: JSON.stringify({ phoneNumber }),
       });
 
       const data = await res.json();
@@ -494,6 +531,7 @@ export default function DashboardPage() {
       if (!data.success) {
         setMessage(`❌ ${data.error || "Failed to buy number"}`);
         window.setTimeout(() => setMessage(""), 3000);
+        setBuyingNumber(null);
         return;
       }
 
@@ -515,12 +553,16 @@ export default function DashboardPage() {
         usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
       });
 
+      // Remove purchased number from available list
+      setAvailableNumbers((prev) => prev.filter((n) => n.raw !== phoneNumber));
       setMessage(`✅ Number ${data.number} purchased`);
       window.setTimeout(() => setMessage(""), 3000);
     } catch {
       setMessage("❌ Could not connect to Twilio");
       window.setTimeout(() => setMessage(""), 3000);
     }
+
+    setBuyingNumber(null);
   };
 
   const handleSelectConversation = async (conversationId: string) => {
@@ -713,12 +755,18 @@ export default function DashboardPage() {
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign || !currentUser || !userId) return;
 
-    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
-    if (!fromNumber) {
+    const ownedNumbers = currentUser.ownedNumbers || [];
+    if (ownedNumbers.length === 0) {
       setMessage("❌ Buy a phone number first before launching a campaign");
       window.setTimeout(() => setMessage(""), 3000);
       return;
     }
+
+    // Use campaign's selected numbers, or fall back to all owned numbers
+    const campaignNumbers = (campaign as CampaignRecord & { selectedNumbers?: string[] }).selectedNumbers;
+    const fromNumbers = campaignNumbers && campaignNumbers.length > 0
+      ? campaignNumbers
+      : ownedNumbers.map((n) => n.number);
 
     const audience = contacts.filter((c) => !c.dnc).length;
     if (audience === 0) {
@@ -764,7 +812,7 @@ export default function DashboardPage() {
         body: JSON.stringify({
           campaignId,
           userId,
-          fromNumber,
+          fromNumbers,
           messageTemplate: campaign.message,
         }),
       });
@@ -1031,7 +1079,7 @@ export default function DashboardPage() {
                     Add $25 to Wallet
                   </button>
                   <button
-                    onClick={handleCreateDemoNumber}
+                    onClick={() => setActiveTab("numbers")}
                     className="rounded-2xl border border-zinc-700 px-5 py-4 text-left hover:bg-zinc-800"
                   >
                     Buy Number
@@ -1493,12 +1541,64 @@ export default function DashboardPage() {
                   className="h-40 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
                 />
 
+                {(currentUser.ownedNumbers || []).length > 0 && (
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <div className="text-sm font-medium text-zinc-300 mb-3">
+                      Send from numbers <span className="text-zinc-500 font-normal">(selected numbers rotate per message)</span>
+                    </div>
+                    <div className="space-y-2">
+                      {(currentUser.ownedNumbers || []).map((num) => {
+                        const isSelected = newCampaignForm.selectedNumbers.includes(num.number);
+                        return (
+                          <button
+                            key={num.id}
+                            type="button"
+                            onClick={() => {
+                              setNewCampaignForm((prev) => ({
+                                ...prev,
+                                selectedNumbers: isSelected
+                                  ? prev.selectedNumbers.filter((n) => n !== num.number)
+                                  : [...prev.selectedNumbers, num.number],
+                              }));
+                            }}
+                            className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm transition ${
+                              isSelected
+                                ? "border border-violet-600 bg-violet-950/40 text-white"
+                                : "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className={`h-4 w-4 rounded border flex items-center justify-center ${
+                                isSelected ? "bg-violet-600 border-violet-600" : "border-zinc-600"
+                              }`}>
+                                {isSelected && <span className="text-xs text-white">✓</span>}
+                              </div>
+                              <span className="font-mono">{num.number}</span>
+                            </div>
+                            <span className="text-xs text-zinc-500">{num.alias}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {newCampaignForm.selectedNumbers.length === 0 && (
+                      <div className="mt-2 text-xs text-zinc-500">
+                        No numbers selected — all owned numbers will be used
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
                   <div>Characters: {newCampaignForm.message.length} · Segments: {Math.max(1, Math.ceil(newCampaignForm.message.length / 160))}</div>
                   <div className="mt-1">
                     Audience: {contacts.filter(c => !c.dnc).length} active contacts ·{" "}
                     Est. cost: {formatCurrency(contacts.filter(c => !c.dnc).length * (currentUser.plan.messageCost || 0.012))}
                   </div>
+                  {newCampaignForm.selectedNumbers.length > 0 && (
+                    <div className="mt-1">
+                      Sending from: {newCampaignForm.selectedNumbers.length} number{newCampaignForm.selectedNumbers.length !== 1 ? "s" : ""} (rotating)
+                    </div>
+                  )}
                 </div>
 
                 <button
@@ -1758,30 +1858,71 @@ export default function DashboardPage() {
 
         {activeTab === "numbers" && (
           <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Phone Numbers</h2>
-              <p className="mt-2 text-sm text-zinc-400">
-                Buy and manage sending numbers for campaigns.
-              </p>
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Buy a Number</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Search by area code to find available numbers.
+                </p>
 
-              <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-                <div className="text-sm text-zinc-400">Number cost</div>
-                <div className="mt-2 text-3xl font-bold">$1.00</div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Wallet balance: {formatCurrency(currentUser.walletBalance || 0)}
+                <div className="mt-5 flex gap-3">
+                  <input
+                    value={numberSearch}
+                    onChange={(e) => setNumberSearch(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                    placeholder="Area code (e.g. 305)"
+                    className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+                    onKeyDown={(e) => e.key === "Enter" && handleSearchNumbers()}
+                  />
+                  <button
+                    onClick={handleSearchNumbers}
+                    disabled={searchingNumbers}
+                    className="rounded-2xl bg-violet-600 px-6 py-3 font-medium hover:bg-violet-700 disabled:opacity-50 transition"
+                  >
+                    {searchingNumbers ? "Searching..." : "Search"}
+                  </button>
                 </div>
 
-                <button
-                  onClick={handleCreateDemoNumber}
-                  className="mt-5 w-full rounded-2xl bg-violet-600 py-4 hover:bg-violet-700"
-                >
-                  Buy Number
-                </button>
+                <div className="mt-2 text-xs text-zinc-500">
+                  Wallet: {formatCurrency(currentUser.walletBalance || 0)} · $1.00 per number
+                </div>
               </div>
+
+              {availableNumbers.length > 0 && (
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h3 className="text-lg font-bold">Available Numbers</h3>
+                  <p className="mt-1 text-xs text-zinc-400">{availableNumbers.length} numbers found — click to buy</p>
+
+                  <div className="mt-4 space-y-2 max-h-[400px] overflow-y-auto">
+                    {availableNumbers.map((num) => (
+                      <button
+                        key={num.raw}
+                        onClick={() => handleBuyNumber(num.raw, num.display)}
+                        disabled={buyingNumber === num.raw || (currentUser.walletBalance || 0) < 1}
+                        className="w-full flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/60 px-5 py-4 text-left hover:bg-zinc-700/60 hover:border-violet-600 transition disabled:opacity-50"
+                      >
+                        <div>
+                          <div className="font-mono text-lg font-semibold">{num.display}</div>
+                          {(num.locality || num.region) && (
+                            <div className="text-xs text-zinc-400">
+                              {[num.locality, num.region].filter(Boolean).join(", ")}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-sm font-medium text-violet-400">
+                          {buyingNumber === num.raw ? "Buying..." : "$1.00"}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h2 className="text-2xl font-bold">Owned Numbers</h2>
+              <p className="mt-1 text-xs text-zinc-400">
+                {(currentUser.ownedNumbers || []).length} number{(currentUser.ownedNumbers || []).length !== 1 ? "s" : ""} · All numbers rotate automatically when launching campaigns
+              </p>
 
               <div className="mt-5 space-y-4">
                 {(currentUser.ownedNumbers || []).map((item) => (
@@ -1803,7 +1944,7 @@ export default function DashboardPage() {
 
                 {(currentUser.ownedNumbers || []).length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    No phone numbers yet.
+                    No phone numbers yet. Search and buy one to get started.
                   </div>
                 )}
               </div>

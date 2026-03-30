@@ -9,9 +9,16 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumber, messageTemplate } = await req.json();
+    const { campaignId, userId, fromNumbers, messageTemplate } = await req.json();
 
-    if (!campaignId || !userId || !fromNumber || !messageTemplate) {
+    // Support both single fromNumber (legacy) and fromNumbers array
+    const numbers: string[] = Array.isArray(fromNumbers)
+      ? fromNumbers
+      : fromNumbers
+        ? [fromNumbers]
+        : [];
+
+    if (!campaignId || !userId || numbers.length === 0 || !messageTemplate) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
         { status: 400 }
@@ -35,17 +42,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize from number
-    const fromDigits = fromNumber.replace(/\D/g, "");
-    const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
+    // Normalize all from numbers to E.164
+    const fromE164List = numbers.map((num: string) => {
+      const digits = num.replace(/\D/g, "");
+      return digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+    });
 
     let sent = 0;
     let failed = 0;
     let replies = 0;
     const errors: string[] = [];
 
-    // Send to each contact
-    for (const contact of contacts) {
+    // Send to each contact, rotating through from numbers
+    for (let i = 0; i < contacts.length; i++) {
+      const contact = contacts[i];
+      const fromE164 = fromE164List[i % fromE164List.length]; // Round-robin rotation
+
       try {
         // Personalize message
         const personalizedBody = messageTemplate
