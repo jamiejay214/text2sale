@@ -17,7 +17,7 @@ import {
 } from "@/lib/supabase-data";
 import type {
   Profile, Contact, Campaign, Conversation, Message,
-  UsageHistoryItem, OwnedNumber,
+  UsageHistoryItem, OwnedNumber, OptOutSettings,
 } from "@/lib/types";
 
 // Adapter types — keep the camelCase names the JSX uses
@@ -94,7 +94,7 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "activity";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "opt-out" | "activity";
 type NewCampaignForm = { name: string; message: string; selectedNumbers: string[] };
 type AvailableNumber = { raw: string; display: string; locality: string; region: string };
 
@@ -230,6 +230,20 @@ export default function DashboardPage() {
   const [launchingCampaignId, setLaunchingCampaignId] = useState<string | null>(null);
   const [showTemplates, setShowTemplates] = useState(false);
   const [showFieldPicker, setShowFieldPicker] = useState(false);
+  const defaultOptOut: OptOutSettings = {
+    keywords: ["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"],
+    optInKeywords: ["START", "SUBSCRIBE", "UNSTOP", "YES"],
+    autoReplyMessage: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+    optInReplyMessage: "You have been re-subscribed. Reply STOP to unsubscribe.",
+    includeCompanyName: true,
+    companyName: "",
+    confirmOptOut: true,
+    autoMarkDnc: true,
+  };
+  const [optOutSettings, setOptOutSettings] = useState<OptOutSettings>(defaultOptOut);
+  const [optOutNewKeyword, setOptOutNewKeyword] = useState("");
+  const [optInNewKeyword, setOptInNewKeyword] = useState("");
+  const [savingOptOut, setSavingOptOut] = useState(false);
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -258,6 +272,7 @@ export default function DashboardPage() {
       }
 
       setCurrentUser(profileToAccount(profile));
+      if (profile.opt_out_settings) setOptOutSettings(profile.opt_out_settings);
 
       const [dbContacts, dbCampaigns, dbConversations] = await Promise.all([
         dbFetchContacts(uid),
@@ -516,6 +531,20 @@ export default function DashboardPage() {
       setMessage("❌ Could not connect to payment service");
       window.setTimeout(() => setMessage(""), 3000);
     }
+  };
+
+  const handleSaveOptOut = async () => {
+    if (!userId) return;
+    setSavingOptOut(true);
+    try {
+      await updateProfile(userId, { opt_out_settings: optOutSettings });
+      setMessage("✅ Opt-out settings saved");
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("❌ Failed to save opt-out settings");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+    setSavingOptOut(false);
   };
 
   const personalizationFields = [
@@ -1075,6 +1104,7 @@ export default function DashboardPage() {
             "contacts",
             "numbers",
             "billing",
+            "opt-out",
             "activity",
           ].map((tab) => (
             <button
@@ -1086,7 +1116,7 @@ export default function DashboardPage() {
                   : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
               }`}
             >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "opt-out" ? "Opt-Out" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -2199,6 +2229,307 @@ export default function DashboardPage() {
                   Payments are securely processed via Stripe. Your card details never touch our servers.
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "opt-out" && (
+          <div className="grid gap-8 lg:grid-cols-2">
+            {/* Left Column — Keywords & Behavior */}
+            <div className="space-y-6">
+              {/* Opt-Out Keywords */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Opt-Out Keywords</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  When a contact replies with any of these words, they will be automatically opted out.
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {optOutSettings.keywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="flex items-center gap-1.5 rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-1.5 text-sm text-red-300"
+                    >
+                      {kw}
+                      <button
+                        onClick={() =>
+                          setOptOutSettings((prev) => ({
+                            ...prev,
+                            keywords: prev.keywords.filter((k) => k !== kw),
+                          }))
+                        }
+                        className="ml-1 text-red-500 hover:text-red-300"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <input
+                    placeholder="Add keyword..."
+                    value={optOutNewKeyword}
+                    onChange={(e) => setOptOutNewKeyword(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && optOutNewKeyword.trim()) {
+                        setOptOutSettings((prev) => ({
+                          ...prev,
+                          keywords: [...prev.keywords, optOutNewKeyword.trim()],
+                        }));
+                        setOptOutNewKeyword("");
+                      }
+                    }}
+                    className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      if (optOutNewKeyword.trim()) {
+                        setOptOutSettings((prev) => ({
+                          ...prev,
+                          keywords: [...prev.keywords, optOutNewKeyword.trim()],
+                        }));
+                        setOptOutNewKeyword("");
+                      }
+                    }}
+                    className="rounded-xl bg-red-600 px-4 py-2 text-sm font-medium hover:bg-red-700"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Opt-In Keywords */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Opt-In Keywords</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  When an opted-out contact replies with any of these words, they will be re-subscribed.
+                </p>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {optOutSettings.optInKeywords.map((kw) => (
+                    <span
+                      key={kw}
+                      className="flex items-center gap-1.5 rounded-lg border border-green-800/50 bg-green-950/30 px-3 py-1.5 text-sm text-green-300"
+                    >
+                      {kw}
+                      <button
+                        onClick={() =>
+                          setOptOutSettings((prev) => ({
+                            ...prev,
+                            optInKeywords: prev.optInKeywords.filter((k) => k !== kw),
+                          }))
+                        }
+                        className="ml-1 text-green-500 hover:text-green-300"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+
+                <div className="mt-3 flex gap-2">
+                  <input
+                    placeholder="Add keyword..."
+                    value={optInNewKeyword}
+                    onChange={(e) => setOptInNewKeyword(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && optInNewKeyword.trim()) {
+                        setOptOutSettings((prev) => ({
+                          ...prev,
+                          optInKeywords: [...prev.optInKeywords, optInNewKeyword.trim()],
+                        }));
+                        setOptInNewKeyword("");
+                      }
+                    }}
+                    className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm"
+                  />
+                  <button
+                    onClick={() => {
+                      if (optInNewKeyword.trim()) {
+                        setOptOutSettings((prev) => ({
+                          ...prev,
+                          optInKeywords: [...prev.optInKeywords, optInNewKeyword.trim()],
+                        }));
+                        setOptInNewKeyword("");
+                      }
+                    }}
+                    className="rounded-xl bg-green-600 px-4 py-2 text-sm font-medium hover:bg-green-700"
+                  >
+                    Add
+                  </button>
+                </div>
+              </div>
+
+              {/* Behavior Settings */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Behavior</h2>
+
+                <div className="mt-5 space-y-5">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={optOutSettings.autoMarkDnc}
+                      onChange={(e) =>
+                        setOptOutSettings((prev) => ({ ...prev, autoMarkDnc: e.target.checked }))
+                      }
+                      className="mt-1 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500"
+                    />
+                    <div>
+                      <div className="font-medium">Auto-mark as DNC</div>
+                      <div className="text-sm text-zinc-400">
+                        Automatically flag the contact as Do-Not-Contact when they opt out. They won&apos;t receive any future campaign messages.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={optOutSettings.confirmOptOut}
+                      onChange={(e) =>
+                        setOptOutSettings((prev) => ({ ...prev, confirmOptOut: e.target.checked }))
+                      }
+                      className="mt-1 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500"
+                    />
+                    <div>
+                      <div className="font-medium">Send confirmation reply</div>
+                      <div className="text-sm text-zinc-400">
+                        Automatically send a reply confirming the opt-out or opt-in. Required by TCPA compliance.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={optOutSettings.includeCompanyName}
+                      onChange={(e) =>
+                        setOptOutSettings((prev) => ({ ...prev, includeCompanyName: e.target.checked }))
+                      }
+                      className="mt-1 h-5 w-5 rounded border-zinc-600 bg-zinc-800 text-violet-600 focus:ring-violet-500"
+                    />
+                    <div>
+                      <div className="font-medium">Include company name</div>
+                      <div className="text-sm text-zinc-400">
+                        Append your company name to opt-out/opt-in replies for branding.
+                      </div>
+                    </div>
+                  </label>
+
+                  {optOutSettings.includeCompanyName && (
+                    <input
+                      placeholder="Your company name"
+                      value={optOutSettings.companyName}
+                      onChange={(e) =>
+                        setOptOutSettings((prev) => ({ ...prev, companyName: e.target.value }))
+                      }
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column — Auto-Reply Messages & Preview */}
+            <div className="space-y-6">
+              {/* Opt-Out Auto-Reply */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Opt-Out Reply Message</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Sent automatically when a contact opts out.
+                </p>
+                <textarea
+                  value={optOutSettings.autoReplyMessage}
+                  onChange={(e) =>
+                    setOptOutSettings((prev) => ({ ...prev, autoReplyMessage: e.target.value }))
+                  }
+                  className="mt-4 h-28 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm"
+                />
+              </div>
+
+              {/* Opt-In Auto-Reply */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Opt-In Reply Message</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Sent automatically when a contact re-subscribes.
+                </p>
+                <textarea
+                  value={optOutSettings.optInReplyMessage}
+                  onChange={(e) =>
+                    setOptOutSettings((prev) => ({ ...prev, optInReplyMessage: e.target.value }))
+                  }
+                  className="mt-4 h-28 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm"
+                />
+              </div>
+
+              {/* Live Preview */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Preview</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  This is what your contacts will see when they opt out or opt back in.
+                </p>
+
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <div className="text-xs font-semibold text-red-400 mb-2">OPT-OUT SCENARIO</div>
+                    <div className="flex flex-col gap-2">
+                      <div className="self-end rounded-2xl rounded-br-sm bg-violet-600 px-4 py-2 text-sm max-w-[80%]">
+                        Hi John! We have a great rate for you...
+                      </div>
+                      <div className="self-start rounded-2xl rounded-bl-sm bg-zinc-700 px-4 py-2 text-sm max-w-[80%]">
+                        {optOutSettings.keywords[0] || "STOP"}
+                      </div>
+                      {optOutSettings.confirmOptOut && (
+                        <div className="self-end rounded-2xl rounded-br-sm bg-violet-600 px-4 py-2 text-sm max-w-[80%]">
+                          {optOutSettings.autoReplyMessage}
+                          {optOutSettings.includeCompanyName && optOutSettings.companyName
+                            ? ` — ${optOutSettings.companyName}`
+                            : ""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                    <div className="text-xs font-semibold text-green-400 mb-2">OPT-IN SCENARIO</div>
+                    <div className="flex flex-col gap-2">
+                      <div className="self-start rounded-2xl rounded-bl-sm bg-zinc-700 px-4 py-2 text-sm max-w-[80%]">
+                        {optOutSettings.optInKeywords[0] || "START"}
+                      </div>
+                      {optOutSettings.confirmOptOut && (
+                        <div className="self-end rounded-2xl rounded-br-sm bg-violet-600 px-4 py-2 text-sm max-w-[80%]">
+                          {optOutSettings.optInReplyMessage}
+                          {optOutSettings.includeCompanyName && optOutSettings.companyName
+                            ? ` — ${optOutSettings.companyName}`
+                            : ""}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* TCPA Compliance Note */}
+              <div className="rounded-3xl border border-yellow-800/40 bg-yellow-950/20 p-6">
+                <h3 className="text-lg font-bold text-yellow-300">TCPA Compliance</h3>
+                <ul className="mt-3 space-y-2 text-sm text-yellow-200/80">
+                  <li>• You must honor all opt-out requests immediately</li>
+                  <li>• STOP, UNSUBSCRIBE, CANCEL, END, and QUIT are federally required keywords</li>
+                  <li>• You must send a one-time confirmation after opting out</li>
+                  <li>• Do not send any further messages to opted-out contacts</li>
+                  <li>• Keep records of all opt-out requests for compliance</li>
+                </ul>
+              </div>
+
+              {/* Save Button */}
+              <button
+                onClick={handleSaveOptOut}
+                disabled={savingOptOut}
+                className="w-full rounded-2xl bg-violet-600 py-4 text-lg font-semibold hover:bg-violet-700 disabled:opacity-50"
+              >
+                {savingOptOut ? "Saving..." : "Save Opt-Out Settings"}
+              </button>
             </div>
           </div>
         )}

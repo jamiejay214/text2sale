@@ -22,7 +22,19 @@ export type Profile = {
   subscription_status: "active" | "canceling" | "past_due" | "inactive";
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  opt_out_settings: OptOutSettings;
   created_at: string;
+};
+
+export type OptOutSettings = {
+  keywords: string[];
+  optInKeywords: string[];
+  autoReplyMessage: string;
+  optInReplyMessage: string;
+  includeCompanyName: boolean;
+  companyName: string;
+  confirmOptOut: boolean;
+  autoMarkDnc: boolean;
 };
 
 export type Plan = {
