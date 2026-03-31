@@ -9,7 +9,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumbers, messageTemplate } = await req.json();
+    const { campaignId, userId, fromNumbers, messageTemplate, campaignName } = await req.json();
 
     // Support both single fromNumber (legacy) and fromNumbers array
     const numbers: string[] = Array.isArray(fromNumbers)
@@ -28,12 +28,18 @@ export async function POST(req: NextRequest) {
     const client = twilio(accountSid, authToken);
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch non-DNC contacts for this user
-    const { data: contacts, error: contactsErr } = await supabase
+    // Fetch non-DNC contacts for this user, optionally filtered by campaign
+    let contactsQuery = supabase
       .from("contacts")
       .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes")
       .eq("user_id", userId)
       .eq("dnc", false);
+
+    if (campaignName) {
+      contactsQuery = contactsQuery.eq("campaign", campaignName);
+    }
+
+    const { data: contacts, error: contactsErr } = await contactsQuery;
 
     if (contactsErr || !contacts || contacts.length === 0) {
       return NextResponse.json(

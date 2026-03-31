@@ -83,6 +83,12 @@ export type Contact = {
   created_at: string;
 };
 
+export type CampaignStep = {
+  id: string;
+  message: string;
+  delayMinutes: number; // delay before sending this step (0 for first)
+};
+
 export type Campaign = {
   id: string;
   user_id: string;
@@ -93,6 +99,8 @@ export type Campaign = {
   failed: number;
   status: "Draft" | "Sending" | "Completed" | "Paused";
   message: string;
+  steps: CampaignStep[];
+  selected_numbers: string[];
   logs: CampaignLog[];
   created_at: string;
 };

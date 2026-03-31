@@ -17,7 +17,7 @@ import {
 } from "@/lib/supabase-data";
 import type {
   Profile, Contact, Campaign, Conversation, Message,
-  UsageHistoryItem, OwnedNumber, OptOutSettings,
+  UsageHistoryItem, OwnedNumber, OptOutSettings, CampaignStep,
 } from "@/lib/types";
 
 // Adapter types — keep the camelCase names the JSX uses
@@ -73,6 +73,8 @@ type CampaignRecord = {
   failed: number;
   status: "Draft" | "Sending" | "Completed" | "Paused";
   message?: string;
+  steps?: CampaignStep[];
+  selectedNumbers?: string[];
   logs?: { id: string; createdAt: string; attempted: number; success: number; failed: number; notes: string }[];
 };
 
@@ -95,7 +97,7 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "opt-out" | "activity";
-type NewCampaignForm = { name: string; message: string; selectedNumbers: string[] };
+type NewCampaignForm = { name: string; steps: CampaignStep[]; selectedNumbers: string[] };
 type AvailableNumber = { raw: string; display: string; locality: string; region: string };
 
 // Convert DB rows to camelCase adapter types
@@ -129,7 +131,8 @@ function campaignToRecord(c: Campaign): CampaignRecord {
   return {
     id: c.id, name: c.name, audience: c.audience, sent: c.sent,
     replies: c.replies, failed: c.failed, status: c.status,
-    message: c.message || undefined, logs: c.logs || [],
+    message: c.message || undefined, steps: c.steps || [],
+    selectedNumbers: c.selected_numbers || [], logs: c.logs || [],
   };
 }
 
@@ -213,9 +216,12 @@ export default function DashboardPage() {
   const [message, setMessage] = useState("");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
-    message: "",
+    steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
     selectedNumbers: [],
   });
+  const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+  const [csvCampaignId, setCsvCampaignId] = useState<string>("");
+  const [deletingBulk, setDeletingBulk] = useState(false);
   const [numberSearch, setNumberSearch] = useState("");
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [searchingNumbers, setSearchingNumbers] = useState(false);
@@ -566,22 +572,56 @@ export default function DashboardPage() {
     { tag: "{notes}", label: "Notes" },
   ];
 
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+
   const insertField = (tag: string) => {
     const textarea = campaignTextareaRef.current;
+    const stepId = newCampaignForm.steps[activeStepIndex]?.id;
+    if (!stepId) return;
+
     if (!textarea) {
-      setNewCampaignForm((prev) => ({ ...prev, message: prev.message + tag }));
+      setNewCampaignForm((prev) => ({
+        ...prev,
+        steps: prev.steps.map((s) =>
+          s.id === stepId ? { ...s, message: s.message + tag } : s
+        ),
+      }));
       return;
     }
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
-    const text = newCampaignForm.message;
+    const text = newCampaignForm.steps[activeStepIndex].message;
     const newText = text.substring(0, start) + tag + text.substring(end);
-    setNewCampaignForm((prev) => ({ ...prev, message: newText }));
-    // Restore cursor position after the inserted tag
+    setNewCampaignForm((prev) => ({
+      ...prev,
+      steps: prev.steps.map((s) =>
+        s.id === stepId ? { ...s, message: newText } : s
+      ),
+    }));
     requestAnimationFrame(() => {
       textarea.focus();
       textarea.selectionStart = textarea.selectionEnd = start + tag.length;
     });
+  };
+
+  const handleAddStep = () => {
+    setNewCampaignForm((prev) => ({
+      ...prev,
+      steps: [
+        ...prev.steps,
+        { id: `step_${Date.now()}`, message: "", delayMinutes: 60 },
+      ],
+    }));
+    setActiveStepIndex(newCampaignForm.steps.length);
+  };
+
+  const handleRemoveStep = (stepIndex: number) => {
+    if (newCampaignForm.steps.length <= 1) return;
+    setNewCampaignForm((prev) => ({
+      ...prev,
+      steps: prev.steps.filter((_, i) => i !== stepIndex),
+    }));
+    setActiveStepIndex((prev) => Math.min(prev, newCampaignForm.steps.length - 2));
   };
 
   const handleCreateCampaign = async () => {
@@ -591,27 +631,50 @@ export default function DashboardPage() {
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-    if (!newCampaignForm.message.trim()) {
-      setMessage("❌ Campaign message is required");
+    if (newCampaignForm.steps.every((s) => !s.message.trim())) {
+      setMessage("❌ At least one message step is required");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
 
     const result = await dbInsertCampaign({
       user_id: userId, name: newCampaignForm.name.trim(),
-      audience: contacts.filter((c) => !c.dnc).length,
-      sent: 0, replies: 0, failed: 0, status: "Draft",
-      message: newCampaignForm.message.trim(), logs: [],
+      audience: 0, sent: 0, replies: 0, failed: 0, status: "Draft",
+      message: newCampaignForm.steps[0]?.message.trim() || "",
+      steps: newCampaignForm.steps,
+      selected_numbers: newCampaignForm.selectedNumbers,
+      logs: [],
     });
 
     if (result) {
       setCampaigns((prev) => [campaignToRecord(result), ...prev]);
-      setNewCampaignForm({ name: "", message: "", selectedNumbers: [] });
-      setMessage("✅ Campaign created");
+      setNewCampaignForm({
+        name: "", selectedNumbers: [],
+        steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
+      });
+      setActiveStepIndex(0);
+      setMessage("✅ Campaign created as draft");
     } else {
       setMessage("❌ Failed to create campaign");
     }
     window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedContactIds.size === 0) return;
+    if (!window.confirm(`Delete ${selectedContactIds.size} selected contact${selectedContactIds.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
+
+    setDeletingBulk(true);
+    let deleted = 0;
+    for (const id of selectedContactIds) {
+      const ok = await dbDeleteContact(id);
+      if (ok) deleted++;
+    }
+    setContacts((prev) => prev.filter((c) => !selectedContactIds.has(c.id)));
+    setSelectedContactIds(new Set());
+    setDeletingBulk(false);
+    setMessage(`✅ Deleted ${deleted} contact${deleted !== 1 ? "s" : ""}`);
+    window.setTimeout(() => setMessage(""), 3000);
   };
 
   const handleSearchNumbers = async () => {
@@ -900,24 +963,28 @@ export default function DashboardPage() {
       return;
     }
 
-    // Use campaign's selected numbers, or fall back to all owned numbers
-    const campaignNumbers = (campaign as CampaignRecord & { selectedNumbers?: string[] }).selectedNumbers;
-    const fromNumbers = campaignNumbers && campaignNumbers.length > 0
-      ? campaignNumbers
+    // Use campaign's stored selected numbers, or fall back to all owned numbers
+    const fromNumbers = campaign.selectedNumbers && campaign.selectedNumbers.length > 0
+      ? campaign.selectedNumbers
       : ownedNumbers.map((n) => n.number);
 
-    const audience = contacts.filter((c) => !c.dnc).length;
+    // Audience = contacts assigned to this campaign (via CSV import)
+    const campaignContacts = contacts.filter((c) => !c.dnc && c.campaign === campaign.name);
+    const audience = campaignContacts.length > 0 ? campaignContacts.length : contacts.filter((c) => !c.dnc).length;
+
     if (audience === 0) {
-      setMessage("❌ No eligible contacts (all on DNC list or none imported)");
+      setMessage("❌ No eligible contacts for this campaign");
       window.setTimeout(() => setMessage(""), 3000);
       return;
     }
 
-    const cost = audience * (currentUser.plan.messageCost || 0.012);
+    const steps = campaign.steps && campaign.steps.length > 0 ? campaign.steps : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
+    const totalMessages = audience * steps.length;
+    const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
     const walletBalance = currentUser.walletBalance || 0;
 
     if (walletBalance < cost) {
-      setMessage(`❌ Insufficient funds. Need ${formatCurrency(cost)} to send to ${audience} contacts`);
+      setMessage(`❌ Insufficient funds. Need ${formatCurrency(cost)} for ${totalMessages} messages (${audience} contacts × ${steps.length} step${steps.length > 1 ? "s" : ""})`);
       window.setTimeout(() => setMessage(""), 3500);
       return;
     }
@@ -926,11 +993,10 @@ export default function DashboardPage() {
 
     const chargeEntry: UsageHistoryItem = {
       id: `charge_${Date.now()}`, type: "charge", amount: cost,
-      description: `Campaign "${campaign.name}" — ${audience} messages`,
+      description: `Campaign "${campaign.name}" — ${totalMessages} messages (${steps.length} step${steps.length > 1 ? "s" : ""})`,
       createdAt: new Date().toISOString(), status: "succeeded",
     };
 
-    // Deduct funds + update campaign status
     await persistProfile({
       wallet_balance: Number((walletBalance - cost).toFixed(2)),
       usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
@@ -940,34 +1006,53 @@ export default function DashboardPage() {
       c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
     ));
 
-    setMessage(`✅ Campaign launched — sending ${audience} messages via Twilio...`);
+    setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
 
-    // Send via Twilio API
+    // Send each step via Twilio API
     try {
-      const res = await fetch("/api/send-campaign", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          campaignId,
-          userId,
-          fromNumbers,
-          messageTemplate: campaign.message,
-        }),
-      });
+      let totalSent = 0;
+      let totalFailed = 0;
 
-      const data = await res.json();
+      for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+        const step = steps[stepIdx];
 
-      if (data.success) {
-        setCampaigns((prev) => prev.map((c) =>
-          c.id === campaignId ? {
-            ...c, status: "Completed" as const,
-            sent: data.sent, failed: data.failed, audience: data.total,
-          } : c
-        ));
-        setMessage(`✅ Campaign complete — ${data.sent} sent, ${data.failed} failed`);
-      } else {
-        setMessage(`❌ Campaign error: ${data.error}`);
+        // Wait for delay (skip delay for first step)
+        if (stepIdx > 0 && step.delayMinutes > 0) {
+          setMessage(`⏳ Step ${stepIdx + 1}/${steps.length} — waiting ${step.delayMinutes} minute${step.delayMinutes !== 1 ? "s" : ""}...`);
+          await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
+        }
+
+        setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length}...`);
+
+        const res = await fetch("/api/send-campaign", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            campaignId,
+            userId,
+            fromNumbers,
+            messageTemplate: step.message,
+            campaignName: campaign.name,
+          }),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          totalSent += data.sent;
+          totalFailed += data.failed;
+        } else {
+          setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
+          break;
+        }
       }
+
+      setCampaigns((prev) => prev.map((c) =>
+        c.id === campaignId ? {
+          ...c, status: "Completed" as const,
+          sent: totalSent, failed: totalFailed, audience,
+        } : c
+      ));
+      setMessage(`✅ Campaign complete — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
     } catch {
       setMessage("❌ Could not connect to SMS service");
     }
@@ -1003,7 +1088,8 @@ export default function DashboardPage() {
             address: row["Address"] || row["address"] || "",
             zip: row["Zip"] || row["zip"] || row["ZIP"] || "",
             lead_source: row["Lead Source"] || row["leadSource"] || row["lead_source"] || "",
-            tags: [] as string[], notes: "", dnc: false, campaign: "",
+            tags: [] as string[], notes: "", dnc: false,
+            campaign: csvCampaignId ? (campaigns.find((c) => c.id === csvCampaignId)?.name || "") : "",
             quote: "", policy_id: "", timeline: "", household_size: "",
             date_of_birth: "", age: "",
           }))
@@ -1056,6 +1142,67 @@ export default function DashboardPage() {
         <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-zinc-300">
             Redirecting...
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Paywall — require subscription before accessing the platform
+  if (currentUser.subscriptionStatus !== "active" && currentUser.subscriptionStatus !== "canceling") {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white">
+        <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
+          <div className="w-full max-w-lg rounded-3xl border border-zinc-800 bg-zinc-900 p-8 text-center">
+            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">
+              Text2Sale
+            </div>
+            <h1 className="mt-4 text-3xl font-bold">Activate Your Account</h1>
+            <p className="mt-3 text-zinc-400">
+              To get started with Text2Sale, please subscribe to our monthly plan. You&apos;ll get full access to the CRM, campaign tools, and SMS messaging.
+            </p>
+
+            <div className="mt-6 rounded-2xl border border-zinc-700 bg-zinc-800 p-5">
+              <div className="text-3xl font-bold text-emerald-400">
+                $39.99 <span className="text-lg font-normal text-zinc-400">/ month</span>
+              </div>
+              <div className="mt-2 text-sm text-zinc-400">$0.012 per outbound text message</div>
+              <ul className="mt-4 space-y-2 text-left text-sm text-zinc-300">
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Unlimited contacts & campaigns</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Multi-step drip campaigns</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Phone number purchasing</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Two-way SMS conversations</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> CSV import with personalization</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> TCPA-compliant opt-out handling</li>
+              </ul>
+            </div>
+
+            <button
+              onClick={handleSubscribe}
+              className="mt-6 w-full rounded-2xl bg-violet-600 py-4 text-lg font-semibold hover:bg-violet-700 transition"
+            >
+              Subscribe & Get Started
+            </button>
+
+            <button
+              onClick={async () => {
+                await logoutUser();
+                router.push("/");
+              }}
+              className="mt-3 text-sm text-zinc-500 hover:text-zinc-300"
+            >
+              Sign out
+            </button>
+
+            {message && (
+              <div className={`mt-4 rounded-2xl px-4 py-3 text-sm ${
+                message.startsWith("❌")
+                  ? "bg-red-950 text-red-200 ring-1 ring-red-800"
+                  : "bg-emerald-950 text-emerald-200 ring-1 ring-emerald-800"
+              }`}>
+                {message}
+              </div>
+            )}
           </div>
         </div>
       </main>
@@ -1671,15 +1818,105 @@ export default function DashboardPage() {
                   className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
                 />
 
-                <textarea
-                  ref={campaignTextareaRef}
-                  placeholder="Write your message... Click a field below to insert personalization tags"
-                  value={newCampaignForm.message}
-                  onChange={(e) =>
-                    setNewCampaignForm((prev) => ({ ...prev, message: e.target.value }))
-                  }
-                  className="h-40 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
-                />
+                {/* Multi-step message builder */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-sm font-medium text-zinc-300">Message Steps</div>
+                    <button
+                      type="button"
+                      onClick={handleAddStep}
+                      className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium hover:bg-violet-700"
+                    >
+                      + Add Step
+                    </button>
+                  </div>
+
+                  {/* Step tabs */}
+                  <div className="flex flex-wrap gap-1">
+                    {newCampaignForm.steps.map((step, idx) => (
+                      <button
+                        key={step.id}
+                        type="button"
+                        onClick={() => setActiveStepIndex(idx)}
+                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                          activeStepIndex === idx
+                            ? "bg-violet-600 text-white"
+                            : "bg-zinc-800 text-zinc-400 hover:text-white"
+                        }`}
+                      >
+                        Step {idx + 1}
+                        {idx > 0 && (
+                          <span className="text-zinc-500">({step.delayMinutes}m delay)</span>
+                        )}
+                        {newCampaignForm.steps.length > 1 && (
+                          <span
+                            onClick={(e) => { e.stopPropagation(); handleRemoveStep(idx); }}
+                            className="ml-1 text-zinc-500 hover:text-red-400"
+                          >
+                            ×
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Active step editor */}
+                  {newCampaignForm.steps[activeStepIndex] && (
+                    <div className="space-y-3">
+                      {activeStepIndex > 0 && (
+                        <div className="flex items-center gap-3">
+                          <label className="text-sm text-zinc-400">Delay before this step:</label>
+                          <select
+                            value={newCampaignForm.steps[activeStepIndex].delayMinutes}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setNewCampaignForm((prev) => ({
+                                ...prev,
+                                steps: prev.steps.map((s, i) =>
+                                  i === activeStepIndex ? { ...s, delayMinutes: val } : s
+                                ),
+                              }));
+                            }}
+                            className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                          >
+                            <option value={1}>1 minute</option>
+                            <option value={5}>5 minutes</option>
+                            <option value={15}>15 minutes</option>
+                            <option value={30}>30 minutes</option>
+                            <option value={60}>1 hour</option>
+                            <option value={120}>2 hours</option>
+                            <option value={240}>4 hours</option>
+                            <option value={480}>8 hours</option>
+                            <option value={1440}>1 day</option>
+                            <option value={2880}>2 days</option>
+                            <option value={4320}>3 days</option>
+                            <option value={10080}>7 days</option>
+                          </select>
+                        </div>
+                      )}
+
+                      <textarea
+                        ref={campaignTextareaRef}
+                        placeholder={`Write message for step ${activeStepIndex + 1}...`}
+                        value={newCampaignForm.steps[activeStepIndex].message}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setNewCampaignForm((prev) => ({
+                            ...prev,
+                            steps: prev.steps.map((s, i) =>
+                              i === activeStepIndex ? { ...s, message: val } : s
+                            ),
+                          }));
+                        }}
+                        className="h-32 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
+                      />
+
+                      <div className="text-xs text-zinc-500">
+                        Characters: {newCampaignForm.steps[activeStepIndex].message.length} · Segments: {Math.max(1, Math.ceil(newCampaignForm.steps[activeStepIndex].message.length / 160))}
+                      </div>
+                    </div>
+                  )}
+                </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
                   <button
@@ -1757,11 +1994,7 @@ export default function DashboardPage() {
                 )}
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
-                  <div>Characters: {newCampaignForm.message.length} · Segments: {Math.max(1, Math.ceil(newCampaignForm.message.length / 160))}</div>
-                  <div className="mt-1">
-                    Audience: {contacts.filter(c => !c.dnc).length} active contacts ·{" "}
-                    Est. cost: {formatCurrency(contacts.filter(c => !c.dnc).length * (currentUser.plan.messageCost || 0.012))}
-                  </div>
+                  <div>{newCampaignForm.steps.length} message step{newCampaignForm.steps.length > 1 ? "s" : ""}</div>
                   {newCampaignForm.selectedNumbers.length > 0 && (
                     <div className="mt-1">
                       Sending from: {newCampaignForm.selectedNumbers.length} number{newCampaignForm.selectedNumbers.length !== 1 ? "s" : ""} (rotating)
@@ -1895,13 +2128,34 @@ export default function DashboardPage() {
                 >
                   + Add Contact
                 </button>
-                <button
-                  onClick={() => csvInputRef.current?.click()}
-                  className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
-                >
-                  Import CSV
-                </button>
+                <div className="flex items-center gap-2">
+                  <select
+                    value={csvCampaignId}
+                    onChange={(e) => setCsvCampaignId(e.target.value)}
+                    className="rounded-2xl border border-zinc-700 bg-zinc-800 px-3 py-3 text-sm"
+                  >
+                    <option value="">No campaign</option>
+                    {campaigns.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => csvInputRef.current?.click()}
+                    className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
+                  >
+                    Import CSV
+                  </button>
+                </div>
                 <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
+                {selectedContactIds.size > 0 && (
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={deletingBulk}
+                    className="rounded-2xl bg-red-600 px-5 py-3 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                  >
+                    {deletingBulk ? "Deleting..." : `Delete ${selectedContactIds.size} selected`}
+                  </button>
+                )}
                 <button
                   onClick={async () => {
                     if (!userId) return;
@@ -1966,7 +2220,21 @@ export default function DashboardPage() {
             )}
 
             <div className="overflow-hidden rounded-2xl border border-zinc-800">
-              <div className="grid grid-cols-[1fr_1fr_1fr_1fr_90px_80px_60px] bg-zinc-800 px-5 py-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
+              <div className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_90px_80px_60px] bg-zinc-800 px-5 py-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
+                <div>
+                  <input
+                    type="checkbox"
+                    checked={filteredContacts.length > 0 && filteredContacts.every((c) => selectedContactIds.has(c.id))}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedContactIds(new Set(filteredContacts.map((c) => c.id)));
+                      } else {
+                        setSelectedContactIds(new Set());
+                      }
+                    }}
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-800"
+                  />
+                </div>
                 <div>Name</div>
                 <div>Phone</div>
                 <div>Email</div>
@@ -1980,8 +2248,23 @@ export default function DashboardPage() {
                 {filteredContacts.map((contact) => (
                   <div
                     key={contact.id}
-                    className="grid grid-cols-[1fr_1fr_1fr_1fr_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
+                    className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
                   >
+                    <div>
+                      <input
+                        type="checkbox"
+                        checked={selectedContactIds.has(contact.id)}
+                        onChange={(e) => {
+                          setSelectedContactIds((prev) => {
+                            const next = new Set(prev);
+                            if (e.target.checked) next.add(contact.id);
+                            else next.delete(contact.id);
+                            return next;
+                          });
+                        }}
+                        className="h-4 w-4 rounded border-zinc-600 bg-zinc-800"
+                      />
+                    </div>
                     <div className="font-medium">
                       {contact.firstName} {contact.lastName}
                     </div>
@@ -2161,22 +2444,10 @@ export default function DashboardPage() {
                   </button>
                 )}
 
-                {(!currentUser.subscriptionStatus || currentUser.subscriptionStatus === "inactive") && (
-                  <button
-                    onClick={handleSubscribe}
-                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 text-lg font-semibold hover:bg-violet-700"
-                  >
-                    Subscribe — {formatCurrency(currentUser.plan.price)}/month
-                  </button>
-                )}
-
-                {currentUser.subscriptionStatus === "past_due" && (
-                  <button
-                    onClick={handleSubscribe}
-                    className="w-full rounded-2xl bg-red-600 px-5 py-4 text-lg font-semibold hover:bg-red-700"
-                  >
-                    Update Payment Method
-                  </button>
+                {currentUser.subscriptionStatus === "canceling" && (
+                  <div className="rounded-2xl border border-yellow-800/40 bg-yellow-950/20 p-4 text-sm text-yellow-200/80">
+                    Your subscription will remain active until the end of the current billing period.
+                  </div>
                 )}
 
                 <div className="rounded-2xl bg-zinc-800 p-5">
