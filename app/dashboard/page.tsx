@@ -1025,6 +1025,23 @@ export default function DashboardPage() {
     await dbUpdateContact(id, { dnc: newDnc });
   };
 
+  const handleAssignCampaign = async (contactId: string, campaignName: string) => {
+    setContacts((prev) => prev.map((c) => c.id === contactId ? { ...c, campaign: campaignName } : c));
+    await dbUpdateContact(contactId, { campaign: campaignName });
+  };
+
+  const handleBulkAssignCampaign = async (campaignName: string) => {
+    if (selectedContactIds.size === 0) return;
+    const ids = Array.from(selectedContactIds);
+    setContacts((prev) => prev.map((c) => ids.includes(c.id) ? { ...c, campaign: campaignName } : c));
+    for (const id of ids) {
+      await dbUpdateContact(id, { campaign: campaignName });
+    }
+    setSelectedContactIds(new Set());
+    setMessage(`✅ Assigned ${ids.length} contact${ids.length !== 1 ? "s" : ""} to ${campaignName || "no campaign"}`);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
   const handleDeleteCampaign = async (id: string) => {
     const ok = await dbDeleteCampaign(id);
     if (ok) {
@@ -2362,13 +2379,31 @@ export default function DashboardPage() {
                 </div>
                 <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
                 {selectedContactIds.size > 0 && (
-                  <button
-                    onClick={handleBulkDelete}
-                    disabled={deletingBulk}
-                    className="rounded-2xl bg-red-600 px-5 py-3 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
-                  >
-                    {deletingBulk ? "Deleting..." : `Delete ${selectedContactIds.size} selected`}
-                  </button>
+                  <>
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value !== "") {
+                          handleBulkAssignCampaign(e.target.value === "__none__" ? "" : e.target.value);
+                          e.target.value = "";
+                        }
+                      }}
+                      defaultValue=""
+                      className="rounded-2xl border border-violet-700 bg-violet-950/30 px-3 py-3 text-sm text-violet-300"
+                    >
+                      <option value="" disabled>Assign {selectedContactIds.size} to campaign...</option>
+                      <option value="__none__">— Remove from campaign —</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={handleBulkDelete}
+                      disabled={deletingBulk}
+                      className="rounded-2xl bg-red-600 px-5 py-3 text-sm font-medium hover:bg-red-700 disabled:opacity-50"
+                    >
+                      {deletingBulk ? "Deleting..." : `Delete ${selectedContactIds.size}`}
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={async () => {
@@ -2487,7 +2522,18 @@ export default function DashboardPage() {
                     <div className="text-zinc-400">
                       {[contact.city, contact.state].filter(Boolean).join(", ") || "—"}
                     </div>
-                    <div className="truncate text-xs text-zinc-400">{contact.campaign || "—"}</div>
+                    <div>
+                      <select
+                        value={contact.campaign || ""}
+                        onChange={(e) => handleAssignCampaign(contact.id, e.target.value)}
+                        className="w-full truncate rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-zinc-300 outline-none"
+                      >
+                        <option value="">None</option>
+                        {campaigns.map((c) => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
                     <div>
                       <button
                         onClick={() => handleToggleDNC(contact.id)}
