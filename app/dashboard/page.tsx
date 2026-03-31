@@ -152,9 +152,13 @@ function convToRecord(c: Conversation, msgs: ConversationMessage[]): Conversatio
 }
 
 function formatCurrency(value: number) {
+  // Show 3 decimal places for small values like $0.012, 2 for everything else
+  const decimals = value > 0 && value < 1 && value !== Math.round(value * 100) / 100 ? 3 : 2;
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
   }).format(value);
 }
 
