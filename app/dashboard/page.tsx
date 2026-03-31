@@ -14,6 +14,8 @@ import {
   fetchConversations as dbFetchConversations, fetchMessages,
   insertMessage, updateConversation as dbUpdateConversation,
   addUsageEntry, addOwnedNumber,
+  fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
+  fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
 } from "@/lib/supabase-data";
 import type {
   Profile, Contact, Campaign, Conversation, Message,
@@ -23,7 +25,7 @@ import type {
 // Adapter types — keep the camelCase names the JSX uses
 type AccountRecord = {
   id: string;
-  role?: "user" | "admin";
+  role?: "user" | "admin" | "manager";
   firstName: string;
   lastName: string;
   phone: string;
@@ -38,6 +40,8 @@ type AccountRecord = {
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
   subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
+  teamCode?: string;
+  managerId?: string | null;
 };
 
 type ContactRecord = {
@@ -96,7 +100,14 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "opt-out" | "activity";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "opt-out" | "activity" | "team";
+
+type TeamMemberDetail = {
+  profile: AccountRecord;
+  contacts: ContactRecord[];
+  campaigns: CampaignRecord[];
+  conversations: ConversationRecord[];
+};
 type NewCampaignForm = { name: string; steps: CampaignStep[]; selectedNumbers: string[] };
 type AvailableNumber = { raw: string; display: string; locality: string; region: string };
 
@@ -110,6 +121,7 @@ function profileToAccount(p: Profile): AccountRecord {
     createdAt: p.created_at, walletBalance: p.wallet_balance,
     ownedNumbers: p.owned_numbers || [],
     subscriptionStatus: p.subscription_status || "inactive",
+    teamCode: p.team_code || "", managerId: p.manager_id,
   };
 }
 
@@ -237,6 +249,9 @@ export default function DashboardPage() {
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [composerText, setComposerText] = useState("");
   const [contactSearch, setContactSearch] = useState("");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [newTagInput, setNewTagInput] = useState("");
+  const [viewContactId, setViewContactId] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
   const [campaignSearch, setCampaignSearch] = useState("");
@@ -257,6 +272,16 @@ export default function DashboardPage() {
   const [optOutNewKeyword, setOptOutNewKeyword] = useState("");
   const [optInNewKeyword, setOptInNewKeyword] = useState("");
   const [savingOptOut, setSavingOptOut] = useState(false);
+
+  // Team state
+  const [teamMembers, setTeamMembers] = useState<AccountRecord[]>([]);
+  const [selectedTeamMemberId, setSelectedTeamMemberId] = useState<string | null>(null);
+  const [teamMemberDetail, setTeamMemberDetail] = useState<TeamMemberDetail | null>(null);
+  const [teamJoinCode, setTeamJoinCode] = useState("");
+  const [teamLoading, setTeamLoading] = useState(false);
+  const [teamAddFundsAmount, setTeamAddFundsAmount] = useState("10");
+  const [teamManagerName, setTeamManagerName] = useState("");
+
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -309,6 +334,18 @@ export default function DashboardPage() {
         setSelectedConversationId(convRecords[0].id);
       }
 
+      // Load team data for managers
+      if (profile.role === "manager" || profile.role === "admin") {
+        const members = await fetchTeamMembers(uid);
+        setTeamMembers(members.map(profileToAccount));
+      }
+
+      // If user is on a team, load manager name
+      if (profile.manager_id) {
+        const mgr = await fetchProfile(profile.manager_id);
+        if (mgr) setTeamManagerName(`${mgr.first_name} ${mgr.last_name}`);
+      }
+
       // Handle Stripe payment success redirect
       const params = new URLSearchParams(window.location.search);
       const paymentStatus = params.get("payment");
@@ -344,7 +381,7 @@ export default function DashboardPage() {
 
       // Handle tab redirect (e.g. from Stripe portal return)
       const tabParam = params.get("tab");
-      if (tabParam && ["overview","conversations","campaigns","contacts","numbers","billing","opt-out","activity"].includes(tabParam)) {
+      if (tabParam && ["overview","conversations","campaigns","contacts","numbers","billing","opt-out","activity","team"].includes(tabParam)) {
         setActiveTab(tabParam as DashboardTab);
         window.history.replaceState({}, "", "/dashboard");
       }
@@ -386,14 +423,33 @@ export default function DashboardPage() {
     return (totalReplies / totalSent) * 100;
   }, [totalReplies, totalSent]);
 
+  // All unique tags across contacts
+  const viewContact = useMemo(() => {
+    if (!viewContactId) return null;
+    return contacts.find((c) => c.id === viewContactId) || null;
+  }, [viewContactId, contacts]);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    contacts.forEach((c) => (c.tags || []).forEach((t) => { if (t.trim()) tagSet.add(t.trim()); }));
+    return Array.from(tagSet).sort();
+  }, [contacts]);
+
   const filteredContacts = useMemo(() => {
-    const q = contactSearch.trim().toLowerCase();
-    if (!q) return contacts;
     return contacts.filter((c) => {
+      // Tag filter
+      if (tagFilter.length > 0) {
+        const contactTags = (c.tags || []).map((t) => t.trim().toLowerCase());
+        if (!tagFilter.every((tf) => contactTags.includes(tf.toLowerCase()))) return false;
+      }
+      // Search filter
+      const q = contactSearch.trim().toLowerCase();
+      if (!q) return true;
       const name = `${c.firstName} ${c.lastName}`.toLowerCase();
-      return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q);
+      const tags = (c.tags || []).join(" ").toLowerCase();
+      return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q) || tags.includes(q);
     });
-  }, [contacts, contactSearch]);
+  }, [contacts, contactSearch, tagFilter]);
 
   const filteredCampaigns = useMemo(() => {
     const q = campaignSearch.trim().toLowerCase();
@@ -588,6 +644,119 @@ export default function DashboardPage() {
       window.setTimeout(() => setMessage(""), 3000);
     }
     setSavingOptOut(false);
+  };
+
+  // ── Team handlers ──
+  const handleJoinTeam = async () => {
+    if (!userId || !teamJoinCode.trim()) return;
+    setTeamLoading(true);
+    const result = await joinTeamByCode(userId, teamJoinCode.trim().toUpperCase());
+    if (result.success) {
+      const refreshed = await fetchProfile(userId);
+      if (refreshed) {
+        setCurrentUser(profileToAccount(refreshed));
+        if (refreshed.manager_id) {
+          const mgr = await fetchProfile(refreshed.manager_id);
+          if (mgr) setTeamManagerName(`${mgr.first_name} ${mgr.last_name}`);
+        }
+      }
+      setTeamJoinCode("");
+      setMessage("✅ Joined team successfully!");
+    } else {
+      setMessage(`❌ ${result.error || "Failed to join team"}`);
+    }
+    setTeamLoading(false);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
+  const handleLeaveTeam = async () => {
+    if (!userId) return;
+    setTeamLoading(true);
+    await leaveTeam(userId);
+    const refreshed = await fetchProfile(userId);
+    if (refreshed) setCurrentUser(profileToAccount(refreshed));
+    setTeamManagerName("");
+    setMessage("✅ Left team");
+    setTeamLoading(false);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
+  const handleViewTeamMember = async (memberId: string) => {
+    setSelectedTeamMemberId(memberId);
+    setTeamLoading(true);
+
+    const member = teamMembers.find((m) => m.id === memberId);
+    if (!member) { setTeamLoading(false); return; }
+
+    const [memberContacts, memberCampaigns, memberConvs] = await Promise.all([
+      fetchTeamMemberContacts(memberId),
+      fetchTeamMemberCampaigns(memberId),
+      fetchTeamMemberConversations(memberId),
+    ]);
+
+    setTeamMemberDetail({
+      profile: member,
+      contacts: memberContacts.map(contactToRecord),
+      campaigns: memberCampaigns.map(campaignToRecord),
+      conversations: memberConvs.map((conv) => convToRecord(conv, [])),
+    });
+    setTeamLoading(false);
+  };
+
+  const handleTeamAddFunds = async (memberId: string) => {
+    if (!userId) return;
+    const amount = parseFloat(teamAddFundsAmount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setMessage("❌ Enter a valid amount");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    // Deduct from manager's wallet, add to team member's wallet
+    const managerBalance = currentUser?.walletBalance || 0;
+    if (managerBalance < amount) {
+      setMessage("❌ Insufficient funds in your wallet");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    const member = teamMembers.find((m) => m.id === memberId);
+    if (!member) return;
+
+    const memberEntry: UsageHistoryItem = {
+      id: `team_fund_${Date.now()}`, type: "fund_add", amount,
+      description: `Funds from manager ${currentUser?.firstName || ""}`,
+      createdAt: new Date().toISOString(), status: "succeeded",
+    };
+
+    const managerEntry: UsageHistoryItem = {
+      id: `team_send_${Date.now()}`, type: "charge", amount,
+      description: `Funds sent to ${member.firstName} ${member.lastName}`,
+      createdAt: new Date().toISOString(), status: "succeeded",
+    };
+
+    // Update member
+    await updateProfile(memberId, {
+      wallet_balance: Number(((member.walletBalance || 0) + amount).toFixed(2)),
+      usage_history: addUsageEntry(member.usageHistory || [], memberEntry),
+    });
+
+    // Deduct from manager
+    await persistProfile({
+      wallet_balance: Number((managerBalance - amount).toFixed(2)),
+      usage_history: addUsageEntry(currentUser?.usageHistory || [], managerEntry),
+    });
+
+    // Refresh
+    const refreshedMembers = await fetchTeamMembers(userId);
+    setTeamMembers(refreshedMembers.map(profileToAccount));
+    if (teamMemberDetail && teamMemberDetail.profile.id === memberId) {
+      const updated = refreshedMembers.find((m) => m.id === memberId);
+      if (updated) setTeamMemberDetail({ ...teamMemberDetail, profile: profileToAccount(updated) });
+    }
+
+    setMessage(`✅ $${amount.toFixed(2)} sent to ${member.firstName}`);
+    window.setTimeout(() => setMessage(""), 3000);
   };
 
   const personalizationFields = [
@@ -978,6 +1147,22 @@ export default function DashboardPage() {
     await dbUpdateContact(selectedContact.id, { [dbField]: value });
   };
 
+  const handleUpdateContactField = async (
+    contactId: string,
+    field: keyof ContactRecord,
+    value: string | string[]
+  ) => {
+    setContacts((prev) =>
+      prev.map((c) => c.id === contactId ? { ...c, [field]: value } : c)
+    );
+    const fieldMap: Record<string, string> = {
+      firstName: "first_name", lastName: "last_name", dateOfBirth: "date_of_birth",
+      leadSource: "lead_source", policyId: "policy_id", householdSize: "household_size",
+    };
+    const dbField = fieldMap[field] || field;
+    await dbUpdateContact(contactId, { [dbField]: value });
+  };
+
   const handleAddContact = async () => {
     if (!userId) return;
     if (!addContactForm.firstName.trim() || !addContactForm.phone.trim()) {
@@ -1074,9 +1259,10 @@ export default function DashboardPage() {
       ? campaign.selectedNumbers
       : ownedNumbers.map((n) => n.number);
 
-    // Audience = contacts assigned to this campaign (via CSV import)
+    // Audience = contacts assigned to this campaign, or all non-DNC if none assigned
     const campaignContacts = contacts.filter((c) => !c.dnc && c.campaign === campaign.name);
-    const audience = campaignContacts.length > 0 ? campaignContacts.length : contacts.filter((c) => !c.dnc).length;
+    const hasCampaignContacts = campaignContacts.length > 0;
+    const audience = hasCampaignContacts ? campaignContacts.length : contacts.filter((c) => !c.dnc).length;
 
     if (audience === 0) {
       setMessage("❌ No eligible contacts for this campaign");
@@ -1138,7 +1324,7 @@ export default function DashboardPage() {
             userId,
             fromNumbers,
             messageTemplate: step.message,
-            campaignName: campaign.name,
+            campaignName: hasCampaignContacts ? campaign.name : undefined,
           }),
         });
 
@@ -1307,6 +1493,7 @@ export default function DashboardPage() {
             "billing",
             "opt-out",
             "activity",
+            "team",
           ].map((tab) => (
             <button
               key={tab}
@@ -1706,13 +1893,112 @@ export default function DashboardPage() {
 
                     <div className="col-span-2">
                       <label className="mb-2 block text-sm text-zinc-400">Tags</label>
-                      <input
-                        value={(selectedContact.tags || []).join(", ")}
-                        onChange={(e) =>
-                          handleUpdateSelectedContactField("tags", e.target.value)
-                        }
-                        className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3"
-                      />
+                      {/* Current tags */}
+                      <div className="mb-2 flex flex-wrap gap-2">
+                        {(selectedContact.tags || []).map((tag, idx) => (
+                          <span
+                            key={`${tag}-${idx}`}
+                            className="flex items-center gap-1 rounded-full bg-violet-900/50 px-3 py-1 text-xs font-medium text-violet-300"
+                          >
+                            {tag}
+                            <button
+                              onClick={async () => {
+                                const newTags = (selectedContact.tags || []).filter((_, i) => i !== idx);
+                                setContacts((prev) =>
+                                  prev.map((c) => c.id === selectedContact.id ? { ...c, tags: newTags } : c)
+                                );
+                                await dbUpdateContact(selectedContact.id, { tags: newTags });
+                              }}
+                              className="ml-0.5 text-violet-400 hover:text-red-300"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                        {(selectedContact.tags || []).length === 0 && (
+                          <span className="text-xs text-zinc-500">No tags</span>
+                        )}
+                      </div>
+                      {/* Add tag input */}
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.target.value)}
+                            onKeyDown={async (e) => {
+                              if (e.key === "Enter" && newTagInput.trim()) {
+                                e.preventDefault();
+                                const tag = newTagInput.trim();
+                                if ((selectedContact.tags || []).includes(tag)) {
+                                  setNewTagInput("");
+                                  return;
+                                }
+                                const newTags = [...(selectedContact.tags || []), tag];
+                                setContacts((prev) =>
+                                  prev.map((c) => c.id === selectedContact.id ? { ...c, tags: newTags } : c)
+                                );
+                                await dbUpdateContact(selectedContact.id, { tags: newTags });
+                                setNewTagInput("");
+                              }
+                            }}
+                            placeholder="Type a tag and press Enter"
+                            className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm"
+                            list="existing-tags"
+                          />
+                          <datalist id="existing-tags">
+                            {allTags
+                              .filter((t) => !(selectedContact.tags || []).includes(t))
+                              .map((t) => (
+                                <option key={t} value={t} />
+                              ))}
+                          </datalist>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            if (!newTagInput.trim()) return;
+                            const tag = newTagInput.trim();
+                            if ((selectedContact.tags || []).includes(tag)) {
+                              setNewTagInput("");
+                              return;
+                            }
+                            const newTags = [...(selectedContact.tags || []), tag];
+                            setContacts((prev) =>
+                              prev.map((c) => c.id === selectedContact.id ? { ...c, tags: newTags } : c)
+                            );
+                            await dbUpdateContact(selectedContact.id, { tags: newTags });
+                            setNewTagInput("");
+                          }}
+                          className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm hover:bg-violet-700"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      {/* Quick-add existing tags */}
+                      {allTags.filter((t) => !(selectedContact.tags || []).includes(t)).length > 0 && (
+                        <div className="mt-2">
+                          <div className="mb-1 text-[10px] uppercase tracking-wide text-zinc-500">Quick add:</div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {allTags
+                              .filter((t) => !(selectedContact.tags || []).includes(t))
+                              .slice(0, 10)
+                              .map((tag) => (
+                                <button
+                                  key={tag}
+                                  onClick={async () => {
+                                    const newTags = [...(selectedContact.tags || []), tag];
+                                    setContacts((prev) =>
+                                      prev.map((c) => c.id === selectedContact.id ? { ...c, tags: newTags } : c)
+                                    );
+                                    await dbUpdateContact(selectedContact.id, { tags: newTags });
+                                  }}
+                                  className="rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:border-violet-600 hover:bg-violet-900/30 hover:text-violet-300"
+                                >
+                                  + {tag}
+                                </button>
+                              ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     <div>
@@ -2400,6 +2686,42 @@ export default function DashboardPage() {
                         <option key={c.id} value={c.name}>{c.name}</option>
                       ))}
                     </select>
+                    <select
+                      onChange={async (e) => {
+                        if (e.target.value === "") return;
+                        let tag = e.target.value;
+                        if (tag === "__new__") {
+                          const input = window.prompt("Enter new tag name:");
+                          if (!input || !input.trim()) { e.target.value = ""; return; }
+                          tag = input.trim();
+                        }
+                        const ids = Array.from(selectedContactIds);
+                        for (const id of ids) {
+                          const c = contacts.find((ct) => ct.id === id);
+                          if (!c) continue;
+                          const currentTags = c.tags || [];
+                          if (currentTags.includes(tag)) continue;
+                          const newTags = [...currentTags, tag];
+                          await dbUpdateContact(id, { tags: newTags });
+                        }
+                        // Refresh contacts
+                        if (userId) {
+                          const fresh = await dbFetchContacts(userId);
+                          setContacts(fresh.map(contactToRecord));
+                        }
+                        setMessage(`✅ Tagged ${ids.length} contacts with "${tag}"`);
+                        window.setTimeout(() => setMessage(""), 3000);
+                        e.target.value = "";
+                      }}
+                      defaultValue=""
+                      className="rounded-2xl border border-amber-700 bg-amber-950/30 px-3 py-3 text-sm text-amber-300"
+                    >
+                      <option value="" disabled>Tag {selectedContactIds.size} contacts...</option>
+                      {allTags.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                      <option value="__new__">+ Create new tag...</option>
+                    </select>
                     <button
                       onClick={handleBulkDelete}
                       disabled={deletingBulk}
@@ -2472,8 +2794,52 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Tag filter bar */}
+            {allTags.length > 0 && (
+              <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4">
+                <div className="mb-2 flex items-center justify-between">
+                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Filter by Tags</span>
+                  {tagFilter.length > 0 && (
+                    <button onClick={() => setTagFilter([])} className="text-xs text-violet-400 hover:text-violet-300">
+                      Clear filters
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {allTags.map((tag) => {
+                    const active = tagFilter.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        onClick={() => {
+                          setTagFilter((prev) =>
+                            active ? prev.filter((t) => t !== tag) : [...prev, tag]
+                          );
+                        }}
+                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                          active
+                            ? "bg-violet-600 text-white ring-1 ring-violet-500"
+                            : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                        }`}
+                      >
+                        {tag}
+                        <span className="ml-1.5 text-[10px] text-zinc-400">
+                          ({contacts.filter((c) => (c.tags || []).includes(tag)).length})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                {tagFilter.length > 0 && (
+                  <div className="mt-2 text-xs text-zinc-500">
+                    Showing {filteredContacts.length} contact{filteredContacts.length !== 1 ? "s" : ""} matching {tagFilter.length > 1 ? "all selected tags" : `"${tagFilter[0]}"`}
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="overflow-hidden rounded-2xl border border-zinc-800">
-              <div className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_90px_80px_60px] bg-zinc-800 px-5 py-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
+              <div className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_minmax(100px,1.2fr)_90px_80px_60px] bg-zinc-800 px-5 py-4 text-xs font-medium uppercase tracking-wide text-zinc-400">
                 <div>
                   <input
                     type="checkbox"
@@ -2492,6 +2858,7 @@ export default function DashboardPage() {
                 <div>Phone</div>
                 <div>Email</div>
                 <div>Location</div>
+                <div>Tags</div>
                 <div>Campaign</div>
                 <div>Status</div>
                 <div></div>
@@ -2501,7 +2868,7 @@ export default function DashboardPage() {
                 {filteredContacts.map((contact) => (
                   <div
                     key={contact.id}
-                    className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
+                    className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_minmax(100px,1.2fr)_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
                   >
                     <div>
                       <input
@@ -2518,13 +2885,30 @@ export default function DashboardPage() {
                         className="h-4 w-4 rounded border-zinc-600 bg-zinc-800"
                       />
                     </div>
-                    <div className="font-medium">
+                    <div
+                      className="cursor-pointer font-medium text-violet-300 hover:text-violet-200 hover:underline"
+                      onClick={() => setViewContactId(contact.id)}
+                    >
                       {contact.firstName} {contact.lastName}
                     </div>
                     <div className="font-mono text-xs text-zinc-300">{contact.phone}</div>
                     <div className="truncate text-zinc-400">{contact.email || "—"}</div>
                     <div className="text-zinc-400">
                       {[contact.city, contact.state].filter(Boolean).join(", ") || "—"}
+                    </div>
+                    <div className="flex flex-wrap gap-1">
+                      {(contact.tags || []).length > 0 ? (
+                        (contact.tags || []).slice(0, 3).map((tag) => (
+                          <span key={tag} className="rounded-full bg-violet-900/50 px-2 py-0.5 text-[10px] font-medium text-violet-300">
+                            {tag}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-xs text-zinc-600">—</span>
+                      )}
+                      {(contact.tags || []).length > 3 && (
+                        <span className="text-[10px] text-zinc-500">+{(contact.tags || []).length - 3}</span>
+                      )}
                     </div>
                     <div>
                       <select
@@ -3151,7 +3535,517 @@ export default function DashboardPage() {
             </div>
           </div>
         )}
+
+        {/* ── TEAM TAB ── */}
+        {activeTab === "team" && (
+          <div className="space-y-8">
+            {/* Manager view — team overview */}
+            {(currentUser.role === "manager" || currentUser.role === "admin") && (
+              <>
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-2xl font-bold">Your Team</h2>
+                      <p className="mt-1 text-sm text-zinc-400">Manage your team members, view their dashboards, and add funds.</p>
+                    </div>
+                    <div className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-5 py-3">
+                      <div className="text-xs text-amber-400">Team Join Code</div>
+                      <div className="mt-1 font-mono text-lg font-bold text-white">{currentUser.teamCode || "—"}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-8 lg:grid-cols-[1fr_1.6fr]">
+                  {/* Team member list */}
+                  <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                    <h3 className="mb-4 text-lg font-bold">Members ({teamMembers.length})</h3>
+                    <div className="max-h-[500px] space-y-3 overflow-y-auto">
+                      {teamMembers.map((member) => (
+                        <div
+                          key={member.id}
+                          onClick={() => handleViewTeamMember(member.id)}
+                          className={`cursor-pointer rounded-2xl p-4 transition ${
+                            selectedTeamMemberId === member.id
+                              ? "border border-violet-600 bg-violet-900/30"
+                              : "bg-zinc-800 hover:bg-zinc-700"
+                          }`}
+                        >
+                          <div className="font-semibold">{member.firstName} {member.lastName}</div>
+                          <div className="text-sm text-zinc-400">{member.email}</div>
+                          <div className="mt-2 flex gap-4 text-xs text-zinc-500">
+                            <span>Balance: ${member.walletBalance?.toFixed(2) || "0.00"}</span>
+                            <span className={member.paused ? "text-red-400" : "text-emerald-400"}>
+                              {member.paused ? "PAUSED" : "ACTIVE"}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+
+                      {teamMembers.length === 0 && (
+                        <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
+                          No team members yet. Share your team code above to invite people.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Team member detail */}
+                  <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                    {teamLoading && selectedTeamMemberId && (
+                      <div className="py-20 text-center text-zinc-400">Loading member data...</div>
+                    )}
+
+                    {!teamLoading && teamMemberDetail ? (
+                      <div className="space-y-6">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h3 className="text-xl font-bold">{teamMemberDetail.profile.firstName} {teamMemberDetail.profile.lastName}</h3>
+                            <div className="text-sm text-zinc-400">{teamMemberDetail.profile.email}</div>
+                          </div>
+                          <div className={`rounded-full px-3 py-1 text-xs ${
+                            teamMemberDetail.profile.paused ? "bg-red-900 text-red-300" : "bg-emerald-900 text-emerald-300"
+                          }`}>
+                            {teamMemberDetail.profile.paused ? "PAUSED" : "ACTIVE"}
+                          </div>
+                        </div>
+
+                        {/* Stats */}
+                        <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+                          <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                            <div className="text-2xl font-bold">${teamMemberDetail.profile.walletBalance?.toFixed(2) || "0.00"}</div>
+                            <div className="mt-1 text-xs text-zinc-500">Wallet</div>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                            <div className="text-2xl font-bold text-violet-400">{teamMemberDetail.contacts.length}</div>
+                            <div className="mt-1 text-xs text-zinc-500">Contacts</div>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                            <div className="text-2xl font-bold text-sky-400">{teamMemberDetail.campaigns.length}</div>
+                            <div className="mt-1 text-xs text-zinc-500">Campaigns</div>
+                          </div>
+                          <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                            <div className="text-2xl font-bold text-emerald-400">
+                              {teamMemberDetail.campaigns.reduce((s, c) => s + (c.sent || 0), 0)}
+                            </div>
+                            <div className="mt-1 text-xs text-zinc-500">Messages Sent</div>
+                          </div>
+                        </div>
+
+                        {/* Add funds */}
+                        <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 p-4">
+                          <div className="mb-3 text-sm font-medium">Add Funds to Member</div>
+                          <div className="flex gap-3">
+                            <div className="relative flex-1">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                              <input
+                                type="number"
+                                value={teamAddFundsAmount}
+                                onChange={(e) => setTeamAddFundsAmount(e.target.value)}
+                                className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-3 pl-8 pr-4"
+                                min="1"
+                                step="1"
+                              />
+                            </div>
+                            <button
+                              onClick={() => handleTeamAddFunds(teamMemberDetail.profile.id)}
+                              className="rounded-2xl bg-emerald-600 px-6 py-3 font-medium hover:bg-emerald-700"
+                            >
+                              Send Funds
+                            </button>
+                          </div>
+                          <div className="mt-2 text-xs text-zinc-500">
+                            Your wallet: ${currentUser.walletBalance?.toFixed(2) || "0.00"} — funds will be deducted from your balance.
+                          </div>
+                        </div>
+
+                        {/* Campaigns list */}
+                        <div>
+                          <h4 className="mb-3 text-sm font-medium text-zinc-300">Campaigns</h4>
+                          <div className="max-h-48 space-y-2 overflow-y-auto">
+                            {teamMemberDetail.campaigns.map((c) => (
+                              <div key={c.id} className="flex items-center justify-between rounded-xl bg-zinc-800 px-4 py-3 text-sm">
+                                <span className="font-medium">{c.name}</span>
+                                <div className="flex gap-4 text-xs text-zinc-400">
+                                  <span>{c.sent} sent</span>
+                                  <span>{c.failed} failed</span>
+                                  <span className={`rounded-full px-2 py-0.5 ${
+                                    c.status === "Completed" ? "bg-emerald-900 text-emerald-300" :
+                                    c.status === "Sending" ? "bg-sky-900 text-sky-300" :
+                                    "bg-zinc-700 text-zinc-300"
+                                  }`}>{c.status}</span>
+                                </div>
+                              </div>
+                            ))}
+                            {teamMemberDetail.campaigns.length === 0 && (
+                              <div className="text-sm text-zinc-500">No campaigns yet.</div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Recent contacts */}
+                        <div>
+                          <h4 className="mb-3 text-sm font-medium text-zinc-300">Contacts ({teamMemberDetail.contacts.length})</h4>
+                          <div className="max-h-48 space-y-2 overflow-y-auto">
+                            {teamMemberDetail.contacts.slice(0, 20).map((c) => (
+                              <div key={c.id} className="flex items-center justify-between rounded-xl bg-zinc-800 px-4 py-3 text-sm">
+                                <span>{c.firstName} {c.lastName}</span>
+                                <span className="text-xs text-zinc-400">{c.phone}</span>
+                              </div>
+                            ))}
+                            {teamMemberDetail.contacts.length > 20 && (
+                              <div className="text-xs text-zinc-500 text-center">...and {teamMemberDetail.contacts.length - 20} more</div>
+                            )}
+                            {teamMemberDetail.contacts.length === 0 && (
+                              <div className="text-sm text-zinc-500">No contacts yet.</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : !teamLoading && (
+                      <div className="py-20 text-center text-zinc-500">Select a team member to view their dashboard</div>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+
+            {/* Regular user view — join/leave team */}
+            {currentUser.role === "user" && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Team</h2>
+
+                {currentUser.managerId ? (
+                  <div className="mt-6 space-y-4">
+                    <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/20 p-5">
+                      <div className="text-sm text-emerald-400">You are on a team</div>
+                      <div className="mt-2 text-lg font-bold">Manager: {teamManagerName || "Loading..."}</div>
+                      <div className="mt-1 text-sm text-zinc-400">
+                        Your manager can view your dashboard, campaigns, and contacts. They can also add funds to your wallet.
+                      </div>
+                    </div>
+                    <button
+                      onClick={handleLeaveTeam}
+                      disabled={teamLoading}
+                      className="rounded-2xl border border-red-700 px-6 py-3 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                    >
+                      {teamLoading ? "Leaving..." : "Leave Team"}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-6 space-y-4">
+                    <p className="text-sm text-zinc-400">
+                      Join a team by entering the team code provided by your manager.
+                      Your manager will be able to view your dashboard and add funds to your wallet.
+                    </p>
+                    <div className="flex gap-3">
+                      <input
+                        value={teamJoinCode}
+                        onChange={(e) => setTeamJoinCode(e.target.value.toUpperCase())}
+                        placeholder="Enter team code (e.g. T2S-ABC123)"
+                        className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 font-mono uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
+                      />
+                      <button
+                        onClick={handleJoinTeam}
+                        disabled={teamLoading || !teamJoinCode.trim()}
+                        className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        {teamLoading ? "Joining..." : "Join Team"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
       </div>
+
+      {/* ── Contact Detail Modal ── */}
+      {viewContact && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 pt-10">
+          <div className="w-full max-w-2xl rounded-3xl border border-zinc-700 bg-zinc-900 p-8 shadow-2xl">
+            <div className="mb-6 flex items-center justify-between">
+              <div>
+                <h3 className="text-2xl font-bold">{viewContact.firstName} {viewContact.lastName}</h3>
+                <div className="mt-1 flex items-center gap-2">
+                  <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${
+                    viewContact.dnc ? "bg-red-900 text-red-300" : "bg-emerald-900 text-emerald-300"
+                  }`}>
+                    {viewContact.dnc ? "DNC" : "Active"}
+                  </span>
+                  {viewContact.campaign && (
+                    <span className="rounded-full bg-violet-900/50 px-3 py-0.5 text-xs text-violet-300">
+                      {viewContact.campaign}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                onClick={() => { setViewContactId(null); setNewTagInput(""); }}
+                className="rounded-xl p-2 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">First Name</label>
+                <input
+                  value={viewContact.firstName || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "firstName", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Last Name</label>
+                <input
+                  value={viewContact.lastName || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "lastName", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Phone</label>
+                <input
+                  value={viewContact.phone || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "phone", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Email</label>
+                <input
+                  value={viewContact.email || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "email", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Address</label>
+                <input
+                  value={viewContact.address || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "address", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">City</label>
+                <input
+                  value={viewContact.city || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "city", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">State</label>
+                <input
+                  value={viewContact.state || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "state", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Zip Code</label>
+                <input
+                  value={viewContact.zip || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "zip", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Lead Source</label>
+                <input
+                  value={viewContact.leadSource || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "leadSource", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Date of Birth</label>
+                <input
+                  value={viewContact.dateOfBirth || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "dateOfBirth", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Age</label>
+                <input
+                  value={viewContact.age || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "age", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Household Size</label>
+                <input
+                  value={viewContact.householdSize || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "householdSize", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Timeline</label>
+                <input
+                  value={viewContact.timeline || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "timeline", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Quote</label>
+                <input
+                  value={viewContact.quote || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "quote", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Policy ID</label>
+                <input
+                  value={viewContact.policyId || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "policyId", e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Campaign</label>
+                <select
+                  value={viewContact.campaign || ""}
+                  onChange={(e) => handleAssignCampaign(viewContact.id, e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                >
+                  <option value="">None</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Tags */}
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Tags</label>
+                <div className="mb-2 flex flex-wrap gap-2">
+                  {(viewContact.tags || []).map((tag, idx) => (
+                    <span
+                      key={`${tag}-${idx}`}
+                      className="flex items-center gap-1 rounded-full bg-violet-900/50 px-3 py-1 text-xs font-medium text-violet-300"
+                    >
+                      {tag}
+                      <button
+                        onClick={async () => {
+                          const newTags = (viewContact.tags || []).filter((_, i) => i !== idx);
+                          await handleUpdateContactField(viewContact.id, "tags", newTags);
+                        }}
+                        className="ml-0.5 text-violet-400 hover:text-red-300"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                  {(viewContact.tags || []).length === 0 && (
+                    <span className="text-xs text-zinc-500">No tags</span>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    value={newTagInput}
+                    onChange={(e) => setNewTagInput(e.target.value)}
+                    onKeyDown={async (e) => {
+                      if (e.key === "Enter" && newTagInput.trim()) {
+                        e.preventDefault();
+                        const tag = newTagInput.trim();
+                        if ((viewContact.tags || []).includes(tag)) { setNewTagInput(""); return; }
+                        await handleUpdateContactField(viewContact.id, "tags", [...(viewContact.tags || []), tag]);
+                        setNewTagInput("");
+                      }
+                    }}
+                    placeholder="Type a tag and press Enter"
+                    className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm"
+                    list="modal-existing-tags"
+                  />
+                  <datalist id="modal-existing-tags">
+                    {allTags.filter((t) => !(viewContact.tags || []).includes(t)).map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
+                  <button
+                    onClick={async () => {
+                      if (!newTagInput.trim()) return;
+                      const tag = newTagInput.trim();
+                      if ((viewContact.tags || []).includes(tag)) { setNewTagInput(""); return; }
+                      await handleUpdateContactField(viewContact.id, "tags", [...(viewContact.tags || []), tag]);
+                      setNewTagInput("");
+                    }}
+                    className="rounded-2xl bg-violet-600 px-4 py-2.5 text-sm hover:bg-violet-700"
+                  >
+                    Add
+                  </button>
+                </div>
+                {allTags.filter((t) => !(viewContact.tags || []).includes(t)).length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {allTags.filter((t) => !(viewContact.tags || []).includes(t)).slice(0, 10).map((tag) => (
+                      <button
+                        key={tag}
+                        onClick={() => handleUpdateContactField(viewContact.id, "tags", [...(viewContact.tags || []), tag])}
+                        className="rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:border-violet-600 hover:bg-violet-900/30 hover:text-violet-300"
+                      >
+                        + {tag}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-medium text-zinc-500">Notes</label>
+                <textarea
+                  value={viewContact.notes || ""}
+                  onChange={(e) => handleUpdateContactField(viewContact.id, "notes", e.target.value)}
+                  className="h-28 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                />
+              </div>
+            </div>
+
+            <div className="mt-6 flex items-center justify-between border-t border-zinc-800 pt-5">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => handleToggleDNC(viewContact.id)}
+                  className={`rounded-2xl px-5 py-2.5 text-sm font-medium ${
+                    viewContact.dnc
+                      ? "bg-emerald-600 hover:bg-emerald-700"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                >
+                  {viewContact.dnc ? "Remove from DNC" : "Mark as DNC"}
+                </button>
+                <button
+                  onClick={() => { handleDeleteContact(viewContact.id); setViewContactId(null); }}
+                  className="rounded-2xl border border-red-700 px-5 py-2.5 text-sm text-red-300 hover:bg-red-900/30"
+                >
+                  Delete Contact
+                </button>
+              </div>
+              <button
+                onClick={() => { setViewContactId(null); setNewTagInput(""); }}
+                className="rounded-2xl border border-zinc-700 px-6 py-2.5 text-sm hover:bg-zinc-800"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {message && (
         <div className={`fixed bottom-8 right-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium ${

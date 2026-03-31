@@ -206,6 +206,84 @@ export async function fetchAllCampaigns(): Promise<Campaign[]> {
 }
 
 // ============================================================
+// TEAM / MANAGER
+// ============================================================
+
+export async function fetchTeamMembers(managerId: string): Promise<Profile[]> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("manager_id", managerId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as Profile[];
+}
+
+export async function fetchTeamMemberContacts(memberId: string): Promise<Contact[]> {
+  const { data, error } = await supabase
+    .from("contacts")
+    .select("*")
+    .eq("user_id", memberId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as Contact[];
+}
+
+export async function fetchTeamMemberCampaigns(memberId: string): Promise<Campaign[]> {
+  const { data, error } = await supabase
+    .from("campaigns")
+    .select("*")
+    .eq("user_id", memberId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as Campaign[];
+}
+
+export async function fetchTeamMemberConversations(memberId: string): Promise<Conversation[]> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .select("*")
+    .eq("user_id", memberId)
+    .order("last_message_at", { ascending: false });
+  if (error || !data) return [];
+  return data as Conversation[];
+}
+
+export async function joinTeamByCode(userId: string, teamCode: string): Promise<{ success: boolean; error?: string }> {
+  // Find the manager with this team code
+  const { data: manager, error: managerErr } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name, team_code")
+    .eq("team_code", teamCode)
+    .in("role", ["manager", "admin"])
+    .single();
+
+  if (managerErr || !manager) {
+    return { success: false, error: "Invalid team code. Please check and try again." };
+  }
+
+  // Set the user's manager_id
+  const { error: updateErr } = await supabase
+    .from("profiles")
+    .update({ manager_id: manager.id })
+    .eq("id", userId);
+
+  if (updateErr) {
+    return { success: false, error: "Failed to join team." };
+  }
+
+  return { success: true };
+}
+
+export async function leaveTeam(userId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("profiles")
+    .update({ manager_id: null })
+    .eq("id", userId);
+  return !error;
+}
+
+// ============================================================
 // HELPERS
 // ============================================================
 

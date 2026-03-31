@@ -5,7 +5,7 @@
 
 export type Profile = {
   id: string;
-  role: "user" | "admin";
+  role: "user" | "admin" | "manager";
   first_name: string;
   last_name: string;
   email: string;
@@ -23,6 +23,8 @@ export type Profile = {
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   opt_out_settings: OptOutSettings;
+  team_code: string;
+  manager_id: string | null;
   created_at: string;
 };
 

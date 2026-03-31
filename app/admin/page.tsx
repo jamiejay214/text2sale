@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import {
   fetchAllProfiles, fetchAllCampaigns, updateProfile,
-  addUsageEntry,
+  addUsageEntry, fetchProfile,
 } from "@/lib/supabase-data";
 import type { Profile, Campaign, UsageHistoryItem, OwnedNumber } from "@/lib/types";
 
@@ -25,7 +25,9 @@ type AccountRecord = {
   createdAt: string;
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
-  role?: "user" | "admin";
+  role?: "user" | "admin" | "manager";
+  teamCode?: string;
+  managerId?: string | null;
 };
 
 type CampaignRecord = {
@@ -58,7 +60,15 @@ function profileToAccount(p: Profile): AccountRecord {
     usageHistory: p.usage_history || [], plan: p.plan,
     createdAt: p.created_at, walletBalance: Number(p.wallet_balance),
     ownedNumbers: p.owned_numbers || [],
+    teamCode: p.team_code || "", managerId: p.manager_id,
   };
+}
+
+function generateTeamCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "T2S-";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+  return code;
 }
 
 function campaignToRecord(c: Campaign): CampaignRecord {
@@ -118,6 +128,13 @@ export default function AdminPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) {
         router.replace("/");
+        return;
+      }
+
+      // Check if user is admin
+      const myProfile = await fetchProfile(session.user.id);
+      if (!myProfile || myProfile.role !== "admin") {
+        router.replace("/dashboard");
         return;
       }
 
@@ -268,6 +285,19 @@ export default function AdminPage() {
     setDeleteUserError("User deletion requires server-side admin API. Pause the account instead.");
   };
 
+  const handlePromoteToManager = async (accountId: string) => {
+    const acct = accounts.find((a) => a.id === accountId);
+    if (!acct) return;
+
+    const newRole = acct.role === "manager" ? "user" : "manager";
+    const teamCode = newRole === "manager" ? generateTeamCode() : "";
+
+    await updateProfile(accountId, { role: newRole, team_code: teamCode } as Partial<Profile>);
+    await refreshAccount(accountId);
+    setMessage(newRole === "manager" ? `✅ ${acct.firstName} promoted to Manager` : `✅ ${acct.firstName} demoted to User`);
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
   const exportUsersCSV = () => {
     const csv = accounts
       .map((a) => `${a.firstName},${a.lastName},${a.email},${a.phone},${a.credits}`)
@@ -374,7 +404,11 @@ export default function AdminPage() {
                     }`}
                   >
                     <div className="flex justify-between">
-                      <div className="font-semibold">{acct.firstName} {acct.lastName}</div>
+                      <div className="flex items-center gap-2">
+                        <span className="font-semibold">{acct.firstName} {acct.lastName}</span>
+                        {acct.role === "admin" && <span className="rounded-full bg-violet-900 px-2 py-0.5 text-[10px] font-medium text-violet-300">ADMIN</span>}
+                        {acct.role === "manager" && <span className="rounded-full bg-amber-900 px-2 py-0.5 text-[10px] font-medium text-amber-300">MGR</span>}
+                      </div>
                       <div className={`rounded-full px-3 py-1 text-xs ${
                         acct.paused ? "bg-red-900 text-red-300" : "bg-emerald-900 text-emerald-300"
                       }`}>
@@ -401,13 +435,38 @@ export default function AdminPage() {
               {selectedAccount ? (
                 <div className="space-y-8">
                   <div className="flex items-center justify-between">
-                    <h3 className="text-2xl font-bold">
-                      {selectedAccount.firstName} {selectedAccount.lastName}
-                    </h3>
+                    <div>
+                      <h3 className="text-2xl font-bold">
+                        {selectedAccount.firstName} {selectedAccount.lastName}
+                      </h3>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${
+                          selectedAccount.role === "admin" ? "bg-violet-900 text-violet-300" :
+                          selectedAccount.role === "manager" ? "bg-amber-900 text-amber-300" :
+                          "bg-zinc-700 text-zinc-300"
+                        }`}>
+                          {selectedAccount.role?.toUpperCase() || "USER"}
+                        </span>
+                        {selectedAccount.role === "manager" && selectedAccount.teamCode && (
+                          <span className="rounded-full bg-zinc-800 px-3 py-0.5 text-xs text-zinc-400">
+                            Team Code: <span className="font-mono font-semibold text-white">{selectedAccount.teamCode}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
                     <div className="flex gap-3">
-                      <button onClick={handleImpersonate} className="rounded-2xl bg-violet-600 px-6 py-2">
-                        Impersonate
-                      </button>
+                      {selectedAccount.role !== "admin" && (
+                        <button
+                          onClick={() => handlePromoteToManager(selectedAccount.id)}
+                          className={`rounded-2xl px-6 py-2 ${
+                            selectedAccount.role === "manager"
+                              ? "border border-amber-600 text-amber-300 hover:bg-amber-900/30"
+                              : "bg-amber-600 hover:bg-amber-700"
+                          }`}
+                        >
+                          {selectedAccount.role === "manager" ? "Demote to User" : "Make Manager"}
+                        </button>
+                      )}
                       {selectedAccount.role !== "admin" && (
                         <button
                           onClick={() => { setDeleteUserError(""); setShowDeleteUserModal(true); }}
@@ -418,6 +477,20 @@ export default function AdminPage() {
                       )}
                     </div>
                   </div>
+
+                  {/* Team members managed by this user */}
+                  {selectedAccount.role === "manager" && (
+                    <div className="rounded-2xl border border-amber-800/50 bg-amber-950/20 p-4">
+                      <div className="text-sm font-medium text-amber-300">Team Manager</div>
+                      <div className="mt-1 text-xs text-zinc-400">
+                        Team code: <span className="font-mono font-bold text-white">{selectedAccount.teamCode}</span>
+                        {" — "}Share this code with team members so they can join.
+                      </div>
+                      <div className="mt-2 text-xs text-zinc-500">
+                        Members: {accounts.filter((a) => a.managerId === selectedAccount.id).length} user(s) on this team
+                      </div>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div className="rounded-2xl bg-zinc-800 p-4">
