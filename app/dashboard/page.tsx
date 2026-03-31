@@ -335,6 +335,13 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
+      // Handle tab redirect (e.g. from Stripe portal return)
+      const tabParam = params.get("tab");
+      if (tabParam && ["overview","conversations","campaigns","contacts","numbers","billing","opt-out","activity"].includes(tabParam)) {
+        setActiveTab(tabParam as DashboardTab);
+        window.history.replaceState({}, "", "/dashboard");
+      }
+
       setMounted(true);
     };
 
@@ -454,9 +461,32 @@ export default function DashboardPage() {
     return updated;
   }, [userId]);
 
+  const handleManageBilling = async () => {
+    if (!userId) return;
+    setMessage("Opening billing portal...");
+    try {
+      const res = await fetch("/api/create-portal", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId }),
+      });
+      const data = await res.json();
+      if (data.success && data.url) {
+        window.location.href = data.url;
+      } else {
+        setMessage(`❌ ${data.error || "Could not open billing portal"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+      }
+    } catch {
+      setMessage("❌ Could not connect to billing service");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
   const handleAddFunds = async (amount: number) => {
     if (!currentUser || !userId) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!requireSubscription()) return;
 
     setMessage("Redirecting to payment...");
 
@@ -709,6 +739,7 @@ export default function DashboardPage() {
   };
 
   const handleBuyNumber = async (phoneNumber: string, displayNumber: string) => {
+    if (!requireSubscription()) return;
     if (!currentUser || !userId) return;
 
     const walletBalance = currentUser.walletBalance || 0;
@@ -777,6 +808,7 @@ export default function DashboardPage() {
   };
 
   const handleSendConversationMessage = async () => {
+    if (!requireSubscription()) return;
     if (!selectedConversation || !composerText.trim() || !currentUser) {
       setMessage("❌ Type a message first");
       window.setTimeout(() => setMessage(""), 2500);
@@ -953,6 +985,7 @@ export default function DashboardPage() {
   };
 
   const handleLaunchCampaign = async (campaignId: string) => {
+    if (!requireSubscription()) return;
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign || !currentUser || !userId) return;
 
@@ -1148,66 +1181,14 @@ export default function DashboardPage() {
     );
   }
 
-  // Paywall — require subscription before accessing the platform
-  if (currentUser.subscriptionStatus !== "active" && currentUser.subscriptionStatus !== "canceling") {
-    return (
-      <main className="min-h-screen bg-zinc-950 text-white">
-        <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
-          <div className="w-full max-w-lg rounded-3xl border border-zinc-800 bg-zinc-900 p-8 text-center">
-            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">
-              Text2Sale
-            </div>
-            <h1 className="mt-4 text-3xl font-bold">Activate Your Account</h1>
-            <p className="mt-3 text-zinc-400">
-              To get started with Text2Sale, please subscribe to our monthly plan. You&apos;ll get full access to the CRM, campaign tools, and SMS messaging.
-            </p>
+  const isSubscribed = currentUser.subscriptionStatus === "active" || currentUser.subscriptionStatus === "canceling";
 
-            <div className="mt-6 rounded-2xl border border-zinc-700 bg-zinc-800 p-5">
-              <div className="text-3xl font-bold text-emerald-400">
-                $39.99 <span className="text-lg font-normal text-zinc-400">/ month</span>
-              </div>
-              <div className="mt-2 text-sm text-zinc-400">$0.012 per outbound text message</div>
-              <ul className="mt-4 space-y-2 text-left text-sm text-zinc-300">
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Unlimited contacts & campaigns</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Multi-step drip campaigns</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Phone number purchasing</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> Two-way SMS conversations</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> CSV import with personalization</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">✓</span> TCPA-compliant opt-out handling</li>
-              </ul>
-            </div>
-
-            <button
-              onClick={handleSubscribe}
-              className="mt-6 w-full rounded-2xl bg-violet-600 py-4 text-lg font-semibold hover:bg-violet-700 transition"
-            >
-              Subscribe & Get Started
-            </button>
-
-            <button
-              onClick={async () => {
-                await logoutUser();
-                router.push("/");
-              }}
-              className="mt-3 text-sm text-zinc-500 hover:text-zinc-300"
-            >
-              Sign out
-            </button>
-
-            {message && (
-              <div className={`mt-4 rounded-2xl px-4 py-3 text-sm ${
-                message.startsWith("❌")
-                  ? "bg-red-950 text-red-200 ring-1 ring-red-800"
-                  : "bg-emerald-950 text-emerald-200 ring-1 ring-emerald-800"
-              }`}>
-                {message}
-              </div>
-            )}
-          </div>
-        </div>
-      </main>
-    );
-  }
+  const requireSubscription = () => {
+    if (isSubscribed) return true;
+    setMessage("❌ Please subscribe and add a payment method before using paid features. Go to the Billing tab.");
+    window.setTimeout(() => setMessage(""), 4000);
+    return false;
+  };
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -2406,62 +2387,103 @@ export default function DashboardPage() {
         {activeTab === "billing" && (
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Subscription Section */}
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Subscription</h2>
+            <div className="space-y-6">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Subscription</h2>
 
-              <div className="mt-5 space-y-4">
-                <div className="rounded-2xl bg-zinc-800 p-5">
-                  <div className="text-sm text-zinc-400">Plan</div>
-                  <div className="mt-2 text-2xl font-bold">{currentUser.plan.name}</div>
-                  <div className="mt-2 text-zinc-400">
-                    {formatCurrency(currentUser.plan.price)} / month
+                <div className="mt-5 space-y-4">
+                  <div className="rounded-2xl bg-zinc-800 p-5">
+                    <div className="text-sm text-zinc-400">Plan</div>
+                    <div className="mt-2 text-2xl font-bold">{currentUser.plan.name}</div>
+                    <div className="mt-2 text-zinc-400">
+                      {formatCurrency(currentUser.plan.price)} / month
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl bg-zinc-800 p-5">
+                    <div className="text-sm text-zinc-400">Status</div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <span className={`inline-block h-2.5 w-2.5 rounded-full ${
+                        currentUser.subscriptionStatus === "active" ? "bg-green-500" :
+                        currentUser.subscriptionStatus === "canceling" ? "bg-yellow-500" :
+                        currentUser.subscriptionStatus === "past_due" ? "bg-red-500" :
+                        "bg-zinc-500"
+                      }`} />
+                      <span className="text-lg font-semibold capitalize">
+                        {currentUser.subscriptionStatus === "canceling"
+                          ? "Canceling (active until period end)"
+                          : currentUser.subscriptionStatus || "Inactive"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {!isSubscribed && (
+                    <>
+                      <div className="rounded-2xl border border-amber-800/40 bg-amber-950/20 p-4 text-sm text-amber-200/80">
+                        Subscribe to unlock sending messages, buying numbers, and adding funds.
+                      </div>
+                      <button
+                        onClick={handleSubscribe}
+                        className="w-full rounded-2xl bg-violet-600 px-5 py-4 text-lg font-semibold hover:bg-violet-700"
+                      >
+                        Subscribe — {formatCurrency(currentUser.plan.price)}/month
+                      </button>
+                    </>
+                  )}
+
+                  {currentUser.subscriptionStatus === "active" && (
+                    <button
+                      onClick={handleCancelSubscription}
+                      className="w-full rounded-2xl border border-red-800 px-5 py-3 text-red-400 hover:bg-red-950/50"
+                    >
+                      Cancel Subscription
+                    </button>
+                  )}
+
+                  {currentUser.subscriptionStatus === "canceling" && (
+                    <div className="rounded-2xl border border-yellow-800/40 bg-yellow-950/20 p-4 text-sm text-yellow-200/80">
+                      Your subscription will remain active until the end of the current billing period.
+                    </div>
+                  )}
+
+                  <div className="rounded-2xl bg-zinc-800 p-5">
+                    <div className="text-sm text-zinc-400">Message Cost</div>
+                    <div className="mt-2 text-2xl font-bold">
+                      {formatCurrency(currentUser.plan.messageCost)}
+                    </div>
+                    <div className="mt-2 text-zinc-400">Per outbound text segment</div>
                   </div>
                 </div>
+              </div>
 
-                <div className="rounded-2xl bg-zinc-800 p-5">
-                  <div className="text-sm text-zinc-400">Status</div>
-                  <div className="mt-2 flex items-center gap-2">
-                    <span className={`inline-block h-2.5 w-2.5 rounded-full ${
-                      currentUser.subscriptionStatus === "active" ? "bg-green-500" :
-                      currentUser.subscriptionStatus === "canceling" ? "bg-yellow-500" :
-                      currentUser.subscriptionStatus === "past_due" ? "bg-red-500" :
-                      "bg-zinc-500"
-                    }`} />
-                    <span className="text-lg font-semibold capitalize">
-                      {currentUser.subscriptionStatus === "canceling"
-                        ? "Canceling (active until period end)"
-                        : currentUser.subscriptionStatus || "Inactive"}
-                    </span>
-                  </div>
-                </div>
+              {/* Payment Method / Manage Billing */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-2xl font-bold">Payment Method</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Manage your saved card, update payment details, and view invoices through the Stripe billing portal.
+                </p>
 
-                {currentUser.subscriptionStatus === "active" && (
+                {isSubscribed ? (
                   <button
-                    onClick={handleCancelSubscription}
-                    className="w-full rounded-2xl border border-red-800 px-5 py-3 text-red-400 hover:bg-red-950/50"
+                    onClick={handleManageBilling}
+                    className="mt-5 w-full rounded-2xl border border-zinc-700 px-5 py-4 font-medium hover:bg-zinc-800 transition"
                   >
-                    Cancel Subscription
+                    Manage Payment Method & Invoices
                   </button>
-                )}
-
-                {currentUser.subscriptionStatus === "canceling" && (
-                  <div className="rounded-2xl border border-yellow-800/40 bg-yellow-950/20 p-4 text-sm text-yellow-200/80">
-                    Your subscription will remain active until the end of the current billing period.
+                ) : (
+                  <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-500">
+                    Subscribe to save your card and manage billing.
                   </div>
                 )}
 
-                <div className="rounded-2xl bg-zinc-800 p-5">
-                  <div className="text-sm text-zinc-400">Message Cost</div>
-                  <div className="mt-2 text-2xl font-bold">
-                    {formatCurrency(currentUser.plan.messageCost)}
-                  </div>
-                  <div className="mt-2 text-zinc-400">Per outbound text segment</div>
+                <div className="mt-4 text-xs text-zinc-500">
+                  Your card details are stored securely by Stripe. They never touch our servers.
                 </div>
               </div>
             </div>
 
             {/* Wallet & Add Funds Section */}
-            <div className="space-y-8">
+            <div className="space-y-6">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <h2 className="text-2xl font-bold">Wallet Balance</h2>
                 <div className="mt-4 text-4xl font-bold text-green-400">
@@ -2475,29 +2497,38 @@ export default function DashboardPage() {
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <h2 className="text-2xl font-bold">Add Funds</h2>
 
+                {!isSubscribed && (
+                  <div className="mt-4 rounded-2xl border border-amber-800/40 bg-amber-950/20 p-4 text-sm text-amber-200/80">
+                    Subscribe first to add funds to your wallet.
+                  </div>
+                )}
+
                 <div className="mt-5 grid gap-3">
                   <button
                     onClick={() => handleAddFunds(25)}
-                    className="rounded-2xl bg-violet-600 px-5 py-4 hover:bg-violet-700"
+                    disabled={!isSubscribed}
+                    className="rounded-2xl bg-violet-600 px-5 py-4 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Add $25
                   </button>
                   <button
                     onClick={() => handleAddFunds(50)}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
+                    disabled={!isSubscribed}
+                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Add $50
                   </button>
                   <button
                     onClick={() => handleAddFunds(100)}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800"
+                    disabled={!isSubscribed}
+                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Add $100
                   </button>
                 </div>
 
                 <div className="mt-5 text-xs text-zinc-500">
-                  Payments are securely processed via Stripe. Your card details never touch our servers.
+                  Payments are securely processed via Stripe.
                 </div>
               </div>
             </div>
