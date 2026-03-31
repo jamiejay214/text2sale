@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
     // Fetch non-DNC contacts for this user, optionally filtered by campaign
     let contactsQuery = supabase
       .from("contacts")
-      .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes")
+      .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes, campaign")
       .eq("user_id", userId)
       .eq("dnc", false);
 
@@ -95,11 +95,13 @@ export async function POST(req: NextRequest) {
 
         sent++;
 
-        // Tag the contact with this campaign
-        await supabase
-          .from("contacts")
-          .update({ campaign: campaignId })
-          .eq("id", contact.id);
+        // Tag the contact with this campaign name (keep existing if already set)
+        if (campaignName && !contact.campaign) {
+          await supabase
+            .from("contacts")
+            .update({ campaign: campaignName })
+            .eq("id", contact.id);
+        }
 
         // Create/update conversation for tracking replies
         const { data: existingConv } = await supabase
