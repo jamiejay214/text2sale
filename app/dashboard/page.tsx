@@ -222,6 +222,9 @@ export default function DashboardPage() {
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [csvCampaignId, setCsvCampaignId] = useState<string>("");
   const [deletingBulk, setDeletingBulk] = useState(false);
+  const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
+  const [editCampaignForm, setEditCampaignForm] = useState<NewCampaignForm>({ name: "", steps: [], selectedNumbers: [] });
+  const [editStepIndex, setEditStepIndex] = useState(0);
   const [numberSearch, setNumberSearch] = useState("");
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [searchingNumbers, setSearchingNumbers] = useState(false);
@@ -686,6 +689,55 @@ export default function DashboardPage() {
       setMessage("✅ Campaign created as draft");
     } else {
       setMessage("❌ Failed to create campaign");
+    }
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleEditCampaign = (campaignId: string) => {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) return;
+    const steps = campaign.steps && campaign.steps.length > 0
+      ? campaign.steps
+      : [{ id: `step_${Date.now()}`, message: campaign.message || "", delayMinutes: 0 }];
+    setEditCampaignForm({
+      name: campaign.name,
+      steps,
+      selectedNumbers: campaign.selectedNumbers || [],
+    });
+    setEditStepIndex(0);
+    setEditingCampaignId(campaignId);
+  };
+
+  const handleSaveEditCampaign = async () => {
+    if (!editingCampaignId || !userId) return;
+    if (!editCampaignForm.name.trim()) {
+      setMessage("❌ Campaign name is required");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    if (editCampaignForm.steps.every((s) => !s.message.trim())) {
+      setMessage("❌ At least one message step is required");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    const updated = await dbUpdateCampaign(editingCampaignId, {
+      name: editCampaignForm.name.trim(),
+      message: editCampaignForm.steps[0]?.message.trim() || "",
+      steps: editCampaignForm.steps,
+      selected_numbers: editCampaignForm.selectedNumbers,
+    });
+
+    if (updated) {
+      setCampaigns((prev) => prev.map((c) =>
+        c.id === editingCampaignId
+          ? { ...c, name: editCampaignForm.name.trim(), message: editCampaignForm.steps[0]?.message.trim(), steps: editCampaignForm.steps, selectedNumbers: editCampaignForm.selectedNumbers }
+          : c
+      ));
+      setEditingCampaignId(null);
+      setMessage("✅ Campaign updated");
+    } else {
+      setMessage("❌ Failed to update campaign");
     }
     window.setTimeout(() => setMessage(""), 2500);
   };
@@ -2006,12 +2058,182 @@ export default function DashboardPage() {
               <div className="space-y-4">
                 {filteredCampaigns.map((campaign) => {
                   const isLaunching = launchingCampaignId === campaign.id;
+                  const isEditing = editingCampaignId === campaign.id;
                   const canLaunch = campaign.status === "Draft" || campaign.status === "Paused";
                   const statusColor =
                     campaign.status === "Completed" ? "text-emerald-400" :
                     campaign.status === "Sending" ? "text-amber-400" :
                     campaign.status === "Paused" ? "text-zinc-400" :
                     "text-zinc-400";
+
+                  if (isEditing) {
+                    return (
+                      <div key={campaign.id} className="rounded-2xl border border-violet-700 bg-zinc-800/80 p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-lg font-semibold">Edit Campaign</h3>
+                          <button
+                            onClick={() => setEditingCampaignId(null)}
+                            className="text-sm text-zinc-500 hover:text-zinc-300"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+
+                        <input
+                          placeholder="Campaign name"
+                          value={editCampaignForm.name}
+                          onChange={(e) => setEditCampaignForm((prev) => ({ ...prev, name: e.target.value }))}
+                          className="w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-3"
+                        />
+
+                        {/* Step tabs */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {editCampaignForm.steps.map((step, idx) => (
+                            <button
+                              key={step.id}
+                              type="button"
+                              onClick={() => setEditStepIndex(idx)}
+                              className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                                editStepIndex === idx
+                                  ? "bg-violet-600 text-white"
+                                  : "bg-zinc-900 text-zinc-400 hover:text-white"
+                              }`}
+                            >
+                              Step {idx + 1}
+                              {idx > 0 && <span className="text-zinc-500">({step.delayMinutes}m)</span>}
+                              {editCampaignForm.steps.length > 1 && (
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (editCampaignForm.steps.length <= 1) return;
+                                    setEditCampaignForm((prev) => ({
+                                      ...prev,
+                                      steps: prev.steps.filter((_, i) => i !== idx),
+                                    }));
+                                    setEditStepIndex((prev) => Math.min(prev, editCampaignForm.steps.length - 2));
+                                  }}
+                                  className="ml-1 text-zinc-500 hover:text-red-400"
+                                >×</span>
+                              )}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditCampaignForm((prev) => ({
+                                ...prev,
+                                steps: [...prev.steps, { id: `step_${Date.now()}`, message: "", delayMinutes: 60 }],
+                              }));
+                              setEditStepIndex(editCampaignForm.steps.length);
+                            }}
+                            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-xs font-medium text-violet-400 hover:text-violet-300"
+                          >
+                            + Add Step
+                          </button>
+                        </div>
+
+                        {/* Active step editor */}
+                        {editCampaignForm.steps[editStepIndex] && (
+                          <div className="space-y-3">
+                            {editStepIndex > 0 && (
+                              <div className="flex items-center gap-3">
+                                <label className="text-sm text-zinc-400">Delay:</label>
+                                <select
+                                  value={editCampaignForm.steps[editStepIndex].delayMinutes}
+                                  onChange={(e) => {
+                                    const val = Number(e.target.value);
+                                    setEditCampaignForm((prev) => ({
+                                      ...prev,
+                                      steps: prev.steps.map((s, i) =>
+                                        i === editStepIndex ? { ...s, delayMinutes: val } : s
+                                      ),
+                                    }));
+                                  }}
+                                  className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm"
+                                >
+                                  <option value={1}>1 min</option>
+                                  <option value={5}>5 min</option>
+                                  <option value={15}>15 min</option>
+                                  <option value={30}>30 min</option>
+                                  <option value={60}>1 hour</option>
+                                  <option value={120}>2 hours</option>
+                                  <option value={240}>4 hours</option>
+                                  <option value={480}>8 hours</option>
+                                  <option value={1440}>1 day</option>
+                                  <option value={2880}>2 days</option>
+                                  <option value={4320}>3 days</option>
+                                  <option value={10080}>7 days</option>
+                                </select>
+                              </div>
+                            )}
+                            <textarea
+                              placeholder={`Message for step ${editStepIndex + 1}...`}
+                              value={editCampaignForm.steps[editStepIndex].message}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setEditCampaignForm((prev) => ({
+                                  ...prev,
+                                  steps: prev.steps.map((s, i) =>
+                                    i === editStepIndex ? { ...s, message: val } : s
+                                  ),
+                                }));
+                              }}
+                              className="h-28 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-5 py-3 text-sm"
+                            />
+                          </div>
+                        )}
+
+                        {/* Number selection */}
+                        {(currentUser.ownedNumbers || []).length > 0 && (
+                          <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+                            <div className="text-xs font-medium text-zinc-400 mb-2">Send from numbers</div>
+                            <div className="flex flex-wrap gap-2">
+                              {(currentUser.ownedNumbers || []).map((num) => {
+                                const isSelected = editCampaignForm.selectedNumbers.includes(num.number);
+                                return (
+                                  <button
+                                    key={num.id}
+                                    type="button"
+                                    onClick={() => {
+                                      setEditCampaignForm((prev) => ({
+                                        ...prev,
+                                        selectedNumbers: isSelected
+                                          ? prev.selectedNumbers.filter((n) => n !== num.number)
+                                          : [...prev.selectedNumbers, num.number],
+                                      }));
+                                    }}
+                                    className={`rounded-lg px-3 py-1.5 text-xs font-mono transition ${
+                                      isSelected
+                                        ? "border border-violet-600 bg-violet-950/40 text-white"
+                                        : "border border-zinc-700 bg-zinc-900 text-zinc-400 hover:border-zinc-600"
+                                    }`}
+                                  >
+                                    {isSelected ? "✓ " : ""}{num.number}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEditCampaign}
+                            className="flex-1 rounded-2xl bg-violet-600 py-3 font-medium hover:bg-violet-700"
+                          >
+                            Save Changes
+                          </button>
+                          <button
+                            onClick={() => setEditingCampaignId(null)}
+                            className="rounded-2xl border border-zinc-700 px-5 py-3 hover:bg-zinc-800"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={campaign.id}
@@ -2026,11 +2248,22 @@ export default function DashboardPage() {
                           {campaign.message && (
                             <div className="mt-1 truncate text-xs text-zinc-500">{campaign.message}</div>
                           )}
+                          {campaign.steps && campaign.steps.length > 1 && (
+                            <div className="mt-1 text-xs text-violet-400">
+                              {campaign.steps.length} message steps
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
                             {campaign.audience} contacts
                           </span>
+                          <button
+                            onClick={() => handleEditCampaign(campaign.id)}
+                            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-700"
+                          >
+                            Edit
+                          </button>
                           {canLaunch && (
                             <button
                               onClick={() => handleLaunchCampaign(campaign.id)}
