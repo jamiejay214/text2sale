@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+function escapeXml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 // Use service-level client for webhook (no user auth context)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -39,6 +48,85 @@ export async function POST(req: NextRequest) {
     }
 
     const contact = contacts[0];
+    const bodyUpper = body.trim().toUpperCase();
+
+    // Fetch user's opt-out settings
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("opt_out_settings")
+      .eq("id", contact.user_id)
+      .single();
+
+    const optSettings = profile?.opt_out_settings || {
+      keywords: ["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"],
+      optInKeywords: ["START", "SUBSCRIBE", "UNSTOP", "YES"],
+      autoReplyMessage: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
+      optInReplyMessage: "You have been re-subscribed. Reply STOP to unsubscribe.",
+      confirmOptOut: true,
+      autoMarkDnc: true,
+      includeCompanyName: true,
+      companyName: "",
+    };
+
+    // Check for opt-out keyword
+    const isOptOut = (optSettings.keywords || []).some(
+      (kw: string) => bodyUpper === kw.toUpperCase()
+    );
+
+    // Check for opt-in keyword
+    const isOptIn = (optSettings.optInKeywords || []).some(
+      (kw: string) => bodyUpper === kw.toUpperCase()
+    );
+
+    if (isOptOut) {
+      // Mark contact as DNC
+      if (optSettings.autoMarkDnc) {
+        await supabase
+          .from("contacts")
+          .update({ dnc: true })
+          .eq("id", contact.id);
+      }
+
+      // Send confirmation reply via TwiML
+      if (optSettings.confirmOptOut) {
+        let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed.";
+        if (optSettings.includeCompanyName && optSettings.companyName) {
+          replyMsg += ` — ${optSettings.companyName}`;
+        }
+        const twiml = `<Response><Message>${escapeXml(replyMsg)}</Message></Response>`;
+        return new NextResponse(twiml, {
+          headers: { "Content-Type": "text/xml" },
+        });
+      }
+
+      return new NextResponse("<Response></Response>", {
+        headers: { "Content-Type": "text/xml" },
+      });
+    }
+
+    if (isOptIn) {
+      // Remove DNC flag
+      await supabase
+        .from("contacts")
+        .update({ dnc: false })
+        .eq("id", contact.id);
+
+      // Send confirmation reply
+      if (optSettings.confirmOptOut) {
+        let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed.";
+        if (optSettings.includeCompanyName && optSettings.companyName) {
+          replyMsg += ` — ${optSettings.companyName}`;
+        }
+        const twiml = `<Response><Message>${escapeXml(replyMsg)}</Message></Response>`;
+        return new NextResponse(twiml, {
+          headers: { "Content-Type": "text/xml" },
+        });
+      }
+
+      return new NextResponse("<Response></Response>", {
+        headers: { "Content-Type": "text/xml" },
+      });
+    }
 
     // Find or create conversation for this contact
     let { data: conversation } = await supabase
