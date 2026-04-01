@@ -16,6 +16,7 @@ import {
   addUsageEntry, addOwnedNumber,
   fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
   fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
+  insertConversation,
 } from "@/lib/supabase-data";
 import type {
   Profile, Contact, Campaign, Conversation, Message,
@@ -1128,6 +1129,39 @@ export default function DashboardPage() {
 
     setMessage("✅ Message sent");
     window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleOpenContactConversation = async (contactId: string) => {
+    if (!userId) return;
+
+    // Check if a conversation already exists for this contact
+    const existing = conversations.find((c) => c.contactId === contactId);
+    if (existing) {
+      setSelectedConversationId(existing.id);
+      setActiveTab("conversations");
+      return;
+    }
+
+    // Create a new conversation
+    const now = new Date().toISOString();
+    const newConv = await insertConversation({
+      user_id: userId,
+      contact_id: contactId,
+      preview: "",
+      unread: 0,
+      last_message_at: now,
+      starred: false,
+    });
+
+    if (newConv) {
+      const record: ConversationRecord = convToRecord(newConv, []);
+      setConversations((prev) => [record, ...prev]);
+      setSelectedConversationId(newConv.id);
+      setActiveTab("conversations");
+    } else {
+      setMessage("❌ Could not create conversation");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   const handleUpdateSelectedContactField = async (
@@ -2956,11 +2990,21 @@ export default function DashboardPage() {
                         className="h-4 w-4 rounded border-zinc-600 bg-zinc-800"
                       />
                     </div>
-                    <div
-                      className="cursor-pointer font-medium text-violet-300 hover:text-violet-200 hover:underline"
-                      onClick={() => setViewContactId(contact.id)}
-                    >
-                      {contact.firstName} {contact.lastName}
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className="cursor-pointer font-medium text-violet-300 hover:text-violet-200 hover:underline"
+                        onClick={() => handleOpenContactConversation(contact.id)}
+                        title="Open conversation"
+                      >
+                        {contact.firstName} {contact.lastName}
+                      </div>
+                      <button
+                        onClick={() => setViewContactId(contact.id)}
+                        className="rounded p-0.5 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                        title="View contact details"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                      </button>
                     </div>
                     <div className="font-mono text-xs text-zinc-300">{contact.phone}</div>
                     <div className="truncate text-zinc-400">{contact.email || "—"}</div>
