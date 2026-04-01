@@ -52,13 +52,14 @@ export async function POST(req: NextRequest) {
         if (userId && amount) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("wallet_balance, usage_history")
+            .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name")
             .eq("id", userId)
             .single();
 
           if (profile) {
             const currentBalance = Number(profile.wallet_balance) || 0;
             const newBalance = Number((currentBalance + amount).toFixed(2));
+            const newTotalDeposited = Number((Number(profile.total_deposited || 0) + amount).toFixed(2));
 
             const entry = {
               id: `stripe_${Date.now()}`,
@@ -76,8 +77,66 @@ export async function POST(req: NextRequest) {
               .update({
                 wallet_balance: newBalance,
                 usage_history: updatedHistory,
+                total_deposited: newTotalDeposited,
               })
               .eq("id", userId);
+
+            // Check if referral bonus should be awarded
+            // Conditions: user was referred, hasn't been rewarded yet, total deposits >= $50
+            if (
+              profile.referred_by &&
+              !profile.referral_rewarded &&
+              newTotalDeposited >= 50
+            ) {
+              const now = new Date().toISOString();
+
+              // Award $50 to the NEW USER
+              const newUserBonus = {
+                id: `referral_bonus_${Date.now()}`,
+                type: "fund_add",
+                amount: 50,
+                description: "Referral bonus — $50 reward for joining with a referral code",
+                createdAt: now,
+                status: "succeeded",
+              };
+
+              await supabase
+                .from("profiles")
+                .update({
+                  wallet_balance: newBalance + 50,
+                  usage_history: [newUserBonus, ...updatedHistory],
+                  referral_rewarded: true,
+                })
+                .eq("id", userId);
+
+              // Award $50 to the REFERRER
+              const { data: referrer } = await supabase
+                .from("profiles")
+                .select("wallet_balance, usage_history")
+                .eq("id", profile.referred_by)
+                .single();
+
+              if (referrer) {
+                const referrerBonus = {
+                  id: `referral_reward_${Date.now()}`,
+                  type: "fund_add",
+                  amount: 50,
+                  description: `Referral bonus — ${profile.first_name || "Someone"} ${profile.last_name || ""} deposited $50+`,
+                  createdAt: now,
+                  status: "succeeded",
+                };
+
+                await supabase
+                  .from("profiles")
+                  .update({
+                    wallet_balance: Number(((Number(referrer.wallet_balance) || 0) + 50).toFixed(2)),
+                    usage_history: [referrerBonus, ...(referrer.usage_history || [])],
+                  })
+                  .eq("id", profile.referred_by);
+              }
+
+              console.log(`Referral bonus awarded: $50 to user ${userId} and $50 to referrer ${profile.referred_by}`);
+            }
           }
         }
       }

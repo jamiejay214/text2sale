@@ -281,6 +281,7 @@ export default function DashboardPage() {
   const [teamJoinCode, setTeamJoinCode] = useState("");
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamAddFundsAmount, setTeamAddFundsAmount] = useState("10");
+  const [customFundAmount, setCustomFundAmount] = useState("");
   const [teamManagerName, setTeamManagerName] = useState("");
 
   const csvInputRef = useRef<HTMLInputElement>(null);
@@ -1459,7 +1460,7 @@ export default function DashboardPage() {
               Text2Sale Dashboard
             </div>
             <h1 className="mt-2 text-4xl font-bold tracking-tight">
-              Welcome back, {currentUser.firstName}
+              Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}
             </h1>
             <p className="mt-2 text-zinc-400">
               Manage campaigns, contacts, conversations, phone numbers, credits, and billing.
@@ -1621,7 +1622,7 @@ export default function DashboardPage() {
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <h2 className="text-xl font-bold">Refer & Earn $50</h2>
                 <p className="mt-2 text-sm text-zinc-400">
-                  Share your code with others. When someone signs up with your code, you get <span className="font-semibold text-emerald-400">$50 free</span> added to your wallet.
+                  Share your code with others. When they sign up and deposit $50, you <span className="font-semibold text-emerald-400">both get $50 free</span> added to your wallets.
                 </p>
                 <div className="mt-4 flex items-center gap-3">
                   <div className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 font-mono text-lg font-bold tracking-wider">
@@ -3223,11 +3224,25 @@ export default function DashboardPage() {
             <div className="space-y-6">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <h2 className="text-2xl font-bold">Wallet Balance</h2>
-                <div className="mt-4 text-4xl font-bold text-green-400">
+                <div className="mt-4 text-5xl font-bold text-green-400">
                   {formatCurrency(currentUser.walletBalance || 0)}
                 </div>
-                <div className="mt-2 text-sm text-zinc-400">
-                  Used to pay for outbound messages at {formatCurrency(currentUser.plan.messageCost)} each
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl bg-zinc-800 p-4">
+                    <div className="text-xs text-zinc-500">Messages Available</div>
+                    <div className="mt-1 text-2xl font-bold text-violet-400">
+                      {Math.floor((currentUser.walletBalance || 0) / (currentUser.plan.messageCost || 0.012)).toLocaleString()}
+                    </div>
+                  </div>
+                  <div className="rounded-2xl bg-zinc-800 p-4">
+                    <div className="text-xs text-zinc-500">Cost Per Message</div>
+                    <div className="mt-1 text-2xl font-bold">
+                      {formatCurrency(currentUser.plan.messageCost)}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                  Your balance decreases automatically as messages are sent from campaigns and conversations.
                 </div>
               </div>
 
@@ -3240,32 +3255,69 @@ export default function DashboardPage() {
                   </div>
                 )}
 
-                <div className="mt-5 grid gap-3">
+                <div className="mt-5 grid grid-cols-3 gap-3">
                   <button
                     onClick={() => handleAddFunds(25)}
                     disabled={!isSubscribed}
-                    className="rounded-2xl bg-violet-600 px-5 py-4 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Add $25
+                    $25
                   </button>
                   <button
                     onClick={() => handleAddFunds(50)}
                     disabled={!isSubscribed}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Add $50
+                    $50
                   </button>
                   <button
                     onClick={() => handleAddFunds(100)}
                     disabled={!isSubscribed}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Add $100
+                    $100
                   </button>
                 </div>
 
-                <div className="mt-5 text-xs text-zinc-500">
-                  Payments are securely processed via Stripe.
+                <div className="mt-4 flex gap-3">
+                  <div className="relative flex-1">
+                    <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                    <input
+                      type="number"
+                      value={customFundAmount}
+                      onChange={(e) => setCustomFundAmount(e.target.value)}
+                      placeholder="Custom amount"
+                      min="5"
+                      step="1"
+                      disabled={!isSubscribed}
+                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-4 pl-8 pr-4 text-white outline-none placeholder:text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                    />
+                  </div>
+                  <button
+                    onClick={() => {
+                      const amt = parseFloat(customFundAmount);
+                      if (!amt || amt < 5) {
+                        setMessage("❌ Minimum amount is $5");
+                        window.setTimeout(() => setMessage(""), 2500);
+                        return;
+                      }
+                      handleAddFunds(amt);
+                    }}
+                    disabled={!isSubscribed || !customFundAmount}
+                    className="rounded-2xl bg-violet-600 px-6 py-4 font-medium hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    Add Funds
+                  </button>
+                </div>
+
+                {customFundAmount && parseFloat(customFundAmount) >= 5 && (
+                  <div className="mt-2 text-xs text-zinc-500">
+                    ${parseFloat(customFundAmount).toFixed(2)} = ~{Math.floor(parseFloat(customFundAmount) / (currentUser.plan.messageCost || 0.012)).toLocaleString()} messages
+                  </div>
+                )}
+
+                <div className="mt-4 text-xs text-zinc-500">
+                  Payments are securely processed via Stripe. Minimum $5.
                 </div>
               </div>
             </div>
