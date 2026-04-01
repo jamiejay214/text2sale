@@ -1621,7 +1621,7 @@ export default function DashboardPage() {
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <h2 className="text-xl font-bold">Refer & Earn $50</h2>
                 <p className="mt-2 text-sm text-zinc-400">
-                  Share your code with others. When someone signs up with your code, you get <span className="font-semibold text-emerald-400">$50 free</span> added to your wallet.
+                  Share your code with others. When they sign up and deposit $50, you <span className="font-semibold text-emerald-400">both get $50 free</span> added to your wallets.
                 </p>
                 <div className="mt-4 flex items-center gap-3">
                   <div className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 font-mono text-lg font-bold tracking-wider">

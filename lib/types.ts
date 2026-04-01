@@ -25,6 +25,9 @@ export type Profile = {
   opt_out_settings: OptOutSettings;
   team_code: string;
   manager_id: string | null;
+  referred_by: string | null;
+  referral_rewarded: boolean;
+  total_deposited: number;
   created_at: string;
 };
 
