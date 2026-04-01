@@ -42,6 +42,7 @@ type AccountRecord = {
   subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
   teamCode?: string;
   managerId?: string | null;
+  referralCode?: string;
 };
 
 type ContactRecord = {
@@ -121,7 +122,7 @@ function profileToAccount(p: Profile): AccountRecord {
     createdAt: p.created_at, walletBalance: p.wallet_balance,
     ownedNumbers: p.owned_numbers || [],
     subscriptionStatus: p.subscription_status || "inactive",
-    teamCode: p.team_code || "", managerId: p.manager_id,
+    teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
   };
 }
 
@@ -1614,11 +1615,80 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+
+            {/* Referral & Team Code Card */}
+            <div className="grid gap-8 lg:grid-cols-2">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-xl font-bold">Refer & Earn $50</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Share your code with others. When someone signs up with your code, you get <span className="font-semibold text-emerald-400">$50 free</span> added to your wallet.
+                </p>
+                <div className="mt-4 flex items-center gap-3">
+                  <div className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 font-mono text-lg font-bold tracking-wider">
+                    {currentUser.referralCode || "—"}
+                  </div>
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(currentUser.referralCode || "");
+                      setMessage("✅ Referral code copied!");
+                      window.setTimeout(() => setMessage(""), 2000);
+                    }}
+                    className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700"
+                  >
+                    Copy
+                  </button>
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                  {(currentUser.role === "manager" || currentUser.role === "admin")
+                    ? "This code also works as your team join code."
+                    : "Give this code to friends when they sign up."}
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-xl font-bold">Join a Team</h2>
+                <p className="mt-2 text-sm text-zinc-400">
+                  {currentUser.managerId
+                    ? `You're on ${teamManagerName || "a manager"}'s team. Your manager can view your dashboard and add funds.`
+                    : "Enter a manager's referral code to join their team. They'll be able to view your dashboard and send you funds."}
+                </p>
+                {currentUser.managerId ? (
+                  <div className="mt-4 flex items-center gap-3">
+                    <div className="flex-1 rounded-2xl border border-emerald-800/50 bg-emerald-950/20 px-5 py-3">
+                      <span className="text-sm text-emerald-400">Team: {teamManagerName || "Loading..."}</span>
+                    </div>
+                    <button
+                      onClick={handleLeaveTeam}
+                      disabled={teamLoading}
+                      className="rounded-2xl border border-red-700 px-5 py-3 text-sm text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                    >
+                      Leave
+                    </button>
+                  </div>
+                ) : (
+                  <div className="mt-4 flex items-center gap-3">
+                    <input
+                      value={teamJoinCode}
+                      onChange={(e) => setTeamJoinCode(e.target.value.toUpperCase())}
+                      placeholder="Enter team code (e.g. T2S-ABC123)"
+                      className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 font-mono text-sm uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal"
+                    />
+                    <button
+                      onClick={handleJoinTeam}
+                      disabled={teamLoading || !teamJoinCode.trim()}
+                      className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {teamLoading ? "..." : "Join"}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
         {activeTab === "conversations" && (
-          <div className="grid min-h-[72vh] gap-4 xl:grid-cols-[340px_minmax(0,1fr)_360px]">
+          <div className="grid min-h-[85vh] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-2xl font-bold">Chats</h2>
@@ -1634,7 +1704,7 @@ export default function DashboardPage() {
                 className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
               />
 
-              <div className="max-h-[62vh] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
                 {filteredConversations.map((conversation) => {
                   const contact = conversation.contact;
                   const active = conversation.id === selectedConversation?.id;
@@ -1689,7 +1759,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex min-h-[72vh] flex-col rounded-3xl border border-zinc-800 bg-zinc-900">
+            <div className="flex min-h-[85vh] flex-col rounded-3xl border border-zinc-800 bg-zinc-900">
               {selectedConversation && selectedContact ? (
                 <>
                   <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
@@ -1801,7 +1871,7 @@ export default function DashboardPage() {
                         onChange={(e) => setComposerText(e.target.value)}
                         onKeyDown={handleComposerKeyDown}
                         placeholder="Insert text here ... (Enter to send, Shift+Enter for newline)"
-                        className="h-28 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
+                        className="h-36 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
                       />
 
                       <div className="mt-3 flex items-center justify-between">
@@ -1836,7 +1906,7 @@ export default function DashboardPage() {
 
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
               {selectedContact ? (
-                <div className="max-h-[72vh] overflow-y-auto pr-1">
+                <div className="max-h-[80vh] overflow-y-auto pr-1">
                   <div className="mb-5 border-b border-zinc-800 pb-4">
                     <div className="text-xl font-bold">
                       {selectedContact.firstName} {selectedContact.lastName}
@@ -3550,7 +3620,7 @@ export default function DashboardPage() {
                     </div>
                     <div className="rounded-2xl border border-amber-800/50 bg-amber-950/30 px-5 py-3">
                       <div className="text-xs text-amber-400">Team Join Code</div>
-                      <div className="mt-1 font-mono text-lg font-bold text-white">{currentUser.teamCode || "—"}</div>
+                      <div className="mt-1 font-mono text-lg font-bold text-white">{currentUser.referralCode || "—"}</div>
                     </div>
                   </div>
                 </div>

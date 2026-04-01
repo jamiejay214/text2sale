@@ -221,8 +221,8 @@ export default function HomePage() {
                 </div>
 
                 <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Referral Code (Optional)</label>
-                  <input value={referralCode} onChange={(e) => setReferralCode(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter referral code" />
+                  <label className="mb-2 block text-sm font-medium text-zinc-300">Referral Code (Optional — you both get $50!)</label>
+                  <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="e.g. T2S-ABC123" />
                 </div>
 
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
