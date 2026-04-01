@@ -249,17 +249,21 @@ export async function fetchTeamMemberConversations(memberId: string): Promise<Co
   return data as Conversation[];
 }
 
-export async function joinTeamByCode(userId: string, teamCode: string): Promise<{ success: boolean; error?: string }> {
-  // Find the manager with this team code
+export async function joinTeamByCode(userId: string, code: string): Promise<{ success: boolean; managerName?: string; error?: string }> {
+  // Find the manager/admin with this referral code
   const { data: manager, error: managerErr } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, team_code")
-    .eq("team_code", teamCode)
+    .select("id, first_name, last_name, referral_code, role")
+    .eq("referral_code", code)
     .in("role", ["manager", "admin"])
     .single();
 
   if (managerErr || !manager) {
-    return { success: false, error: "Invalid team code. Please check and try again." };
+    return { success: false, error: "Invalid team code. Make sure the code belongs to a manager." };
+  }
+
+  if (manager.id === userId) {
+    return { success: false, error: "You can't join your own team." };
   }
 
   // Set the user's manager_id
@@ -272,7 +276,7 @@ export async function joinTeamByCode(userId: string, teamCode: string): Promise<
     return { success: false, error: "Failed to join team." };
   }
 
-  return { success: true };
+  return { success: true, managerName: `${manager.first_name} ${manager.last_name}` };
 }
 
 export async function leaveTeam(userId: string): Promise<boolean> {

@@ -28,6 +28,7 @@ type AccountRecord = {
   role?: "user" | "admin" | "manager";
   teamCode?: string;
   managerId?: string | null;
+  referralCode?: string;
 };
 
 type CampaignRecord = {
@@ -60,7 +61,7 @@ function profileToAccount(p: Profile): AccountRecord {
     usageHistory: p.usage_history || [], plan: p.plan,
     createdAt: p.created_at, walletBalance: Number(p.wallet_balance),
     ownedNumbers: p.owned_numbers || [],
-    teamCode: p.team_code || "", managerId: p.manager_id,
+    teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
   };
 }
 
@@ -290,12 +291,11 @@ export default function AdminPage() {
     if (!acct) return;
 
     const newRole = acct.role === "manager" ? "user" : "manager";
-    const teamCode = newRole === "manager" ? generateTeamCode() : "";
 
-    await updateProfile(accountId, { role: newRole, team_code: teamCode } as Partial<Profile>);
+    await updateProfile(accountId, { role: newRole } as Partial<Profile>);
     await refreshAccount(accountId);
-    setMessage(newRole === "manager" ? `✅ ${acct.firstName} promoted to Manager` : `✅ ${acct.firstName} demoted to User`);
-    window.setTimeout(() => setMessage(""), 2500);
+    setMessage(newRole === "manager" ? `✅ ${acct.firstName} promoted to Manager — their referral code is now their team code` : `✅ ${acct.firstName} demoted to User`);
+    window.setTimeout(() => setMessage(""), 3000);
   };
 
   const exportUsersCSV = () => {
@@ -447,9 +447,9 @@ export default function AdminPage() {
                         }`}>
                           {selectedAccount.role?.toUpperCase() || "USER"}
                         </span>
-                        {selectedAccount.role === "manager" && selectedAccount.teamCode && (
+                        {selectedAccount.role === "manager" && selectedAccount.referralCode && (
                           <span className="rounded-full bg-zinc-800 px-3 py-0.5 text-xs text-zinc-400">
-                            Team Code: <span className="font-mono font-semibold text-white">{selectedAccount.teamCode}</span>
+                            Code: <span className="font-mono font-semibold text-white">{selectedAccount.referralCode}</span>
                           </span>
                         )}
                       </div>
@@ -483,7 +483,7 @@ export default function AdminPage() {
                     <div className="rounded-2xl border border-amber-800/50 bg-amber-950/20 p-4">
                       <div className="text-sm font-medium text-amber-300">Team Manager</div>
                       <div className="mt-1 text-xs text-zinc-400">
-                        Team code: <span className="font-mono font-bold text-white">{selectedAccount.teamCode}</span>
+                        Team/Referral code: <span className="font-mono font-bold text-white">{selectedAccount.referralCode}</span>
                         {" — "}Share this code with team members so they can join.
                       </div>
                       <div className="mt-2 text-xs text-zinc-500">
