@@ -169,6 +169,18 @@ export async function insertMessage(
   return data as Message;
 }
 
+export async function insertConversation(
+  conversation: Omit<Conversation, "id" | "created_at">
+): Promise<Conversation | null> {
+  const { data, error } = await supabase
+    .from("conversations")
+    .insert(conversation)
+    .select()
+    .single();
+  if (error || !data) return null;
+  return data as Conversation;
+}
+
 export async function updateConversation(
   conversationId: string,
   updates: Partial<Omit<Conversation, "id" | "user_id" | "created_at">>

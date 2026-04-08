@@ -28,7 +28,50 @@ export type Profile = {
   referred_by: string | null;
   referral_rewarded: boolean;
   total_deposited: number;
+  a2p_registration: A2PRegistration | null;
   created_at: string;
+};
+
+export type A2PRegistration = {
+  status: "not_started" | "brand_pending" | "brand_approved" | "brand_failed"
+    | "campaign_pending" | "campaign_approved" | "campaign_failed" | "completed";
+  // Trust Hub / Brand
+  customerProfileSid: string | null;
+  trustProductSid: string | null;
+  brandRegistrationSid: string | null;
+  brandStatus: string | null;
+  // Messaging Service & Campaign
+  messagingServiceSid: string | null;
+  campaignSid: string | null;
+  campaignStatus: string | null;
+  // Business info (stored for reference)
+  businessName: string;
+  businessType: "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit";
+  ein: string;
+  businessAddress: string;
+  businessCity: string;
+  businessState: string;
+  businessZip: string;
+  businessCountry: string;
+  website: string;
+  // Authorized contact
+  contactFirstName: string;
+  contactLastName: string;
+  contactEmail: string;
+  contactPhone: string;
+  // Campaign info
+  useCase: string;
+  description: string;
+  sampleMessages: string[];
+  messageFlow: string;
+  optInMessage: string;
+  optOutMessage: string;
+  helpMessage: string;
+  hasEmbeddedLinks: boolean;
+  hasEmbeddedPhone: boolean;
+  // Errors
+  errors: string[];
+  updatedAt: string;
 };
 
 export type OptOutSettings = {

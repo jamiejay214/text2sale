@@ -6,11 +6,11 @@ const authToken = process.env.TWILIO_AUTH_TOKEN!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, body, from } = await req.json();
+    const { to, body, from, messagingServiceSid } = await req.json();
 
-    if (!to || !body || !from) {
+    if (!to || !body || (!from && !messagingServiceSid)) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: to, body, from" },
+        { success: false, error: "Missing required fields: to, body, and from or messagingServiceSid" },
         { status: 400 }
       );
     }
@@ -21,14 +21,15 @@ export async function POST(req: NextRequest) {
     const toDigits = to.replace(/\D/g, "");
     const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
 
-    const fromDigits = from.replace(/\D/g, "");
-    const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
-
-    const message = await client.messages.create({
-      to: toE164,
-      from: fromE164,
-      body,
-    });
+    // Use Messaging Service if available (10DLC compliant), otherwise use direct from number
+    let message;
+    if (messagingServiceSid) {
+      message = await client.messages.create({ to: toE164, body, messagingServiceSid });
+    } else {
+      const fromDigits = from.replace(/\D/g, "");
+      const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
+      message = await client.messages.create({ to: toE164, body, from: fromE164 });
+    }
 
     return NextResponse.json({
       success: true,

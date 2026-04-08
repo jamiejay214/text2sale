@@ -9,7 +9,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumbers, messageTemplate, campaignName } = await req.json();
+    const { campaignId, userId, fromNumbers, messageTemplate, campaignName, messagingServiceSid } = await req.json();
 
     // Support both single fromNumber (legacy) and fromNumbers array
     const numbers: string[] = Array.isArray(fromNumbers)
@@ -87,11 +87,12 @@ export async function POST(req: NextRequest) {
         const toDigits = contact.phone.replace(/\D/g, "");
         const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
 
-        await client.messages.create({
-          to: toE164,
-          from: fromE164,
-          body: personalizedBody,
-        });
+        // Use Messaging Service if available (10DLC), otherwise direct from number
+        if (messagingServiceSid) {
+          await client.messages.create({ to: toE164, body: personalizedBody, messagingServiceSid });
+        } else {
+          await client.messages.create({ to: toE164, body: personalizedBody, from: fromE164 });
+        }
 
         sent++;
 

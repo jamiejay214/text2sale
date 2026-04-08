@@ -6,7 +6,7 @@ const authToken = process.env.TWILIO_AUTH_TOKEN!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { phoneNumber, areaCode } = await req.json();
+    const { phoneNumber, areaCode, messagingServiceSid } = await req.json();
 
     const client = twilio(accountSid, authToken);
 
@@ -39,6 +39,18 @@ export async function POST(req: NextRequest) {
       smsUrl: `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/incoming-sms`,
       smsMethod: "POST",
     });
+
+    // If user has a messaging service (10DLC), add the number to it
+    if (messagingServiceSid) {
+      try {
+        await client.messaging.v1
+          .services(messagingServiceSid)
+          .phoneNumbers.create({ phoneNumberSid: purchased.sid });
+      } catch (err) {
+        console.error("Failed to add number to messaging service:", err);
+        // Don't fail the purchase, just log the error
+      }
+    }
 
     // Format for display
     const digits = purchased.phoneNumber.replace(/\D/g, "");
