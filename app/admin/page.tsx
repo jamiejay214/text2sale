@@ -298,6 +298,31 @@ export default function AdminPage() {
     window.setTimeout(() => setMessage(""), 3000);
   };
 
+  const handleSaveGlobalSettings = async () => {
+    // Apply global pricing to ALL users
+    let updated = 0;
+    for (const acct of accounts) {
+      await updateProfile(acct.id, {
+        plan: { ...acct.plan, messageCost: globalMessageCost },
+      } as Partial<Profile>);
+      updated++;
+    }
+    const profiles = await fetchAllProfiles();
+    setAccounts(profiles.map(profileToAccount));
+    setMessage(`✅ Global pricing updated for ${updated} users — $${globalMessageCost}/msg`);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
+  const handleSaveUserPricing = async (accountId: string) => {
+    const acct = accounts.find((a) => a.id === accountId);
+    if (!acct) return;
+    await updateProfile(accountId, {
+      plan: { ...acct.plan, messageCost: acct.plan.messageCost },
+    } as Partial<Profile>);
+    setMessage(`✅ ${acct.firstName}'s pricing updated — $${acct.plan.messageCost}/msg`);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
   const exportUsersCSV = () => {
     const csv = accounts
       .map((a) => `${a.firstName},${a.lastName},${a.email},${a.phone},${a.credits}`)
@@ -698,14 +723,51 @@ export default function AdminPage() {
             <h2 className="mb-8 text-2xl font-bold">Platform Settings</h2>
             <div className="space-y-8">
               <div>
-                <label className="mb-2 block text-sm">Message Cost (per segment)</label>
-                <input type="number" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value))} className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                <label className="mb-2 block text-sm">Default Message Cost (per segment)</label>
+                <input type="number" step="0.001" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value) || 0)}
+                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                <p className="mt-1 text-xs text-zinc-500">This sets the default for new users. Use per-user pricing below to customize.</p>
               </div>
               <div>
-                <label className="mb-2 block text-sm">Phone Number Cost</label>
-                <input type="number" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value))} className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                <label className="mb-2 block text-sm">Default Phone Number Cost</label>
+                <input type="number" step="0.01" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value) || 0)}
+                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
               </div>
-              <button className="mt-8 w-full rounded-2xl bg-violet-600 px-8 py-4">Save Global Settings</button>
+              <button onClick={handleSaveGlobalSettings} className="w-full rounded-2xl bg-violet-600 px-8 py-4 hover:bg-violet-700">
+                Save Global Settings
+              </button>
+
+              <hr className="border-zinc-800" />
+
+              <h3 className="text-xl font-bold">Per-User Pricing</h3>
+              <p className="text-sm text-zinc-400">Set custom message cost and number cost for individual users. Leave blank to use global defaults.</p>
+              <div className="space-y-3 max-h-96 overflow-y-auto">
+                {accounts.map((acct) => (
+                  <div key={acct.id} className="flex items-center gap-3 rounded-xl bg-zinc-800 p-4">
+                    <div className="flex-1 min-w-0">
+                      <span className="font-medium text-sm">{acct.firstName} {acct.lastName}</span>
+                      <span className="ml-2 text-xs text-zinc-500">{acct.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <label className="block text-[10px] text-zinc-500 mb-0.5">$/msg</label>
+                        <input type="number" step="0.001"
+                          value={acct.plan.messageCost}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setAccounts((prev) => prev.map((a) => a.id === acct.id ? { ...a, plan: { ...a.plan, messageCost: val } } : a));
+                          }}
+                          className="w-24 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
+                      </div>
+                      <button
+                        onClick={() => handleSaveUserPricing(acct.id)}
+                        className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium hover:bg-violet-700">
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}
