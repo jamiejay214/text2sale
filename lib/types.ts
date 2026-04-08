@@ -188,6 +188,33 @@ export type ConversationWithDetails = Conversation & {
   contact: Contact | null;
 };
 
+export type MessageTemplate = {
+  id: string;
+  user_id: string;
+  name: string;
+  body: string;
+  category: string;
+  created_at: string;
+};
+
+export type ScheduledMessage = {
+  id: string;
+  user_id: string;
+  contact_id: string;
+  body: string;
+  from_number: string;
+  messaging_service_sid: string | null;
+  scheduled_at: string;
+  status: "pending" | "sent" | "failed" | "cancelled";
+  created_at: string;
+};
+
+export type QuickReply = {
+  id: string;
+  label: string;
+  body: string;
+};
+
 export const DEFAULT_PLAN: Plan = {
   name: "Text2Sale Package",
   price: 39.99,

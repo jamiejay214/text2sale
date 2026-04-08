@@ -87,11 +87,14 @@ export async function POST(req: NextRequest) {
         const toDigits = contact.phone.replace(/\D/g, "");
         const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
 
+        // Status callback for delivery tracking
+        const statusCallback = `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/sms-status`;
+
         // Use Messaging Service if available (10DLC), otherwise direct from number
         if (messagingServiceSid) {
-          await client.messages.create({ to: toE164, body: personalizedBody, messagingServiceSid });
+          await client.messages.create({ to: toE164, body: personalizedBody, messagingServiceSid, statusCallback });
         } else {
-          await client.messages.create({ to: toE164, body: personalizedBody, from: fromE164 });
+          await client.messages.create({ to: toE164, body: personalizedBody, from: fromE164, statusCallback });
         }
 
         sent++;

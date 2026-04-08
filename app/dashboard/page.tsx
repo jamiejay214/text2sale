@@ -17,11 +17,13 @@ import {
   fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
   fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
   insertConversation,
+  fetchTemplates, insertTemplate, deleteTemplate,
+  fetchScheduledMessages, insertScheduledMessage, cancelScheduledMessage,
 } from "@/lib/supabase-data";
 import type {
   Profile, Contact, Campaign, Conversation, Message,
   UsageHistoryItem, OwnedNumber, OptOutSettings, CampaignStep,
-  A2PRegistration,
+  A2PRegistration, MessageTemplate, ScheduledMessage, QuickReply,
 } from "@/lib/types";
 
 // Adapter types — keep the camelCase names the JSX uses
@@ -288,6 +290,30 @@ export default function DashboardPage() {
   const [customFundAmount, setCustomFundAmount] = useState("");
   const [teamManagerName, setTeamManagerName] = useState("");
 
+  // Templates state
+  const [templates, setTemplates] = useState<MessageTemplate[]>([]);
+  const [newTemplateName, setNewTemplateName] = useState("");
+  const [newTemplateBody, setNewTemplateBody] = useState("");
+  const [newTemplateCategory, setNewTemplateCategory] = useState("general");
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+
+  // Scheduled messages state
+  const [scheduledMessages, setScheduledMessages] = useState<ScheduledMessage[]>([]);
+  const [scheduleDate, setScheduleDate] = useState("");
+  const [scheduleTime, setScheduleTime] = useState("");
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+
+  // Quick replies (stored in profile as JSONB)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([
+    { id: "qr1", label: "Thanks", body: "Thank you for your message! I'll get back to you shortly." },
+    { id: "qr2", label: "Busy", body: "I'm currently unavailable. I'll respond as soon as possible." },
+    { id: "qr3", label: "Confirm", body: "Great, that's confirmed! Talk soon." },
+  ]);
+  const [showQuickReplies, setShowQuickReplies] = useState(false);
+  const [editingQuickReply, setEditingQuickReply] = useState<QuickReply | null>(null);
+  const [newQrLabel, setNewQrLabel] = useState("");
+  const [newQrBody, setNewQrBody] = useState("");
+
   // 10DLC A2P Registration state
   const [a2pStep, setA2pStep] = useState(0); // 0=info, 1=submitting, 2=brand pending, 3=campaign form, 4=campaign pending, 5=done
   const [a2pLoading, setA2pLoading] = useState(false);
@@ -333,14 +359,18 @@ export default function DashboardPage() {
       setCurrentUser(profileToAccount(profile));
       if (profile.opt_out_settings) setOptOutSettings(profile.opt_out_settings);
 
-      const [dbContacts, dbCampaigns, dbConversations] = await Promise.all([
+      const [dbContacts, dbCampaigns, dbConversations, dbTemplates, dbScheduled] = await Promise.all([
         dbFetchContacts(uid),
         dbFetchCampaigns(uid),
         dbFetchConversations(uid),
+        fetchTemplates(uid),
+        fetchScheduledMessages(uid),
       ]);
 
       setContacts(dbContacts.map(contactToRecord));
       setCampaigns(dbCampaigns.map(campaignToRecord));
+      setTemplates(dbTemplates);
+      setScheduledMessages(dbScheduled);
 
       // Load messages for each conversation
       const convRecords: ConversationRecord[] = await Promise.all(
@@ -779,6 +809,122 @@ export default function DashboardPage() {
     setMessage(`✅ $${amount.toFixed(2)} sent to ${member.firstName}`);
     window.setTimeout(() => setMessage(""), 3000);
   };
+
+  // ── Template handlers ──
+  const handleSaveTemplate = async () => {
+    if (!userId || !newTemplateName.trim() || !newTemplateBody.trim()) {
+      setMessage("❌ Name and body required"); window.setTimeout(() => setMessage(""), 2500); return;
+    }
+    const t = await insertTemplate({ user_id: userId, name: newTemplateName.trim(), body: newTemplateBody.trim(), category: newTemplateCategory });
+    if (t) { setTemplates((prev) => [t, ...prev]); setNewTemplateName(""); setNewTemplateBody(""); setMessage("✅ Template saved"); }
+    else setMessage("❌ Failed to save template");
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleDeleteTemplate = async (id: string) => {
+    const ok = await deleteTemplate(id);
+    if (ok) setTemplates((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleUseTemplate = (body: string) => {
+    setComposerText(body);
+    setShowTemplateManager(false);
+  };
+
+  // ── Scheduled message handlers ──
+  const handleScheduleMessage = async () => {
+    if (!userId || !selectedConversation || !composerText.trim() || !scheduleDate || !scheduleTime) {
+      setMessage("❌ Fill in message, date, and time"); window.setTimeout(() => setMessage(""), 2500); return;
+    }
+    const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+    if (!contact) return;
+    const fromNumber = currentUser?.ownedNumbers?.[0]?.number || "";
+    const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
+    const msid = currentUser?.a2pRegistration?.status === "completed" ? currentUser.a2pRegistration.messagingServiceSid : null;
+
+    const sm = await insertScheduledMessage({
+      user_id: userId, contact_id: contact.id, body: composerText.trim(),
+      from_number: fromNumber, messaging_service_sid: msid || null,
+      scheduled_at: scheduledAt, status: "pending",
+    });
+    if (sm) {
+      setScheduledMessages((prev) => [...prev, sm]);
+      setComposerText(""); setShowScheduleModal(false); setScheduleDate(""); setScheduleTime("");
+      setMessage(`✅ Message scheduled for ${new Date(scheduledAt).toLocaleString()}`);
+    } else setMessage("❌ Failed to schedule message");
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
+  const handleCancelScheduled = async (id: string) => {
+    const ok = await cancelScheduledMessage(id);
+    if (ok) setScheduledMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "cancelled" as const } : m));
+  };
+
+  // ── Quick reply handlers ──
+  const handleAddQuickReply = () => {
+    if (!newQrLabel.trim() || !newQrBody.trim()) return;
+    const qr: QuickReply = { id: `qr_${Date.now()}`, label: newQrLabel.trim(), body: newQrBody.trim() };
+    setQuickReplies((prev) => [...prev, qr]);
+    setNewQrLabel(""); setNewQrBody("");
+  };
+
+  const handleDeleteQuickReply = (id: string) => {
+    setQuickReplies((prev) => prev.filter((q) => q.id !== id));
+  };
+
+  const handleUseQuickReply = (body: string) => {
+    setComposerText(body);
+    setShowQuickReplies(false);
+  };
+
+  // ── CSV Export ──
+  const handleExportCSV = () => {
+    if (contacts.length === 0) { setMessage("❌ No contacts to export"); window.setTimeout(() => setMessage(""), 2500); return; }
+    const headers = ["First Name","Last Name","Phone","Email","City","State","Address","Zip","Tags","DNC","Campaign","Lead Source","Notes"];
+    const rows = contacts.map((c) => [
+      c.firstName, c.lastName, c.phone, c.email || "", c.city || "", c.state || "",
+      c.address || "", c.zip || "", (c.tags || []).join(";"), c.dnc ? "Yes" : "No",
+      c.campaign || "", c.leadSource || "", (c.notes || "").replace(/,/g, " "),
+    ]);
+    const csv = [headers.join(","), ...rows.map((r) => r.map((v) => `"${v}"`).join(","))].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `contacts_${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+    URL.revokeObjectURL(url);
+    setMessage("✅ Contacts exported"); window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  // ── Analytics computed ──
+  const analytics = useMemo(() => {
+    const totalSent = campaigns.reduce((sum, c) => sum + c.sent, 0);
+    const totalFailed = campaigns.reduce((sum, c) => sum + c.failed, 0);
+    const totalReplies = campaigns.reduce((sum, c) => sum + c.replies, 0);
+    const deliveryRate = totalSent > 0 ? ((totalSent - totalFailed) / totalSent * 100).toFixed(1) : "0.0";
+    const replyRate = totalSent > 0 ? (totalReplies / totalSent * 100).toFixed(1) : "0.0";
+    const totalSpent = (currentUser?.usageHistory || []).filter((u) => u.type === "charge").reduce((s, u) => s + u.amount, 0);
+    const totalFunded = (currentUser?.usageHistory || []).filter((u) => u.type === "fund_add" || u.type === "credit_add").reduce((s, u) => s + u.amount, 0);
+
+    // Campaign performance by name
+    const campaignStats = campaigns.filter((c) => c.status === "Completed").map((c) => ({
+      name: c.name, sent: c.sent, failed: c.failed, replies: c.replies,
+      deliveryRate: c.sent > 0 ? (((c.sent - c.failed) / c.sent) * 100).toFixed(1) : "0",
+      replyRate: c.sent > 0 ? ((c.replies / c.sent) * 100).toFixed(1) : "0",
+    }));
+
+    // Messages over time (last 7 days from usage history)
+    const last7 = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(); d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().slice(0, 10);
+    });
+    const dailyCounts = last7.map((day) => ({
+      date: day,
+      count: (currentUser?.usageHistory || []).filter((u) => u.type === "charge" && u.createdAt?.startsWith(day) && u.description?.startsWith("SMS")).length,
+      spent: (currentUser?.usageHistory || []).filter((u) => u.type === "charge" && u.createdAt?.startsWith(day)).reduce((s, u) => s + u.amount, 0),
+    }));
+
+    return { totalSent, totalFailed, totalReplies, deliveryRate, replyRate, totalSpent, totalFunded, campaignStats, dailyCounts };
+  }, [campaigns, currentUser]);
 
   // Initialize a2p step from saved registration state
   useEffect(() => {
@@ -1873,6 +2019,81 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+
+            {/* Analytics Charts */}
+            <div className="grid gap-8 lg:grid-cols-2">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-xl font-bold mb-4">7-Day Activity</h2>
+                <div className="flex items-end gap-1 h-40">
+                  {analytics.dailyCounts.map((day) => {
+                    const maxCount = Math.max(...analytics.dailyCounts.map((d) => d.count), 1);
+                    const height = Math.max((day.count / maxCount) * 100, 4);
+                    return (
+                      <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
+                        <span className="text-[10px] text-zinc-400">{day.count}</span>
+                        <div className="w-full rounded-t-lg bg-violet-600" style={{ height: `${height}%` }} />
+                        <span className="text-[9px] text-zinc-500">{day.date.slice(5)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="mt-3 flex justify-between text-xs text-zinc-500">
+                  <span>Total spent: {formatCurrency(analytics.totalSpent)}</span>
+                  <span>Total funded: {formatCurrency(analytics.totalFunded)}</span>
+                </div>
+              </div>
+
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-xl font-bold mb-4">Campaign Performance</h2>
+                {analytics.campaignStats.length === 0 ? (
+                  <p className="text-sm text-zinc-500">No completed campaigns yet.</p>
+                ) : (
+                  <div className="space-y-3 max-h-48 overflow-y-auto">
+                    {analytics.campaignStats.map((c) => (
+                      <div key={c.name} className="rounded-xl bg-zinc-800 p-3">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium truncate">{c.name}</span>
+                          <span className="text-xs text-zinc-400">{c.sent} sent</span>
+                        </div>
+                        <div className="mt-2 flex gap-4 text-xs">
+                          <span className="text-emerald-400">{c.deliveryRate}% delivered</span>
+                          <span className="text-amber-400">{c.replyRate}% replied</span>
+                          {c.failed > 0 && <span className="text-red-400">{c.failed} failed</span>}
+                        </div>
+                        <div className="mt-2 h-1.5 rounded-full bg-zinc-700">
+                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${c.deliveryRate}%` }} />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Scheduled Messages */}
+            {scheduledMessages.filter((m) => m.status === "pending").length > 0 && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="text-xl font-bold mb-4">Scheduled Messages</h2>
+                <div className="space-y-2">
+                  {scheduledMessages.filter((m) => m.status === "pending").map((sm) => {
+                    const contact = contacts.find((c) => c.id === sm.contact_id);
+                    return (
+                      <div key={sm.id} className="flex items-center justify-between rounded-xl bg-zinc-800 p-3">
+                        <div>
+                          <span className="text-sm font-medium">{contact ? `${contact.firstName} ${contact.lastName}` : "Unknown"}</span>
+                          <span className="ml-2 text-xs text-zinc-400">{new Date(sm.scheduled_at).toLocaleString()}</span>
+                          <div className="text-xs text-zinc-500 mt-0.5 truncate max-w-md">{sm.body}</div>
+                        </div>
+                        <button onClick={() => handleCancelScheduled(sm.id)}
+                          className="rounded-xl border border-red-700 px-3 py-1.5 text-xs text-red-300 hover:bg-red-900/30">
+                          Cancel
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -2025,20 +2246,43 @@ export default function DashboardPage() {
 
                   <div className="border-t border-zinc-800 px-5 py-4">
                     {showTemplates && (
-                      <div className="mb-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-3 space-y-2">
-                        <div className="text-xs font-semibold text-zinc-400 px-1">Templates — click to use</div>
-                        {messageTemplates.map((tpl, i) => {
-                          const preview = tpl.replace("{firstName}", selectedContact?.firstName || "there");
+                      <div className="mb-3 max-h-60 overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-800 p-3 space-y-2">
+                        <div className="flex items-center justify-between px-1">
+                          <div className="text-xs font-semibold text-zinc-400">Templates — click to use</div>
+                          <button onClick={() => setShowTemplateManager(true)} className="text-xs text-violet-400 hover:text-violet-300">Manage</button>
+                        </div>
+                        {templates.length > 0 && templates.map((tpl) => {
+                          const preview = tpl.body.replace("{firstName}", selectedContact?.firstName || "there");
                           return (
-                            <button
-                              key={i}
-                              onClick={() => { setComposerText(preview); setShowTemplates(false); }}
-                              className="w-full rounded-xl bg-zinc-700/60 px-4 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-700"
-                            >
-                              {preview}
+                            <button key={tpl.id} onClick={() => handleUseTemplate(preview)}
+                              className="w-full rounded-xl bg-zinc-700/60 px-4 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-700">
+                              <span className="text-[10px] text-violet-400 block mb-0.5">{tpl.name}</span>{preview}
                             </button>
                           );
                         })}
+                        {messageTemplates.map((tpl, i) => {
+                          const preview = tpl.replace("{firstName}", selectedContact?.firstName || "there");
+                          return (
+                            <button key={`default-${i}`} onClick={() => { setComposerText(preview); setShowTemplates(false); }}
+                              className="w-full rounded-xl bg-zinc-700/60 px-4 py-3 text-left text-sm text-zinc-200 hover:bg-zinc-700">
+                              <span className="text-[10px] text-zinc-500 block mb-0.5">Default</span>{preview}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {showQuickReplies && (
+                      <div className="mb-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-3 space-y-2">
+                        <div className="text-xs font-semibold text-zinc-400 px-1">Quick Replies</div>
+                        <div className="flex flex-wrap gap-2">
+                          {quickReplies.map((qr) => (
+                            <button key={qr.id} onClick={() => handleUseQuickReply(qr.body)}
+                              className="rounded-full bg-violet-600/30 px-3 py-1.5 text-xs font-medium text-violet-300 hover:bg-violet-600/50">
+                              {qr.label}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -2064,16 +2308,21 @@ export default function DashboardPage() {
                       />
 
                       <div className="mt-3 flex items-center justify-between">
-                        <button
-                          onClick={() => setShowTemplates((v) => !v)}
-                          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
-                        >
-                          Templates
-                        </button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => { setShowTemplates((v) => !v); setShowQuickReplies(false); }}
+                            className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+                            Templates
+                          </button>
+                          <button onClick={() => { setShowQuickReplies((v) => !v); setShowTemplates(false); }}
+                            className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
+                            Quick
+                          </button>
+                        </div>
 
-                        <div className="flex items-center gap-3">
-                          <button className="rounded-2xl border border-zinc-700 px-4 py-3 text-sm hover:bg-zinc-800">
-                            Attach
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setShowScheduleModal(true)}
+                            className="rounded-2xl border border-zinc-700 px-4 py-3 text-sm hover:bg-zinc-800" title="Schedule for later">
+                            Schedule
                           </button>
                           <button
                             onClick={handleSendConversationMessage}
@@ -2924,6 +3173,10 @@ export default function DashboardPage() {
                     className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
                   >
                     Import CSV
+                  </button>
+                  <button onClick={handleExportCSV}
+                    className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800">
+                    Export CSV
                   </button>
                 </div>
                 <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
@@ -4403,6 +4656,92 @@ export default function DashboardPage() {
         )}
 
       </div>
+
+      {/* ── Schedule Message Modal ── */}
+      {showScheduleModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <h3 className="text-xl font-bold mb-4">Schedule Message</h3>
+            <p className="text-sm text-zinc-400 mb-4">
+              {composerText.trim() ? `"${composerText.slice(0, 60)}${composerText.length > 60 ? "..." : ""}"` : "Type your message first, then schedule."}
+            </p>
+            <div className="grid gap-3">
+              <div>
+                <label className="mb-1 block text-sm text-zinc-400">Date</label>
+                <input type="date" value={scheduleDate} onChange={(e) => setScheduleDate(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-zinc-400">Time</label>
+                <input type="time" value={scheduleTime} onChange={(e) => setScheduleTime(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
+              </div>
+            </div>
+            <div className="mt-5 flex gap-3 justify-end">
+              <button onClick={() => setShowScheduleModal(false)}
+                className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800">Cancel</button>
+              <button onClick={handleScheduleMessage} disabled={!composerText.trim() || !scheduleDate || !scheduleTime}
+                className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700 disabled:opacity-50">Schedule</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Template Manager Modal ── */}
+      {showTemplateManager && (
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/80 p-4 pt-10">
+          <div className="w-full max-w-2xl rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold">Message Templates</h3>
+              <button onClick={() => setShowTemplateManager(false)}
+                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-800">Close</button>
+            </div>
+
+            <div className="mb-6 space-y-3 rounded-2xl border border-zinc-800 bg-zinc-950 p-4">
+              <h4 className="text-sm font-semibold text-zinc-300">Create New Template</h4>
+              <div className="grid gap-3 md:grid-cols-2">
+                <input value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} placeholder="Template name"
+                  className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
+                <select value={newTemplateCategory} onChange={(e) => setNewTemplateCategory(e.target.value)}
+                  className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none">
+                  <option value="general">General</option>
+                  <option value="follow-up">Follow-up</option>
+                  <option value="marketing">Marketing</option>
+                  <option value="appointment">Appointment</option>
+                  <option value="greeting">Greeting</option>
+                </select>
+              </div>
+              <textarea value={newTemplateBody} onChange={(e) => setNewTemplateBody(e.target.value)} rows={3}
+                placeholder="Template body... Use {firstName}, {lastName}, etc."
+                className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
+              <button onClick={handleSaveTemplate} disabled={!newTemplateName.trim() || !newTemplateBody.trim()}
+                className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700 disabled:opacity-50">Save Template</button>
+            </div>
+
+            <div className="space-y-2">
+              {templates.length === 0 ? (
+                <p className="text-sm text-zinc-500">No saved templates yet.</p>
+              ) : templates.map((tpl) => (
+                <div key={tpl.id} className="flex items-start justify-between rounded-xl bg-zinc-800 p-4">
+                  <div className="flex-1 mr-3">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-sm">{tpl.name}</span>
+                      <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{tpl.category}</span>
+                    </div>
+                    <div className="mt-1 text-sm text-zinc-400">{tpl.body}</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={() => { handleUseTemplate(tpl.body); setShowTemplateManager(false); }}
+                      className="rounded-lg bg-violet-600/30 px-3 py-1.5 text-xs text-violet-300 hover:bg-violet-600/50">Use</button>
+                    <button onClick={() => handleDeleteTemplate(tpl.id)}
+                      className="rounded-lg bg-red-600/30 px-3 py-1.5 text-xs text-red-300 hover:bg-red-600/50">Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Contact Detail Modal ── */}
       {viewContact && (

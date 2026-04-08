@@ -7,6 +7,8 @@ import type {
   Message,
   UsageHistoryItem,
   OwnedNumber,
+  MessageTemplate,
+  ScheduledMessage,
 } from "./types";
 
 // ============================================================
@@ -315,4 +317,72 @@ export function addOwnedNumber(
   num: OwnedNumber
 ): OwnedNumber[] {
   return [num, ...currentNumbers];
+}
+
+// ============================================================
+// MESSAGE TEMPLATES
+// ============================================================
+
+export async function fetchTemplates(userId: string): Promise<MessageTemplate[]> {
+  const { data, error } = await supabase
+    .from("message_templates")
+    .select("*")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data as MessageTemplate[];
+}
+
+export async function insertTemplate(
+  template: Omit<MessageTemplate, "id" | "created_at">
+): Promise<MessageTemplate | null> {
+  const { data, error } = await supabase
+    .from("message_templates")
+    .insert(template)
+    .select()
+    .single();
+  if (error || !data) return null;
+  return data as MessageTemplate;
+}
+
+export async function deleteTemplate(templateId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("message_templates")
+    .delete()
+    .eq("id", templateId);
+  return !error;
+}
+
+// ============================================================
+// SCHEDULED MESSAGES
+// ============================================================
+
+export async function fetchScheduledMessages(userId: string): Promise<ScheduledMessage[]> {
+  const { data, error } = await supabase
+    .from("scheduled_messages")
+    .select("*")
+    .eq("user_id", userId)
+    .order("scheduled_at", { ascending: true });
+  if (error || !data) return [];
+  return data as ScheduledMessage[];
+}
+
+export async function insertScheduledMessage(
+  msg: Omit<ScheduledMessage, "id" | "created_at">
+): Promise<ScheduledMessage | null> {
+  const { data, error } = await supabase
+    .from("scheduled_messages")
+    .insert(msg)
+    .select()
+    .single();
+  if (error || !data) return null;
+  return data as ScheduledMessage;
+}
+
+export async function cancelScheduledMessage(msgId: string): Promise<boolean> {
+  const { error } = await supabase
+    .from("scheduled_messages")
+    .update({ status: "cancelled" })
+    .eq("id", msgId);
+  return !error;
 }
