@@ -21,14 +21,17 @@ export async function POST(req: NextRequest) {
     const toDigits = to.replace(/\D/g, "");
     const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
 
+    // Status callback URL for delivery tracking
+    const statusCallback = `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/sms-status`;
+
     // Use Messaging Service if available (10DLC compliant), otherwise use direct from number
     let message;
     if (messagingServiceSid) {
-      message = await client.messages.create({ to: toE164, body, messagingServiceSid });
+      message = await client.messages.create({ to: toE164, body, messagingServiceSid, statusCallback });
     } else {
       const fromDigits = from.replace(/\D/g, "");
       const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
-      message = await client.messages.create({ to: toE164, body, from: fromE164 });
+      message = await client.messages.create({ to: toE164, body, from: fromE164, statusCallback });
     }
 
     return NextResponse.json({
