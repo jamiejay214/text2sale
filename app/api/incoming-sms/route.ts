@@ -1,32 +1,45 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function escapeXml(str: string): string {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
-}
-
-// Use service-level client for webhook (no user auth context)
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Vonage can send inbound SMS as GET or POST
+export async function GET(req: NextRequest) {
+  return handleInbound(req);
+}
+
 export async function POST(req: NextRequest) {
+  return handleInbound(req);
+}
+
+async function handleInbound(req: NextRequest) {
   try {
-    // Twilio sends form-encoded data
-    const formData = await req.formData();
-    const from = formData.get("From") as string; // E.164 format
-    const to = formData.get("To") as string;
-    const body = formData.get("Body") as string;
+    // Vonage sends params as query string (GET) or JSON/form body (POST)
+    let from: string, to: string, body: string;
+
+    const contentType = req.headers.get("content-type") || "";
+
+    if (req.method === "GET") {
+      const params = req.nextUrl.searchParams;
+      from = params.get("msisdn") || "";
+      to = params.get("to") || "";
+      body = params.get("text") || "";
+    } else if (contentType.includes("application/json")) {
+      const json = await req.json();
+      from = json.msisdn || json.from || "";
+      to = json.to || "";
+      body = json.text || json.body || "";
+    } else {
+      const formData = await req.formData();
+      from = (formData.get("msisdn") || formData.get("from") || "") as string;
+      to = (formData.get("to") || "") as string;
+      body = (formData.get("text") || formData.get("body") || "") as string;
+    }
 
     if (!from || !body) {
-      return new NextResponse("<Response></Response>", {
-        headers: { "Content-Type": "text/xml" },
-      });
+      return NextResponse.json({ status: "ok" });
     }
 
     // Normalize the incoming number for lookup
@@ -38,13 +51,10 @@ export async function POST(req: NextRequest) {
     const { data: contacts } = await supabase
       .from("contacts")
       .select("id, user_id, first_name, last_name, phone")
-      .or(`phone.eq.${fromFormatted},phone.eq.${from},phone.eq.${fromDigits},phone.eq.+1${fromNormalized}`);
+      .or(`phone.eq.${fromFormatted},phone.eq.+1${fromNormalized},phone.eq.${fromDigits},phone.eq.${from}`);
 
     if (!contacts || contacts.length === 0) {
-      // Unknown sender — just acknowledge
-      return new NextResponse("<Response></Response>", {
-        headers: { "Content-Type": "text/xml" },
-      });
+      return NextResponse.json({ status: "ok" });
     }
 
     const contact = contacts[0];
@@ -79,56 +89,33 @@ export async function POST(req: NextRequest) {
     );
 
     if (isOptOut) {
-      // Mark contact as DNC
       if (optSettings.autoMarkDnc) {
-        await supabase
-          .from("contacts")
-          .update({ dnc: true })
-          .eq("id", contact.id);
+        await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
       }
-
-      // Send confirmation reply via TwiML
+      // Vonage doesn't use TwiML — auto-reply by sending an SMS back
       if (optSettings.confirmOptOut) {
         let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed.";
         if (optSettings.includeCompanyName && optSettings.companyName) {
           replyMsg += ` — ${optSettings.companyName}`;
         }
-        const twiml = `<Response><Message>${escapeXml(replyMsg)}</Message></Response>`;
-        return new NextResponse(twiml, {
-          headers: { "Content-Type": "text/xml" },
-        });
+        await sendVonageReply(to, from, replyMsg);
       }
-
-      return new NextResponse("<Response></Response>", {
-        headers: { "Content-Type": "text/xml" },
-      });
+      return NextResponse.json({ status: "ok" });
     }
 
     if (isOptIn) {
-      // Remove DNC flag
-      await supabase
-        .from("contacts")
-        .update({ dnc: false })
-        .eq("id", contact.id);
-
-      // Send confirmation reply
+      await supabase.from("contacts").update({ dnc: false }).eq("id", contact.id);
       if (optSettings.confirmOptOut) {
         let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed.";
         if (optSettings.includeCompanyName && optSettings.companyName) {
           replyMsg += ` — ${optSettings.companyName}`;
         }
-        const twiml = `<Response><Message>${escapeXml(replyMsg)}</Message></Response>`;
-        return new NextResponse(twiml, {
-          headers: { "Content-Type": "text/xml" },
-        });
+        await sendVonageReply(to, from, replyMsg);
       }
-
-      return new NextResponse("<Response></Response>", {
-        headers: { "Content-Type": "text/xml" },
-      });
+      return NextResponse.json({ status: "ok" });
     }
 
-    // Find or create conversation for this contact
+    // Find or create conversation
     let { data: conversation } = await supabase
       .from("conversations")
       .select("id")
@@ -149,7 +136,6 @@ export async function POST(req: NextRequest) {
         .single();
       conversation = newConv;
     } else {
-      // Update existing conversation
       await supabase
         .from("conversations")
         .update({
@@ -161,7 +147,6 @@ export async function POST(req: NextRequest) {
     }
 
     if (conversation) {
-      // Insert the inbound message
       await supabase.from("messages").insert({
         conversation_id: conversation.id,
         direction: "inbound",
@@ -169,18 +154,18 @@ export async function POST(req: NextRequest) {
         status: "received",
       });
 
-      // Update campaign reply count if applicable
-      const { data: campaignContacts } = await supabase
+      // Update campaign reply count
+      const { data: campaignContact } = await supabase
         .from("contacts")
         .select("campaign")
         .eq("id", contact.id)
         .single();
 
-      if (campaignContacts?.campaign) {
+      if (campaignContact?.campaign) {
         const { data: campaign } = await supabase
           .from("campaigns")
           .select("id, replies")
-          .eq("name", campaignContacts.campaign)
+          .eq("name", campaignContact.campaign)
           .eq("user_id", contact.user_id)
           .single();
 
@@ -193,14 +178,21 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Return empty TwiML response
-    return new NextResponse("<Response></Response>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return NextResponse.json({ status: "ok" });
   } catch (error) {
     console.error("Incoming SMS webhook error:", error);
-    return new NextResponse("<Response></Response>", {
-      headers: { "Content-Type": "text/xml" },
-    });
+    return NextResponse.json({ status: "ok" });
   }
+}
+
+// Helper to send reply via Vonage
+async function sendVonageReply(from: string, to: string, text: string) {
+  const apiKey = process.env.VONAGE_API_KEY!;
+  const apiSecret = process.env.VONAGE_API_SECRET!;
+
+  await fetch("https://rest.nexmo.com/sms/json", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, from, to, text }),
+  });
 }

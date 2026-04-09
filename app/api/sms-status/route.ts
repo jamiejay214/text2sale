@@ -2,82 +2,75 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-function normalizePhone(raw: string): string {
-  const digits = raw.replace(/\D/g, "");
-  const normalized = digits.startsWith("1") ? digits.slice(1) : digits;
-  return `(${normalized.slice(0, 3)}) ${normalized.slice(3, 6)}-${normalized.slice(6)}`;
-}
-
-function mapTwilioStatus(
-  status: string
-): "sent" | "delivered" | "failed" | string {
-  switch (status) {
-    case "delivered":
-      return "delivered";
-    case "undelivered":
-    case "failed":
-      return "failed";
-    case "sent":
-      return "sent";
-    case "queued":
-      return "queued";
-    default:
-      return status;
-  }
+// Vonage sends delivery receipts as GET or POST
+export async function GET(req: NextRequest) {
+  return handleDLR(req);
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const formData = await req.formData();
-    const messageSid = formData.get("MessageSid") as string;
-    const messageStatus = formData.get("MessageStatus") as string;
-    const to = formData.get("To") as string;
-    const errorCode = formData.get("ErrorCode") as string | null;
+  return handleDLR(req);
+}
 
-    if (!messageStatus || !to) {
-      return NextResponse.json({ success: false, error: "Missing fields" }, { status: 400 });
+async function handleDLR(req: NextRequest) {
+  try {
+    // Vonage DLR params: msisdn (recipient), to (sender number), status, err-code, messageId
+    let to: string, status: string, errCode: string;
+
+    if (req.method === "GET") {
+      const params = req.nextUrl.searchParams;
+      to = params.get("msisdn") || "";
+      status = params.get("status") || "";
+      errCode = params.get("err-code") || "";
+    } else {
+      const contentType = req.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const json = await req.json();
+        to = json.msisdn || "";
+        status = json.status || "";
+        errCode = json["err-code"] || "";
+      } else {
+        const formData = await req.formData();
+        to = (formData.get("msisdn") || "") as string;
+        status = (formData.get("status") || "") as string;
+        errCode = (formData.get("err-code") || "") as string;
+      }
     }
 
-    // Normalize the To number (recipient of the outbound SMS) for contact lookup
+    if (!to || !status) {
+      return NextResponse.json({ success: true });
+    }
+
+    // Map Vonage status to our status
+    // Vonage: delivered, expired, failed, rejected, accepted, buffered, unknown
+    const mappedStatus = status === "delivered" ? "delivered"
+      : (status === "failed" || status === "rejected" || status === "expired") ? "failed"
+      : status === "accepted" ? "sent"
+      : "sent";
+
+    // Normalize phone for lookup
     const toDigits = to.replace(/\D/g, "");
     const toNormalized = toDigits.startsWith("1") ? toDigits.slice(1) : toDigits;
-    const toFormatted = normalizePhone(to);
+    const toFormatted = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
 
-    // Find the contact by phone number (check multiple formats)
     const { data: contacts } = await supabase
       .from("contacts")
       .select("id")
-      .or(
-        `phone.eq.${toFormatted},phone.eq.${to},phone.eq.${toDigits},phone.eq.+1${toNormalized}`
-      );
+      .or(`phone.eq.${toFormatted},phone.eq.+1${toNormalized},phone.eq.${toDigits},phone.eq.${to}`);
 
     if (!contacts || contacts.length === 0) {
-      console.warn(`SMS status callback: no contact found for ${to}`);
-      return NextResponse.json({ success: true, skipped: true });
+      return NextResponse.json({ success: true });
     }
 
     const contact = contacts[0];
 
-    // Find the conversation for this contact
     const { data: conversation } = await supabase
-      .from("conversations")
-      .select("id")
-      .eq("contact_id", contact.id)
-      .single();
+      .from("conversations").select("id").eq("contact_id", contact.id).single();
 
-    if (!conversation) {
-      console.warn(
-        `SMS status callback: no conversation for contact ${contact.id}`
-      );
-      return NextResponse.json({ success: true, skipped: true });
-    }
+    if (!conversation) return NextResponse.json({ success: true });
 
-    // Find the most recent outbound message in this conversation
     const { data: message } = await supabase
       .from("messages")
       .select("id")
@@ -87,33 +80,16 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
 
-    if (!message) {
-      console.warn(
-        `SMS status callback: no outbound message for conversation ${conversation.id}`
-      );
-      return NextResponse.json({ success: true, skipped: true });
-    }
+    if (!message) return NextResponse.json({ success: true });
 
-    // Update the message status
-    const mappedStatus = mapTwilioStatus(messageStatus);
     const updateData: Record<string, unknown> = { status: mappedStatus };
-
-    if (errorCode) {
-      updateData.error_code = errorCode;
-    }
+    if (errCode && errCode !== "0") updateData.error_code = errCode;
 
     await supabase.from("messages").update(updateData).eq("id", message.id);
-
-    console.log(
-      `SMS status updated: message ${message.id} -> ${mappedStatus}${messageSid ? ` (SID: ${messageSid})` : ""}`
-    );
 
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("SMS status webhook error:", error);
-    return NextResponse.json(
-      { success: false, error: "Internal error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: true });
   }
 }

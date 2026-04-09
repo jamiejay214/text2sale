@@ -1,17 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import twilio from "twilio";
 import { createClient } from "@supabase/supabase-js";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const apiKey = process.env.VONAGE_API_KEY!;
+const apiSecret = process.env.VONAGE_API_SECRET!;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumbers, messageTemplate, campaignName, messagingServiceSid } = await req.json();
+    const { campaignId, userId, fromNumbers, messageTemplate, campaignName } = await req.json();
 
-    // Support both single fromNumber (legacy) and fromNumbers array
     const numbers: string[] = Array.isArray(fromNumbers)
       ? fromNumbers
       : fromNumbers
@@ -25,10 +23,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const client = twilio(accountSid, authToken);
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Fetch non-DNC contacts for this user, optionally filtered by campaign
     let contactsQuery = supabase
       .from("contacts")
       .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes, campaign")
@@ -48,24 +44,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize all from numbers to E.164
-    const fromE164List = numbers.map((num: string) => {
+    // Normalize from numbers — Vonage wants digits with country code, no +
+    const fromList = numbers.map((num: string) => {
       const digits = num.replace(/\D/g, "");
-      return digits.startsWith("1") ? `+${digits}` : `+1${digits}`;
+      return digits.startsWith("1") ? digits : `1${digits}`;
     });
 
     let sent = 0;
     let failed = 0;
-    let replies = 0;
+    const replies = 0;
     const errors: string[] = [];
 
-    // Send to each contact, rotating through from numbers
     for (let i = 0; i < contacts.length; i++) {
       const contact = contacts[i];
-      const fromE164 = fromE164List[i % fromE164List.length]; // Round-robin rotation
+      const fromNumber = fromList[i % fromList.length];
 
       try {
-        // Personalize message
         const personalizedBody = messageTemplate
           .replace(/\{firstName\}/gi, contact.first_name || "")
           .replace(/\{lastName\}/gi, contact.last_name || "")
@@ -85,29 +79,34 @@ export async function POST(req: NextRequest) {
           .replace(/\{notes\}/gi, contact.notes || "");
 
         const toDigits = contact.phone.replace(/\D/g, "");
-        const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
+        const toNumber = toDigits.startsWith("1") ? toDigits : `1${toDigits}`;
 
-        // Status callback for delivery tracking
-        const statusCallback = `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/sms-status`;
+        // Send via Vonage
+        const res = await fetch("https://rest.nexmo.com/sms/json", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            api_key: apiKey,
+            api_secret: apiSecret,
+            to: toNumber,
+            from: fromNumber,
+            text: personalizedBody,
+          }),
+        });
 
-        // Use Messaging Service if available (10DLC), otherwise direct from number
-        if (messagingServiceSid) {
-          await client.messages.create({ to: toE164, body: personalizedBody, messagingServiceSid, statusCallback });
-        } else {
-          await client.messages.create({ to: toE164, body: personalizedBody, from: fromE164, statusCallback });
+        const data = await res.json();
+
+        if (data.messages?.[0]?.status !== "0") {
+          throw new Error(data.messages?.[0]?.["error-text"] || "Send failed");
         }
 
         sent++;
 
-        // Tag the contact with this campaign name (keep existing if already set)
         if (campaignName && !contact.campaign) {
-          await supabase
-            .from("contacts")
-            .update({ campaign: campaignName })
-            .eq("id", contact.id);
+          await supabase.from("contacts").update({ campaign: campaignName }).eq("id", contact.id);
         }
 
-        // Create/update conversation for tracking replies
+        // Create/update conversation
         const { data: existingConv } = await supabase
           .from("conversations")
           .select("id")
@@ -159,7 +158,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Update campaign stats
     const logs = [{
       id: `log_${Date.now()}`,
       createdAt: new Date().toISOString(),
@@ -171,14 +169,7 @@ export async function POST(req: NextRequest) {
 
     await supabase
       .from("campaigns")
-      .update({
-        status: "Completed",
-        audience: contacts.length,
-        sent,
-        failed,
-        replies,
-        logs,
-      })
+      .update({ status: "Completed", audience: contacts.length, sent, failed, replies, logs })
       .eq("id", campaignId);
 
     return NextResponse.json({
@@ -186,14 +177,11 @@ export async function POST(req: NextRequest) {
       sent,
       failed,
       total: contacts.length,
-      errors: errors.slice(0, 10), // Return first 10 errors
+      errors: errors.slice(0, 10),
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Campaign send error:", errMsg);
-    return NextResponse.json(
-      { success: false, error: errMsg },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }

@@ -1,50 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
-import twilio from "twilio";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const apiKey = process.env.VONAGE_API_KEY!;
+const apiSecret = process.env.VONAGE_API_SECRET!;
 
 export async function POST(req: NextRequest) {
   try {
     const { areaCode } = await req.json();
 
-    const client = twilio(accountSid, authToken);
-
-    // Search for available numbers
-    const available = await client.availablePhoneNumbers("US").local.list({
-      areaCode: areaCode ? Number(areaCode) : undefined,
-      smsEnabled: true,
-      limit: 10,
+    const params = new URLSearchParams({
+      api_key: apiKey,
+      api_secret: apiSecret,
+      country: "US",
+      features: "SMS",
+      size: "10",
     });
 
-    if (available.length === 0) {
-      return NextResponse.json({
-        success: true,
-        numbers: [],
-        message: "No numbers available for that area code.",
-      });
+    if (areaCode) {
+      params.set("pattern", `1${areaCode}`);
+      params.set("search_pattern", "1");
     }
 
-    const numbers = available.map((n) => {
-      const digits = n.phoneNumber.replace(/\D/g, "");
-      const display = digits.length === 11
-        ? `(${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`
-        : n.phoneNumber;
+    const res = await fetch(`https://rest.nexmo.com/number/search?${params}`);
+    const data = await res.json();
+
+    if (!data.numbers || data.numbers.length === 0) {
+      return NextResponse.json({ success: true, numbers: [], message: "No numbers available for that area code." });
+    }
+
+    const numbers = data.numbers.map((n: { msisdn: string; cost: string }) => {
+      const digits = n.msisdn.startsWith("1") ? n.msisdn.slice(1) : n.msisdn;
       return {
-        raw: n.phoneNumber,
-        display,
-        locality: n.locality || "",
-        region: n.region || "",
+        raw: `+${n.msisdn}`,
+        display: `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`,
+        locality: "",
+        region: "",
       };
     });
 
     return NextResponse.json({ success: true, numbers });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Twilio search error:", errMsg);
-    return NextResponse.json(
-      { success: false, error: errMsg },
-      { status: 500 }
-    );
+    console.error("Vonage search error:", errMsg);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }
