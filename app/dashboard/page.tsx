@@ -840,11 +840,9 @@ export default function DashboardPage() {
     if (!contact) return;
     const fromNumber = currentUser?.ownedNumbers?.[0]?.number || "";
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
-    const msid = currentUser?.a2pRegistration?.status === "completed" ? currentUser.a2pRegistration.messagingServiceSid : null;
-
     const sm = await insertScheduledMessage({
       user_id: userId, contact_id: contact.id, body: composerText.trim(),
-      from_number: fromNumber, messaging_service_sid: msid || null,
+      from_number: fromNumber,
       scheduled_at: scheduledAt, status: "pending",
     });
     if (sm) {
@@ -938,124 +936,7 @@ export default function DashboardPage() {
     else setA2pStep(0);
   }, [currentUser?.a2pRegistration?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleA2pRegisterBrand = async () => {
-    if (!userId || !currentUser) return;
-    if (!a2pForm.businessName || !a2pForm.contactFirstName || !a2pForm.contactLastName || !a2pForm.contactEmail || !a2pForm.contactPhone) {
-      setMessage("❌ Fill in all required fields"); window.setTimeout(() => setMessage(""), 3000); return;
-    }
-    setA2pLoading(true);
-    try {
-      const res = await fetch("/api/a2p-register", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "register_brand", userId, ...a2pForm }),
-      });
-      const data = await res.json();
-      if (!data.success) { setMessage(`❌ ${data.error}`); window.setTimeout(() => setMessage(""), 5000); setA2pLoading(false); return; }
-
-      const reg: A2PRegistration = {
-        status: "brand_pending",
-        customerProfileSid: data.customerProfileSid, trustProductSid: data.trustProductSid,
-        brandRegistrationSid: data.brandRegistrationSid, brandStatus: data.brandStatus,
-        messagingServiceSid: data.messagingServiceSid, campaignSid: null, campaignStatus: null,
-        ...a2pForm, sampleMessages: [a2pForm.sampleMessage1, a2pForm.sampleMessage2].filter(Boolean),
-        errors: [], updatedAt: new Date().toISOString(),
-      };
-      await persistProfile({ a2p_registration: reg });
-      setA2pStep(2);
-      setMessage("✅ Brand registration submitted! It typically takes a few days for approval.");
-      window.setTimeout(() => setMessage(""), 5000);
-    } catch { setMessage("❌ Failed to submit brand registration"); window.setTimeout(() => setMessage(""), 3000); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pCheckBrand = async () => {
-    if (!currentUser?.a2pRegistration?.brandRegistrationSid) return;
-    setA2pLoading(true);
-    try {
-      const res = await fetch("/api/a2p-register", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_brand_status", userId, brandRegistrationSid: currentUser.a2pRegistration.brandRegistrationSid }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const isApproved = data.brandStatus === "APPROVED";
-        const isFailed = data.brandStatus === "FAILED";
-        const newReg = { ...currentUser.a2pRegistration, brandStatus: data.brandStatus, status: isApproved ? "brand_approved" as const : isFailed ? "brand_failed" as const : currentUser.a2pRegistration.status, updatedAt: new Date().toISOString() };
-        await persistProfile({ a2p_registration: newReg });
-        if (isApproved) { setA2pStep(3); setMessage("✅ Brand approved! Now register your campaign."); }
-        else if (isFailed) { setA2pStep(0); setMessage("❌ Brand registration failed. Please try again with updated info."); }
-        else setMessage(`Brand status: ${data.brandStatus}`);
-        window.setTimeout(() => setMessage(""), 5000);
-      }
-    } catch { setMessage("❌ Failed to check brand status"); window.setTimeout(() => setMessage(""), 3000); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pRegisterCampaign = async () => {
-    if (!currentUser?.a2pRegistration?.messagingServiceSid || !currentUser?.a2pRegistration?.brandRegistrationSid) return;
-    if (!a2pForm.description || a2pForm.description.length < 40) {
-      setMessage("❌ Campaign description must be at least 40 characters"); window.setTimeout(() => setMessage(""), 3000); return;
-    }
-    setA2pLoading(true);
-    try {
-      const reg = currentUser.a2pRegistration;
-      const res = await fetch("/api/a2p-register", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "register_campaign", userId,
-          messagingServiceSid: reg.messagingServiceSid, brandRegistrationSid: reg.brandRegistrationSid,
-          useCase: a2pForm.useCase, description: a2pForm.description,
-          sampleMessages: [a2pForm.sampleMessage1, a2pForm.sampleMessage2].filter(Boolean),
-          messageFlow: a2pForm.messageFlow, optInMessage: a2pForm.optInMessage,
-          optOutMessage: a2pForm.optOutMessage, helpMessage: a2pForm.helpMessage,
-          hasEmbeddedLinks: a2pForm.hasEmbeddedLinks, hasEmbeddedPhone: a2pForm.hasEmbeddedPhone,
-        }),
-      });
-      const data = await res.json();
-      if (!data.success) { setMessage(`❌ ${data.error}`); window.setTimeout(() => setMessage(""), 5000); setA2pLoading(false); return; }
-      const newReg = { ...reg, campaignSid: data.campaignSid, campaignStatus: data.campaignStatus, status: "campaign_pending" as const, sampleMessages: [a2pForm.sampleMessage1, a2pForm.sampleMessage2].filter(Boolean), description: a2pForm.description, useCase: a2pForm.useCase, messageFlow: a2pForm.messageFlow, optInMessage: a2pForm.optInMessage, optOutMessage: a2pForm.optOutMessage, helpMessage: a2pForm.helpMessage, hasEmbeddedLinks: a2pForm.hasEmbeddedLinks, hasEmbeddedPhone: a2pForm.hasEmbeddedPhone, updatedAt: new Date().toISOString() };
-      await persistProfile({ a2p_registration: newReg });
-      setA2pStep(4);
-      setMessage("✅ Campaign submitted! Reviews typically take 10-15 days.");
-      window.setTimeout(() => setMessage(""), 5000);
-    } catch { setMessage("❌ Failed to submit campaign"); window.setTimeout(() => setMessage(""), 3000); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pCheckCampaign = async () => {
-    if (!currentUser?.a2pRegistration?.messagingServiceSid || !currentUser?.a2pRegistration?.campaignSid) return;
-    setA2pLoading(true);
-    try {
-      const reg = currentUser.a2pRegistration;
-      const res = await fetch("/api/a2p-register", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "check_campaign_status", userId, messagingServiceSid: reg.messagingServiceSid, campaignSid: reg.campaignSid }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        const isApproved = data.campaignStatus === "VERIFIED";
-        const isFailed = data.campaignStatus === "FAILED";
-        const newReg = { ...reg, campaignStatus: data.campaignStatus, status: isApproved ? "completed" as const : isFailed ? "campaign_failed" as const : reg.status, errors: data.errors || [], updatedAt: new Date().toISOString() };
-        await persistProfile({ a2p_registration: newReg });
-        if (isApproved) {
-          setA2pStep(5);
-          setMessage("✅ Campaign approved! Your 10DLC registration is complete.");
-          // Auto-add existing phone numbers to messaging service
-          for (const num of currentUser.ownedNumbers || []) {
-            try {
-              await fetch("/api/a2p-register", {
-                method: "POST", headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "add_phone_number", userId, messagingServiceSid: reg.messagingServiceSid, phoneNumberSid: num.id }),
-              });
-            } catch { /* ignore individual failures */ }
-          }
-        } else if (isFailed) { setA2pStep(3); setMessage(`❌ Campaign failed: ${(data.errors || []).join(", ")}`); }
-        else setMessage(`Campaign status: ${data.campaignStatus}`);
-        window.setTimeout(() => setMessage(""), 5000);
-      }
-    } catch { setMessage("❌ Failed to check campaign status"); window.setTimeout(() => setMessage(""), 3000); }
-    setA2pLoading(false);
-  };
+  // 10DLC is handled through the Vonage dashboard — no in-app API calls needed
 
   const personalizationFields = [
     { tag: "{firstName}", label: "First Name" },
@@ -1254,7 +1135,7 @@ export default function DashboardPage() {
         window.setTimeout(() => setMessage(""), 3000);
       }
     } catch {
-      setMessage("❌ Could not connect to Twilio");
+      setMessage("❌ Could not connect to SMS service");
       window.setTimeout(() => setMessage(""), 3000);
     }
 
@@ -1278,7 +1159,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/buy-number", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber, messagingServiceSid: currentUser?.a2pRegistration?.status === "completed" ? currentUser.a2pRegistration.messagingServiceSid : undefined }),
+        body: JSON.stringify({ phoneNumber }),
       });
 
       const data = await res.json();
@@ -1313,7 +1194,7 @@ export default function DashboardPage() {
       setMessage(`✅ Number ${data.number} purchased`);
       window.setTimeout(() => setMessage(""), 3000);
     } catch {
-      setMessage("❌ Could not connect to Twilio");
+      setMessage("❌ Could not connect to SMS service");
       window.setTimeout(() => setMessage(""), 3000);
     }
 
@@ -1367,19 +1248,12 @@ export default function DashboardPage() {
 
     setComposerText("");
 
-    // Send via Twilio
+    // Send via Vonage
     try {
-      const smsPayload: Record<string, unknown> = { to: contact.phone, body };
-      // Use Messaging Service if 10DLC registration is completed
-      if (currentUser.a2pRegistration?.status === "completed" && currentUser.a2pRegistration.messagingServiceSid) {
-        smsPayload.messagingServiceSid = currentUser.a2pRegistration.messagingServiceSid;
-      } else {
-        smsPayload.from = fromNumber;
-      }
       const res = await fetch("/api/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(smsPayload),
+        body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
       });
 
       const data = await res.json();
@@ -1634,7 +1508,7 @@ export default function DashboardPage() {
 
     setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
 
-    // Send each step via Twilio API
+    // Send each step via Vonage API
     try {
       let totalSent = 0;
       let totalFailed = 0;
@@ -1659,7 +1533,6 @@ export default function DashboardPage() {
             fromNumbers,
             messageTemplate: step.message,
             campaignName: hasCampaignContacts ? campaign.name : undefined,
-            messagingServiceSid: currentUser?.a2pRegistration?.status === "completed" ? currentUser.a2pRegistration.messagingServiceSid : undefined,
           }),
         });
 
@@ -4337,321 +4210,70 @@ export default function DashboardPage() {
           <div className="space-y-6">
             <h2 className="text-2xl font-bold">10DLC A2P Registration</h2>
             <p className="text-zinc-400">
-              Register your business with Twilio for A2P 10DLC compliance. This is required by US carriers to send business text messages. The process has 3 steps: Brand Registration, Campaign Registration, and Phone Number Association.
+              US carriers require 10DLC registration for business text messaging (A2P). This registration is handled
+              directly through the Vonage dashboard to ensure full compliance.
             </p>
 
-            {/* Status bar */}
-            <div className="flex items-center gap-2">
-              {["Business Info", "Brand Review", "Campaign Info", "Campaign Review", "Complete"].map((label, i) => (
-                <div key={label} className="flex items-center gap-2">
-                  <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                    a2pStep > i ? "bg-emerald-600 text-white" : a2pStep === i ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-500"
-                  }`}>{i + 1}</div>
-                  <span className={`text-xs ${a2pStep >= i ? "text-white" : "text-zinc-500"}`}>{label}</span>
-                  {i < 4 && <div className={`h-0.5 w-6 ${a2pStep > i ? "bg-emerald-600" : "bg-zinc-700"}`} />}
+            <div className="space-y-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <h3 className="text-lg font-semibold">How to Register</h3>
+
+              <div className="space-y-4">
+                <div className="flex items-start gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">1</div>
+                  <div>
+                    <p className="font-medium">Log into your Vonage Dashboard</p>
+                    <p className="text-sm text-zinc-400">Go to the Vonage API Dashboard and navigate to Numbers &gt; Brand &amp; Campaign Registration.</p>
+                  </div>
                 </div>
-              ))}
+                <div className="flex items-start gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">2</div>
+                  <div>
+                    <p className="font-medium">Register Your Brand</p>
+                    <p className="text-sm text-zinc-400">Provide your business name, EIN, address, and contact information. Brand review typically takes 1-5 business days.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">3</div>
+                  <div>
+                    <p className="font-medium">Register Your Campaign</p>
+                    <p className="text-sm text-zinc-400">Once your brand is approved, create a campaign describing your messaging use case. Campaign reviews take 10-15 business days.</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-4">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">4</div>
+                  <div>
+                    <p className="font-medium">Associate Your Numbers</p>
+                    <p className="text-sm text-zinc-400">After campaign approval, link your purchased phone numbers to the campaign. You can then send messages with full carrier compliance.</p>
+                  </div>
+                </div>
+              </div>
+
+              <a
+                href="https://dashboard.nexmo.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-block rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700"
+              >
+                Open Vonage Dashboard
+              </a>
             </div>
 
-            {/* Step 0/1: Business Information Form */}
-            {(a2pStep === 0 || a2pStep === 1) && (
-              <div className="space-y-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">Step 1: Business Information</h3>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Business Name *</label>
-                    <input value={a2pForm.businessName} onChange={(e) => setA2pForm({ ...a2pForm, businessName: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="Your Business Name" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Business Type *</label>
-                    <select value={a2pForm.businessType} onChange={(e) => setA2pForm({ ...a2pForm, businessType: e.target.value as typeof a2pForm.businessType })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none">
-                      <option value="sole_proprietor">Sole Proprietor</option>
-                      <option value="partnership">Partnership</option>
-                      <option value="llc">LLC</option>
-                      <option value="corporation">Corporation</option>
-                      <option value="non_profit">Non-Profit</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">EIN (Tax ID)</label>
-                    <input value={a2pForm.ein} onChange={(e) => setA2pForm({ ...a2pForm, ein: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="12-3456789" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Website</label>
-                    <input value={a2pForm.website} onChange={(e) => setA2pForm({ ...a2pForm, website: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="https://yoursite.com" />
-                  </div>
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <h3 className="mb-3 text-lg font-semibold">Your Phone Numbers</h3>
+              {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 ? (
+                <div className="space-y-2">
+                  {currentUser.ownedNumbers.map((num) => (
+                    <div key={num.id} className="flex items-center gap-3 rounded-xl bg-zinc-800 px-4 py-3">
+                      <div className="h-2 w-2 rounded-full bg-emerald-500" />
+                      <span className="font-mono">{num.number}</span>
+                      <span className="text-sm text-zinc-400">{num.alias}</span>
+                    </div>
+                  ))}
                 </div>
-
-                <h4 className="text-md font-semibold text-zinc-300">Business Address</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm text-zinc-400">Street Address *</label>
-                    <input value={a2pForm.businessAddress} onChange={(e) => setA2pForm({ ...a2pForm, businessAddress: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="123 Main St" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">City *</label>
-                    <input value={a2pForm.businessCity} onChange={(e) => setA2pForm({ ...a2pForm, businessCity: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="Miami" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">State *</label>
-                    <input value={a2pForm.businessState} onChange={(e) => setA2pForm({ ...a2pForm, businessState: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="FL" maxLength={2} />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">ZIP Code *</label>
-                    <input value={a2pForm.businessZip} onChange={(e) => setA2pForm({ ...a2pForm, businessZip: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="33101" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Country</label>
-                    <input value={a2pForm.businessCountry} onChange={(e) => setA2pForm({ ...a2pForm, businessCountry: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="US" maxLength={2} />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold text-zinc-300">Authorized Contact Person</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">First Name *</label>
-                    <input value={a2pForm.contactFirstName} onChange={(e) => setA2pForm({ ...a2pForm, contactFirstName: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="John" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Last Name *</label>
-                    <input value={a2pForm.contactLastName} onChange={(e) => setA2pForm({ ...a2pForm, contactLastName: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="Doe" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Email *</label>
-                    <input value={a2pForm.contactEmail} onChange={(e) => setA2pForm({ ...a2pForm, contactEmail: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="john@company.com" type="email" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Phone *</label>
-                    <input value={a2pForm.contactPhone} onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" placeholder="+1234567890" />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold text-zinc-300">Campaign Details (for Step 3)</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Use Case *</label>
-                    <select value={a2pForm.useCase} onChange={(e) => setA2pForm({ ...a2pForm, useCase: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none">
-                      <option value="MIXED">Mixed (Marketing + Notifications)</option>
-                      <option value="MARKETING">Marketing</option>
-                      <option value="LOW_VOLUME">Low Volume Mixed</option>
-                      <option value="ACCOUNT_NOTIFICATION">Account Notifications</option>
-                      <option value="CUSTOMER_CARE">Customer Care</option>
-                      <option value="2FA">Two-Factor Authentication</option>
-                      <option value="SOLE_PROPRIETOR">Sole Proprietor</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm text-zinc-400">Campaign Description * (min 40 chars)</label>
-                    <textarea value={a2pForm.description} onChange={(e) => setA2pForm({ ...a2pForm, description: e.target.value })} rows={3}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Describe what messages you will send and why. E.g.: We send appointment reminders, follow-up messages, and marketing promotions to customers who have opted in through our website." />
-                    <div className="mt-1 text-xs text-zinc-500">{a2pForm.description.length}/40 minimum characters</div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Sample Message 1 *</label>
-                    <input value={a2pForm.sampleMessage1} onChange={(e) => setA2pForm({ ...a2pForm, sampleMessage1: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Hi {firstName}, your appointment is tomorrow at 2pm." />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Sample Message 2 *</label>
-                    <input value={a2pForm.sampleMessage2} onChange={(e) => setA2pForm({ ...a2pForm, sampleMessage2: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Thanks for choosing us! Reply STOP to unsubscribe." />
-                  </div>
-                </div>
-
-                <h4 className="text-md font-semibold text-zinc-300">Opt-In / Opt-Out Messages</h4>
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm text-zinc-400">How users opt in (message flow) *</label>
-                    <textarea value={a2pForm.messageFlow} onChange={(e) => setA2pForm({ ...a2pForm, messageFlow: e.target.value })} rows={2}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Opt-In Confirmation Message</label>
-                    <input value={a2pForm.optInMessage} onChange={(e) => setA2pForm({ ...a2pForm, optInMessage: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Opt-Out Confirmation Message</label>
-                    <input value={a2pForm.optOutMessage} onChange={(e) => setA2pForm({ ...a2pForm, optOutMessage: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Help Message</label>
-                    <input value={a2pForm.helpMessage} onChange={(e) => setA2pForm({ ...a2pForm, helpMessage: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                </div>
-
-                <div className="flex gap-4">
-                  <label className="flex items-center gap-2 text-sm text-zinc-300">
-                    <input type="checkbox" checked={a2pForm.hasEmbeddedLinks} onChange={(e) => setA2pForm({ ...a2pForm, hasEmbeddedLinks: e.target.checked })} className="rounded border-zinc-600" />
-                    Messages contain links
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-zinc-300">
-                    <input type="checkbox" checked={a2pForm.hasEmbeddedPhone} onChange={(e) => setA2pForm({ ...a2pForm, hasEmbeddedPhone: e.target.checked })} className="rounded border-zinc-600" />
-                    Messages contain phone numbers
-                  </label>
-                </div>
-
-                {currentUser?.a2pRegistration?.status === "brand_failed" && (
-                  <div className="rounded-xl border border-red-800 bg-red-900/30 p-4 text-sm text-red-300">
-                    Previous brand registration failed. Please update your information and try again.
-                  </div>
-                )}
-
-                <button onClick={handleA2pRegisterBrand} disabled={a2pLoading}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50">
-                  {a2pLoading ? "Submitting..." : "Submit Brand Registration"}
-                </button>
-              </div>
-            )}
-
-            {/* Step 2: Brand Pending Review */}
-            {a2pStep === 2 && (
-              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">Step 2: Brand Under Review</h3>
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 animate-pulse rounded-full bg-yellow-500" />
-                  <span className="text-yellow-400">Brand Status: {currentUser?.a2pRegistration?.brandStatus || "PENDING"}</span>
-                </div>
-                <p className="text-sm text-zinc-400">
-                  Your brand registration has been submitted to The Campaign Registry (TCR) for review.
-                  This typically takes 1-5 business days. Click the button below to check the current status.
-                </p>
-                <button onClick={handleA2pCheckBrand} disabled={a2pLoading}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50">
-                  {a2pLoading ? "Checking..." : "Check Brand Status"}
-                </button>
-              </div>
-            )}
-
-            {/* Step 3: Campaign Registration Form */}
-            {a2pStep === 3 && (
-              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">Step 3: Register Campaign</h3>
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full bg-emerald-500" />
-                  <span className="text-emerald-400">Brand Approved</span>
-                </div>
-                <p className="text-sm text-zinc-400">
-                  Your brand has been approved. Now submit your campaign use case for review.
-                  The campaign details were pre-filled from Step 1. Review and update if needed.
-                </p>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Use Case</label>
-                    <select value={a2pForm.useCase} onChange={(e) => setA2pForm({ ...a2pForm, useCase: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none">
-                      <option value="MIXED">Mixed (Marketing + Notifications)</option>
-                      <option value="MARKETING">Marketing</option>
-                      <option value="LOW_VOLUME">Low Volume Mixed</option>
-                      <option value="ACCOUNT_NOTIFICATION">Account Notifications</option>
-                      <option value="CUSTOMER_CARE">Customer Care</option>
-                      <option value="2FA">Two-Factor Authentication</option>
-                      <option value="SOLE_PROPRIETOR">Sole Proprietor</option>
-                    </select>
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm text-zinc-400">Campaign Description (min 40 chars)</label>
-                    <textarea value={a2pForm.description} onChange={(e) => setA2pForm({ ...a2pForm, description: e.target.value })} rows={3}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                    <div className="mt-1 text-xs text-zinc-500">{a2pForm.description.length}/40 minimum characters</div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Sample Message 1</label>
-                    <input value={a2pForm.sampleMessage1} onChange={(e) => setA2pForm({ ...a2pForm, sampleMessage1: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Sample Message 2</label>
-                    <input value={a2pForm.sampleMessage2} onChange={(e) => setA2pForm({ ...a2pForm, sampleMessage2: e.target.value })}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none" />
-                  </div>
-                </div>
-
-                {currentUser?.a2pRegistration?.errors && currentUser.a2pRegistration.errors.length > 0 && (
-                  <div className="rounded-xl border border-red-800 bg-red-900/30 p-4 text-sm text-red-300">
-                    <strong>Previous errors:</strong> {currentUser.a2pRegistration.errors.join(", ")}
-                  </div>
-                )}
-
-                <button onClick={handleA2pRegisterCampaign} disabled={a2pLoading}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50">
-                  {a2pLoading ? "Submitting..." : "Submit Campaign for Review"}
-                </button>
-              </div>
-            )}
-
-            {/* Step 4: Campaign Pending Review */}
-            {a2pStep === 4 && (
-              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">Step 4: Campaign Under Review</h3>
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 animate-pulse rounded-full bg-yellow-500" />
-                  <span className="text-yellow-400">Campaign Status: {currentUser?.a2pRegistration?.campaignStatus || "IN_PROGRESS"}</span>
-                </div>
-                <p className="text-sm text-zinc-400">
-                  Your A2P campaign has been submitted for review. Campaign reviews currently take 10-15 business days.
-                  Click below to check the status.
-                </p>
-                <button onClick={handleA2pCheckCampaign} disabled={a2pLoading}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50">
-                  {a2pLoading ? "Checking..." : "Check Campaign Status"}
-                </button>
-              </div>
-            )}
-
-            {/* Step 5: Complete */}
-            {a2pStep === 5 && (
-              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">10DLC Registration Complete</h3>
-                <div className="flex items-center gap-3">
-                  <div className="h-3 w-3 rounded-full bg-emerald-500" />
-                  <span className="text-emerald-400">Fully Registered &amp; Approved</span>
-                </div>
-                <p className="text-sm text-zinc-400">
-                  Your business is fully registered for A2P 10DLC messaging. Your phone numbers are associated with your
-                  approved messaging service and campaign. You can send messages with full carrier compliance.
-                </p>
-                <div className="grid gap-3 md:grid-cols-2">
-                  <div className="rounded-xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Brand SID</div>
-                    <div className="mt-1 break-all font-mono text-xs text-zinc-300">{currentUser?.a2pRegistration?.brandRegistrationSid || "—"}</div>
-                  </div>
-                  <div className="rounded-xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Campaign SID</div>
-                    <div className="mt-1 break-all font-mono text-xs text-zinc-300">{currentUser?.a2pRegistration?.campaignSid || "—"}</div>
-                  </div>
-                  <div className="rounded-xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Messaging Service SID</div>
-                    <div className="mt-1 break-all font-mono text-xs text-zinc-300">{currentUser?.a2pRegistration?.messagingServiceSid || "—"}</div>
-                  </div>
-                  <div className="rounded-xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Business</div>
-                    <div className="mt-1 text-sm text-zinc-300">{currentUser?.a2pRegistration?.businessName || "—"}</div>
-                  </div>
-                </div>
-              </div>
-            )}
+              ) : (
+                <p className="text-sm text-zinc-500">No phone numbers yet. Purchase numbers from the Phone Numbers tab.</p>
+              )}
+            </div>
           </div>
         )}
 

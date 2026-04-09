@@ -1,50 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
-import twilio from "twilio";
 
-const accountSid = process.env.TWILIO_ACCOUNT_SID!;
-const authToken = process.env.TWILIO_AUTH_TOKEN!;
+const apiKey = process.env.VONAGE_API_KEY!;
+const apiSecret = process.env.VONAGE_API_SECRET!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, body, from, messagingServiceSid } = await req.json();
+    const { to, body, from } = await req.json();
 
-    if (!to || !body || (!from && !messagingServiceSid)) {
+    if (!to || !body || !from) {
       return NextResponse.json(
-        { success: false, error: "Missing required fields: to, body, and from or messagingServiceSid" },
+        { success: false, error: "Missing required fields: to, body, from" },
         { status: 400 }
       );
     }
 
-    const client = twilio(accountSid, authToken);
-
-    // Normalize phone number to E.164
+    // Normalize phone numbers — Vonage wants digits only, no + prefix, with country code
     const toDigits = to.replace(/\D/g, "");
-    const toE164 = toDigits.startsWith("1") ? `+${toDigits}` : `+1${toDigits}`;
+    const toE164 = toDigits.startsWith("1") ? toDigits : `1${toDigits}`;
 
-    // Status callback URL for delivery tracking
-    const statusCallback = `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/sms-status`;
+    const fromDigits = from.replace(/\D/g, "");
+    const fromE164 = fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`;
 
-    // Use Messaging Service if available (10DLC compliant), otherwise use direct from number
-    let message;
-    if (messagingServiceSid) {
-      message = await client.messages.create({ to: toE164, body, messagingServiceSid, statusCallback });
-    } else {
-      const fromDigits = from.replace(/\D/g, "");
-      const fromE164 = fromDigits.startsWith("1") ? `+${fromDigits}` : `+1${fromDigits}`;
-      message = await client.messages.create({ to: toE164, body, from: fromE164, statusCallback });
+    // Send via Vonage SMS API
+    const res = await fetch("https://rest.nexmo.com/sms/json", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: apiKey,
+        api_secret: apiSecret,
+        to: toE164,
+        from: fromE164,
+        text: body,
+      }),
+    });
+
+    const data = await res.json();
+
+    if (data.messages?.[0]?.status !== "0") {
+      const errMsg = data.messages?.[0]?.["error-text"] || "Failed to send";
+      console.error("Vonage send error:", errMsg);
+      return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      sid: message.sid,
-      status: message.status,
+      sid: data.messages[0]["message-id"],
+      status: "sent",
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Twilio send error:", errMsg);
-    return NextResponse.json(
-      { success: false, error: errMsg },
-      { status: 500 }
-    );
+    console.error("Vonage send error:", errMsg);
+    return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }

@@ -203,7 +203,6 @@ export type ScheduledMessage = {
   contact_id: string;
   body: string;
   from_number: string;
-  messaging_service_sid: string | null;
   scheduled_at: string;
   status: "pending" | "sent" | "failed" | "cancelled";
   created_at: string;
