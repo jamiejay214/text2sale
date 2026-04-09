@@ -5,49 +5,29 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Vonage sends delivery receipts as GET or POST
-export async function GET(req: NextRequest) {
-  return handleDLR(req);
-}
-
+// Telnyx sends delivery receipts as POST webhooks
 export async function POST(req: NextRequest) {
-  return handleDLR(req);
-}
-
-async function handleDLR(req: NextRequest) {
   try {
-    // Vonage DLR params: msisdn (recipient), to (sender number), status, err-code, messageId
-    let to: string, status: string, errCode: string;
+    const payload = await req.json();
+    const event = payload.data;
 
-    if (req.method === "GET") {
-      const params = req.nextUrl.searchParams;
-      to = params.get("msisdn") || "";
-      status = params.get("status") || "";
-      errCode = params.get("err-code") || "";
-    } else {
-      const contentType = req.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const json = await req.json();
-        to = json.msisdn || "";
-        status = json.status || "";
-        errCode = json["err-code"] || "";
-      } else {
-        const formData = await req.formData();
-        to = (formData.get("msisdn") || "") as string;
-        status = (formData.get("status") || "") as string;
-        errCode = (formData.get("err-code") || "") as string;
-      }
-    }
-
-    if (!to || !status) {
+    if (!event || event.event_type !== "message.finalized") {
       return NextResponse.json({ success: true });
     }
 
-    // Map Vonage status to our status
-    // Vonage: delivered, expired, failed, rejected, accepted, buffered, unknown
-    const mappedStatus = status === "delivered" ? "delivered"
-      : (status === "failed" || status === "rejected" || status === "expired") ? "failed"
-      : status === "accepted" ? "sent"
+    const eventPayload = event.payload;
+    const to = eventPayload?.to?.[0]?.phone_number || "";
+    const telnyxStatus = eventPayload?.to?.[0]?.status || "";
+
+    if (!to || !telnyxStatus) {
+      return NextResponse.json({ success: true });
+    }
+
+    // Map Telnyx status to our status
+    // Telnyx: queued, sending, sent, delivered, sending_failed, delivery_failed, delivery_unconfirmed
+    const mappedStatus = telnyxStatus === "delivered" ? "delivered"
+      : (telnyxStatus === "sending_failed" || telnyxStatus === "delivery_failed") ? "failed"
+      : (telnyxStatus === "sent" || telnyxStatus === "delivery_unconfirmed") ? "sent"
       : "sent";
 
     // Normalize phone for lookup
@@ -83,7 +63,8 @@ async function handleDLR(req: NextRequest) {
     if (!message) return NextResponse.json({ success: true });
 
     const updateData: Record<string, unknown> = { status: mappedStatus };
-    if (errCode && errCode !== "0") updateData.error_code = errCode;
+    const errors = eventPayload?.errors || [];
+    if (errors.length > 0) updateData.error_code = errors[0]?.code || "";
 
     await supabase.from("messages").update(updateData).eq("id", message.id);
 

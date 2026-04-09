@@ -1,94 +1,55 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const apiKey = process.env.VONAGE_API_KEY!;
-const apiSecret = process.env.VONAGE_API_SECRET!;
+const apiKey = process.env.TELNYX_API_KEY!;
+const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { phoneNumber, areaCode } = await req.json();
+    const { phoneNumber } = await req.json();
 
-    let msisdn: string;
-
-    if (phoneNumber) {
-      // User selected a specific number — extract msisdn (digits only with country code)
-      msisdn = phoneNumber.replace(/\D/g, "");
-      if (!msisdn.startsWith("1")) msisdn = `1${msisdn}`;
-    } else {
-      // Search for first available
-      const searchParams = new URLSearchParams({
-        api_key: apiKey,
-        api_secret: apiSecret,
-        country: "US",
-        features: "SMS",
-        size: "1",
-      });
-      if (areaCode) {
-        searchParams.set("pattern", `1${areaCode}`);
-        searchParams.set("search_pattern", "1");
-      }
-
-      const searchRes = await fetch(`https://rest.nexmo.com/number/search?${searchParams}`);
-      const searchData = await searchRes.json();
-
-      if (!searchData.numbers || searchData.numbers.length === 0) {
-        return NextResponse.json(
-          { success: false, error: "No numbers available. Try a different area code." },
-          { status: 404 }
-        );
-      }
-
-      msisdn = searchData.numbers[0].msisdn;
+    if (!phoneNumber) {
+      return NextResponse.json(
+        { success: false, error: "Phone number is required" },
+        { status: 400 }
+      );
     }
 
-    // Buy the number via Vonage
-    const buyRes = await fetch("https://rest.nexmo.com/number/buy", {
+    // Order the number via Telnyx
+    const orderRes = await fetch("https://api.telnyx.com/v2/number_orders", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        api_key: apiKey,
-        api_secret: apiSecret,
-        country: "US",
-        msisdn,
+        phone_numbers: [{ phone_number: phoneNumber }],
+        messaging_profile_id: messagingProfileId,
       }),
     });
 
-    const buyData = await buyRes.json();
+    const orderData = await orderRes.json();
 
-    if (buyData["error-code"] && buyData["error-code"] !== "200") {
+    if (orderData.errors) {
       return NextResponse.json(
-        { success: false, error: buyData["error-code-label"] || "Failed to buy number" },
+        { success: false, error: orderData.errors[0]?.detail || "Failed to buy number" },
         { status: 500 }
       );
     }
 
-    // Set up the webhook for incoming SMS
-    const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com"}/api/incoming-sms`;
-    await fetch("https://rest.nexmo.com/number/update", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        api_key: apiKey,
-        api_secret: apiSecret,
-        country: "US",
-        msisdn,
-        moHttpUrl: webhookUrl,
-        moSmppSysType: "inbound",
-      }),
-    });
-
     // Format for display
-    const digits = msisdn.startsWith("1") ? msisdn.slice(1) : msisdn;
-    const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+    const digits = phoneNumber.replace(/\D/g, "");
+    const local = digits.startsWith("1") ? digits.slice(1) : digits;
+    const display = `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`;
 
     return NextResponse.json({
       success: true,
       number: display,
-      raw: `+${msisdn}`,
-      sid: msisdn,
+      raw: phoneNumber,
+      sid: orderData.data?.id || phoneNumber,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Vonage buy number error:", errMsg);
+    console.error("Telnyx buy number error:", errMsg);
     return NextResponse.json(
       { success: false, error: errMsg },
       { status: 500 }

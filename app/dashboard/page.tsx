@@ -963,7 +963,7 @@ export default function DashboardPage() {
     else setA2pStep(0);
   }, [currentUser?.a2pRegistration?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 10DLC is handled through the Vonage dashboard — no in-app API calls needed
+  // 10DLC is handled through the Telnyx dashboard — no in-app API calls needed
 
   const personalizationFields = [
     { tag: "{firstName}", label: "First Name" },
@@ -1275,7 +1275,7 @@ export default function DashboardPage() {
 
     setComposerText("");
 
-    // Send via Vonage
+    // Send via Telnyx
     try {
       const res = await fetch("/api/send-sms", {
         method: "POST",
@@ -1535,7 +1535,7 @@ export default function DashboardPage() {
 
     setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
 
-    // Send each step via Vonage API
+    // Send each step via Telnyx API
     try {
       let totalSent = 0;
       let totalFailed = 0;
@@ -4312,7 +4312,7 @@ export default function DashboardPage() {
             <h2 className="text-2xl font-bold">10DLC A2P Registration</h2>
             <p className="text-zinc-400">
               US carriers require 10DLC registration for business text messaging (A2P). This registration is handled
-              directly through the Vonage dashboard to ensure full compliance.
+              directly through the Telnyx dashboard to ensure full compliance.
             </p>
 
             <div className="space-y-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -4322,8 +4322,8 @@ export default function DashboardPage() {
                 <div className="flex items-start gap-4">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">1</div>
                   <div>
-                    <p className="font-medium">Log into your Vonage Dashboard</p>
-                    <p className="text-sm text-zinc-400">Go to the Vonage API Dashboard and navigate to Numbers &gt; Brand &amp; Campaign Registration.</p>
+                    <p className="font-medium">Log into your Telnyx Dashboard</p>
+                    <p className="text-sm text-zinc-400">Go to the Telnyx Mission Control Portal and navigate to Messaging &gt; 10DLC.</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-4">
@@ -4350,12 +4350,12 @@ export default function DashboardPage() {
               </div>
 
               <a
-                href="https://dashboard.nexmo.com"
+                href="https://portal.telnyx.com"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="inline-block rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700"
               >
-                Open Vonage Dashboard
+                Open Telnyx Dashboard
               </a>
             </div>
 

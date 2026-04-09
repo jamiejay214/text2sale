@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const apiKey = process.env.VONAGE_API_KEY!;
-const apiSecret = process.env.VONAGE_API_SECRET!;
+const apiKey = process.env.TELNYX_API_KEY!;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
-  return digits.startsWith("1") ? digits : `1${digits}`;
+  return `+${digits.startsWith("1") ? digits : `1${digits}`}`;
 }
 
 // POST - Schedule a message (save to DB for later sending)
@@ -75,19 +74,24 @@ export async function GET() {
         const toNumber = normalizePhone(contact.phone);
         const fromNumber = normalizePhone(msg.from_number);
 
-        // Send via Vonage
-        const res = await fetch("https://rest.nexmo.com/sms/json", {
+        // Send via Telnyx
+        const res = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
-            api_key: apiKey, api_secret: apiSecret,
-            to: toNumber, from: fromNumber, text: msg.body,
+            from: fromNumber,
+            to: toNumber,
+            text: msg.body,
+            type: "SMS",
           }),
         });
         const data = await res.json();
 
-        if (data.messages?.[0]?.status !== "0") {
-          throw new Error(data.messages?.[0]?.["error-text"] || "Send failed");
+        if (data.errors) {
+          throw new Error(data.errors[0]?.detail || "Send failed");
         }
 
         await supabase.from("scheduled_messages").update({ status: "sent" }).eq("id", msg.id);

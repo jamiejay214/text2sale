@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const apiKey = process.env.VONAGE_API_KEY!;
-const apiSecret = process.env.VONAGE_API_SECRET!;
+const apiKey = process.env.TELNYX_API_KEY!;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -44,10 +43,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Normalize from numbers — Vonage wants digits with country code, no +
+    // Normalize from numbers to E.164
     const fromList = numbers.map((num: string) => {
       const digits = num.replace(/\D/g, "");
-      return digits.startsWith("1") ? digits : `1${digits}`;
+      return `+${digits.startsWith("1") ? digits : `1${digits}`}`;
     });
 
     let sent = 0;
@@ -79,25 +78,27 @@ export async function POST(req: NextRequest) {
           .replace(/\{notes\}/gi, contact.notes || "");
 
         const toDigits = contact.phone.replace(/\D/g, "");
-        const toNumber = toDigits.startsWith("1") ? toDigits : `1${toDigits}`;
+        const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
 
-        // Send via Vonage
-        const res = await fetch("https://rest.nexmo.com/sms/json", {
+        // Send via Telnyx
+        const res = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
           body: JSON.stringify({
-            api_key: apiKey,
-            api_secret: apiSecret,
-            to: toNumber,
             from: fromNumber,
+            to: toE164,
             text: personalizedBody,
+            type: "SMS",
           }),
         });
 
         const data = await res.json();
 
-        if (data.messages?.[0]?.status !== "0") {
-          throw new Error(data.messages?.[0]?.["error-text"] || "Send failed");
+        if (data.errors) {
+          throw new Error(data.errors[0]?.detail || "Send failed");
         }
 
         sent++;

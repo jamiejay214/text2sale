@@ -5,38 +5,23 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Vonage can send inbound SMS as GET or POST
-export async function GET(req: NextRequest) {
-  return handleInbound(req);
-}
+const apiKey = process.env.TELNYX_API_KEY!;
 
+// Telnyx sends inbound SMS as POST webhook
 export async function POST(req: NextRequest) {
-  return handleInbound(req);
-}
-
-async function handleInbound(req: NextRequest) {
   try {
-    // Vonage sends params as query string (GET) or JSON/form body (POST)
-    let from: string, to: string, body: string;
+    const payload = await req.json();
+    const event = payload.data;
 
-    const contentType = req.headers.get("content-type") || "";
-
-    if (req.method === "GET") {
-      const params = req.nextUrl.searchParams;
-      from = params.get("msisdn") || "";
-      to = params.get("to") || "";
-      body = params.get("text") || "";
-    } else if (contentType.includes("application/json")) {
-      const json = await req.json();
-      from = json.msisdn || json.from || "";
-      to = json.to || "";
-      body = json.text || json.body || "";
-    } else {
-      const formData = await req.formData();
-      from = (formData.get("msisdn") || formData.get("from") || "") as string;
-      to = (formData.get("to") || "") as string;
-      body = (formData.get("text") || formData.get("body") || "") as string;
+    // Telnyx inbound SMS event type
+    if (!event || event.event_type !== "message.received") {
+      return NextResponse.json({ status: "ok" });
     }
+
+    const eventPayload = event.payload;
+    const from = eventPayload?.from?.phone_number || "";
+    const to = eventPayload?.to?.[0]?.phone_number || "";
+    const body = eventPayload?.text || "";
 
     if (!from || !body) {
       return NextResponse.json({ status: "ok" });
@@ -92,13 +77,12 @@ async function handleInbound(req: NextRequest) {
       if (optSettings.autoMarkDnc) {
         await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
       }
-      // Vonage doesn't use TwiML — auto-reply by sending an SMS back
       if (optSettings.confirmOptOut) {
         let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed.";
         if (optSettings.includeCompanyName && optSettings.companyName) {
           replyMsg += ` — ${optSettings.companyName}`;
         }
-        await sendVonageReply(to, from, replyMsg);
+        await sendTelnyxReply(to, from, replyMsg);
       }
       return NextResponse.json({ status: "ok" });
     }
@@ -110,7 +94,7 @@ async function handleInbound(req: NextRequest) {
         if (optSettings.includeCompanyName && optSettings.companyName) {
           replyMsg += ` — ${optSettings.companyName}`;
         }
-        await sendVonageReply(to, from, replyMsg);
+        await sendTelnyxReply(to, from, replyMsg);
       }
       return NextResponse.json({ status: "ok" });
     }
@@ -185,14 +169,14 @@ async function handleInbound(req: NextRequest) {
   }
 }
 
-// Helper to send reply via Vonage
-async function sendVonageReply(from: string, to: string, text: string) {
-  const apiKey = process.env.VONAGE_API_KEY!;
-  const apiSecret = process.env.VONAGE_API_SECRET!;
-
-  await fetch("https://rest.nexmo.com/sms/json", {
+// Helper to send reply via Telnyx
+async function sendTelnyxReply(from: string, to: string, text: string) {
+  await fetch("https://api.telnyx.com/v2/messages", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, from, to, text }),
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({ from, to, text, type: "SMS" }),
   });
 }
