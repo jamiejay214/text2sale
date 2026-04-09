@@ -13,7 +13,7 @@ import {
   updateCampaign as dbUpdateCampaign, deleteCampaign as dbDeleteCampaign,
   fetchConversations as dbFetchConversations, fetchMessages,
   insertMessage, updateConversation as dbUpdateConversation,
-  addUsageEntry, addOwnedNumber,
+  addUsageEntry, addOwnedNumber, removeOwnedNumber,
   fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
   fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
   insertConversation,
@@ -1227,6 +1227,46 @@ export default function DashboardPage() {
     }
 
     setBuyingNumber(null);
+  };
+
+  const [deletingNumber, setDeletingNumber] = useState<string | null>(null);
+
+  const handleDeleteNumber = async (numberId: string, numberDisplay: string) => {
+    if (!currentUser || !userId) return;
+    const confirmed = window.confirm(`Are you sure you want to release ${numberDisplay}? This cannot be undone.`);
+    if (!confirmed) return;
+
+    setDeletingNumber(numberId);
+
+    try {
+      // Release the number on Telnyx
+      const res = await fetch(`/api/delete-number`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numberId }),
+      });
+      const data = await res.json();
+
+      if (!data.success) {
+        setMessage(`❌ ${data.error || "Failed to release number"}`);
+        window.setTimeout(() => setMessage(""), 3000);
+        setDeletingNumber(null);
+        return;
+      }
+
+      // Remove from profile
+      await persistProfile({
+        owned_numbers: removeOwnedNumber(currentUser.ownedNumbers || [], numberId),
+      });
+
+      setMessage(`✅ Number ${numberDisplay} released`);
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("❌ Could not release number");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+
+    setDeletingNumber(null);
   };
 
   const handleSelectConversation = async (conversationId: string) => {
@@ -3549,8 +3589,17 @@ export default function DashboardPage() {
                         <div className="font-semibold">{item.alias}</div>
                         <div className="mt-1 font-mono text-zinc-300">{item.number}</div>
                       </div>
-                      <div className="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">
-                        Active
+                      <div className="flex items-center gap-2">
+                        <div className="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">
+                          Active
+                        </div>
+                        <button
+                          onClick={() => handleDeleteNumber(item.id, item.number)}
+                          disabled={deletingNumber === item.id}
+                          className="rounded-xl border border-red-800/50 px-3 py-1 text-xs text-red-400 hover:bg-red-950 hover:text-red-300 disabled:opacity-50 transition"
+                        >
+                          {deletingNumber === item.id ? "Releasing..." : "Release"}
+                        </button>
                       </div>
                     </div>
                   </div>

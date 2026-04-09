@@ -319,6 +319,13 @@ export function addOwnedNumber(
   return [num, ...currentNumbers];
 }
 
+export function removeOwnedNumber(
+  currentNumbers: OwnedNumber[],
+  numberId: string
+): OwnedNumber[] {
+  return currentNumbers.filter((n) => n.id !== numberId);
+}
+
 // ============================================================
 // MESSAGE TEMPLATES
 // ============================================================
