@@ -254,6 +254,7 @@ export default function DashboardPage() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [composerText, setComposerText] = useState("");
+  const [selectedFromNumber, setSelectedFromNumber] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
@@ -865,7 +866,7 @@ export default function DashboardPage() {
     }
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
     if (!contact) return;
-    const fromNumber = currentUser?.ownedNumbers?.[0]?.number || "";
+    const fromNumber = selectedFromNumber || currentUser?.ownedNumbers?.[0]?.number || "";
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
     const sm = await insertScheduledMessage({
       user_id: userId, contact_id: contact.id, body: composerText.trim(),
@@ -1251,7 +1252,7 @@ export default function DashboardPage() {
 
     // Get the contact's phone and a from number
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
-    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
+    const fromNumber = selectedFromNumber || currentUser.ownedNumbers?.[0]?.number;
 
     if (!contact?.phone) {
       setMessage("❌ Contact has no phone number");
@@ -2290,6 +2291,24 @@ export default function DashboardPage() {
                         placeholder="Insert text here ... (Enter to send, Shift+Enter for newline)"
                         className="h-36 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
                       />
+
+                      {/* From number picker */}
+                      {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 1 && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <span className="text-xs text-zinc-500">From:</span>
+                          <select
+                            value={selectedFromNumber || currentUser.ownedNumbers[0]?.number || ""}
+                            onChange={(e) => setSelectedFromNumber(e.target.value)}
+                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
+                          >
+                            {currentUser.ownedNumbers.map((num) => (
+                              <option key={num.id} value={num.number}>
+                                {num.number} — {num.alias}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
 
                       <div className="mt-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
