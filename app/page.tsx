@@ -22,7 +22,9 @@ export default function HomePage() {
   const [referralCode, setReferralCode] = useState("");
 
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -60,6 +62,7 @@ export default function HomePage() {
     if (password !== confirmPassword) return setError("Passwords do not match.");
     if (password.length < 6) return setError("Password must be at least 6 characters.");
     if (!agreedToPrivacy) return setError("You must read and agree to the Privacy Policy before signing up.");
+    if (!agreedToTerms) return setError("You must read and agree to the Terms and Conditions before signing up.");
 
     setLoading(true);
     const result = await signupUser({
@@ -251,7 +254,28 @@ export default function HomePage() {
                       Privacy Policy
                     </button>{" "}
                     (<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
-                    , and I agree to all terms and conditions outlined within it.
+                    , and I agree to all terms outlined within it.
+                  </span>
+                </label>
+
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreedToTerms}
+                    onChange={(e) => setAgreedToTerms(e.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                  />
+                  <span className="text-sm text-zinc-400">
+                    I have read and fully understand the{" "}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
+                      className="font-medium text-violet-400 underline hover:text-violet-300"
+                    >
+                      Terms and Conditions
+                    </button>{" "}
+                    (<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
+                    , and I agree to be bound by them.
                   </span>
                 </label>
 
@@ -341,6 +365,77 @@ export default function HomePage() {
                 className="w-full rounded-2xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-700 transition"
               >
                 I Have Read and Agree to the Privacy Policy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Terms and Conditions Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-3xl max-h-[85vh] flex flex-col rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">Terms and Conditions</h2>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-zinc-300 space-y-4">
+              <p className="text-xs text-zinc-500">Effective Date: April 9, 2026 &mdash; Website: www.text2sale.com</p>
+
+              <p>These Terms and Conditions (&ldquo;Terms&rdquo;) govern your access to and use of the Text2Sale platform (&ldquo;Service&rdquo;). By accessing or using Text2Sale, you agree to be bound by these Terms. If you do not agree, you may not use the Service.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Platform Overview &amp; Account</h3>
+              <p>Text2Sale provides a mass texting CRM platform that enables users to upload contacts, create campaigns, and send SMS and MMS messages. You must be at least 18 years old to use this Service. You agree to provide accurate information when creating an account and to keep your login credentials secure. You are responsible for all activity that occurs under your account.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">User Responsibilities &amp; Messaging Compliance</h3>
+              <p>You are solely responsible for all content and communications sent through Text2Sale. You agree that you will only send messages to recipients who have provided prior express consent (opt-in). You agree to comply with all applicable laws and regulations, including but not limited to the Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, CTIA guidelines, and any applicable federal, state, or international laws governing messaging and data privacy.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Platform Role &amp; Disclaimer</h3>
+              <p>Text2Sale is strictly a technology platform and does not control, review, or approve the content of messages sent by users. You acknowledge and agree that Text2Sale is not responsible or liable for any messages you send, including their content, timing, recipients, or legal compliance. You assume full responsibility and liability for your messaging activity.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Limitation of Liability &amp; Indemnification</h3>
+              <p>You agree that Text2Sale shall not be liable for any direct, indirect, incidental, consequential, or punitive damages, including but not limited to fines, penalties, lawsuits, lost profits, or business interruption arising from your use of the platform or your messaging practices. You further agree to indemnify, defend, and hold harmless Text2Sale, its owners, employees, and affiliates from any claims, damages, liabilities, costs, or expenses arising out of your use of the Service, your violation of these Terms, or your violation of any law or regulation.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Account Suspension &amp; Termination</h3>
+              <p>Text2Sale may suspend, restrict, or terminate your account at any time, without notice, if we believe you have violated these Terms, engaged in unlawful activity, or used the platform in a way that could harm the service, other users, or third parties.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Third-Party Services</h3>
+              <p>The Service may integrate with third-party providers including messaging carriers, SMS gateways, payment processors, and hosting providers. Text2Sale is not responsible for the performance, availability, or actions of these third parties. Message delivery is not guaranteed and may be affected by carrier restrictions or external factors beyond our control.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Billing &amp; Payments</h3>
+              <p>Users are responsible for maintaining sufficient account balance or active subscription to use the platform. All payments are final and non-refundable unless otherwise required by law. Pricing, subscription fees, and message rates may be updated at any time with notice. Failure to maintain payment may result in suspension of services.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Prohibited Activities</h3>
+              <p>You agree not to use Text2Sale for any unlawful, abusive, or prohibited activities, including but not limited to sending spam, phishing messages, fraudulent offers, harassment, or any content that violates applicable laws or regulations.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Compliance Tools</h3>
+              <p>Text2Sale provides compliance tools such as opt-out (STOP) handling and suppression lists; however, you are solely responsible for honoring opt-outs and maintaining compliance with all messaging laws.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Disclaimer of Warranties</h3>
+              <p>The Service is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis without warranties of any kind, whether express or implied. Text2Sale disclaims all warranties including merchantability, fitness for a particular purpose, and non-infringement. We do not guarantee that the platform will be uninterrupted, error-free, or completely secure.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Governing Law</h3>
+              <p>These Terms shall be governed by and construed in accordance with the laws of the State of Florida, without regard to conflict of law principles. Any disputes arising out of or relating to these Terms or the use of the Service shall be resolved exclusively in the courts located in Florida.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Changes to These Terms</h3>
+              <p>We may update these Terms at any time. Continued use of the Service after updates constitutes acceptance of the revised Terms.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Contact Us</h3>
+              <p>If you have any questions regarding these Terms, you may contact us at support@text2sale.com.</p>
+            </div>
+
+            <div className="border-t border-zinc-800 px-6 py-4">
+              <button
+                onClick={() => { setShowTerms(false); setAgreedToTerms(true); }}
+                className="w-full rounded-2xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-700 transition"
+              >
+                I Have Read and Agree to the Terms and Conditions
               </button>
             </div>
           </div>
