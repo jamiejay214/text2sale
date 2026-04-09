@@ -13,8 +13,17 @@ export async function POST(req: NextRequest) {
     const payload = await req.json();
     const event = payload.data;
 
-    // Telnyx inbound SMS event type
-    if (!event || event.event_type !== "message.received") {
+    if (!event) {
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // Handle delivery receipts (message.finalized)
+    if (event.event_type === "message.finalized") {
+      return handleDeliveryReceipt(event.payload);
+    }
+
+    // Only process inbound SMS
+    if (event.event_type !== "message.received") {
       return NextResponse.json({ status: "ok" });
     }
 
@@ -179,4 +188,59 @@ async function sendTelnyxReply(from: string, to: string, text: string) {
     },
     body: JSON.stringify({ from, to, text, type: "SMS" }),
   });
+}
+
+// Handle Telnyx delivery receipts (message.finalized)
+async function handleDeliveryReceipt(eventPayload: Record<string, unknown>) {
+  try {
+    const toArr = eventPayload?.to as Array<{ phone_number?: string; status?: string }> | undefined;
+    const to = toArr?.[0]?.phone_number || "";
+    const telnyxStatus = toArr?.[0]?.status || "";
+
+    if (!to || !telnyxStatus) {
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // Map Telnyx status: delivered, sent, sending_failed, delivery_failed, delivery_unconfirmed
+    const mappedStatus = telnyxStatus === "delivered" ? "delivered"
+      : (telnyxStatus === "sending_failed" || telnyxStatus === "delivery_failed") ? "failed"
+      : "sent";
+
+    const toDigits = to.replace(/\D/g, "");
+    const toNormalized = toDigits.startsWith("1") ? toDigits.slice(1) : toDigits;
+    const toFormatted = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
+
+    const { data: contacts } = await supabase
+      .from("contacts")
+      .select("id")
+      .or(`phone.eq.${toFormatted},phone.eq.+1${toNormalized},phone.eq.${toDigits},phone.eq.${to}`);
+
+    if (!contacts || contacts.length === 0) return NextResponse.json({ status: "ok" });
+
+    const { data: conversation } = await supabase
+      .from("conversations").select("id").eq("contact_id", contacts[0].id).single();
+
+    if (!conversation) return NextResponse.json({ status: "ok" });
+
+    const { data: message } = await supabase
+      .from("messages")
+      .select("id")
+      .eq("conversation_id", conversation.id)
+      .eq("direction", "outbound")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single();
+
+    if (message) {
+      const errors = (eventPayload?.errors as Array<{ code?: string }>) || [];
+      const updateData: Record<string, unknown> = { status: mappedStatus };
+      if (errors.length > 0) updateData.error_code = errors[0]?.code || "";
+      await supabase.from("messages").update(updateData).eq("id", message.id);
+    }
+
+    return NextResponse.json({ status: "ok" });
+  } catch (error) {
+    console.error("Delivery receipt error:", error);
+    return NextResponse.json({ status: "ok" });
+  }
 }
