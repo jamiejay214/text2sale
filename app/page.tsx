@@ -21,6 +21,8 @@ export default function HomePage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
 
+  const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [error, setError] = useState("");
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -57,6 +59,7 @@ export default function HomePage() {
     if (!confirmPassword.trim()) return setError("Confirm password is required.");
     if (password !== confirmPassword) return setError("Passwords do not match.");
     if (password.length < 6) return setError("Password must be at least 6 characters.");
+    if (!agreedToPrivacy) return setError("You must read and agree to the Privacy Policy before signing up.");
 
     setLoading(true);
     const result = await signupUser({
@@ -231,6 +234,26 @@ export default function HomePage() {
                   <div>$0.012 per text message</div>
                 </div>
 
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={agreedToPrivacy}
+                    onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                  />
+                  <span className="text-sm text-zinc-400">
+                    I have read and fully understand the{" "}
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }}
+                      className="font-medium text-violet-400 underline hover:text-violet-300"
+                    >
+                      Privacy Policy
+                    </button>
+                    , and I agree to all terms and conditions outlined within it.
+                  </span>
+                </label>
+
                 {error && (
                   <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
                     {error}
@@ -249,6 +272,79 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+      {/* Privacy Policy Modal */}
+      {showPrivacyPolicy && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="relative w-full max-w-3xl max-h-[85vh] flex flex-col rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+              <h2 className="text-xl font-bold text-white">Privacy Policy</h2>
+              <button
+                onClick={() => setShowPrivacyPolicy(false)}
+                className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-zinc-300 space-y-4">
+              <p className="text-xs text-zinc-500">Effective Date: April 9, 2026 &mdash; Website: www.text2sale.com</p>
+
+              <p>Text2Sale (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) operates a mass texting CRM platform that enables users to send SMS and MMS communications to their contacts. This Privacy Policy explains how we collect, use, store, and protect information when you use our platform. By accessing or using Text2Sale, you agree to this Privacy Policy.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Information We Collect</h3>
+              <p>We collect information that you provide directly to us, including your name, email address, phone number, account login credentials, billing and payment information, and any data you upload to the platform such as contact lists, phone numbers, and related information.</p>
+              <p>We also automatically collect certain information including your IP address, device and browser type, usage data such as login activity and campaign history, and cookies or similar tracking technologies.</p>
+              <p>Additionally, we collect messaging data including message content sent through the platform, delivery status such as delivered or failed messages, and recipient responses or engagement data.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">How We Use Your Information</h3>
+              <p>We use your information to provide, operate, and maintain the platform, deliver SMS and MMS messages on your behalf, process payments and manage billing, improve system performance and user experience, monitor usage to prevent fraud or abuse, and comply with legal obligations.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">User Responsibilities &amp; Messaging Compliance</h3>
+              <p>You are solely responsible for all messages sent using Text2Sale. By using our platform, you agree that you will obtain prior express consent (opt-in) from all recipients before sending messages and that you will comply with all applicable laws and regulations including the Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, CTIA guidelines, and any applicable state or international laws. Text2Sale does not verify, monitor, or guarantee that your messaging practices are compliant.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Limitation of Liability &amp; Indemnification</h3>
+              <p>Text2Sale acts strictly as a technology platform and delivery service. We do not create, control, or approve the content of messages sent through our platform. We are not responsible or liable for the content of any messages you send, any legal claims, damages, fines, or penalties resulting from your messaging activity, or any misuse of the platform.</p>
+              <p>You agree that you are fully and solely liable for all communications sent through Text2Sale. You further agree to indemnify, defend, and hold harmless Text2Sale from any claims, liabilities, damages, or expenses arising from your use of the platform, your messaging practices, or your violation of any law or regulation.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Data Sharing</h3>
+              <p>We do not sell your personal data. We may share information with messaging providers and carriers for the purpose of delivering messages, payment processors to handle billing and transactions, cloud hosting and infrastructure providers, and legal authorities if required by law.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Data Retention</h3>
+              <p>We retain information as long as your account remains active and as necessary to comply with legal, regulatory, or operational requirements. You may request deletion of your data by contacting us.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Security</h3>
+              <p>We implement commercially reasonable security measures including encryption, secure servers, and access controls to protect your information. However, no system is completely secure and we cannot guarantee absolute security.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Opt-Out &amp; Compliance Tools</h3>
+              <p>Text2Sale provides tools such as STOP or opt-out handling and suppression (Do Not Contact) lists; however, you are responsible for honoring opt-out requests immediately and maintaining your own compliance with all applicable laws.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Third-Party Services</h3>
+              <p>Our platform relies on third-party providers for messaging delivery, payment processing, and hosting infrastructure. These providers operate under their own privacy policies and we are not responsible for their practices.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Your Rights</h3>
+              <p>You may have the right to access, correct, or request deletion of your data. To make a request, contact us at support@text2sale.com.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Children&apos;s Privacy</h3>
+              <p>Text2Sale is not intended for individuals under the age of 18 and we do not knowingly collect personal information from minors.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Changes to This Policy</h3>
+              <p>We may update this Privacy Policy at any time. Changes will be posted on this page with an updated effective date, and continued use of the platform constitutes acceptance of those changes.</p>
+
+              <h3 className="text-base font-semibold text-white pt-2">Contact Us</h3>
+              <p>If you have any questions about this Privacy Policy, you can contact us at support@text2sale.com.</p>
+            </div>
+
+            <div className="border-t border-zinc-800 px-6 py-4">
+              <button
+                onClick={() => { setShowPrivacyPolicy(false); setAgreedToPrivacy(true); }}
+                className="w-full rounded-2xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-700 transition"
+              >
+                I Have Read and Agree to the Privacy Policy
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
