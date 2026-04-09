@@ -249,7 +249,8 @@ export default function HomePage() {
                       className="font-medium text-violet-400 underline hover:text-violet-300"
                     >
                       Privacy Policy
-                    </button>
+                    </button>{" "}
+                    (<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
                     , and I agree to all terms and conditions outlined within it.
                   </span>
                 </label>
