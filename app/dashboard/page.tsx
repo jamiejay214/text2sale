@@ -5076,7 +5076,7 @@ export default function DashboardPage() {
                   onClick={() => { handleSubscribe(); setShowOnboarding(false); }}
                   className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
                 >
-                  Subscribe — $49/mo
+                  Subscribe — $39.99/mo
                 </button>
                 <button onClick={() => setShowOnboarding(false)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
                   Skip for now
