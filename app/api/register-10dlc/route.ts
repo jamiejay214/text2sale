@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
           country: "US",
           email: contactEmail || profile.email,
           vertical: "INSURANCE",
-          website: website || "https://text2sale.com",
+          website: website || "https://text2sale.com/#sms-program",
           ...(isSoleProp ? { firstName: profile.first_name, lastName: profile.last_name } : {}),
         }),
       });
@@ -121,7 +121,7 @@ export async function POST(req: NextRequest) {
           campaignStatus: null,
           businessName, businessType, ein,
           businessAddress, businessCity, businessState, businessZip, businessCountry: "US",
-          website: website || "https://text2sale.com",
+          website: website || "https://text2sale.com/#sms-program",
           contactFirstName: profile.first_name,
           contactLastName: profile.last_name,
           contactEmail: contactEmail || profile.email,
@@ -197,24 +197,27 @@ export async function POST(req: NextRequest) {
       const subUsecases = isSoleProp ? ["CUSTOMER_CARE"] : ["MARKETING", "CUSTOMER_CARE"];
 
       const businessName = reg.businessName || "Text2Sale User";
+      const contactEmail = reg.contactEmail || profile.email;
+      const contactPhone = reg.contactPhone || profile.phone;
+      const websiteUrl = reg.website || "https://text2sale.com";
 
-      // Create campaign
+      // Create campaign with full 10DLC compliance
       const campaignData = await telnyxFetch("/v2/10dlc/campaignBuilder", {
         method: "POST",
         body: JSON.stringify({
           brandId,
           usecase,
           subUsecases,
-          description: `${businessName} sends appointment reminders, follow-up messages, promotional offers, and customer service notifications to opted-in customers and leads.`,
-          messageFlow: "Customers opt in by providing their phone number on our website contact form or in person at our business. Written consent is collected and recorded with timestamp before any messages are sent.",
-          helpMessage: `Reply HELP for assistance or contact us at ${reg.contactEmail || profile.email}. Reply STOP to unsubscribe.`,
+          description: `${businessName} uses Text2Sale to send marketing promotions, appointment reminders, follow-up messages, and customer service notifications via SMS to customers and leads who have voluntarily opted in to receive text messages.`,
+          messageFlow: `Consumers opt in to receive SMS messages by voluntarily providing their phone number through the business website at ${websiteUrl} or through an in-person paper sign-up form. The opt-in form clearly discloses: (1) the types of messages they will receive, (2) that message frequency varies, (3) that message and data rates may apply, (4) instructions to reply STOP to opt out, (5) instructions to reply HELP for help, and (6) a link to the privacy policy at https://text2sale.com/privacy-policy. Consent to receive messages is not a condition of any purchase. Written consent with timestamp is recorded before any messages are sent.`,
+          helpMessage: `${businessName}: For help, contact us at ${contactEmail} or call ${contactPhone}. Msg frequency varies. Msg&data rates may apply. Reply STOP to opt out.`,
           helpKeywords: "HELP,INFO",
-          optinMessage: `You have been subscribed to messages from ${businessName}. Reply STOP to unsubscribe at any time. Msg&data rates may apply.`,
+          optinMessage: `${businessName}: You are now subscribed to receive text messages. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: https://text2sale.com/privacy-policy`,
           optinKeywords: "START,SUBSCRIBE,YES",
-          optoutMessage: `You have been unsubscribed and will no longer receive messages from ${businessName}. Reply START to re-subscribe.`,
+          optoutMessage: `${businessName}: You have been unsubscribed and will no longer receive text messages. Reply START to re-subscribe. Contact ${contactEmail} for questions.`,
           optoutKeywords: "STOP,UNSUBSCRIBE,CANCEL,END,QUIT",
-          sample1: "Hi {firstName}, this is a reminder about your appointment tomorrow at 2pm. Reply STOP to unsubscribe.",
-          sample2: "Thank you for your interest! We have options that may fit your needs. Reply STOP to opt out.",
+          sample1: `Hi John, this is ${businessName}. Just a reminder about your appointment tomorrow at 2pm. Reply STOP to opt out. Msg&data rates may apply.`,
+          sample2: `Hi Sarah, ${businessName} here. We have new options that could save you money. Reply for details or visit ${websiteUrl}. Reply STOP to unsubscribe. Msg&data rates may apply.`,
           embeddedLink: true,
           embeddedPhone: false,
           numberPool: false,

@@ -38,6 +38,10 @@ export default function PrivacyPolicyPage() {
           <h2 className="text-xl font-semibold text-white pt-4">Security</h2>
           <p>We implement commercially reasonable security measures including encryption, secure servers, and access controls to protect your information. However, no system is completely secure and we cannot guarantee absolute security.</p>
 
+          <h2 className="text-xl font-semibold text-white pt-4">SMS Messaging Program</h2>
+          <p>Text2Sale enables businesses to send SMS messages to their customers and leads. By opting in to receive messages from a Text2Sale user, recipients consent to receive recurring marketing, informational, and customer service text messages. Message frequency varies by campaign. Message and data rates may apply. Consent is not a condition of purchase.</p>
+          <p>To opt out at any time, reply STOP to any message. For help, reply HELP or contact support@text2sale.com. Carriers are not liable for delayed or undelivered messages.</p>
+
           <h2 className="text-xl font-semibold text-white pt-4">Opt-Out &amp; Compliance Tools</h2>
           <p>Text2Sale provides tools such as STOP or opt-out handling and suppression (Do Not Contact) lists; however, you are responsible for honoring opt-out requests immediately and maintaining your own compliance with all applicable laws.</p>
 

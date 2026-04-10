@@ -1,16 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { inferTimezone, isQuietHours, getNextSendWindow } from "@/lib/quiet-hours";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 
 export async function POST(req: NextRequest) {
   try {
-    const { to, body, from } = await req.json();
+    const { to, body, from, contactState, skipQuietHours } = await req.json();
 
     if (!to || !body || !from) {
       return NextResponse.json(
         { success: false, error: "Missing required fields: to, body, from" },
         { status: 400 }
       );
+    }
+
+    // Quiet hours check
+    if (!skipQuietHours) {
+      const tz = inferTimezone(contactState);
+      if (isQuietHours(tz)) {
+        return NextResponse.json({
+          success: false,
+          error: "quiet_hours",
+          message: "Cannot send during quiet hours (9 PM - 8 AM in contact's timezone)",
+          nextSendTime: getNextSendWindow(tz),
+          timezone: tz,
+        });
+      }
     }
 
     // Normalize to E.164 format (+1XXXXXXXXXX)

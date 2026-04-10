@@ -85,40 +85,74 @@ export default function HomePage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="grid min-h-screen lg:grid-cols-2">
-        <div className="hidden lg:flex lg:items-center lg:justify-center bg-gradient-to-br from-violet-900/80 via-zinc-900 to-zinc-950 border-r border-zinc-800">
-          <div className="max-w-xl px-10">
-            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">
-              SMS Marketing CRM
-            </div>
-            <div className="mt-4 text-5xl font-bold tracking-tight">Text2Sale</div>
-            <div className="mt-4 text-lg leading-8 text-zinc-400">
-              One simple plan. Log in, upload leads, choose a campaign, and start texting.
-            </div>
+      {/* Public-facing hero / SMS program info */}
+      <section className="border-b border-zinc-800 bg-gradient-to-b from-violet-950/40 via-zinc-950 to-zinc-950">
+        <div className="mx-auto max-w-6xl px-6 py-16 text-center">
+          <div className="text-sm uppercase tracking-[0.2em] text-violet-300">SMS Marketing CRM</div>
+          <h1 className="mt-4 text-5xl font-bold tracking-tight">Text2Sale</h1>
+          <p className="mx-auto mt-4 max-w-2xl text-lg leading-8 text-zinc-400">
+            The all-in-one SMS marketing platform for businesses. Import your contacts, create personalized campaigns, and reach your customers instantly with compliant text messaging.
+          </p>
 
-            <div className="mt-10 rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur">
+          <div className="mx-auto mt-10 grid max-w-3xl gap-5 md:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+              <div className="text-2xl font-bold text-violet-400">CSV</div>
+              <div className="mt-1 text-sm text-zinc-400">Import Leads</div>
+              <p className="mt-2 text-xs text-zinc-500">Upload your contact lists in seconds</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+              <div className="text-2xl font-bold text-sky-400">SMS</div>
+              <div className="mt-1 text-sm text-zinc-400">Campaigns</div>
+              <p className="mt-2 text-xs text-zinc-500">Send personalized messages at scale</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
+              <div className="text-2xl font-bold text-amber-400">CRM</div>
+              <div className="mt-1 text-sm text-zinc-400">Conversations</div>
+              <p className="mt-2 text-xs text-zinc-500">Manage replies and follow-ups</p>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-10 max-w-2xl rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur text-left">
+            <div className="text-center">
               <div className="text-3xl font-bold text-emerald-400">$39.99 <span className="text-lg font-normal text-zinc-400">/ month</span></div>
-              <div className="mt-2 text-zinc-400">$0.012 per text message</div>
+              <div className="mt-1 text-zinc-400">$0.012 per text message</div>
             </div>
+            <ul className="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-2">
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Unlimited contacts</li>
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Campaign builder</li>
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> 2-way conversations</li>
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Quiet hours compliance</li>
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
+              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
-            <div className="mt-8 grid grid-cols-3 gap-4">
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-center">
-                <div className="text-2xl font-bold text-violet-400">CSV</div>
-                <div className="mt-1 text-xs text-zinc-500">Import Leads</div>
-              </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-center">
-                <div className="text-2xl font-bold text-sky-400">SMS</div>
-                <div className="mt-1 text-xs text-zinc-500">Campaigns</div>
-              </div>
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-center">
-                <div className="text-2xl font-bold text-amber-400">CRM</div>
-                <div className="mt-1 text-xs text-zinc-500">Conversations</div>
-              </div>
+      {/* SMS program disclosure (required for 10DLC compliance) */}
+      <section id="sms-program" className="border-b border-zinc-800 bg-zinc-950">
+        <div className="mx-auto max-w-3xl px-6 py-12">
+          <h2 className="text-2xl font-bold">SMS Program Information</h2>
+          <div className="mt-6 space-y-4 text-sm leading-relaxed text-zinc-400">
+            <p>Text2Sale enables businesses to send SMS messages to their opted-in customers and leads for marketing, customer service, and informational purposes.</p>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900 p-5 space-y-3">
+              <p><strong className="text-white">Opt-In:</strong> Recipients must voluntarily provide their phone number and consent to receive text messages. Consent is not a condition of any purchase. Opt-in is collected via web forms, in-person sign-up, or written consent before any messages are sent.</p>
+              <p><strong className="text-white">Message Frequency:</strong> Message frequency varies by campaign. Users control how often messages are sent.</p>
+              <p><strong className="text-white">Message &amp; Data Rates:</strong> Standard message and data rates may apply depending on your carrier.</p>
+              <p><strong className="text-white">Opt-Out:</strong> Reply <span className="font-mono text-white">STOP</span> to any message to unsubscribe at any time. You will receive a confirmation and no further messages will be sent.</p>
+              <p><strong className="text-white">Help:</strong> Reply <span className="font-mono text-white">HELP</span> to any message for assistance. You can also contact us at <span className="text-violet-400">support@text2sale.com</span>.</p>
+              <p><strong className="text-white">Carriers:</strong> Carriers are not liable for delayed or undelivered messages.</p>
+            </div>
+            <div className="flex gap-4 text-xs">
+              <a href="/privacy-policy" className="text-violet-400 hover:text-violet-300 underline">Privacy Policy</a>
+              <a href="/terms" className="text-violet-400 hover:text-violet-300 underline">Terms and Conditions</a>
             </div>
           </div>
         </div>
+      </section>
 
-        <div className="flex items-center justify-center px-6 py-10">
+      <div className="mx-auto max-w-xl px-6 py-10">
+        <div className="flex items-center justify-center">
           <div className="w-full max-w-xl rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
             <div className="mb-6">
               <div className="text-3xl font-bold text-white">Text2Sale</div>
@@ -297,6 +331,13 @@ export default function HomePage() {
           </div>
         </div>
       </div>
+
+      <div className="border-t border-zinc-800 py-6 text-center text-sm text-zinc-600">
+        &copy; {new Date().getFullYear()} Text2Sale. All rights reserved. &middot;{" "}
+        <a href="/privacy-policy" className="text-violet-400 hover:text-violet-300">Privacy Policy</a> &middot;{" "}
+        <a href="/terms" className="text-violet-400 hover:text-violet-300">Terms</a>
+      </div>
+
       {/* Privacy Policy Modal */}
       {showPrivacyPolicy && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">

@@ -329,6 +329,18 @@ export default function DashboardPage() {
     hasEmbeddedLinks: true, hasEmbeddedPhone: false,
   });
 
+  // Search & filter state
+  const [globalSearch, setGlobalSearch] = useState("");
+  const [dncFilter, setDncFilter] = useState<"all" | "active" | "dnc">("all");
+  const [lastContactedFilter, setLastContactedFilter] = useState<"any" | "today" | "7d" | "30d" | "never">("any");
+
+  // Onboarding wizard state
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const [onboardingStep, setOnboardingStep] = useState(0);
+
+  // Notification permission
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -437,11 +449,103 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
+      // Show onboarding wizard for new users
+      const sub = profile.subscription_status;
+      const hasSubscription = sub === "active" || sub === "canceling";
+      const hasNumbers = (profile.owned_numbers || []).length > 0;
+      const hasContacts = dbContacts.length > 0;
+      if (!hasSubscription || !hasNumbers || !hasContacts) {
+        setShowOnboarding(true);
+        setOnboardingStep(hasSubscription ? (hasNumbers ? 3 : 2) : 0);
+      }
+
       setMounted(true);
     };
 
     loadData();
   }, [router]);
+
+  // Real-time notifications for new inbound messages
+  useEffect(() => {
+    if (!userId) return;
+
+    // Request notification permission on mount
+    if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission().then((perm) => {
+        setNotificationsEnabled(perm === "granted");
+      });
+    } else if (typeof window !== "undefined" && "Notification" in window) {
+      setNotificationsEnabled(Notification.permission === "granted");
+    }
+
+    const channel = supabase
+      .channel("realtime-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        async (payload) => {
+          const newMsg = payload.new as { id: string; conversation_id: string; direction: string; body: string; status: string; created_at: string };
+          if (newMsg.direction !== "inbound") return;
+
+          // Check if this conversation belongs to the current user
+          const matchingConv = conversations.find((c) => c.id === newMsg.conversation_id);
+          if (!matchingConv) {
+            // Might be a new conversation — re-fetch conversations
+            const freshConvs = await dbFetchConversations(userId);
+            const match = freshConvs.find((c) => c.id === newMsg.conversation_id);
+            if (!match) return; // Not ours
+          }
+
+          // Add message to conversation state
+          const msgRecord: ConversationMessage = {
+            id: newMsg.id,
+            direction: newMsg.direction as "inbound" | "outbound",
+            body: newMsg.body,
+            status: newMsg.status as ConversationMessage["status"],
+            createdAt: newMsg.created_at,
+          };
+
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.id !== newMsg.conversation_id) return c;
+              return {
+                ...c,
+                preview: newMsg.body.slice(0, 100),
+                lastMessageAt: newMsg.created_at,
+                unread: c.id === selectedConversationId ? c.unread : c.unread + 1,
+                messages: [...c.messages, msgRecord],
+              };
+            })
+          );
+
+          // Browser notification
+          if (notificationsEnabled && document.hidden) {
+            const contact = contacts.find((ct) => {
+              const conv = conversations.find((cv) => cv.id === newMsg.conversation_id);
+              return conv && ct.id === conv.contactId;
+            });
+            const title = contact ? `${contact.firstName} ${contact.lastName}` : "New Message";
+            new Notification(title, {
+              body: newMsg.body.slice(0, 100),
+              icon: "/favicon.ico",
+            });
+          }
+
+          // Audio ping
+          try {
+            const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkIuDdW1wfIiOjYV8c3B9iI+OhXtzc3yHjo6FeXV0fIaOjYV7c3J9h46NhXtzcnyHjo2FfHNyfYeOjYV7c3J8h46OhXtzcnuHj46Fe3NyfYePjoV7c3J8h4+OhXtzcnyHj46Fe3NzfIePjoV7c3J8h4+OhXtzcnyHj46FenRyfYeOjoV7c3J8h4+OhXtzcnyGj46Fe3Nze4eOjoV7c3N8h4+OhXt0cnyHj42FfHNyfYeOjYV8cnJ9h46NhXxzc3yHjo2FfHNyfIeOjYV7c3N8ho6NhXxzc32Hjo2Fe3NyfYePjYV7c3J8h46Ng==");
+            audio.volume = 0.3;
+            audio.play().catch(() => {});
+          } catch {}
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId, notificationsEnabled]);
 
   const userCampaigns = useMemo(() => {
     if (!currentUser) return campaigns;
@@ -487,7 +591,25 @@ export default function DashboardPage() {
   }, [contacts]);
 
   const filteredContacts = useMemo(() => {
+    const now = Date.now();
     return contacts.filter((c) => {
+      // DNC filter
+      if (dncFilter === "active" && c.dnc) return false;
+      if (dncFilter === "dnc" && !c.dnc) return false;
+
+      // Last contacted filter
+      if (lastContactedFilter !== "any") {
+        const conv = conversations.find((cv) => cv.contactId === c.id);
+        if (lastContactedFilter === "never") {
+          if (conv) return false;
+        } else {
+          if (!conv) return false;
+          const lastAt = new Date(conv.lastMessageAt).getTime();
+          const days = lastContactedFilter === "today" ? 1 : lastContactedFilter === "7d" ? 7 : 30;
+          if (now - lastAt > days * 86400000) return false;
+        }
+      }
+
       // Tag filter
       if (tagFilter.length > 0) {
         const contactTags = (c.tags || []).map((t) => t.trim().toLowerCase());
@@ -500,7 +622,7 @@ export default function DashboardPage() {
       const tags = (c.tags || []).join(" ").toLowerCase();
       return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q) || tags.includes(q);
     });
-  }, [contacts, contactSearch, tagFilter]);
+  }, [contacts, contactSearch, tagFilter, dncFilter, lastContactedFilter, conversations]);
 
   const filteredCampaigns = useMemo(() => {
     const q = campaignSearch.trim().toLowerCase();
@@ -1364,19 +1486,26 @@ export default function DashboardPage() {
 
     setComposerText("");
 
-    // Send via Vonage
+    // Send via Telnyx
     try {
       const res = await fetch("/api/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
+        body: JSON.stringify({ to: contact.phone, from: fromNumber, body, contactState: contact.state }),
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        setMessage(`❌ ${data.error || "Failed to send"}`);
-        window.setTimeout(() => setMessage(""), 3000);
+        if (data.error === "quiet_hours") {
+          const nextTime = data.nextSendTime ? new Date(data.nextSendTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "8:00 AM";
+          setMessage(`🌙 Cannot send during quiet hours (9 PM – 8 AM in contact's timezone). Next send window: ${nextTime}`);
+          window.setTimeout(() => setMessage(""), 5000);
+          setComposerText(body);
+        } else {
+          setMessage(`❌ ${data.error || "Failed to send"}`);
+          window.setTimeout(() => setMessage(""), 3000);
+        }
         return;
       }
     } catch {
@@ -3140,6 +3269,26 @@ export default function DashboardPage() {
                   placeholder="Search contacts..."
                   className="rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
                 />
+                <select
+                  value={dncFilter}
+                  onChange={(e) => setDncFilter(e.target.value as "all" | "active" | "dnc")}
+                  className="rounded-2xl border border-zinc-700 bg-zinc-800 px-3 py-3 text-sm"
+                >
+                  <option value="all">All Status</option>
+                  <option value="active">Active Only</option>
+                  <option value="dnc">DNC Only</option>
+                </select>
+                <select
+                  value={lastContactedFilter}
+                  onChange={(e) => setLastContactedFilter(e.target.value as "any" | "today" | "7d" | "30d" | "never")}
+                  className="rounded-2xl border border-zinc-700 bg-zinc-800 px-3 py-3 text-sm"
+                >
+                  <option value="any">Last Contacted</option>
+                  <option value="today">Today</option>
+                  <option value="7d">Last 7 Days</option>
+                  <option value="30d">Last 30 Days</option>
+                  <option value="never">Never</option>
+                </select>
                 <button
                   onClick={() => setShowAddContact((v) => !v)}
                   className="rounded-2xl bg-violet-600 px-5 py-3 text-sm hover:bg-violet-700"
@@ -4903,11 +5052,120 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Onboarding Wizard Modal */}
+      {showOnboarding && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-lg rounded-3xl border border-zinc-700 bg-zinc-900 p-8 shadow-2xl">
+            {/* Progress bar */}
+            <div className="mb-6 flex gap-2">
+              {["Subscribe", "Buy Number", "Import Contacts", "Send First Campaign"].map((label, i) => (
+                <div key={label} className="flex-1">
+                  <div className={`h-1.5 rounded-full transition ${i <= onboardingStep ? "bg-violet-500" : "bg-zinc-700"}`} />
+                  <div className={`mt-1.5 text-center text-[10px] ${i <= onboardingStep ? "text-violet-400" : "text-zinc-600"}`}>{label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Step 0 — Subscribe */}
+            {onboardingStep === 0 && (
+              <div className="text-center">
+                <div className="mb-2 text-3xl">🚀</div>
+                <h3 className="mb-2 text-xl font-bold">Welcome to Text2Sale!</h3>
+                <p className="mb-6 text-sm text-zinc-400">Start with a subscription to unlock all messaging features.</p>
+                <button
+                  onClick={() => { handleSubscribe(); setShowOnboarding(false); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                >
+                  Subscribe — $49/mo
+                </button>
+                <button onClick={() => setShowOnboarding(false)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip for now
+                </button>
+              </div>
+            )}
+
+            {/* Step 1 — EIN / 10DLC (informational) */}
+            {onboardingStep === 1 && (
+              <div className="text-center">
+                <div className="mb-2 text-3xl">📋</div>
+                <h3 className="mb-2 text-xl font-bold">Register Your Business</h3>
+                <p className="mb-6 text-sm text-zinc-400">Register your brand with your EIN for higher sending limits. You can do this from the 10DLC tab anytime.</p>
+                <button
+                  onClick={() => { setActiveTab("10dlc"); setShowOnboarding(false); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                >
+                  Go to 10DLC Registration
+                </button>
+                <button onClick={() => setOnboardingStep(2)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — do this later
+                </button>
+              </div>
+            )}
+
+            {/* Step 2 — Buy a Number */}
+            {onboardingStep === 2 && (
+              <div className="text-center">
+                <div className="mb-2 text-3xl">📱</div>
+                <h3 className="mb-2 text-xl font-bold">Buy a Phone Number</h3>
+                <p className="mb-6 text-sm text-zinc-400">You need at least one phone number to send messages. Numbers cost $1.50 to purchase + $1/mo.</p>
+                <button
+                  onClick={() => { setActiveTab("numbers"); setShowOnboarding(false); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                >
+                  Buy a Number
+                </button>
+                <button onClick={() => setOnboardingStep(3)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — do this later
+                </button>
+              </div>
+            )}
+
+            {/* Step 3 — Import Contacts */}
+            {onboardingStep === 3 && (
+              <div className="text-center">
+                <div className="mb-2 text-3xl">👥</div>
+                <h3 className="mb-2 text-xl font-bold">Import Your Contacts</h3>
+                <p className="mb-6 text-sm text-zinc-400">Upload a CSV with your contacts or add them manually from the Contacts tab.</p>
+                <button
+                  onClick={() => { setActiveTab("contacts"); setShowOnboarding(false); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                >
+                  Import Contacts
+                </button>
+                <button onClick={() => setOnboardingStep(4)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — do this later
+                </button>
+              </div>
+            )}
+
+            {/* Step 4 — Send First Campaign */}
+            {onboardingStep === 4 && (
+              <div className="text-center">
+                <div className="mb-2 text-3xl">🎯</div>
+                <h3 className="mb-2 text-xl font-bold">Launch Your First Campaign</h3>
+                <p className="mb-6 text-sm text-zinc-400">Create a campaign, pick your contacts, write your message, and hit send!</p>
+                <button
+                  onClick={() => { setActiveTab("campaigns"); setShowOnboarding(false); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                >
+                  Create a Campaign
+                </button>
+                <button onClick={() => setShowOnboarding(false)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Close — I'll explore on my own
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {message && (
         <div className={`fixed bottom-8 right-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium ${
           message.startsWith("❌")
             ? "bg-red-950 text-red-200 ring-1 ring-red-800"
-            : "bg-emerald-950 text-emerald-200 ring-1 ring-emerald-800"
+            : message.startsWith("🌙")
+              ? "bg-amber-950 text-amber-200 ring-1 ring-amber-800"
+              : "bg-emerald-950 text-emerald-200 ring-1 ring-emerald-800"
         }`}>
           {message}
         </div>
