@@ -19,7 +19,6 @@ export async function POST(req: NextRequest) {
     const res = await fetch(`https://api.telnyx.com/v2/available_phone_numbers?${params}`, {
       headers: { Authorization: `Bearer ${apiKey}` },
     });
-
     const data = await res.json();
 
     if (!data.data || data.data.length === 0) {
@@ -27,11 +26,11 @@ export async function POST(req: NextRequest) {
     }
 
     const numbers = data.data.map((n: { phone_number: string; locality?: string; administrative_area?: string }) => {
-      const digits = n.phone_number.replace(/\D/g, "");
-      const local = digits.startsWith("1") ? digits.slice(1) : digits;
+      const raw = n.phone_number; // already E.164 like +12145551234
+      const digits = raw.replace(/\D/g, "").slice(1); // remove + and country code
       return {
-        raw: n.phone_number,
-        display: `(${local.slice(0, 3)}) ${local.slice(3, 6)}-${local.slice(6)}`,
+        raw,
+        display: `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`,
         locality: n.locality || "",
         region: n.administrative_area || "",
       };

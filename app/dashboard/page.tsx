@@ -13,7 +13,7 @@ import {
   updateCampaign as dbUpdateCampaign, deleteCampaign as dbDeleteCampaign,
   fetchConversations as dbFetchConversations, fetchMessages,
   insertMessage, updateConversation as dbUpdateConversation,
-  addUsageEntry, addOwnedNumber, removeOwnedNumber,
+  addUsageEntry, addOwnedNumber,
   fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
   fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
   insertConversation,
@@ -243,6 +243,7 @@ export default function DashboardPage() {
     selectedNumbers: [],
   });
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
+  const [csvCampaignId, setCsvCampaignId] = useState<string>("");
   const [deletingBulk, setDeletingBulk] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [editCampaignForm, setEditCampaignForm] = useState<NewCampaignForm>({ name: "", steps: [], selectedNumbers: [] });
@@ -254,7 +255,6 @@ export default function DashboardPage() {
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [composerText, setComposerText] = useState("");
-  const [selectedFromNumber, setSelectedFromNumber] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
@@ -313,34 +313,6 @@ export default function DashboardPage() {
   const [editingQuickReply, setEditingQuickReply] = useState<QuickReply | null>(null);
   const [newQrLabel, setNewQrLabel] = useState("");
   const [newQrBody, setNewQrBody] = useState("");
-
-  // CSV Import Wizard state
-  const [csvWizardOpen, setCsvWizardOpen] = useState(false);
-  const [csvWizardStep, setCsvWizardStep] = useState(1); // 1=upload, 2=map fields, 3=configure
-  const [csvRawHeaders, setCsvRawHeaders] = useState<string[]>([]);
-  const [csvRawData, setCsvRawData] = useState<Record<string, string>[]>([]);
-  const [csvFieldMapping, setCsvFieldMapping] = useState<Record<string, string>>({});
-  const [csvWizardCampaignId, setCsvWizardCampaignId] = useState("");
-  const [csvWizardTags, setCsvWizardTags] = useState("");
-  const [csvWizardAutoSend, setCsvWizardAutoSend] = useState(false);
-  const [csvImporting, setCsvImporting] = useState(false);
-  const [csvFileName, setCsvFileName] = useState("");
-
-  const CSV_CONTACT_FIELDS = [
-    { value: "", label: "— Skip —" },
-    { value: "first_name", label: "First Name" },
-    { value: "last_name", label: "Last Name" },
-    { value: "phone", label: "Phone Number" },
-    { value: "email", label: "Email" },
-    { value: "city", label: "City" },
-    { value: "state", label: "State" },
-    { value: "address", label: "Address" },
-    { value: "zip", label: "Zip Code" },
-    { value: "lead_source", label: "Lead Source" },
-    { value: "date_of_birth", label: "Date of Birth" },
-    { value: "age", label: "Age" },
-    { value: "notes", label: "Notes" },
-  ];
 
   // 10DLC A2P Registration state
   const [a2pStep, setA2pStep] = useState(0); // 0=info, 1=submitting, 2=brand pending, 3=campaign form, 4=campaign pending, 5=done
@@ -866,7 +838,7 @@ export default function DashboardPage() {
     }
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
     if (!contact) return;
-    const fromNumber = selectedFromNumber || currentUser?.ownedNumbers?.[0]?.number || "";
+    const fromNumber = currentUser?.ownedNumbers?.[0]?.number || "";
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
     const sm = await insertScheduledMessage({
       user_id: userId, contact_id: contact.id, body: composerText.trim(),
@@ -964,7 +936,123 @@ export default function DashboardPage() {
     else setA2pStep(0);
   }, [currentUser?.a2pRegistration?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 10DLC is handled through the Telnyx dashboard — no in-app API calls needed
+  // 10DLC automated registration via Telnyx
+  const handleA2pRegister = async () => {
+    if (!currentUser) return;
+    setA2pLoading(true);
+    try {
+      const res = await fetch("/api/register-10dlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.id,
+          action: "register_brand",
+          businessName: a2pForm.businessName,
+          businessType: a2pForm.businessType,
+          ein: a2pForm.ein,
+          businessAddress: a2pForm.businessAddress,
+          businessCity: a2pForm.businessCity,
+          businessState: a2pForm.businessState,
+          businessZip: a2pForm.businessZip,
+          website: a2pForm.website,
+          contactEmail: a2pForm.contactEmail || currentUser.email,
+          contactPhone: a2pForm.contactPhone || currentUser.phone,
+        }),
+      });
+      const data = await res.json();
+      if (!data.success) { setMessage("❌ " + (data.error || "Brand registration failed")); setA2pLoading(false); return; }
+
+      setMessage("Brand registered! Creating campaign...");
+      setA2pStep(2);
+
+      // If brand approved immediately, create campaign
+      if (data.nextAction === "create_campaign") {
+        await handleA2pCreateCampaign();
+      } else {
+        // Poll for brand approval then create campaign
+        await handleA2pPollAndContinue();
+      }
+    } catch { setMessage("❌ Registration failed. Please try again."); }
+    setA2pLoading(false);
+  };
+
+  const handleA2pCreateCampaign = async () => {
+    if (!currentUser) return;
+    setA2pLoading(true);
+    try {
+      const res = await fetch("/api/register-10dlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
+      });
+      const data = await res.json();
+      if (!data.success) { setMessage("❌ " + (data.error || "Campaign creation failed")); setA2pLoading(false); return; }
+
+      setMessage("Campaign created! Waiting for approval...");
+      setA2pStep(4);
+
+      // Poll for campaign approval
+      await handleA2pCheckCampaign();
+    } catch { setMessage("❌ Campaign creation failed."); }
+    setA2pLoading(false);
+  };
+
+  const handleA2pPollAndContinue = async () => {
+    // Poll brand status, then create campaign
+    for (let i = 0; i < 12; i++) {
+      await new Promise((r) => setTimeout(r, 5000));
+      const res = await fetch("/api/register-10dlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser!.id, action: "create_campaign" }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage("Campaign created! Waiting for approval...");
+        setA2pStep(4);
+        await handleA2pCheckCampaign();
+        return;
+      }
+      if (data.brandStatus === "FAILED") { setMessage("❌ Brand registration failed."); setA2pStep(0); return; }
+    }
+    setMessage("⏳ Brand is still processing. Check back in a few minutes.");
+  };
+
+  const handleA2pCheckCampaign = async () => {
+    for (let i = 0; i < 20; i++) {
+      await new Promise((r) => setTimeout(r, 10000));
+      const res = await fetch("/api/register-10dlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser!.id, action: "check_campaign" }),
+      });
+      const data = await res.json();
+      if (data.completed) {
+        setMessage("✅ 10DLC registration complete! You can now send messages.");
+        setA2pStep(5);
+        // Refresh profile
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+          if (p) setCurrentUser(profileToAccount(p as Profile));
+        }
+        return;
+      }
+      if (data.campaignStatus === "TCR_ACCEPTED") {
+        setMessage("Campaign approved! Assigning numbers...");
+        setA2pStep(5);
+        // Refresh profile
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+          if (p) setCurrentUser(profileToAccount(p as Profile));
+        }
+        return;
+      }
+      if (data.campaignStatus === "TCR_FAILED") { setMessage("❌ " + (data.error || "Campaign failed.")); setA2pStep(0); return; }
+    }
+    setMessage("⏳ Campaign is still processing. Check back shortly.");
+  };
 
   const personalizationFields = [
     { tag: "{firstName}", label: "First Name" },
@@ -1229,46 +1317,6 @@ export default function DashboardPage() {
     setBuyingNumber(null);
   };
 
-  const [deletingNumber, setDeletingNumber] = useState<string | null>(null);
-
-  const handleDeleteNumber = async (numberId: string, numberDisplay: string) => {
-    if (!currentUser || !userId) return;
-    const confirmed = window.confirm(`Are you sure you want to release ${numberDisplay}? This cannot be undone.`);
-    if (!confirmed) return;
-
-    setDeletingNumber(numberId);
-
-    try {
-      // Release the number on Telnyx
-      const res = await fetch(`/api/delete-number`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ numberId }),
-      });
-      const data = await res.json();
-
-      if (!data.success) {
-        setMessage(`❌ ${data.error || "Failed to release number"}`);
-        window.setTimeout(() => setMessage(""), 3000);
-        setDeletingNumber(null);
-        return;
-      }
-
-      // Remove from profile
-      await persistProfile({
-        owned_numbers: removeOwnedNumber(currentUser.ownedNumbers || [], numberId),
-      });
-
-      setMessage(`✅ Number ${numberDisplay} released`);
-      window.setTimeout(() => setMessage(""), 3000);
-    } catch {
-      setMessage("❌ Could not release number");
-      window.setTimeout(() => setMessage(""), 3000);
-    }
-
-    setDeletingNumber(null);
-  };
-
   const handleSelectConversation = async (conversationId: string) => {
     setSelectedConversationId(conversationId);
     setComposerText("");
@@ -1292,7 +1340,7 @@ export default function DashboardPage() {
 
     // Get the contact's phone and a from number
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
-    const fromNumber = selectedFromNumber || currentUser.ownedNumbers?.[0]?.number;
+    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
 
     if (!contact?.phone) {
       setMessage("❌ Contact has no phone number");
@@ -1316,7 +1364,7 @@ export default function DashboardPage() {
 
     setComposerText("");
 
-    // Send via Telnyx
+    // Send via Vonage
     try {
       const res = await fetch("/api/send-sms", {
         method: "POST",
@@ -1576,7 +1624,7 @@ export default function DashboardPage() {
 
     setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
 
-    // Send each step via Telnyx API
+    // Send each step via Vonage API
     try {
       let totalSent = 0;
       let totalFailed = 0;
@@ -1629,57 +1677,52 @@ export default function DashboardPage() {
     window.setTimeout(() => setMessage(""), 4000);
   };
 
-  // ── CSV Wizard Step 1: Parse file and detect headers ──
-  const handleCSVFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!userId) return;
     const file = e.target.files?.[0];
     if (!file) return;
-    setCsvFileName(file.name);
 
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: async (results) => {
         if (!results.data.length) {
           setMessage("❌ No rows found in CSV");
           window.setTimeout(() => setMessage(""), 2500);
           return;
         }
-        const headers = results.meta.fields || [];
-        setCsvRawHeaders(headers);
-        setCsvRawData(results.data);
 
-        // Auto-map headers to contact fields
-        const autoMap: Record<string, string> = {};
-        const mappings: [string[], string][] = [
-          [["first name", "firstname", "first_name", "fname"], "first_name"],
-          [["last name", "lastname", "last_name", "lname"], "last_name"],
-          [["phone", "phone number", "phone_number", "phonenumber", "mobile", "cell"], "phone"],
-          [["email", "email address", "emailaddress", "e-mail"], "email"],
-          [["city", "town"], "city"],
-          [["state", "province", "st"], "state"],
-          [["address", "street", "street address", "address1"], "address"],
-          [["zip", "zipcode", "zip code", "zip_code", "postal", "postal code"], "zip"],
-          [["lead source", "leadsource", "lead_source", "source"], "lead_source"],
-          [["dob", "date of birth", "dateofbirth", "date_of_birth", "birthday"], "date_of_birth"],
-          [["age"], "age"],
-          [["notes", "note", "comments"], "notes"],
-        ];
-        for (const h of headers) {
-          const lower = h.toLowerCase().trim();
-          for (const [variants, field] of mappings) {
-            if (variants.includes(lower)) {
-              // Don't double-map
-              if (!Object.values(autoMap).includes(field)) {
-                autoMap[h] = field;
-              }
-              break;
-            }
-          }
+        const rows = results.data
+          .map((row) => ({
+            user_id: userId,
+            first_name: row["First Name"] || row["firstName"] || row["first_name"] || "",
+            last_name: row["Last Name"] || row["lastName"] || row["last_name"] || "",
+            phone: row["Phone"] || row["phone"] || row["Phone Number"] || row["phone_number"] || "",
+            email: row["Email"] || row["email"] || "",
+            city: row["City"] || row["city"] || "",
+            state: row["State"] || row["state"] || "",
+            address: row["Address"] || row["address"] || "",
+            zip: row["Zip"] || row["zip"] || row["ZIP"] || "",
+            lead_source: row["Lead Source"] || row["leadSource"] || row["lead_source"] || "",
+            tags: [] as string[], notes: "", dnc: false,
+            campaign: csvCampaignId ? (campaigns.find((c) => c.id === csvCampaignId)?.name || "") : "",
+            quote: "", policy_id: "", timeline: "", household_size: "",
+            date_of_birth: "", age: "",
+          }))
+          .filter((c) => c.first_name || c.phone);
+
+        // Batch insert
+        const { data, error } = await supabase.from("contacts").insert(rows).select();
+        if (error || !data) {
+          setMessage("❌ Failed to import contacts");
+          window.setTimeout(() => setMessage(""), 2500);
+          return;
         }
-        setCsvFieldMapping(autoMap);
-        setCsvWizardStep(2);
-        setCsvWizardOpen(true);
+
+        const imported = (data as Contact[]).map(contactToRecord);
+        setContacts((prev) => [...imported, ...prev]);
+        setMessage(`✅ Imported ${imported.length} contacts`);
+        window.setTimeout(() => setMessage(""), 2500);
       },
       error: () => {
         setMessage("❌ Failed to parse CSV");
@@ -1688,85 +1731,6 @@ export default function DashboardPage() {
     });
 
     e.target.value = "";
-  };
-
-  // ── CSV Wizard Step 3: Submit — import contacts and optionally launch campaign ──
-  const handleCSVWizardSubmit = async () => {
-    if (!userId) return;
-    setCsvImporting(true);
-
-    const campaignName = csvWizardCampaignId ? (campaigns.find((c) => c.id === csvWizardCampaignId)?.name || "") : "";
-    const tagList = csvWizardTags.split(",").map((t) => t.trim()).filter(Boolean);
-
-    const rows = csvRawData
-      .map((row) => {
-        const mapped: Record<string, string> = {};
-        for (const [csvHeader, contactField] of Object.entries(csvFieldMapping)) {
-          if (contactField && row[csvHeader]) {
-            mapped[contactField] = row[csvHeader];
-          }
-        }
-        return {
-          user_id: userId,
-          first_name: mapped.first_name || "",
-          last_name: mapped.last_name || "",
-          phone: mapped.phone || "",
-          email: mapped.email || "",
-          city: mapped.city || "",
-          state: mapped.state || "",
-          address: mapped.address || "",
-          zip: mapped.zip || "",
-          lead_source: mapped.lead_source || "",
-          date_of_birth: mapped.date_of_birth || "",
-          age: mapped.age || "",
-          notes: mapped.notes || "",
-          tags: tagList,
-          dnc: false,
-          campaign: campaignName,
-          quote: "", policy_id: "", timeline: "", household_size: "",
-        };
-      })
-      .filter((c) => c.first_name || c.phone);
-
-    if (rows.length === 0) {
-      setMessage("❌ No valid contacts found. Make sure Phone or First Name is mapped.");
-      window.setTimeout(() => setMessage(""), 3000);
-      setCsvImporting(false);
-      return;
-    }
-
-    // Batch insert
-    const { data, error } = await supabase.from("contacts").insert(rows).select();
-    if (error || !data) {
-      setMessage("❌ Failed to import contacts");
-      window.setTimeout(() => setMessage(""), 2500);
-      setCsvImporting(false);
-      return;
-    }
-
-    const imported = (data as Contact[]).map(contactToRecord);
-    setContacts((prev) => [...imported, ...prev]);
-    setMessage(`✅ Imported ${imported.length} contacts`);
-    setCsvImporting(false);
-    setCsvWizardOpen(false);
-
-    // Reset wizard state
-    setCsvRawHeaders([]);
-    setCsvRawData([]);
-    setCsvFieldMapping({});
-    setCsvWizardCampaignId("");
-    setCsvWizardTags("");
-    setCsvFileName("");
-    setCsvWizardStep(1);
-
-    // Auto-launch campaign if selected
-    if (csvWizardAutoSend && csvWizardCampaignId) {
-      window.setTimeout(() => {
-        handleLaunchCampaign(csvWizardCampaignId);
-      }, 500);
-    } else {
-      window.setTimeout(() => setMessage(""), 3000);
-    }
   };
 
   const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -2331,24 +2295,6 @@ export default function DashboardPage() {
                         placeholder="Insert text here ... (Enter to send, Shift+Enter for newline)"
                         className="h-36 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
                       />
-
-                      {/* From number picker */}
-                      {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 1 && (
-                        <div className="mt-2 flex items-center gap-2">
-                          <span className="text-xs text-zinc-500">From:</span>
-                          <select
-                            value={selectedFromNumber || currentUser.ownedNumbers[0]?.number || ""}
-                            onChange={(e) => setSelectedFromNumber(e.target.value)}
-                            className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-300 focus:border-violet-500 focus:outline-none"
-                          >
-                            {currentUser.ownedNumbers.map((num) => (
-                              <option key={num.id} value={num.number}>
-                                {num.number} — {num.alias}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      )}
 
                       <div className="mt-3 flex items-center justify-between">
                         <div className="flex items-center gap-2">
@@ -3201,6 +3147,16 @@ export default function DashboardPage() {
                   + Add Contact
                 </button>
                 <div className="flex items-center gap-2">
+                  <select
+                    value={csvCampaignId}
+                    onChange={(e) => setCsvCampaignId(e.target.value)}
+                    className="rounded-2xl border border-zinc-700 bg-zinc-800 px-3 py-3 text-sm"
+                  >
+                    <option value="">No campaign</option>
+                    {campaigns.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
                   <button
                     onClick={() => csvInputRef.current?.click()}
                     className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
@@ -3212,7 +3168,7 @@ export default function DashboardPage() {
                     Export CSV
                   </button>
                 </div>
-                <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVFileSelect} />
+                <input ref={csvInputRef} type="file" accept=".csv" className="hidden" onChange={handleCSVImport} />
                 {selectedContactIds.size > 0 && (
                   <>
                     <select
@@ -3589,17 +3545,8 @@ export default function DashboardPage() {
                         <div className="font-semibold">{item.alias}</div>
                         <div className="mt-1 font-mono text-zinc-300">{item.number}</div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <div className="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">
-                          Active
-                        </div>
-                        <button
-                          onClick={() => handleDeleteNumber(item.id, item.number)}
-                          disabled={deletingNumber === item.id}
-                          className="rounded-xl border border-red-800/50 px-3 py-1 text-xs text-red-400 hover:bg-red-950 hover:text-red-300 disabled:opacity-50 transition"
-                        >
-                          {deletingNumber === item.id ? "Releasing..." : "Release"}
-                        </button>
+                      <div className="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">
+                        Active
                       </div>
                     </div>
                   </div>
@@ -4379,54 +4326,189 @@ export default function DashboardPage() {
           <div className="space-y-6">
             <h2 className="text-2xl font-bold">10DLC A2P Registration</h2>
             <p className="text-zinc-400">
-              US carriers require 10DLC registration for business text messaging (A2P). This registration is handled
-              directly through the Telnyx dashboard to ensure full compliance.
+              US carriers require 10DLC registration for business text messaging. Enter your business details below and we&apos;ll handle the rest automatically.
             </p>
 
-            <div className="space-y-6 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h3 className="text-lg font-semibold">How to Register</h3>
+            {/* Status Banner */}
+            {currentUser?.a2pRegistration && currentUser.a2pRegistration.status !== "not_started" && (
+              <div className={`rounded-2xl border p-4 ${
+                currentUser.a2pRegistration.status === "completed" || currentUser.a2pRegistration.status === "campaign_approved"
+                  ? "border-emerald-700 bg-emerald-950/50"
+                  : currentUser.a2pRegistration.status === "brand_failed" || currentUser.a2pRegistration.status === "campaign_failed"
+                  ? "border-red-700 bg-red-950/50"
+                  : "border-yellow-700 bg-yellow-950/50"
+              }`}>
+                <div className="flex items-center gap-3">
+                  <div className={`h-3 w-3 rounded-full ${
+                    currentUser.a2pRegistration.status === "completed" || currentUser.a2pRegistration.status === "campaign_approved" ? "bg-emerald-500" :
+                    currentUser.a2pRegistration.status === "brand_failed" || currentUser.a2pRegistration.status === "campaign_failed" ? "bg-red-500" :
+                    "bg-yellow-500 animate-pulse"
+                  }`} />
+                  <div>
+                    <p className="font-medium">
+                      {currentUser.a2pRegistration.status === "completed" || currentUser.a2pRegistration.status === "campaign_approved" ? "Registration Complete" :
+                       currentUser.a2pRegistration.status === "brand_pending" ? "Brand Registration Pending" :
+                       currentUser.a2pRegistration.status === "brand_approved" ? "Brand Approved — Creating Campaign" :
+                       currentUser.a2pRegistration.status === "campaign_pending" ? "Campaign Pending Approval" :
+                       currentUser.a2pRegistration.status === "brand_failed" ? "Brand Registration Failed" :
+                       currentUser.a2pRegistration.status === "campaign_failed" ? "Campaign Registration Failed" :
+                       "Processing..."}
+                    </p>
+                    {currentUser.a2pRegistration.businessName && (
+                      <p className="text-sm text-zinc-400">Business: {currentUser.a2pRegistration.businessName} | EIN: {currentUser.a2pRegistration.ein}</p>
+                    )}
+                    {(currentUser.a2pRegistration.status === "brand_failed" || currentUser.a2pRegistration.status === "campaign_failed") &&
+                     currentUser.a2pRegistration.errors?.length > 0 && (
+                      <p className="mt-1 text-sm text-red-400">{currentUser.a2pRegistration.errors.join(", ")}</p>
+                    )}
+                  </div>
+                </div>
+                {(currentUser.a2pRegistration.status === "campaign_pending" || currentUser.a2pRegistration.status === "brand_pending") && (
+                  <button
+                    onClick={currentUser.a2pRegistration.status === "campaign_pending" ? handleA2pCheckCampaign : handleA2pPollAndContinue}
+                    disabled={a2pLoading}
+                    className="mt-3 rounded-xl bg-yellow-600 px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
+                  >
+                    {a2pLoading ? "Checking..." : "Check Status"}
+                  </button>
+                )}
+              </div>
+            )}
 
-              <div className="space-y-4">
-                <div className="flex items-start gap-4">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">1</div>
+            {/* Registration Form - show if not started, failed, or no registration */}
+            {(!currentUser?.a2pRegistration || currentUser.a2pRegistration.status === "not_started" ||
+              currentUser.a2pRegistration.status === "brand_failed" || currentUser.a2pRegistration.status === "campaign_failed") && (
+              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h3 className="text-lg font-semibold">Business Information</h3>
+                <p className="text-sm text-zinc-400">Enter your business details. We&apos;ll register your brand, create a messaging campaign, and assign your phone numbers automatically.</p>
+
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <p className="font-medium">Log into your Telnyx Dashboard</p>
-                    <p className="text-sm text-zinc-400">Go to the Telnyx Mission Control Portal and navigate to Messaging &gt; 10DLC.</p>
+                    <label className="mb-1 block text-sm text-zinc-400">Business Name *</label>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="JJ Johnson Health LLC"
+                      value={a2pForm.businessName}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessName: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-zinc-400">EIN (Employer ID Number) *</label>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="92-0724241"
+                      value={a2pForm.ein}
+                      onChange={(e) => setA2pForm({ ...a2pForm, ein: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-zinc-400">Business Type</label>
+                    <select
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      value={a2pForm.businessType}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessType: e.target.value as typeof a2pForm.businessType })}
+                    >
+                      <option value="llc">LLC</option>
+                      <option value="corporation">Corporation</option>
+                      <option value="partnership">Partnership</option>
+                      <option value="sole_proprietor">Sole Proprietor</option>
+                      <option value="non_profit">Non-Profit</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-zinc-400">Website</label>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="https://yourbusiness.com"
+                      value={a2pForm.website}
+                      onChange={(e) => setA2pForm({ ...a2pForm, website: e.target.value })}
+                    />
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">2</div>
+
+                <h4 className="mt-4 font-medium text-zinc-300">Business Address</h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="Street Address"
+                      value={a2pForm.businessAddress}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessAddress: e.target.value })}
+                    />
+                  </div>
                   <div>
-                    <p className="font-medium">Register Your Brand</p>
-                    <p className="text-sm text-zinc-400">Provide your business name, EIN, address, and contact information. Brand review typically takes 1-5 business days.</p>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="City"
+                      value={a2pForm.businessCity}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessCity: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="State"
+                      value={a2pForm.businessState}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessState: e.target.value })}
+                    />
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="ZIP"
+                      value={a2pForm.businessZip}
+                      onChange={(e) => setA2pForm({ ...a2pForm, businessZip: e.target.value })}
+                    />
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">3</div>
+
+                <h4 className="mt-4 font-medium text-zinc-300">Contact Information</h4>
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
-                    <p className="font-medium">Register Your Campaign</p>
-                    <p className="text-sm text-zinc-400">Once your brand is approved, create a campaign describing your messaging use case. Campaign reviews take 10-15 business days.</p>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="Contact Email"
+                      value={a2pForm.contactEmail}
+                      onChange={(e) => setA2pForm({ ...a2pForm, contactEmail: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <input
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                      placeholder="Contact Phone"
+                      value={a2pForm.contactPhone}
+                      onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: e.target.value })}
+                    />
                   </div>
                 </div>
-                <div className="flex items-start gap-4">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">4</div>
-                  <div>
-                    <p className="font-medium">Associate Your Numbers</p>
-                    <p className="text-sm text-zinc-400">After campaign approval, link your purchased phone numbers to the campaign. You can then send messages with full carrier compliance.</p>
-                  </div>
+
+                <button
+                  onClick={handleA2pRegister}
+                  disabled={a2pLoading || !a2pForm.businessName || !a2pForm.ein}
+                  className="mt-4 w-full rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {a2pLoading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
+                      Registering...
+                    </span>
+                  ) : "Register & Start Sending"}
+                </button>
+              </div>
+            )}
+
+            {/* Completed State */}
+            {(currentUser?.a2pRegistration?.status === "completed" || currentUser?.a2pRegistration?.status === "campaign_approved") && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h3 className="mb-2 text-lg font-semibold">Registration Details</h3>
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div><span className="text-zinc-400">Business:</span> {currentUser.a2pRegistration.businessName}</div>
+                  <div><span className="text-zinc-400">EIN:</span> {currentUser.a2pRegistration.ein}</div>
+                  <div><span className="text-zinc-400">Campaign:</span> {currentUser.a2pRegistration.useCase}</div>
+                  <div><span className="text-zinc-400">Status:</span> <span className="text-emerald-400">Active</span></div>
                 </div>
               </div>
+            )}
 
-              <a
-                href="https://portal.telnyx.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-block rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700"
-              >
-                Open Telnyx Dashboard
-              </a>
-            </div>
-
+            {/* Phone Numbers */}
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h3 className="mb-3 text-lg font-semibold">Your Phone Numbers</h3>
               {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 ? (
@@ -4449,188 +4531,6 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Schedule Message Modal ── */}
-      {/* ── CSV Import Wizard Modal ── */}
-      {csvWizardOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
-          <div className="w-full max-w-3xl max-h-[90vh] flex flex-col rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl">
-            {/* Header with steps */}
-            <div className="border-b border-zinc-800 px-6 py-4">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold">Import CSV File</h2>
-                <button onClick={() => { setCsvWizardOpen(false); setCsvWizardStep(1); setCsvRawHeaders([]); setCsvRawData([]); setCsvFieldMapping({}); setCsvWizardCampaignId(""); setCsvWizardTags(""); setCsvFileName(""); setCsvWizardAutoSend(false); }}
-                  className="rounded-full p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white transition">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </div>
-              <div className="flex items-center gap-3">
-                {[
-                  { num: 1, label: "Select File" },
-                  { num: 2, label: "Map Fields" },
-                  { num: 3, label: "Configure" },
-                ].map((s, i) => (
-                  <div key={s.num} className="flex items-center gap-2">
-                    <div className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                      csvWizardStep > s.num ? "bg-emerald-600 text-white" : csvWizardStep === s.num ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-500"
-                    }`}>{s.num}</div>
-                    <span className={`text-sm ${csvWizardStep >= s.num ? "text-white" : "text-zinc-500"}`}>{s.label}</span>
-                    {i < 2 && <div className={`h-0.5 w-8 ${csvWizardStep > s.num ? "bg-emerald-600" : "bg-zinc-700"}`} />}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Step 2: Map Fields */}
-            {csvWizardStep === 2 && (
-              <div className="flex-1 overflow-y-auto px-6 py-5">
-                <p className="text-emerald-400 font-semibold mb-4">Total Leads Found: {csvRawData.length.toLocaleString()}</p>
-
-                <div className="rounded-xl border border-zinc-800 overflow-hidden">
-                  {/* Table header */}
-                  <div className="grid grid-cols-3 gap-4 bg-zinc-800/60 px-4 py-3 text-xs font-semibold uppercase tracking-wider text-zinc-400">
-                    <div>Column Header from File</div>
-                    <div>Preview</div>
-                    <div>Contact Field</div>
-                  </div>
-
-                  {/* Table rows */}
-                  {csvRawHeaders.map((header) => {
-                    const preview = csvRawData.slice(0, 2).map((r) => r[header]).filter(Boolean);
-                    return (
-                      <div key={header} className="grid grid-cols-3 gap-4 items-center border-t border-zinc-800 px-4 py-3">
-                        <div className="text-sm font-medium">{header}</div>
-                        <div className="text-xs text-zinc-500 truncate">{preview.join(", ") || "—"}</div>
-                        <select
-                          value={csvFieldMapping[header] || ""}
-                          onChange={(e) => setCsvFieldMapping((prev) => ({ ...prev, [header]: e.target.value }))}
-                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-violet-500 focus:outline-none"
-                        >
-                          {CSV_CONTACT_FIELDS.map((f) => (
-                            <option key={f.value} value={f.value}>{f.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Step 3: Configure — Campaign + Tags + Auto-send */}
-            {csvWizardStep === 3 && (
-              <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
-                <p className="text-emerald-400 font-semibold">Total Leads Found: {csvRawData.length.toLocaleString()}</p>
-
-                <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-4">
-                  <div className="text-xs text-zinc-500 mb-1">File Name</div>
-                  <div className="text-sm">{csvFileName}</div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">Assign to Campaign</label>
-                    <select
-                      value={csvWizardCampaignId}
-                      onChange={(e) => setCsvWizardCampaignId(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none"
-                    >
-                      <option value="">No campaign</option>
-                      {campaigns.map((c) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-300 mb-2">Tags (comma separated)</label>
-                    <input
-                      value={csvWizardTags}
-                      onChange={(e) => setCsvWizardTags(e.target.value)}
-                      placeholder="e.g. new-lead, facebook, batch-1"
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none placeholder:text-zinc-500"
-                    />
-                  </div>
-
-                  {csvWizardCampaignId && (
-                    <label className="flex items-center gap-3 cursor-pointer rounded-xl border border-zinc-700 bg-zinc-800/60 p-4">
-                      <input
-                        type="checkbox"
-                        checked={csvWizardAutoSend}
-                        onChange={(e) => setCsvWizardAutoSend(e.target.checked)}
-                        className="h-4 w-4 rounded border-zinc-600 accent-violet-600"
-                      />
-                      <div>
-                        <div className="text-sm font-medium">Start texting immediately after import</div>
-                        <div className="text-xs text-zinc-500">The selected campaign will launch automatically once contacts are imported</div>
-                      </div>
-                    </label>
-                  )}
-                </div>
-
-                <div className="rounded-xl border border-amber-800/50 bg-amber-950/30 p-4 text-sm text-amber-300">
-                  By uploading a list to Text2Sale, you certify that you have received Opt-In consent to message everyone in the list. Proof of Opt-In may be requested for any lead in this upload, if needed.
-                </div>
-
-                {/* Field mapping summary */}
-                <div className="rounded-xl border border-zinc-800 bg-zinc-800/40 p-4">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-2">Field Mapping Summary</div>
-                  <div className="grid grid-cols-2 gap-1 text-xs">
-                    {Object.entries(csvFieldMapping).filter(([, v]) => v).map(([header, field]) => (
-                      <div key={header} className="flex justify-between py-1">
-                        <span className="text-zinc-400">{header}</span>
-                        <span className="text-violet-400">{CSV_CONTACT_FIELDS.find((f) => f.value === field)?.label || field}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* Footer with navigation */}
-            <div className="border-t border-zinc-800 px-6 py-4 flex items-center justify-between">
-              <button
-                onClick={() => {
-                  if (csvWizardStep === 2) {
-                    setCsvWizardOpen(false); setCsvWizardStep(1); setCsvRawHeaders([]); setCsvRawData([]);
-                  } else if (csvWizardStep === 3) {
-                    setCsvWizardStep(2);
-                  }
-                }}
-                className="rounded-2xl border border-zinc-700 px-6 py-3 text-sm hover:bg-zinc-800 transition"
-              >
-                &larr; Back
-              </button>
-
-              {csvWizardStep === 2 && (
-                <button
-                  onClick={() => {
-                    const hasMapped = Object.values(csvFieldMapping).some((v) => v === "phone" || v === "first_name");
-                    if (!hasMapped) {
-                      setMessage("❌ Map at least Phone Number or First Name to continue");
-                      window.setTimeout(() => setMessage(""), 3000);
-                      return;
-                    }
-                    setCsvWizardStep(3);
-                  }}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 text-sm font-medium hover:bg-violet-700 transition"
-                >
-                  Next &rarr;
-                </button>
-              )}
-
-              {csvWizardStep === 3 && (
-                <button
-                  onClick={handleCSVWizardSubmit}
-                  disabled={csvImporting}
-                  className="rounded-2xl bg-violet-600 px-8 py-3 text-sm font-medium hover:bg-violet-700 transition disabled:opacity-50"
-                >
-                  {csvImporting ? "Importing..." : csvWizardAutoSend ? "Submit & Send" : "Submit"}
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
       {showScheduleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
