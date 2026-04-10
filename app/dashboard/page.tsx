@@ -1263,8 +1263,8 @@ export default function DashboardPage() {
     if (!currentUser || !userId) return;
 
     const walletBalance = currentUser.walletBalance || 0;
-    if (walletBalance < 1) {
-      setMessage("❌ Add at least $1.00 to your wallet first");
+    if (walletBalance < 1.5) {
+      setMessage("❌ Add at least $1.50 to your wallet first");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
@@ -1294,13 +1294,13 @@ export default function DashboardPage() {
       };
 
       const purchaseEntry: UsageHistoryItem = {
-        id: `number_${Date.now()}`, type: "number_purchase", amount: 1,
+        id: `number_${Date.now()}`, type: "number_purchase", amount: 1.5,
         description: `Purchased number ${data.number}`,
         createdAt: new Date().toISOString(), status: "succeeded",
       };
 
       await persistProfile({
-        wallet_balance: Number((walletBalance - 1).toFixed(2)),
+        wallet_balance: Number((walletBalance - 1.5).toFixed(2)),
         owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
         usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
       });
@@ -3493,7 +3493,7 @@ export default function DashboardPage() {
                 </div>
 
                 <div className="mt-2 text-xs text-zinc-500">
-                  Wallet: {formatCurrency(currentUser.walletBalance || 0)} · $1.00 per number
+                  Wallet: {formatCurrency(currentUser.walletBalance || 0)} · $1.50 per number + $1.00/mo each
                 </div>
               </div>
 
@@ -3507,7 +3507,7 @@ export default function DashboardPage() {
                       <button
                         key={num.raw}
                         onClick={() => handleBuyNumber(num.raw, num.display)}
-                        disabled={buyingNumber === num.raw || (currentUser.walletBalance || 0) < 1}
+                        disabled={buyingNumber === num.raw || (currentUser.walletBalance || 0) < 1.5}
                         className="w-full flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/60 px-5 py-4 text-left hover:bg-zinc-700/60 hover:border-violet-600 transition disabled:opacity-50"
                       >
                         <div>
@@ -3519,7 +3519,7 @@ export default function DashboardPage() {
                           )}
                         </div>
                         <div className="text-sm font-medium text-violet-400">
-                          {buyingNumber === num.raw ? "Buying..." : "$1.00"}
+                          {buyingNumber === num.raw ? "Buying..." : "$1.50"}
                         </div>
                       </button>
                     ))}

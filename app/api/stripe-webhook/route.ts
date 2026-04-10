@@ -183,7 +183,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Invoice paid — log subscription payment in usage history
+    // Invoice paid — log subscription payment and charge monthly number fees
     if (event.type === "invoice.payment_succeeded") {
       const invoice = event.data.object as Stripe.Invoice;
       const subDetails = invoice.parent?.subscription_details;
@@ -194,25 +194,51 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("usage_history")
+            .select("usage_history, owned_numbers, wallet_balance")
             .eq("id", userId)
             .single();
 
           if (profile) {
-            const entry = {
+            const now = new Date().toISOString();
+            const entries = [];
+
+            // Log subscription charge
+            entries.push({
               id: `sub_${Date.now()}`,
               type: "charge",
               amount: (invoice.amount_paid || 0) / 100,
               description: "Monthly subscription — Text2Sale Plan",
-              createdAt: new Date().toISOString(),
+              createdAt: now,
               status: "succeeded",
-            };
+            });
 
-            const updatedHistory = [entry, ...(profile.usage_history || [])];
+            // Charge $1/month per owned phone number
+            const ownedNumbers = profile.owned_numbers || [];
+            const numberCount = ownedNumbers.length;
+            let numberCharge = 0;
+
+            if (numberCount > 0) {
+              numberCharge = numberCount * 1;
+              entries.push({
+                id: `numfee_${Date.now()}`,
+                type: "charge",
+                amount: numberCharge,
+                description: `Monthly phone number fee — ${numberCount} number${numberCount > 1 ? "s" : ""} × $1.00`,
+                createdAt: now,
+                status: "succeeded",
+              });
+            }
+
+            const updatedHistory = [...entries, ...(profile.usage_history || [])];
+            const currentBalance = Number(profile.wallet_balance) || 0;
+            const newBalance = Number((currentBalance - numberCharge).toFixed(2));
 
             await supabase
               .from("profiles")
-              .update({ usage_history: updatedHistory })
+              .update({
+                usage_history: updatedHistory,
+                wallet_balance: newBalance,
+              })
               .eq("id", userId);
           }
         }
