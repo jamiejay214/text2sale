@@ -424,15 +424,8 @@ export default function AdminPage() {
   };
 
   if (!mounted) {
-    return (
-      <main className="min-h-screen bg-zinc-950 text-white">
-        <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
-          <div className="rounded-3xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-zinc-300">
-            Loading admin portal...
-          </div>
-        </div>
-      </main>
-    );
+    // Show nothing until auth + role check completes — prevents non-admins from seeing any admin UI
+    return <main className="min-h-screen bg-zinc-950" />;
   }
 
   const campaignOwner = (userId: string) => {
