@@ -108,7 +108,68 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
+
+type CSVUploadRecord = {
+  id: string;
+  fileName: string;
+  date: string;
+  totalRows: number;
+  success: number;
+  duplicates: number;
+  invalid: number;
+};
+
+type CSVColumnMapping = {
+  csvHeader: string;
+  preview: string[];
+  mappedTo: string;
+};
+
+const CSV_CONTACT_FIELDS = [
+  { value: "", label: "Select" },
+  { value: "first_name", label: "First Name" },
+  { value: "last_name", label: "Last Name" },
+  { value: "phone", label: "Phone Number" },
+  { value: "email", label: "Email" },
+  { value: "city", label: "City" },
+  { value: "state", label: "State" },
+  { value: "address", label: "Address" },
+  { value: "zip", label: "Zip" },
+  { value: "lead_source", label: "Lead Source" },
+  { value: "date_of_birth", label: "Date of Birth" },
+  { value: "age", label: "Age" },
+  { value: "quote", label: "Quote" },
+  { value: "policy_id", label: "Policy ID" },
+  { value: "timeline", label: "Timeline" },
+  { value: "household_size", label: "Household Size" },
+  { value: "notes", label: "Notes" },
+  { value: "tags", label: "Tags" },
+];
+
+function autoDetectMapping(header: string): string {
+  const h = header.toLowerCase().trim().replace(/[_\-\s]+/g, "");
+  const map: Record<string, string> = {
+    firstname: "first_name", first: "first_name", fname: "first_name",
+    lastname: "last_name", last: "last_name", lname: "last_name",
+    phone: "phone", phonenumber: "phone", mobilenumber: "phone", mobile: "phone", cell: "phone", cellphone: "phone",
+    email: "email", emailaddress: "email",
+    city: "city", town: "city",
+    state: "state", st: "state", province: "state",
+    address: "address", streetaddress: "address", street: "address", addr: "address",
+    zip: "zip", zipcode: "zip", postalcode: "zip", postal: "zip",
+    leadsource: "lead_source", source: "lead_source",
+    dateofbirth: "date_of_birth", dob: "date_of_birth", birthday: "date_of_birth", birthdate: "date_of_birth",
+    age: "age",
+    quote: "quote",
+    policyid: "policy_id", policy: "policy_id", policynumber: "policy_id",
+    timeline: "timeline",
+    householdsize: "household_size", household: "household_size", hhsize: "household_size",
+    notes: "notes", note: "notes", comments: "notes", comment: "notes",
+    tags: "tags", tag: "tags",
+  };
+  return map[h] || "";
+}
 
 type TeamMemberDetail = {
   profile: AccountRecord;
@@ -250,6 +311,17 @@ export default function DashboardPage() {
   });
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [csvCampaignId, setCsvCampaignId] = useState<string>("");
+  // CSV Upload Wizard
+  const [csvUploadStep, setCsvUploadStep] = useState<1 | 2 | 3>(1);
+  const [csvRawData, setCsvRawData] = useState<Record<string, string>[]>([]);
+  const [csvFileName, setCsvFileName] = useState("");
+  const [csvColumnMappings, setCsvColumnMappings] = useState<CSVColumnMapping[]>([]);
+  const [csvIgnoreDuplicates, setCsvIgnoreDuplicates] = useState(true);
+  const [csvUploadTags, setCsvUploadTags] = useState<string[]>([]);
+  const [csvTagInput, setCsvTagInput] = useState("");
+  const [csvUploading, setCsvUploading] = useState(false);
+  const [csvUploadHistory, setCsvUploadHistory] = useState<CSVUploadRecord[]>([]);
+  const csvUploadRef = useRef<HTMLInputElement>(null);
   const [deletingBulk, setDeletingBulk] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
   const [editCampaignForm, setEditCampaignForm] = useState<NewCampaignForm>({ name: "", steps: [], selectedNumbers: [] });
@@ -468,7 +540,7 @@ export default function DashboardPage() {
 
       // Handle tab redirect (e.g. from Stripe portal return)
       const tabParam = params.get("tab");
-      if (tabParam && ["overview","conversations","campaigns","contacts","numbers","billing","opt-out","activity","team","10dlc"].includes(tabParam)) {
+      if (tabParam && ["overview","conversations","campaigns","contacts","upload","numbers","billing","opt-out","activity","team","10dlc"].includes(tabParam)) {
         setActiveTab(tabParam as DashboardTab);
         window.history.replaceState({}, "", "/dashboard");
       }
@@ -1964,6 +2036,142 @@ export default function DashboardPage() {
     e.target.value = "";
   };
 
+  // ── CSV Upload Wizard Handlers ──
+  const handleCSVFileSelect = (file: File) => {
+    setCsvFileName(file.name);
+    Papa.parse<Record<string, string>>(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        if (!results.data.length) {
+          setMessage("❌ No rows found in CSV");
+          window.setTimeout(() => setMessage(""), 2500);
+          setCsvFileName("");
+          return;
+        }
+        setCsvRawData(results.data);
+        // Build column mappings with auto-detect
+        const headers = Object.keys(results.data[0]);
+        const mappings: CSVColumnMapping[] = headers.map((header) => ({
+          csvHeader: header,
+          preview: results.data.slice(0, 2).map((row) => row[header] || ""),
+          mappedTo: autoDetectMapping(header),
+        }));
+        setCsvColumnMappings(mappings);
+      },
+      error: () => {
+        setMessage("❌ Failed to parse CSV file");
+        window.setTimeout(() => setMessage(""), 2500);
+        setCsvFileName("");
+      },
+    });
+  };
+
+  const handleCSVWizardSubmit = async () => {
+    if (!userId || csvUploading) return;
+    setCsvUploading(true);
+
+    // Build mapping: contact field → csv header
+    const fieldToHeader: Record<string, string> = {};
+    for (const col of csvColumnMappings) {
+      if (col.mappedTo) fieldToHeader[col.mappedTo] = col.csvHeader;
+    }
+
+    const campaignName = csvCampaignId ? (campaigns.find((c) => c.id === csvCampaignId)?.name || "") : "";
+
+    const rows = csvRawData
+      .map((row) => ({
+        user_id: userId,
+        first_name: fieldToHeader.first_name ? (row[fieldToHeader.first_name] || "") : "",
+        last_name: fieldToHeader.last_name ? (row[fieldToHeader.last_name] || "") : "",
+        phone: fieldToHeader.phone ? (row[fieldToHeader.phone] || "") : "",
+        email: fieldToHeader.email ? (row[fieldToHeader.email] || "") : "",
+        city: fieldToHeader.city ? (row[fieldToHeader.city] || "") : "",
+        state: fieldToHeader.state ? (row[fieldToHeader.state] || "") : "",
+        address: fieldToHeader.address ? (row[fieldToHeader.address] || "") : "",
+        zip: fieldToHeader.zip ? (row[fieldToHeader.zip] || "") : "",
+        lead_source: fieldToHeader.lead_source ? (row[fieldToHeader.lead_source] || "") : "",
+        date_of_birth: fieldToHeader.date_of_birth ? (row[fieldToHeader.date_of_birth] || "") : "",
+        age: fieldToHeader.age ? (row[fieldToHeader.age] || "") : "",
+        quote: fieldToHeader.quote ? (row[fieldToHeader.quote] || "") : "",
+        policy_id: fieldToHeader.policy_id ? (row[fieldToHeader.policy_id] || "") : "",
+        timeline: fieldToHeader.timeline ? (row[fieldToHeader.timeline] || "") : "",
+        household_size: fieldToHeader.household_size ? (row[fieldToHeader.household_size] || "") : "",
+        notes: fieldToHeader.notes ? (row[fieldToHeader.notes] || "") : "",
+        tags: csvUploadTags.length > 0 ? csvUploadTags : (fieldToHeader.tags ? [row[fieldToHeader.tags] || ""].filter(Boolean) : []),
+        dnc: false,
+        campaign: campaignName,
+      }))
+      .filter((c) => c.first_name || c.phone); // Must have at least name or phone
+
+    const invalidCount = csvRawData.length - rows.length;
+
+    // Dedup
+    let deduped = rows;
+    let dupeCount = 0;
+    if (csvIgnoreDuplicates) {
+      const existingPhones = new Set(contacts.map((c) => c.phone.replace(/\D/g, "")).filter(Boolean));
+      const csvPhoneSeen = new Set<string>();
+      deduped = [];
+      for (const row of rows) {
+        const normalized = row.phone.replace(/\D/g, "");
+        if (!normalized) { deduped.push(row); continue; }
+        if (existingPhones.has(normalized) || csvPhoneSeen.has(normalized)) {
+          dupeCount++;
+          continue;
+        }
+        csvPhoneSeen.add(normalized);
+        deduped.push(row);
+      }
+    }
+
+    if (deduped.length === 0) {
+      const record: CSVUploadRecord = {
+        id: `upload_${Date.now()}`, fileName: csvFileName, date: new Date().toISOString(),
+        totalRows: csvRawData.length, success: 0, duplicates: dupeCount, invalid: invalidCount,
+      };
+      setCsvUploadHistory((prev) => [record, ...prev]);
+      setMessage(`❌ No new contacts to import (${dupeCount} duplicates, ${invalidCount} invalid)`);
+      window.setTimeout(() => setMessage(""), 3000);
+      setCsvUploading(false);
+      resetCSVWizard();
+      return;
+    }
+
+    // Batch insert in chunks of 500
+    let totalImported = 0;
+    for (let i = 0; i < deduped.length; i += 500) {
+      const chunk = deduped.slice(i, i + 500);
+      const { data, error } = await supabase.from("contacts").insert(chunk).select();
+      if (!error && data) {
+        const imported = (data as Contact[]).map(contactToRecord);
+        setContacts((prev) => [...imported, ...prev]);
+        totalImported += imported.length;
+      }
+    }
+
+    const record: CSVUploadRecord = {
+      id: `upload_${Date.now()}`, fileName: csvFileName, date: new Date().toISOString(),
+      totalRows: csvRawData.length, success: totalImported, duplicates: dupeCount, invalid: invalidCount,
+    };
+    setCsvUploadHistory((prev) => [record, ...prev]);
+
+    setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}`);
+    window.setTimeout(() => setMessage(""), 4000);
+    setCsvUploading(false);
+    resetCSVWizard();
+  };
+
+  const resetCSVWizard = () => {
+    setCsvUploadStep(1);
+    setCsvRawData([]);
+    setCsvFileName("");
+    setCsvColumnMappings([]);
+    setCsvCampaignId("");
+    setCsvUploadTags([]);
+    setCsvTagInput("");
+  };
+
   const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -2060,6 +2268,7 @@ export default function DashboardPage() {
             "conversations",
             "campaigns",
             "contacts",
+            "upload",
             "numbers",
             "billing",
             "opt-out",
@@ -2076,7 +2285,7 @@ export default function DashboardPage() {
                   : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
               }`}
             >
-              {tab === "opt-out" ? "Opt-Out" : tab === "10dlc" ? "10DLC Registration" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              {tab === "opt-out" ? "Opt-Out" : tab === "10dlc" ? "10DLC Registration" : tab === "upload" ? "Upload CSV" : tab.charAt(0).toUpperCase() + tab.slice(1)}
             </button>
           ))}
         </div>
@@ -3843,6 +4052,297 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {/* ═══════════════ UPLOAD CSV ═══════════════ */}
+        {activeTab === "upload" && (
+          <div className="space-y-8">
+            {/* Upload Wizard */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
+              {/* Stepper Header */}
+              <div className="mb-8 flex items-center justify-center gap-4">
+                {[
+                  { step: 1, label: "Select CSV file" },
+                  { step: 2, label: "Map Columns" },
+                  { step: 3, label: "Configure" },
+                ].map(({ step, label }, i) => (
+                  <React.Fragment key={step}>
+                    {i > 0 && <span className="text-zinc-600">›</span>}
+                    <div className="flex items-center gap-2">
+                      <div className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold ${
+                        csvUploadStep === step ? "bg-violet-600 text-white" : csvUploadStep > step ? "bg-emerald-600 text-white" : "bg-zinc-700 text-zinc-400"
+                      }`}>{csvUploadStep > step ? "✓" : step}</div>
+                      <span className={`text-sm font-medium ${csvUploadStep === step ? "text-violet-300" : csvUploadStep > step ? "text-emerald-300" : "text-zinc-500"}`}>{label}</span>
+                    </div>
+                  </React.Fragment>
+                ))}
+              </div>
+
+              {/* Step 1: Select CSV File */}
+              {csvUploadStep === 1 && (
+                <div className="mx-auto max-w-xl">
+                  <div
+                    onClick={() => csvUploadRef.current?.click()}
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file && file.name.endsWith(".csv")) {
+                        handleCSVFileSelect(file);
+                      }
+                    }}
+                    className="cursor-pointer rounded-2xl border-2 border-dashed border-zinc-600 bg-zinc-800/50 p-16 text-center transition hover:border-violet-500 hover:bg-zinc-800"
+                  >
+                    <div className="text-5xl mb-4">📄</div>
+                    <div className="text-lg font-medium">Drag & drop your CSV file here</div>
+                    <div className="mt-2 text-sm text-zinc-400">or click to browse</div>
+                    <button className="mt-6 rounded-2xl bg-violet-600 px-8 py-3 text-sm font-medium hover:bg-violet-700">
+                      Select CSV File
+                    </button>
+                  </div>
+                  <input
+                    ref={csvUploadRef}
+                    type="file"
+                    accept=".csv"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) handleCSVFileSelect(file);
+                      e.target.value = "";
+                    }}
+                  />
+                  {csvFileName && (
+                    <div className="mt-4 rounded-2xl bg-zinc-800 p-4 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-xl">📄</span>
+                        <div>
+                          <div className="font-medium">{csvFileName}</div>
+                          <div className="text-sm text-emerald-400">{csvRawData.length.toLocaleString()} leads found</div>
+                        </div>
+                      </div>
+                      <button onClick={() => { setCsvFileName(""); setCsvRawData([]); }} className="text-sm text-zinc-400 hover:text-red-400">Remove</button>
+                    </div>
+                  )}
+                  {csvRawData.length > 0 && (
+                    <div className="mt-6 flex justify-end">
+                      <button onClick={() => setCsvUploadStep(2)} className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700">
+                        Next ›
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Step 2: Column Mapping */}
+              {csvUploadStep === 2 && (
+                <div>
+                  <div className="mb-6 text-center text-emerald-400 font-medium">
+                    Total Leads Found: {csvRawData.length.toLocaleString()}
+                  </div>
+                  <div className="overflow-hidden rounded-2xl border border-zinc-700">
+                    <table className="w-full text-sm">
+                      <thead className="bg-zinc-800">
+                        <tr>
+                          <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Column Header from File</th>
+                          <th className="px-6 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Preview</th>
+                          <th className="px-6 py-4 text-right text-xs font-medium uppercase tracking-wide text-zinc-400">Contact Fields</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-700">
+                        {csvColumnMappings.map((col, i) => (
+                          <tr key={i} className="hover:bg-zinc-800/50">
+                            <td className="px-6 py-4 font-medium">{col.csvHeader}</td>
+                            <td className="px-6 py-4 text-zinc-400">
+                              {col.preview.filter(Boolean).slice(0, 2).map((v, j) => (
+                                <div key={j} className="truncate max-w-[200px]">{v}</div>
+                              ))}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <select
+                                value={col.mappedTo}
+                                onChange={(e) => {
+                                  setCsvColumnMappings((prev) =>
+                                    prev.map((c, idx) => idx === i ? { ...c, mappedTo: e.target.value } : c)
+                                  );
+                                }}
+                                className="rounded-xl border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm"
+                              >
+                                {CSV_CONTACT_FIELDS.map((f) => (
+                                  <option key={f.value} value={f.value}>{f.label}</option>
+                                ))}
+                              </select>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="mt-6 flex justify-between">
+                    <button onClick={() => setCsvUploadStep(1)} className="rounded-2xl border border-zinc-700 px-6 py-3 text-sm hover:bg-zinc-800">
+                      ‹ Back
+                    </button>
+                    <button
+                      onClick={() => {
+                        const hasMapped = csvColumnMappings.some((c) => c.mappedTo !== "");
+                        if (!hasMapped) {
+                          setMessage("❌ Map at least one column to a contact field");
+                          window.setTimeout(() => setMessage(""), 2500);
+                          return;
+                        }
+                        setCsvUploadStep(3);
+                      }}
+                      className="rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700"
+                    >
+                      Next ›
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Configure */}
+              {csvUploadStep === 3 && (
+                <div className="mx-auto max-w-xl space-y-6">
+                  <div className="text-center text-emerald-400 font-medium">
+                    Total Leads Found: {csvRawData.length.toLocaleString()}
+                  </div>
+
+                  <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs font-medium text-zinc-500 w-24">File name</span>
+                      <span className="font-medium">{csvFileName}</span>
+                    </div>
+                  </div>
+
+                  {/* Ignore Duplicates Toggle */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+                    <div>
+                      <div className="font-medium">Ignore Duplicates</div>
+                      <div className="text-xs text-zinc-400 mt-0.5">Skip contacts with phone numbers already in your list</div>
+                    </div>
+                    <button
+                      onClick={() => setCsvIgnoreDuplicates(!csvIgnoreDuplicates)}
+                      className={`relative h-7 w-12 rounded-full transition ${csvIgnoreDuplicates ? "bg-violet-600" : "bg-zinc-600"}`}
+                    >
+                      <div className={`absolute top-0.5 h-6 w-6 rounded-full bg-white transition ${csvIgnoreDuplicates ? "left-[22px]" : "left-0.5"}`} />
+                    </button>
+                  </div>
+
+                  {/* Campaign Assignment */}
+                  <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+                    <label className="text-sm font-medium text-zinc-300 mb-2 block">Assign to Campaign</label>
+                    <select
+                      value={csvCampaignId}
+                      onChange={(e) => setCsvCampaignId(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-3 text-sm"
+                    >
+                      <option value="">None</option>
+                      {campaigns.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Tags */}
+                  <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
+                    <label className="text-sm font-medium text-zinc-300 mb-2 block">Tags</label>
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      {csvUploadTags.map((tag) => (
+                        <span key={tag} className="flex items-center gap-1 rounded-full bg-violet-900/40 px-3 py-1 text-xs text-violet-300">
+                          {tag}
+                          <button onClick={() => setCsvUploadTags((prev) => prev.filter((t) => t !== tag))} className="hover:text-red-400">×</button>
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        value={csvTagInput}
+                        onChange={(e) => setCsvTagInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" && csvTagInput.trim()) {
+                            setCsvUploadTags((prev) => [...prev, csvTagInput.trim()]);
+                            setCsvTagInput("");
+                          }
+                        }}
+                        placeholder="Add a tag..."
+                        className="flex-1 rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-2 text-sm"
+                      />
+                      <button
+                        onClick={() => {
+                          if (csvTagInput.trim()) {
+                            setCsvUploadTags((prev) => [...prev, csvTagInput.trim()]);
+                            setCsvTagInput("");
+                          }
+                        }}
+                        className="rounded-xl bg-zinc-700 px-4 py-2 text-sm hover:bg-zinc-600"
+                      >+ Tag</button>
+                    </div>
+                  </div>
+
+                  {/* Consent Notice */}
+                  <div className="rounded-2xl border border-zinc-700/50 bg-zinc-950/50 p-4 text-center text-xs text-zinc-500">
+                    * By uploading a list, you certify that you have received Opt-In consent to message everyone in the list.
+                  </div>
+
+                  <div className="flex justify-between">
+                    <button onClick={() => setCsvUploadStep(2)} className="rounded-2xl border border-zinc-700 px-6 py-3 text-sm hover:bg-zinc-800">
+                      ‹ Back
+                    </button>
+                    <button
+                      onClick={handleCSVWizardSubmit}
+                      disabled={csvUploading}
+                      className="rounded-2xl bg-violet-600 px-10 py-3.5 font-medium hover:bg-violet-700 disabled:opacity-50"
+                    >
+                      {csvUploading ? "Uploading..." : "Submit ›"}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Upload History */}
+            {csvUploadHistory.length > 0 && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
+                <div className="mb-6 flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">Upload History</h2>
+                  <span className="text-sm text-zinc-400">{csvUploadHistory.length} uploads</span>
+                </div>
+                <div className="overflow-hidden rounded-2xl border border-zinc-800">
+                  <table className="w-full text-sm">
+                    <thead className="bg-zinc-800">
+                      <tr>
+                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Date</th>
+                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">File Name</th>
+                        <th className="px-5 py-4 text-right text-xs font-medium uppercase tracking-wide text-zinc-400">Count</th>
+                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {csvUploadHistory.map((rec) => (
+                        <tr key={rec.id} className="hover:bg-zinc-800/50">
+                          <td className="px-5 py-4 text-zinc-400">{new Date(rec.date).toLocaleString()}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex items-center gap-2">
+                              <span className="text-zinc-500">📄</span>
+                              <span className="font-medium">{rec.fileName}</span>
+                            </div>
+                          </td>
+                          <td className="px-5 py-4 text-right">{rec.totalRows.toLocaleString()}</td>
+                          <td className="px-5 py-4">
+                            <div className="flex flex-wrap gap-3 text-xs">
+                              <span className="text-emerald-400 font-medium">Success: {rec.success}</span>
+                              {rec.duplicates > 0 && <span className="text-red-400 font-medium">Duplicate: {rec.duplicates}</span>}
+                              {rec.invalid > 0 && <span className="text-zinc-400 font-medium">Invalid: {rec.invalid}</span>}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
