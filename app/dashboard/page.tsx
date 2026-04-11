@@ -24,6 +24,7 @@ import type {
   Profile, Contact, Campaign, Conversation, Message,
   UsageHistoryItem, OwnedNumber, OptOutSettings, CampaignStep,
   A2PRegistration, MessageTemplate, ScheduledMessage, QuickReply,
+  ComplianceEventRecord,
 } from "@/lib/types";
 
 // Adapter types — keep the camelCase names the JSX uses
@@ -48,6 +49,7 @@ type AccountRecord = {
   managerId?: string | null;
   referralCode?: string;
   a2pRegistration?: A2PRegistration | null;
+  complianceLog?: ComplianceEventRecord[];
 };
 
 type ContactRecord = {
@@ -81,7 +83,7 @@ type CampaignRecord = {
   sent: number;
   replies: number;
   failed: number;
-  status: "Draft" | "Sending" | "Completed" | "Paused";
+  status: "Draft" | "Sending" | "Completed" | "Paused" | "Scheduled";
   message?: string;
   steps?: CampaignStep[];
   selectedNumbers?: string[];
@@ -129,6 +131,7 @@ function profileToAccount(p: Profile): AccountRecord {
     subscriptionStatus: p.subscription_status || "inactive",
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pRegistration: p.a2p_registration || null,
+    complianceLog: p.compliance_log || [],
   };
 }
 
@@ -263,6 +266,9 @@ export default function DashboardPage() {
   const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
   const [campaignSearch, setCampaignSearch] = useState("");
   const [launchingCampaignId, setLaunchingCampaignId] = useState<string | null>(null);
+  const [scheduleCampaignId, setScheduleCampaignId] = useState<string | null>(null);
+  const [campaignScheduleDate, setCampaignScheduleDate] = useState("");
+  const [campaignScheduleTime, setCampaignScheduleTime] = useState("");
   const [showTemplates, setShowTemplates] = useState(false);
   const [showFieldPicker, setShowFieldPicker] = useState(false);
   const defaultOptOut: OptOutSettings = {
@@ -1661,10 +1667,24 @@ export default function DashboardPage() {
 
   const handleToggleDNC = async (id: string) => {
     const contact = contacts.find((c) => c.id === id);
-    if (!contact) return;
+    if (!contact || !userId) return;
     const newDnc = !contact.dnc;
     setContacts((prev) => prev.map((c) => c.id === id ? { ...c, dnc: newDnc } : c));
     await dbUpdateContact(id, { dnc: newDnc });
+
+    // Log compliance event
+    const event: ComplianceEventRecord = {
+      id: `compliance_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: newDnc ? "dnc_added" : "dnc_removed",
+      contactPhone: contact.phone,
+      contactName: `${contact.firstName} ${contact.lastName}`.trim(),
+      method: "manual",
+      timestamp: new Date().toISOString(),
+      userId,
+    };
+    const currentLog = currentUser?.complianceLog || [];
+    const newLog = [event, ...currentLog].slice(0, 10000);
+    await persistProfile({ compliance_log: newLog });
   };
 
   const handleAssignCampaign = async (contactId: string, campaignName: string) => {
@@ -1806,6 +1826,42 @@ export default function DashboardPage() {
     window.setTimeout(() => setMessage(""), 4000);
   };
 
+  const handleScheduleCampaign = async () => {
+    if (!scheduleCampaignId || !campaignScheduleDate || !campaignScheduleTime) {
+      setMessage("❌ Select a date and time to schedule");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    const scheduledAt = new Date(`${campaignScheduleDate}T${campaignScheduleTime}`);
+    if (scheduledAt.getTime() <= Date.now()) {
+      setMessage("❌ Schedule time must be in the future");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+
+    // Store the schedule on the campaign (update status to indicate scheduled)
+    const campaign = campaigns.find((c) => c.id === scheduleCampaignId);
+    if (!campaign) return;
+
+    await dbUpdateCampaign(scheduleCampaignId, {
+      status: "Scheduled" as Campaign["status"],
+      scheduled_at: scheduledAt.toISOString(),
+    } as Partial<Campaign>);
+
+    setCampaigns((prev) =>
+      prev.map((c) => c.id === scheduleCampaignId ? { ...c, status: "Scheduled" as const, scheduledAt: scheduledAt.toISOString() } : c)
+    );
+
+    setScheduleCampaignId(null);
+    setCampaignScheduleDate("");
+    setCampaignScheduleTime("");
+
+    const dateStr = scheduledAt.toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+    setMessage(`✅ Campaign "${campaign.name}" scheduled for ${dateStr}`);
+    window.setTimeout(() => setMessage(""), 4000);
+  };
+
   const handleCSVImport = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!userId) return;
     const file = e.target.files?.[0];
@@ -1840,8 +1896,33 @@ export default function DashboardPage() {
           }))
           .filter((c) => c.first_name || c.phone);
 
+        // Deduplicate: check against existing contacts by phone number
+        const existingPhones = new Set(
+          contacts.map((c) => c.phone.replace(/\D/g, "")).filter(Boolean)
+        );
+        const csvPhoneSeen = new Set<string>();
+        const deduped: typeof rows = [];
+        let dupeCount = 0;
+
+        for (const row of rows) {
+          const normalized = row.phone.replace(/\D/g, "");
+          if (!normalized) { deduped.push(row); continue; } // no phone, keep it
+          if (existingPhones.has(normalized) || csvPhoneSeen.has(normalized)) {
+            dupeCount++;
+            continue;
+          }
+          csvPhoneSeen.add(normalized);
+          deduped.push(row);
+        }
+
+        if (deduped.length === 0) {
+          setMessage(`❌ All ${dupeCount} contacts already exist (duplicate phone numbers)`);
+          window.setTimeout(() => setMessage(""), 3000);
+          return;
+        }
+
         // Batch insert
-        const { data, error } = await supabase.from("contacts").insert(rows).select();
+        const { data, error } = await supabase.from("contacts").insert(deduped).select();
         if (error || !data) {
           setMessage("❌ Failed to import contacts");
           window.setTimeout(() => setMessage(""), 2500);
@@ -1850,8 +1931,9 @@ export default function DashboardPage() {
 
         const imported = (data as Contact[]).map(contactToRecord);
         setContacts((prev) => [...imported, ...prev]);
-        setMessage(`✅ Imported ${imported.length} contacts`);
-        window.setTimeout(() => setMessage(""), 2500);
+        const dupeMsg = dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : "";
+        setMessage(`✅ Imported ${imported.length} contacts${dupeMsg}`);
+        window.setTimeout(() => setMessage(""), 3000);
       },
       error: () => {
         setMessage("❌ Failed to parse CSV");
@@ -2066,6 +2148,77 @@ export default function DashboardPage() {
                     Buy Number
                   </button>
                 </div>
+              </div>
+            </div>
+
+            {/* Spending & Campaign Performance */}
+            <div className="grid gap-8 lg:grid-cols-2">
+              {/* Spending History */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="mb-4 text-xl font-bold">Spending Summary</h2>
+                {(() => {
+                  const history = currentUser.usageHistory || [];
+                  const deposits = history.filter((h) => h.type === "fund_add" || h.type === "credit_add").reduce((s, h) => s + h.amount, 0);
+                  const msgCharges = history.filter((h) => h.type === "charge" && h.description?.includes("Campaign")).reduce((s, h) => s + h.amount, 0);
+                  const numCharges = history.filter((h) => h.type === "number_purchase" || (h.type === "charge" && h.description?.includes("number"))).reduce((s, h) => s + h.amount, 0);
+                  const otherCharges = history.filter((h) => h.type === "charge" && !h.description?.includes("Campaign") && !h.description?.includes("number")).reduce((s, h) => s + h.amount, 0);
+                  return (
+                    <div className="space-y-3">
+                      <div className="flex justify-between rounded-2xl bg-zinc-800 px-5 py-3">
+                        <span className="text-sm text-zinc-400">Total Deposited</span>
+                        <span className="font-bold text-emerald-400">{formatCurrency(deposits)}</span>
+                      </div>
+                      <div className="flex justify-between rounded-2xl bg-zinc-800 px-5 py-3">
+                        <span className="text-sm text-zinc-400">Campaign Spending</span>
+                        <span className="font-bold text-red-400">{formatCurrency(msgCharges)}</span>
+                      </div>
+                      <div className="flex justify-between rounded-2xl bg-zinc-800 px-5 py-3">
+                        <span className="text-sm text-zinc-400">Number Fees</span>
+                        <span className="font-bold text-amber-400">{formatCurrency(numCharges)}</span>
+                      </div>
+                      {otherCharges > 0 && (
+                        <div className="flex justify-between rounded-2xl bg-zinc-800 px-5 py-3">
+                          <span className="text-sm text-zinc-400">Other Charges</span>
+                          <span className="font-bold text-zinc-300">{formatCurrency(otherCharges)}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Per-Campaign Performance */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h2 className="mb-4 text-xl font-bold">Campaign Performance</h2>
+                {userCampaigns.length === 0 ? (
+                  <div className="py-8 text-center text-sm text-zinc-500">No campaigns yet</div>
+                ) : (
+                  <div className="max-h-64 space-y-3 overflow-y-auto">
+                    {userCampaigns.map((c) => {
+                      const total = c.sent + c.failed;
+                      const rate = total > 0 ? ((c.sent / total) * 100).toFixed(0) : "—";
+                      const rr = c.sent > 0 ? ((c.replies / c.sent) * 100).toFixed(0) : "—";
+                      return (
+                        <div key={c.id} className="rounded-2xl bg-zinc-800 p-4">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium">{c.name}</span>
+                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                              c.status === "Completed" ? "bg-emerald-900 text-emerald-300" :
+                              c.status === "Sending" ? "bg-sky-900 text-sky-300" : "bg-zinc-700 text-zinc-400"
+                            }`}>{c.status}</span>
+                          </div>
+                          <div className="mt-2 flex gap-4 text-xs text-zinc-500">
+                            <span>{c.sent} sent</span>
+                            <span className="text-red-400">{c.failed} failed</span>
+                            <span className="text-emerald-400">{c.replies} replies</span>
+                            <span>Delivery: {rate}%</span>
+                            <span>Reply: {rr}%</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2404,17 +2557,31 @@ export default function DashboardPage() {
                       </div>
                     )}
 
-                    <div className="mb-2 flex items-center gap-5 text-xs text-zinc-500">
-                      <span>Chars: {composerText.length}</span>
-                      <span>Segments: {Math.max(1, Math.ceil(composerText.length / 160 || 1))}</span>
-                      <span>
-                        Cost:{" "}
-                        {formatCurrency(
-                          Math.max(1, Math.ceil(composerText.length / 160 || 1)) *
-                            (currentUser.plan.messageCost || 0)
-                        )}
-                      </span>
-                    </div>
+                    {composerText.length > 0 && (() => {
+                      const len = composerText.length;
+                      const hasUnicode = /[^\x00-\x7F]/.test(composerText);
+                      const segLimit = hasUnicode ? 70 : 160;
+                      const segments = Math.max(1, Math.ceil(len / segLimit));
+                      const remaining = segments * segLimit - len;
+                      const cost = segments * (currentUser.plan.messageCost || 0.012);
+                      return (
+                        <div className="mb-2">
+                          <div className="flex items-center gap-5 text-xs text-zinc-500">
+                            <span>{len} / {segments * segLimit} chars</span>
+                            <span className={segments > 3 ? "text-amber-400 font-medium" : segments > 1 ? "text-zinc-400" : ""}>
+                              {segments} segment{segments > 1 ? "s" : ""}
+                            </span>
+                            <span>{remaining} chars left in segment</span>
+                            <span>Cost: {formatCurrency(cost)}</span>
+                            {hasUnicode && <span className="text-amber-400">Unicode detected (70 char/seg)</span>}
+                          </div>
+                          <div className="mt-1.5 h-1 w-full rounded-full bg-zinc-800">
+                            <div className={`h-1 rounded-full transition-all ${remaining < 20 ? "bg-amber-500" : "bg-violet-500"}`}
+                              style={{ width: `${Math.min(100, ((len % segLimit) / segLimit) * 100)}%` }} />
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
                       <textarea
@@ -2877,9 +3044,29 @@ export default function DashboardPage() {
                         className="h-32 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
                       />
 
-                      <div className="text-xs text-zinc-500">
-                        Characters: {newCampaignForm.steps[activeStepIndex].message.length} · Segments: {Math.max(1, Math.ceil(newCampaignForm.steps[activeStepIndex].message.length / 160))}
-                      </div>
+                      {(() => {
+                        const msg = newCampaignForm.steps[activeStepIndex].message;
+                        const len = msg.length;
+                        if (len === 0) return null;
+                        const hasUnicode = /[^\x00-\x7F]/.test(msg);
+                        const segLimit = hasUnicode ? 70 : 160;
+                        const segments = Math.max(1, Math.ceil(len / segLimit));
+                        const remaining = segments * segLimit - len;
+                        return (
+                          <div className="text-xs text-zinc-500 space-y-1">
+                            <div className="flex gap-4">
+                              <span>{len} chars</span>
+                              <span className={segments > 3 ? "text-amber-400 font-medium" : ""}>{segments} segment{segments > 1 ? "s" : ""}</span>
+                              <span>{remaining} remaining</span>
+                              {hasUnicode && <span className="text-amber-400">Unicode (70/seg)</span>}
+                            </div>
+                            <div className="h-1 w-full rounded-full bg-zinc-800">
+                              <div className={`h-1 rounded-full transition-all ${remaining < 20 ? "bg-amber-500" : "bg-violet-500"}`}
+                                style={{ width: `${Math.min(100, ((len % segLimit) / segLimit) * 100)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
                 </div>
@@ -3198,13 +3385,21 @@ export default function DashboardPage() {
                             Edit
                           </button>
                           {canLaunch && (
-                            <button
-                              onClick={() => handleLaunchCampaign(campaign.id)}
-                              disabled={isLaunching}
-                              className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
-                            >
-                              Launch
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleLaunchCampaign(campaign.id)}
+                                disabled={isLaunching}
+                                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
+                              >
+                                Launch Now
+                              </button>
+                              <button
+                                onClick={() => { setScheduleCampaignId(campaign.id); setCampaignScheduleDate(""); setCampaignScheduleTime(""); }}
+                                className="rounded-xl border border-sky-700 px-4 py-2 text-sm font-medium text-sky-300 hover:bg-sky-900/30"
+                              >
+                                Schedule
+                              </button>
+                            </>
                           )}
                           <button
                             onClick={() => handleDeleteCampaign(campaign.id)}
@@ -4211,6 +4406,90 @@ export default function DashboardPage() {
                 {savingOptOut ? "Saving..." : "Save Opt-Out Settings"}
               </button>
             </div>
+
+            {/* Compliance Audit Log — full width below the 2-column grid */}
+            <div className="col-span-2 mt-8 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">Compliance Audit Log</h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Track all opt-in, opt-out, and DNC events with timestamps for TCPA compliance records.
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-400">
+                    {(currentUser.complianceLog || []).length} events
+                  </span>
+                  {(currentUser.complianceLog || []).length > 0 && (
+                    <button
+                      onClick={() => {
+                        const log = currentUser.complianceLog || [];
+                        const csv = ["Timestamp,Type,Contact Name,Phone,Method,Keyword"]
+                          .concat(log.map((e) =>
+                            `${new Date(e.timestamp).toISOString()},${e.type},${e.contactName},${e.contactPhone},${e.method},${e.keyword || ""}`
+                          )).join("\n");
+                        const blob = new Blob([csv], { type: "text/csv" });
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `compliance-log-${new Date().toISOString().split("T")[0]}.csv`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      }}
+                      className="rounded-xl border border-zinc-700 px-4 py-2 text-sm hover:bg-zinc-800"
+                    >
+                      Export CSV
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {(currentUser.complianceLog || []).length === 0 ? (
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-8 text-center text-zinc-500">
+                  No compliance events recorded yet. Events are logged automatically when contacts are added to or removed from the DNC list, and when opt-out/opt-in keywords are received via SMS.
+                </div>
+              ) : (
+                <div className="max-h-96 overflow-auto rounded-2xl border border-zinc-800">
+                  <table className="w-full text-sm">
+                    <thead className="sticky top-0 bg-zinc-800">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Timestamp</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Event</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Contact</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Phone</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Method</th>
+                        <th className="px-4 py-3 text-left text-xs font-medium uppercase text-zinc-400">Keyword</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-800">
+                      {(currentUser.complianceLog || []).slice(0, 100).map((event) => (
+                        <tr key={event.id} className="hover:bg-zinc-800/50">
+                          <td className="px-4 py-3 text-zinc-400">
+                            {new Date(event.timestamp).toLocaleString("en-US", { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                              event.type === "opt_out" || event.type === "dnc_added" ? "bg-red-900 text-red-300" :
+                              event.type === "opt_in" || event.type === "dnc_removed" ? "bg-emerald-900 text-emerald-300" :
+                              "bg-sky-900 text-sky-300"
+                            }`}>
+                              {event.type === "opt_out" ? "Opt-Out" : event.type === "opt_in" ? "Opt-In" :
+                               event.type === "dnc_added" ? "DNC Added" : event.type === "dnc_removed" ? "DNC Removed" : "Consent"}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3">{event.contactName || "—"}</td>
+                          <td className="px-4 py-3 font-mono text-xs">{event.contactPhone}</td>
+                          <td className="px-4 py-3 text-zinc-400">
+                            {event.method === "sms_keyword" ? "SMS" : event.method === "manual" ? "Manual" : event.method === "csv_import" ? "CSV" : event.method}
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-zinc-500">{event.keyword || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
           </div>
         )}
 
@@ -5047,6 +5326,40 @@ export default function DashboardPage() {
               >
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Campaign Schedule Modal */}
+      {scheduleCampaignId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-8 shadow-2xl">
+            <h3 className="mb-2 text-xl font-bold">Schedule Campaign</h3>
+            <p className="mb-6 text-sm text-zinc-400">
+              {campaigns.find((c) => c.id === scheduleCampaignId)?.name || "Campaign"} will automatically launch at the scheduled time.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-zinc-400">Date</label>
+                <input type="date" value={campaignScheduleDate} onChange={(e) => setCampaignScheduleDate(e.target.value)}
+                  min={new Date().toISOString().split("T")[0]}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm" />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-zinc-400">Time</label>
+                <input type="time" value={campaignScheduleTime} onChange={(e) => setCampaignScheduleTime(e.target.value)}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm" />
+              </div>
+              {campaignScheduleDate && campaignScheduleTime && (
+                <div className="rounded-2xl bg-sky-950/30 border border-sky-800/40 px-4 py-3 text-sm text-sky-300">
+                  Will launch: {new Date(`${campaignScheduleDate}T${campaignScheduleTime}`).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                </div>
+              )}
+            </div>
+            <div className="mt-6 flex gap-3">
+              <button onClick={() => setScheduleCampaignId(null)} className="flex-1 rounded-2xl border border-zinc-700 py-3 text-sm hover:bg-zinc-800">Cancel</button>
+              <button onClick={handleScheduleCampaign} className="flex-1 rounded-2xl bg-sky-600 py-3 text-sm font-semibold hover:bg-sky-700">Schedule</button>
             </div>
           </div>
         </div>

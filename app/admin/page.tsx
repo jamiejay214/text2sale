@@ -809,6 +809,7 @@ export default function AdminPage() {
                             c.status === "Completed" ? "bg-emerald-900 text-emerald-300" :
                             c.status === "Sending" ? "bg-sky-900 text-sky-300" :
                             c.status === "Paused" ? "bg-amber-900 text-amber-300" :
+                            c.status === "Scheduled" ? "bg-purple-900 text-purple-300" :
                             "bg-zinc-700 text-zinc-400"
                           }`}>{c.status}</span>
                         </td>

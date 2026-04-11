@@ -29,7 +29,20 @@ export type Profile = {
   referral_rewarded: boolean;
   total_deposited: number;
   a2p_registration: A2PRegistration | null;
+  compliance_log: ComplianceEventRecord[] | null;
   created_at: string;
+};
+
+export type ComplianceEventRecord = {
+  id: string;
+  type: "opt_out" | "opt_in" | "dnc_added" | "dnc_removed" | "consent_recorded";
+  contactPhone: string;
+  contactName: string;
+  method: "sms_keyword" | "manual" | "csv_import" | "api";
+  keyword?: string;
+  fromNumber?: string;
+  timestamp: string;
+  userId: string;
 };
 
 export type A2PRegistration = {
@@ -145,7 +158,7 @@ export type Campaign = {
   sent: number;
   replies: number;
   failed: number;
-  status: "Draft" | "Sending" | "Completed" | "Paused";
+  status: "Draft" | "Sending" | "Completed" | "Paused" | "Scheduled";
   message: string;
   steps: CampaignStep[];
   selected_numbers: string[];
