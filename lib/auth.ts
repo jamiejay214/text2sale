@@ -48,6 +48,19 @@ export async function loginUser(email: string, password: string) {
   return { success: true as const, user: profile };
 }
 
+export async function checkDuplicatePhone(phone: string): Promise<boolean> {
+  const digits = phone.replace(/\D/g, "");
+  if (digits.length < 10) return false;
+  const { count, error } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .filter("phone", "neq", "")
+    // Use ilike with the formatted pattern to catch formatting variations
+    .or(`phone.ilike.%${digits.slice(-10)}%`);
+  if (error) return false;
+  return (count ?? 0) > 0;
+}
+
 export async function signupUser(input: {
   firstName: string;
   lastName: string;
@@ -56,6 +69,15 @@ export async function signupUser(input: {
   password: string;
   referralCode?: string;
 }) {
+  // Check for duplicate phone number before creating auth user
+  const phoneDuplicate = await checkDuplicatePhone(input.phone);
+  if (phoneDuplicate) {
+    return {
+      success: false as const,
+      message: "An account with this phone number already exists. Please log in instead.",
+    };
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email: input.email.trim(),
     password: input.password,
@@ -70,11 +92,22 @@ export async function signupUser(input: {
   });
 
   if (error) {
+    // Friendly duplicate email message
+    const msg = error.message.toLowerCase();
+    if (msg.includes("already registered") || msg.includes("already been registered") || msg.includes("unique")) {
+      return { success: false as const, message: "An account with this email already exists. Please log in instead." };
+    }
     return { success: false as const, message: error.message };
   }
 
   if (!data.user) {
     return { success: false as const, message: "Signup failed. Please try again." };
+  }
+
+  // Supabase may return a user with a fake id when email already exists (no error thrown).
+  // Detect this by checking if identities array is empty.
+  if (data.user.identities && data.user.identities.length === 0) {
+    return { success: false as const, message: "An account with this email already exists. Please log in instead." };
   }
 
   // If email confirmation is enabled, there's no session yet.
