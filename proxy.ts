@@ -1,35 +1,12 @@
-import { NextResponse } from "next/server";
-import type { NextRequest } from "next/server";
-
-// Protect /admin route at the edge level.
-// This is an optimistic check — it only verifies that a Supabase auth cookie
-// exists, NOT that the user is an admin. The actual role check happens
-// client-side after loading the profile from Supabase.
+// Proxy file intentionally left minimal.
 //
-// Why this matters:
-// - Unauthenticated users hitting /admin get instantly redirected (no JS needed)
-// - Even if someone bypasses this, Supabase RLS blocks all data access for non-admins
-// - The client-side admin page also checks role === "admin" before rendering
+// Supabase JS client stores auth sessions in localStorage, NOT cookies,
+// so edge-level cookie checks don't work reliably for auth gating.
 //
-// Note: /dashboard is NOT protected here because Supabase JS client stores the
-// session in localStorage first — the auth cookie may not be set yet when the
-// user is redirected after login. The dashboard has its own client-side auth
-// check via supabase.auth.getSession().
+// Admin security is enforced by two layers instead:
+// 1. Client-side: admin/page.tsx checks role === "admin" via supabase.auth.getSession()
+//    and redirects non-admins before rendering any UI (blank screen until verified)
+// 2. Database: Supabase RLS policies require get_my_role() = 'admin' for cross-user
+//    data access — even if someone reaches the page, they can't read any data
 
-export function proxy(request: NextRequest) {
-  // Check for Supabase auth cookies (sb-*-auth-token pattern)
-  const hasAuthCookie = request.cookies.getAll().some(
-    (cookie) => cookie.name.includes("-auth-token")
-  );
-
-  // Block unauthenticated users from /admin
-  if (!hasAuthCookie) {
-    return NextResponse.redirect(new URL("/", request.url));
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ["/admin/:path*"],
-};
+export {};
