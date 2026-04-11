@@ -5351,7 +5351,7 @@ export default function DashboardPage() {
                     <label className="mb-1 block text-sm text-zinc-400">Business Name *</label>
                     <input
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="JJ Johnson Health LLC"
+                      placeholder="Acme Marketing LLC"
                       value={a2pForm.businessName}
                       onChange={(e) => setA2pForm({ ...a2pForm, businessName: e.target.value })}
                     />
@@ -5360,7 +5360,7 @@ export default function DashboardPage() {
                     <label className="mb-1 block text-sm text-zinc-400">EIN (Employer ID Number) *</label>
                     <input
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="92-0724241"
+                      placeholder="12-3456789"
                       value={a2pForm.ein}
                       onChange={(e) => setA2pForm({ ...a2pForm, ein: e.target.value })}
                     />
