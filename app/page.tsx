@@ -1,11 +1,20 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser, signupUser } from "@/lib/auth";
 
 export default function HomePage() {
   const router = useRouter();
+
+  // Track page view
+  useEffect(() => {
+    fetch("/api/track-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: "/", referrer: document.referrer }),
+    }).catch(() => {});
+  }, []);
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [loading, setLoading] = useState(false);

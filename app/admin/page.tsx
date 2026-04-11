@@ -180,6 +180,13 @@ export default function AdminPage() {
   const [globalMessageCost, setGlobalMessageCost] = useState(0.012);
   const [globalNumberCost, setGlobalNumberCost] = useState(1.0);
 
+  // Traffic analytics
+  const [trafficToday, setTrafficToday] = useState(0);
+  const [trafficWeek, setTrafficWeek] = useState(0);
+  const [trafficMonth, setTrafficMonth] = useState(0);
+  const [trafficTotal, setTrafficTotal] = useState(0);
+  const [trafficByDay, setTrafficByDay] = useState<{ date: string; views: number; unique: number }[]>([]);
+
   useEffect(() => {
     const loadData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -206,6 +213,47 @@ export default function AdminPage() {
       setContactCounts(counts);
 
       if (accts.length > 0) setSelectedId(accts[0].id);
+
+      // Load traffic analytics
+      const now = new Date();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+      const weekStart = new Date(now.getTime() - 7 * 86400000).toISOString();
+      const monthStart = new Date(now.getTime() - 30 * 86400000).toISOString();
+
+      const [todayRes, weekRes, monthRes, totalRes] = await Promise.all([
+        supabase.from("page_views").select("id", { count: "exact", head: true }).gte("created_at", todayStart),
+        supabase.from("page_views").select("id", { count: "exact", head: true }).gte("created_at", weekStart),
+        supabase.from("page_views").select("id", { count: "exact", head: true }).gte("created_at", monthStart),
+        supabase.from("page_views").select("id", { count: "exact", head: true }),
+      ]);
+      setTrafficToday(todayRes.count || 0);
+      setTrafficWeek(weekRes.count || 0);
+      setTrafficMonth(monthRes.count || 0);
+      setTrafficTotal(totalRes.count || 0);
+
+      // Daily breakdown for last 14 days
+      const days: { date: string; views: number; unique: number }[] = [];
+      const { data: recentViews } = await supabase
+        .from("page_views")
+        .select("created_at, ip_hash")
+        .gte("created_at", new Date(now.getTime() - 14 * 86400000).toISOString())
+        .order("created_at", { ascending: true });
+
+      if (recentViews) {
+        const dayMap = new Map<string, { views: number; ips: Set<string> }>();
+        for (const v of recentViews) {
+          const d = new Date(v.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+          if (!dayMap.has(d)) dayMap.set(d, { views: 0, ips: new Set() });
+          const entry = dayMap.get(d)!;
+          entry.views++;
+          entry.ips.add(v.ip_hash || "");
+        }
+        for (const [date, { views, ips }] of dayMap) {
+          days.push({ date, views, unique: ips.size });
+        }
+      }
+      setTrafficByDay(days);
+
       setMounted(true);
     };
     loadData();
@@ -560,6 +608,77 @@ export default function AdminPage() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            {/* Website Traffic */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-bold">Website Traffic</h3>
+                <span className="text-xs text-zinc-500">Last 14 days</span>
+              </div>
+              <div className="grid grid-cols-4 gap-4 mb-6">
+                <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                  <div className="text-2xl font-bold text-violet-400">{trafficToday.toLocaleString()}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">Today</div>
+                </div>
+                <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                  <div className="text-2xl font-bold text-sky-400">{trafficWeek.toLocaleString()}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">This Week</div>
+                </div>
+                <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                  <div className="text-2xl font-bold text-emerald-400">{trafficMonth.toLocaleString()}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">30 Days</div>
+                </div>
+                <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                  <div className="text-2xl font-bold">{trafficTotal.toLocaleString()}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">All Time</div>
+                </div>
+              </div>
+              {trafficByDay.length > 0 && (
+                <div>
+                  <div className="mb-3 text-xs text-zinc-500 uppercase tracking-wide">Daily Views</div>
+                  <div className="flex items-end gap-1.5" style={{ height: "120px" }}>
+                    {trafficByDay.map((d) => {
+                      const maxViews = Math.max(...trafficByDay.map((x) => x.views), 1);
+                      const pct = (d.views / maxViews) * 100;
+                      return (
+                        <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                          <div className="text-[9px] text-zinc-500">{d.views}</div>
+                          <div
+                            className="w-full rounded-t bg-violet-600 transition-all min-h-[4px]"
+                            style={{ height: `${Math.max(pct, 4)}%` }}
+                            title={`${d.date}: ${d.views} views, ${d.unique} unique`}
+                          />
+                          <div className="text-[8px] text-zinc-600 truncate w-full text-center">{d.date.replace(/\s/g, "\n")}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-4 overflow-hidden rounded-xl border border-zinc-800">
+                    <table className="w-full text-xs">
+                      <thead className="bg-zinc-800">
+                        <tr>
+                          <th className="px-3 py-2 text-left text-zinc-400">Date</th>
+                          <th className="px-3 py-2 text-right text-zinc-400">Views</th>
+                          <th className="px-3 py-2 text-right text-zinc-400">Unique</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {[...trafficByDay].reverse().map((d) => (
+                          <tr key={d.date} className="hover:bg-zinc-800/50">
+                            <td className="px-3 py-2">{d.date}</td>
+                            <td className="px-3 py-2 text-right text-violet-400">{d.views}</td>
+                            <td className="px-3 py-2 text-right text-sky-400">{d.unique}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {trafficByDay.length === 0 && (
+                <div className="text-center text-sm text-zinc-500 py-6">No traffic data yet. Views will appear as visitors land on your site.</div>
+              )}
             </div>
           </div>
         )}
