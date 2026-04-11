@@ -645,6 +645,10 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <button onClick={() => router.push(`/dashboard?impersonate=${selectedAccount.id}`)}
+                        className="rounded-xl bg-sky-600 px-4 py-2 text-sm hover:bg-sky-700 flex items-center gap-1.5">
+                        <span>👁️</span> View as User
+                      </button>
                       {selectedAccount.role !== "admin" && (
                         <button onClick={() => handlePromoteToManager(selectedAccount.id)}
                           className={`rounded-xl px-4 py-2 text-sm ${selectedAccount.role === "manager" ? "border border-amber-600 text-amber-300 hover:bg-amber-900/30" : "bg-amber-600 hover:bg-amber-700"}`}>

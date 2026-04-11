@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
@@ -231,10 +231,13 @@ function getInitials(firstName?: string, lastName?: string) {
 
 export default function DashboardPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [mounted, setMounted] = useState(false);
   const [currentUser, setCurrentUser] = useState<AccountRecord | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [impersonating, setImpersonating] = useState(false);
+  const [impersonatingUserName, setImpersonatingUserName] = useState("");
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
@@ -365,15 +368,30 @@ export default function DashboardPage() {
         return;
       }
 
-      const uid = session.user.id;
-      setUserId(uid);
+      const realUid = session.user.id;
 
-      const profile = await fetchProfile(uid);
-      if (!profile || profile.paused) {
+      const myProfile = await fetchProfile(realUid);
+      if (!myProfile || myProfile.paused) {
         router.replace("/");
         return;
       }
 
+      // Check for admin impersonation mode
+      const impersonateId = searchParams.get("impersonate");
+      let uid = realUid;
+      let profile = myProfile;
+
+      if (impersonateId && impersonateId !== realUid && myProfile.role === "admin") {
+        const targetProfile = await fetchProfile(impersonateId);
+        if (targetProfile) {
+          uid = impersonateId;
+          profile = targetProfile;
+          setImpersonating(true);
+          setImpersonatingUserName(`${targetProfile.first_name} ${targetProfile.last_name}`);
+        }
+      }
+
+      setUserId(uid);
       setCurrentUser(profileToAccount(profile));
       if (profile.opt_out_settings) setOptOutSettings(profile.opt_out_settings);
 
@@ -455,21 +473,23 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
-      // Show onboarding wizard for new users
-      const sub = profile.subscription_status;
-      const hasSubscription = sub === "active" || sub === "canceling";
-      const hasNumbers = (profile.owned_numbers || []).length > 0;
-      const hasContacts = dbContacts.length > 0;
-      if (!hasSubscription || !hasNumbers || !hasContacts) {
-        setShowOnboarding(true);
-        setOnboardingStep(hasSubscription ? (hasNumbers ? 3 : 2) : 0);
+      // Show onboarding wizard for new users (skip if impersonating)
+      if (!impersonateId) {
+        const sub = profile.subscription_status;
+        const hasSubscription = sub === "active" || sub === "canceling";
+        const hasNumbers = (profile.owned_numbers || []).length > 0;
+        const hasContacts = dbContacts.length > 0;
+        if (!hasSubscription || !hasNumbers || !hasContacts) {
+          setShowOnboarding(true);
+          setOnboardingStep(hasSubscription ? (hasNumbers ? 3 : 2) : 0);
+        }
       }
 
       setMounted(true);
     };
 
     loadData();
-  }, [router]);
+  }, [router, searchParams]);
 
   // Real-time notifications for new inbound messages
   useEffect(() => {
@@ -1986,11 +2006,27 @@ export default function DashboardPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
+      {/* Impersonation Banner */}
+      {impersonating && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-amber-600 px-6 py-3 text-black shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">👁️</span>
+            <span className="font-bold">Viewing as: {impersonatingUserName}</span>
+            <span className="text-sm opacity-80">— You are in read-only impersonation mode</span>
+          </div>
+          <button
+            onClick={() => router.push("/admin")}
+            className="rounded-xl bg-black px-5 py-2 text-sm font-bold text-white hover:bg-zinc-800 transition"
+          >
+            ← Back to Admin
+          </button>
+        </div>
+      )}
       <div className="mx-auto max-w-screen-2xl px-6 py-8 lg:px-8">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-sm uppercase tracking-[0.2em] text-violet-300">
-              Text2Sale Dashboard
+              {impersonating ? `Viewing ${impersonatingUserName}'s Dashboard` : "Text2Sale Dashboard"}
             </div>
             <h1 className="mt-2 text-4xl font-bold tracking-tight">
               Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}
