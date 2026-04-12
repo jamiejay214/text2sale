@@ -444,6 +444,7 @@ export default function DashboardPage() {
   const [convSelectMode, setConvSelectMode] = useState(false);
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
   const [composerText, setComposerText] = useState("");
+  const [convFromNumber, setConvFromNumber] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
@@ -1319,7 +1320,7 @@ export default function DashboardPage() {
     }
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
     if (!contact) return;
-    const fromNumber = currentUser?.ownedNumbers?.[0]?.number || "";
+    const fromNumber = convFromNumber || currentUser?.ownedNumbers?.[0]?.number || "";
     const scheduledAt = new Date(`${scheduleDate}T${scheduleTime}`).toISOString();
     const sm = await insertScheduledMessage({
       user_id: userId, contact_id: contact.id, body: composerText.trim(),
@@ -1821,7 +1822,7 @@ export default function DashboardPage() {
 
     // Get the contact's phone and a from number
     const contact = contacts.find((c) => c.id === selectedConversation.contactId);
-    const fromNumber = currentUser.ownedNumbers?.[0]?.number;
+    const fromNumber = convFromNumber || currentUser.ownedNumbers?.[0]?.number;
 
     if (!contact?.phone) {
       setMessage("❌ Contact has no phone number");
@@ -3013,6 +3014,26 @@ export default function DashboardPage() {
                         <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-300">
                           DNC
                         </span>
+                      )}
+                      {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 && (
+                        currentUser.ownedNumbers.length > 1 ? (
+                          <select
+                            value={convFromNumber || currentUser.ownedNumbers[0]?.number || ""}
+                            onChange={(e) => setConvFromNumber(e.target.value)}
+                            className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:border-violet-500 focus:border-violet-500 focus:outline-none"
+                            title="Send from number"
+                          >
+                            {currentUser.ownedNumbers.map((n) => (
+                              <option key={n.number} value={n.number}>
+                                📱 {n.number}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <span className="rounded-xl border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400" title="Sending from">
+                            📱 {currentUser.ownedNumbers[0].number}
+                          </span>
+                        )
                       )}
                       <button
                         onClick={() => {
