@@ -566,13 +566,19 @@ export default function DashboardPage() {
       let uid = realUid;
       let profile = myProfile;
 
-      if (impersonateId && impersonateId !== realUid && myProfile.role === "admin") {
-        const targetProfile = await fetchProfile(impersonateId);
-        if (targetProfile) {
-          uid = impersonateId;
-          profile = targetProfile;
-          setImpersonating(true);
-          setImpersonatingUserName(`${targetProfile.first_name} ${targetProfile.last_name}`);
+      if (impersonateId && impersonateId !== realUid) {
+        const canImpersonate =
+          myProfile.role === "admin" ||
+          (myProfile.role === "manager" && (await fetchProfile(impersonateId))?.manager_id === realUid);
+
+        if (canImpersonate) {
+          const targetProfile = await fetchProfile(impersonateId);
+          if (targetProfile) {
+            uid = impersonateId;
+            profile = targetProfile;
+            setImpersonating(true);
+            setImpersonatingUserName(`${targetProfile.first_name} ${targetProfile.last_name}`);
+          }
         }
       }
 
@@ -5446,10 +5452,18 @@ export default function DashboardPage() {
                             <h3 className="text-xl font-bold">{teamMemberDetail.profile.firstName} {teamMemberDetail.profile.lastName}</h3>
                             <div className="text-sm text-zinc-400">{teamMemberDetail.profile.email}</div>
                           </div>
-                          <div className={`rounded-full px-3 py-1 text-xs ${
-                            teamMemberDetail.profile.paused ? "bg-red-900 text-red-300" : "bg-emerald-900 text-emerald-300"
-                          }`}>
-                            {teamMemberDetail.profile.paused ? "PAUSED" : "ACTIVE"}
+                          <div className="flex items-center gap-3">
+                            <button
+                              onClick={() => router.push(`/dashboard?impersonate=${teamMemberDetail.profile.id}`)}
+                              className="rounded-xl bg-violet-600 px-4 py-2 text-xs font-medium hover:bg-violet-700"
+                            >
+                              View as User
+                            </button>
+                            <div className={`rounded-full px-3 py-1 text-xs ${
+                              teamMemberDetail.profile.paused ? "bg-red-900 text-red-300" : "bg-emerald-900 text-emerald-300"
+                            }`}>
+                              {teamMemberDetail.profile.paused ? "PAUSED" : "ACTIVE"}
+                            </div>
                           </div>
                         </div>
 
