@@ -80,11 +80,16 @@ export async function updateContact(
 }
 
 export async function deleteContact(contactId: string): Promise<boolean> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("contacts")
     .delete()
-    .eq("id", contactId);
-  return !error;
+    .eq("id", contactId)
+    .select("id");
+  if (error) {
+    console.error("Delete contact error:", error.message);
+    return false;
+  }
+  return (data?.length ?? 0) > 0;
 }
 
 // ============================================================
