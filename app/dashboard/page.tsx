@@ -108,7 +108,8 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings";
+type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
 
 type CSVUploadRecord = {
   id: string;
@@ -407,6 +408,7 @@ export default function DashboardPage() {
   const [contacts, setContacts] = useState<ContactRecord[]>([]);
   const [conversations, setConversations] = useState<ConversationRecord[]>([]);
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
+  const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("billing");
   const [message, setMessage] = useState("");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
@@ -2514,31 +2516,27 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-          {[
-            "overview",
-            "conversations",
-            "campaigns",
-            "contacts",
-            "upload",
-            "templates",
-            "numbers",
-            "billing",
-            "opt-out",
-            "activity",
-            "team",
-            "10dlc",
-          ].map((tab) => (
+        <div className="mb-8 flex items-center gap-1 border-b border-zinc-800 pb-3">
+          {([
+            { id: "overview", label: "Overview", icon: "📊" },
+            { id: "conversations", label: "Chats", icon: "💬" },
+            { id: "campaigns", label: "Campaigns", icon: "📤" },
+            { id: "contacts", label: "Contacts", icon: "👥" },
+            { id: "upload", label: "Upload CSV", icon: "📁" },
+            { id: "templates", label: "Templates", icon: "📝" },
+            { id: "settings", label: "Settings", icon: "⚙️" },
+          ] as { id: DashboardTab; label: string; icon: string }[]).map((tab) => (
             <button
-              key={tab}
-              onClick={() => setActiveTab(tab as DashboardTab)}
-              className={`rounded-2xl px-5 py-3 text-sm font-medium transition ${
-                activeTab === tab
-                  ? "bg-violet-600 text-white"
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium transition ${
+                activeTab === tab.id
+                  ? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
                   : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
               }`}
             >
-              {tab === "opt-out" ? "Opt-Out" : tab === "10dlc" ? "10DLC Registration" : tab === "upload" ? "Upload CSV" : tab.charAt(0).toUpperCase() + tab.slice(1)}
+              <span className="text-base">{tab.icon}</span>
+              {tab.label}
             </button>
           ))}
         </div>
@@ -2640,7 +2638,7 @@ export default function DashboardPage() {
                     Add $25 to Wallet
                   </button>
                   <button
-                    onClick={() => setActiveTab("numbers")}
+                    onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); }}
                     className="rounded-2xl border border-zinc-700 px-5 py-4 text-left hover:bg-zinc-800"
                   >
                     Buy Number
@@ -4772,7 +4770,34 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === "numbers" && (
+        {activeTab === "settings" && (
+          <div className="space-y-6">
+            {/* Settings sub-navigation */}
+            <div className="flex items-center gap-1 rounded-2xl bg-zinc-900 p-1.5 border border-zinc-800">
+              {([
+                { id: "billing", label: "Billing", icon: "💳" },
+                { id: "numbers", label: "Numbers", icon: "📱" },
+                { id: "team", label: "Team", icon: "👥" },
+                { id: "activity", label: "Activity", icon: "📋" },
+                { id: "opt-out", label: "Opt-Out / DNC", icon: "🚫" },
+                { id: "10dlc", label: "10DLC", icon: "✅" },
+              ] as { id: SettingsSubTab; label: string; icon: string }[]).map((sub) => (
+                <button
+                  key={sub.id}
+                  onClick={() => setSettingsSubTab(sub.id)}
+                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                    settingsSubTab === sub.id
+                      ? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+                      : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                  }`}
+                >
+                  <span>{sub.icon}</span>
+                  {sub.label}
+                </button>
+              ))}
+            </div>
+
+        {settingsSubTab === "numbers" && (
           <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="space-y-6">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -4868,7 +4893,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === "billing" && (
+        {settingsSubTab === "billing" && (
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Subscription Section */}
             <div className="space-y-6">
@@ -5169,7 +5194,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === "opt-out" && (
+        {settingsSubTab === "opt-out" && (
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Left Column — Keywords & Behavior */}
             <div className="space-y-6">
@@ -5554,7 +5579,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {activeTab === "activity" && (
+        {settingsSubTab === "activity" && (
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
             <h2 className="text-2xl font-bold">Recent Activity</h2>
 
@@ -5588,7 +5613,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── TEAM TAB ── */}
-        {activeTab === "team" && (
+        {settingsSubTab === "team" && (
           <div className="space-y-8">
             {/* Manager view — team overview */}
             {(currentUser.role === "manager" || currentUser.role === "admin") && (
@@ -5819,7 +5844,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── 10DLC A2P Registration Tab ── */}
-        {activeTab === "10dlc" && (
+        {settingsSubTab === "10dlc" && (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold">10DLC A2P Registration</h2>
             <p className="text-zinc-400">
@@ -6019,9 +6044,12 @@ export default function DashboardPage() {
                   ))}
                 </div>
               ) : (
-                <p className="text-sm text-zinc-500">No phone numbers yet. Purchase numbers from the Phone Numbers tab.</p>
+                <p className="text-sm text-zinc-500">No phone numbers yet. Purchase numbers from Settings &gt; Numbers.</p>
               )}
             </div>
+          </div>
+        )}
+
           </div>
         )}
 
@@ -6473,7 +6501,7 @@ export default function DashboardPage() {
                 <h3 className="mb-2 text-xl font-bold">Register Your Business</h3>
                 <p className="mb-6 text-sm text-zinc-400">Register your brand with your EIN for higher sending limits. You can do this from the 10DLC tab anytime.</p>
                 <button
-                  onClick={() => { setActiveTab("10dlc"); setShowOnboarding(false); }}
+                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); setShowOnboarding(false); }}
                   className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
                 >
                   Go to 10DLC Registration
@@ -6491,7 +6519,7 @@ export default function DashboardPage() {
                 <h3 className="mb-2 text-xl font-bold">Buy a Phone Number</h3>
                 <p className="mb-6 text-sm text-zinc-400">You need at least one phone number to send messages. Numbers cost $1.50 to purchase + $1/mo.</p>
                 <button
-                  onClick={() => { setActiveTab("numbers"); setShowOnboarding(false); }}
+                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); setShowOnboarding(false); }}
                   className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
                 >
                   Buy a Number
