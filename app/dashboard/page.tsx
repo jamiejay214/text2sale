@@ -290,6 +290,110 @@ function getInitials(firstName?: string, lastName?: string) {
 
 // No more demo data builders — data comes from Supabase
 
+const SALES_QUOTES = [
+  "Every 'no' gets you closer to a 'yes.' Keep dialing.",
+  "Your pipeline is your lifeline — fill it every single day.",
+  "Fortune favors the follow-up. Most deals close after the 5th touch.",
+  "Sell the outcome, not the product.",
+  "The best time to prospect was yesterday. The second best time is now.",
+  "People don't buy what you do — they buy why you do it.",
+  "Be so good they can't ignore your messages.",
+  "A goal without a plan is just a wish. Set your daily targets.",
+  "The money is in the relationship, not the transaction.",
+  "Hustle beats talent when talent doesn't hustle.",
+  "Stop selling. Start helping. The sales will follow.",
+  "Discipline is doing what needs to be done, even when you don't feel like it.",
+  "Every champion was once a contender who refused to give up.",
+  "Success is rented, and the rent is due every day.",
+  "Your attitude determines your altitude in sales.",
+  "The difference between try and triumph is a little 'umph.'",
+  "Objections are just questions in disguise. Answer them confidently.",
+  "You miss 100% of the shots you don't take — Wayne Gretzky.",
+  "Don't wait for opportunity. Create it with every text you send.",
+  "The top 20% of salespeople make 80% of the money. Be in the 20%.",
+  "Sales is not about selling anymore — it's about building trust.",
+  "Wake up with determination. Go to bed with satisfaction.",
+  "Consistency is what transforms average into excellence.",
+  "Your network is your net worth. Grow it daily.",
+  "The harder you work, the luckier you get.",
+  "Champions don't show up to get everything they want — they show up to give everything they have.",
+  "Don't count the days. Make the days count.",
+  "A satisfied customer is the best business strategy of all.",
+  "Work like there is someone working 24 hours a day to take it away from you.",
+  "Success usually comes to those who are too busy to be looking for it.",
+  "The secret of getting ahead is getting started.",
+  "Great things never come from comfort zones.",
+  "Dream big. Start small. Act now.",
+  "The only limit to our realization of tomorrow is our doubts of today.",
+  "Sales is a numbers game — increase your numbers, increase your income.",
+  "Be the person who decided to go for it.",
+  "Small daily improvements over time lead to stunning results.",
+  "Winners are not people who never fail, but people who never quit.",
+  "Your competition is not other people. Your competition is your procrastination.",
+  "Revenue is vanity, profit is sanity, but cash flow is reality.",
+  "Don't sell life insurance. Sell what life insurance can do.",
+  "The best salespeople are the best listeners.",
+  "If you're not first, you're last. Speed to lead wins.",
+  "Prospects buy emotionally and justify logically.",
+  "Stay hungry. Stay foolish. Stay closing.",
+  "Success is walking from failure to failure with no loss of enthusiasm.",
+  "The question isn't who's going to let me — it's who's going to stop me.",
+  "Believe you can and you're halfway there.",
+  "It's not about having the right opportunities. It's about handling them the right way.",
+  "In sales, it's not what you say — it's how you make them feel.",
+  "You don't close a sale. You open a relationship.",
+  "The best revenge is massive success.",
+  "Don't be afraid to give up the good to go for the great.",
+  "Action is the foundational key to all success.",
+  "Today's preparation determines tomorrow's achievement.",
+  "Your only limit is you. Push past it.",
+  "Top performers don't wait for motivation — they create it through action.",
+  "The pain of discipline is nothing compared to the pain of regret.",
+  "Think like a customer. Act like a partner.",
+  "If you want something you've never had, do something you've never done.",
+  "Excuses don't build empires. Results do.",
+  "The fortune is in the follow-through.",
+  "Set a goal so big that you can't achieve it until you grow into the person who can.",
+  "Treat every lead like they're your only lead.",
+  "Rejection is redirection. Learn from it and move forward.",
+  "You are the CEO of your own sales career. Act like it.",
+  "Don't wish it were easier. Wish you were better.",
+  "Every text you send is a seed. Keep planting.",
+  "Be relentless in the pursuit of what sets your soul on fire.",
+  "The best way to predict the future is to create it.",
+  "Confidence is not 'they will like me.' Confidence is 'I'll be fine if they don't.'",
+  "A river cuts through rock not because of its power, but because of its persistence.",
+  "Success isn't overnight. It's when every day you get a little better.",
+  "The grind you put in today is the success story you'll tell tomorrow.",
+  "Average sellers sell features. Top sellers sell transformations.",
+  "Make your pipeline so full that you can afford to lose any deal.",
+  "When they say 'I'll think about it,' give them something worth thinking about.",
+  "The top closers aren't pushier — they're more prepared.",
+  "Speed, simplicity, and sincerity — the three S's of great sales.",
+  "Never let a bad day make you feel like you have a bad life.",
+  "The only way to do great work is to love what you do.",
+  "Your energy introduces you before you even speak. Bring the fire.",
+  "Stop overthinking. Start outworking.",
+  "Prospects don't care about your quota. They care about their problems.",
+  "Be the solution they didn't know they needed.",
+  "Pressure is a privilege — it means the stakes are high enough to matter.",
+  "The close is not the end. It's the beginning of the relationship.",
+  "Don't find customers for your product. Find products for your customers.",
+  "Work hard in silence. Let your numbers make the noise.",
+  "You can't build a reputation on what you're going to do. Build it today.",
+  "Success is the sum of small efforts repeated day in and day out.",
+  "If plan A doesn't work, the alphabet has 25 more letters.",
+  "When you feel like quitting, remember why you started.",
+  "Invest in yourself — it pays the best interest.",
+  "Nothing will work unless you do.",
+  "The person who says it cannot be done should not interrupt the person doing it.",
+  "Make today so awesome that yesterday gets jealous.",
+  "Don't downgrade your dream just to fit your reality. Upgrade your hustle.",
+  "The sale begins when the customer says no.",
+  "Go the extra mile. It's never crowded there.",
+  "Outwork everyone. Out-care everyone. Outlast everyone.",
+];
+
 export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -687,6 +791,9 @@ export default function DashboardPage() {
     contacts.forEach((c) => (c.tags || []).forEach((t) => { if (t.trim()) tagSet.add(t.trim()); }));
     return Array.from(tagSet).sort();
   }, [contacts]);
+
+  // Pick one motivational quote per page load (stable across re-renders)
+  const dailyQuote = useMemo(() => SALES_QUOTES[Math.floor(Math.random() * SALES_QUOTES.length)], []);
 
   const filteredContacts = useMemo(() => {
     const now = Date.now();
@@ -2239,8 +2346,8 @@ export default function DashboardPage() {
             <h1 className="mt-2 text-4xl font-bold tracking-tight">
               Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}
             </h1>
-            <p className="mt-2 text-zinc-400">
-              Manage campaigns, contacts, conversations, phone numbers, credits, and billing.
+            <p className="mt-2 text-zinc-400 italic">
+              &ldquo;{dailyQuote}&rdquo;
             </p>
           </div>
 
