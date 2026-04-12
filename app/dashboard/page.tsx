@@ -436,6 +436,9 @@ export default function DashboardPage() {
   const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
+  const [showConvContactPanel, setShowConvContactPanel] = useState(false);
+  const [convShowArchived, setConvShowArchived] = useState(false);
+  const [archivedConvIds, setArchivedConvIds] = useState<Set<string>>(new Set());
   const [composerText, setComposerText] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -585,6 +588,12 @@ export default function DashboardPage() {
       setUserId(uid);
       setCurrentUser(profileToAccount(profile));
       if (profile.opt_out_settings) setOptOutSettings(profile.opt_out_settings);
+
+      // Load archived conversation IDs from localStorage
+      try {
+        const stored = window.localStorage.getItem(`t2s_archived_convs_${uid}`);
+        if (stored) setArchivedConvIds(new Set(JSON.parse(stored)));
+      } catch { /* ignore */ }
 
       const [dbContacts, dbCampaigns, dbConversations, dbTemplates, dbScheduled] = await Promise.all([
         dbFetchContacts(uid),
@@ -929,11 +938,27 @@ export default function DashboardPage() {
       );
   }, [conversations, contacts]);
 
+  // Persist archived conversation IDs
+  useEffect(() => {
+    if (userId && archivedConvIds.size >= 0) {
+      try { window.localStorage.setItem(`t2s_archived_convs_${userId}`, JSON.stringify([...archivedConvIds])); } catch { /* ignore */ }
+    }
+  }, [archivedConvIds, userId]);
+
   const filteredConversations = useMemo(() => {
     const search = conversationSearch.trim().toLowerCase();
-    if (!search) return conversationsWithContacts;
+    let list = conversationsWithContacts;
 
-    return conversationsWithContacts.filter((conversation) => {
+    // Filter by archive status
+    if (convShowArchived) {
+      list = list.filter((c) => archivedConvIds.has(c.id));
+    } else {
+      list = list.filter((c) => !archivedConvIds.has(c.id));
+    }
+
+    if (!search) return list;
+
+    return list.filter((conversation) => {
       const fullName = `${conversation.contact?.firstName || ""} ${conversation.contact?.lastName || ""}`.toLowerCase();
       const phone = conversation.contact?.phone?.toLowerCase() || "";
       const preview = conversation.preview.toLowerCase();
@@ -941,7 +966,7 @@ export default function DashboardPage() {
         fullName.includes(search) || phone.includes(search) || preview.includes(search)
       );
     });
-  }, [conversationSearch, conversationsWithContacts]);
+  }, [conversationSearch, conversationsWithContacts, convShowArchived, archivedConvIds]);
 
   const selectedConversation = useMemo(() => {
     return (
@@ -2840,10 +2865,16 @@ export default function DashboardPage() {
         )}
 
         {activeTab === "conversations" && (
-          <div className="grid min-h-[85vh] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
+          <div className={`grid min-h-[85vh] gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="mb-4">
+              <div className="mb-4 flex items-center justify-between">
                 <h2 className="text-2xl font-bold">Chats</h2>
+                <button
+                  onClick={() => setConvShowArchived((v) => !v)}
+                  className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                >
+                  {convShowArchived ? "Show Active" : "Archived"}
+                </button>
               </div>
 
               <input
@@ -2932,6 +2963,29 @@ export default function DashboardPage() {
                           DNC
                         </span>
                       )}
+                      <button
+                        onClick={() => {
+                          if (selectedConversation) {
+                            setArchivedConvIds((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(selectedConversation.id)) next.delete(selectedConversation.id);
+                              else next.add(selectedConversation.id);
+                              return next;
+                            });
+                            setSelectedConversationId("");
+                          }
+                        }}
+                        className="rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
+                        title="Archive conversation"
+                      >
+                        Archive
+                      </button>
+                      <button
+                        onClick={() => setShowConvContactPanel((v) => !v)}
+                        className={`rounded-xl border px-3 py-2 text-sm hover:bg-zinc-800 ${showConvContactPanel ? "border-violet-500 text-violet-300" : "border-zinc-700"}`}
+                      >
+                        {showConvContactPanel ? "Hide Info" : "More"}
+                      </button>
                     </div>
                   </div>
 
@@ -3089,6 +3143,7 @@ export default function DashboardPage() {
               )}
             </div>
 
+            {showConvContactPanel && (
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
               {selectedContact ? (
                 <div className="max-h-[80vh] overflow-y-auto pr-1">
@@ -3395,6 +3450,7 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+            )}
           </div>
         )}
 
