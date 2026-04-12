@@ -108,7 +108,7 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
 
 type CSVUploadRecord = {
   id: string;
@@ -2494,6 +2494,7 @@ export default function DashboardPage() {
             "campaigns",
             "contacts",
             "upload",
+            "templates",
             "numbers",
             "billing",
             "opt-out",
@@ -2841,11 +2842,8 @@ export default function DashboardPage() {
         {activeTab === "conversations" && (
           <div className="grid min-h-[85vh] gap-4 xl:grid-cols-[300px_minmax(0,1fr)_340px]">
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4">
                 <h2 className="text-2xl font-bold">Chats</h2>
-                <button className="rounded-xl bg-violet-600 px-3 py-2 text-sm hover:bg-violet-700">
-                  Learn
-                </button>
               </div>
 
               <input
@@ -2934,12 +2932,6 @@ export default function DashboardPage() {
                           DNC
                         </span>
                       )}
-                      <button className="rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">
-                        Call
-                      </button>
-                      <button className="rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800">
-                        More
-                      </button>
                     </div>
                   </div>
 
@@ -4568,6 +4560,105 @@ export default function DashboardPage() {
                 </div>
               </div>
             )}
+          </div>
+        )}
+
+        {/* ═══════════════ TEMPLATES ═══════════════ */}
+        {activeTab === "templates" && (
+          <div className="grid gap-8 lg:grid-cols-2">
+            {/* Create Template */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <h2 className="text-2xl font-bold">Create Template</h2>
+              <p className="mt-1 text-sm text-zinc-500">Save message templates for quick reuse in conversations and campaigns.</p>
+
+              <div className="mt-5 space-y-4">
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="mb-2 block text-sm text-zinc-400">Template Name</label>
+                    <input
+                      value={newTemplateName}
+                      onChange={(e) => setNewTemplateName(e.target.value)}
+                      placeholder="e.g. Follow Up, Welcome, Appointment Reminder"
+                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm text-zinc-400">Category</label>
+                    <select
+                      value={newTemplateCategory}
+                      onChange={(e) => setNewTemplateCategory(e.target.value)}
+                      className="rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none"
+                    >
+                      <option value="general">General</option>
+                      <option value="follow-up">Follow Up</option>
+                      <option value="greeting">Greeting</option>
+                      <option value="closing">Closing</option>
+                      <option value="appointment">Appointment</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm text-zinc-400">Message Body</label>
+                  <textarea
+                    value={newTemplateBody}
+                    onChange={(e) => setNewTemplateBody(e.target.value)}
+                    rows={5}
+                    placeholder="Type your template message here... Use {firstName}, {lastName}, etc. for personalization."
+                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500"
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-xs text-zinc-500">
+                  <span className="font-semibold text-zinc-400">Variables:</span> {"{firstName}"}, {"{lastName}"}, {"{phone}"}, {"{email}"}, {"{city}"}, {"{state}"}
+                </div>
+
+                <button
+                  onClick={handleSaveTemplate}
+                  disabled={!newTemplateName.trim() || !newTemplateBody.trim()}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-4 font-medium hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Save Template
+                </button>
+              </div>
+            </div>
+
+            {/* Template List */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <div className="flex items-center justify-between">
+                <h2 className="text-2xl font-bold">Your Templates</h2>
+                <span className="text-sm text-zinc-500">{templates.length} template{templates.length !== 1 ? "s" : ""}</span>
+              </div>
+
+              {templates.length === 0 ? (
+                <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-8 text-center text-zinc-500">
+                  No templates yet. Create your first one to speed up your messaging.
+                </div>
+              ) : (
+                <div className="mt-5 max-h-[500px] space-y-3 overflow-y-auto">
+                  {templates.map((tpl) => (
+                    <div key={tpl.id} className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold">{tpl.name}</span>
+                          <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{tpl.category}</span>
+                        </div>
+                        <button
+                          onClick={() => handleDeleteTemplate(tpl.id)}
+                          className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-red-900/40 hover:text-red-300"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-400">{tpl.body}</div>
+                      <div className="mt-2 text-[10px] text-zinc-600">
+                        Created {new Date(tpl.created_at).toLocaleDateString()}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         )}
 
