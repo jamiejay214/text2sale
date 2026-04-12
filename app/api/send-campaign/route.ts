@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -61,12 +60,6 @@ export async function POST(req: NextRequest) {
       const fromNumber = fromList[i % fromList.length];
 
       try {
-        // Quiet hours check — skip contacts in quiet hours
-        const tz = inferTimezone(contact.state);
-        if (isQuietHours(tz)) {
-          deferred++;
-          continue;
-        }
         const personalizedBody = messageTemplate
           .replace(/\{firstName\}/gi, contact.first_name || "")
           .replace(/\{lastName\}/gi, contact.last_name || "")

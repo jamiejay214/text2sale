@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -71,10 +70,6 @@ export async function GET() {
           .from("contacts").select("id, phone, state").eq("id", msg.contact_id).single();
 
         if (!contact || !contact.phone) throw new Error("Contact not found");
-
-        // Skip if in quiet hours — will be picked up next cycle
-        const tz = inferTimezone(contact.state);
-        if (isQuietHours(tz)) continue;
 
         const toNumber = normalizePhone(contact.phone);
         const fromNumber = normalizePhone(msg.from_number);

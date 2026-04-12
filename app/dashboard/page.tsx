@@ -1815,21 +1815,14 @@ export default function DashboardPage() {
       const res = await fetch("/api/send-sms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: contact.phone, from: fromNumber, body, contactState: contact.state }),
+        body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
       });
 
       const data = await res.json();
 
       if (!data.success) {
-        if (data.error === "quiet_hours") {
-          const nextTime = data.nextSendTime ? new Date(data.nextSendTime).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "8:00 AM";
-          setMessage(`🌙 Cannot send during quiet hours (9 PM – 8 AM in contact's timezone). Next send window: ${nextTime}`);
-          window.setTimeout(() => setMessage(""), 5000);
-          setComposerText(body);
-        } else {
-          setMessage(`❌ ${data.error || "Failed to send"}`);
-          window.setTimeout(() => setMessage(""), 3000);
-        }
+        setMessage(`❌ ${data.error || "Failed to send"}`);
+        window.setTimeout(() => setMessage(""), 3000);
         return;
       }
     } catch {
