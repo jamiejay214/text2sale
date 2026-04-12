@@ -2516,26 +2516,25 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="mb-8 flex items-center gap-1 border-b border-zinc-800 pb-3">
+        <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
           {([
-            { id: "overview", label: "Overview", icon: "📊" },
-            { id: "conversations", label: "Chats", icon: "💬" },
-            { id: "campaigns", label: "Campaigns", icon: "📤" },
-            { id: "contacts", label: "Contacts", icon: "👥" },
-            { id: "upload", label: "Upload CSV", icon: "📁" },
-            { id: "templates", label: "Templates", icon: "📝" },
-            { id: "settings", label: "Settings", icon: "⚙️" },
-          ] as { id: DashboardTab; label: string; icon: string }[]).map((tab) => (
+            { id: "overview", label: "Overview" },
+            { id: "conversations", label: "Conversations" },
+            { id: "campaigns", label: "Campaigns" },
+            { id: "contacts", label: "Contacts" },
+            { id: "upload", label: "Upload CSV" },
+            { id: "templates", label: "Templates" },
+            { id: "settings", label: "Settings" },
+          ] as { id: DashboardTab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium transition ${
+              className={`rounded-2xl px-5 py-3 text-sm font-medium transition ${
                 activeTab === tab.id
-                  ? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+                  ? "bg-violet-600 text-white"
                   : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
               }`}
             >
-              <span className="text-base">{tab.icon}</span>
               {tab.label}
             </button>
           ))}
@@ -4775,23 +4774,22 @@ export default function DashboardPage() {
             {/* Settings sub-navigation */}
             <div className="flex items-center gap-1 rounded-2xl bg-zinc-900 p-1.5 border border-zinc-800">
               {([
-                { id: "billing", label: "Billing", icon: "💳" },
-                { id: "numbers", label: "Numbers", icon: "📱" },
-                { id: "team", label: "Team", icon: "👥" },
-                { id: "activity", label: "Activity", icon: "📋" },
-                { id: "opt-out", label: "Opt-Out / DNC", icon: "🚫" },
-                { id: "10dlc", label: "10DLC", icon: "✅" },
-              ] as { id: SettingsSubTab; label: string; icon: string }[]).map((sub) => (
+                { id: "billing", label: "Billing" },
+                { id: "numbers", label: "Numbers" },
+                { id: "team", label: "Team" },
+                { id: "activity", label: "Activity" },
+                { id: "opt-out", label: "Opt-Out / DNC" },
+                { id: "10dlc", label: "10DLC" },
+              ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
                   onClick={() => setSettingsSubTab(sub.id)}
-                  className={`flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                  className={`rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                     settingsSubTab === sub.id
-                      ? "bg-violet-600 text-white shadow-lg shadow-violet-600/20"
+                      ? "bg-violet-600 text-white"
                       : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
                   }`}
                 >
-                  <span>{sub.icon}</span>
                   {sub.label}
                 </button>
               ))}
