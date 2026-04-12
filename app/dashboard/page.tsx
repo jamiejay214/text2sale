@@ -105,6 +105,7 @@ type ConversationRecord = {
   unread: number;
   lastMessageAt: string;
   starred?: boolean;
+  fromNumber?: string;
   messages: ConversationMessage[];
 };
 
@@ -231,7 +232,7 @@ function convToRecord(c: Conversation, msgs: ConversationMessage[]): Conversatio
   return {
     id: c.id, contactId: c.contact_id, preview: c.preview,
     unread: c.unread, lastMessageAt: c.last_message_at,
-    starred: c.starred, messages: msgs,
+    starred: c.starred, fromNumber: c.from_number, messages: msgs,
   };
 }
 
@@ -1803,6 +1804,10 @@ export default function DashboardPage() {
     setSelectedConversationId(conversationId);
     setComposerText("");
 
+    // Sync the from number dropdown with the conversation's from number
+    const conv = conversations.find((c) => c.id === conversationId);
+    setConvFromNumber(conv?.fromNumber || "");
+
     setConversations((prev) =>
       prev.map((c) => c.id === conversationId ? { ...c, unread: 0 } : c)
     );
@@ -1883,6 +1888,7 @@ export default function DashboardPage() {
       );
       await dbUpdateConversation(selectedConversation.id, {
         preview: body, last_message_at: now,
+        from_number: fromNumber,
       });
     }
 
@@ -2968,6 +2974,11 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
+                          {conversation.fromNumber && (
+                            <div className="mt-0.5 truncate text-[10px] text-zinc-500">
+                              via {conversation.fromNumber}
+                            </div>
+                          )}
                           <div className="mt-1 truncate text-sm text-zinc-400">
                             {conversation.preview}
                           </div>
@@ -3018,8 +3029,37 @@ export default function DashboardPage() {
                       {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 && (
                         currentUser.ownedNumbers.length > 1 ? (
                           <select
-                            value={convFromNumber || currentUser.ownedNumbers[0]?.number || ""}
-                            onChange={(e) => setConvFromNumber(e.target.value)}
+                            value={convFromNumber || selectedConversation?.fromNumber || currentUser.ownedNumbers[0]?.number || ""}
+                            onChange={async (e) => {
+                              const newFrom = e.target.value;
+                              setConvFromNumber(newFrom);
+                              if (!selectedConversation || !userId) return;
+                              const contactId = selectedConversation.contactId;
+                              // Look for an existing conversation with this contact + from number
+                              const existingConv = conversations.find(
+                                (c) => c.contactId === contactId && c.fromNumber === newFrom
+                              );
+                              if (existingConv) {
+                                setSelectedConversationId(existingConv.id);
+                              } else {
+                                // Create a new conversation for this number
+                                const now = new Date().toISOString();
+                                const newConv = await insertConversation({
+                                  user_id: userId,
+                                  contact_id: contactId,
+                                  preview: "",
+                                  unread: 0,
+                                  last_message_at: now,
+                                  starred: false,
+                                  from_number: newFrom,
+                                });
+                                if (newConv) {
+                                  const record = convToRecord(newConv, []);
+                                  setConversations((prev) => [record, ...prev]);
+                                  setSelectedConversationId(newConv.id);
+                                }
+                              }
+                            }}
                             className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:border-violet-500 focus:border-violet-500 focus:outline-none"
                             title="Send from number"
                           >

@@ -184,6 +184,7 @@ export type Conversation = {
   last_message_at: string;
   starred: boolean;
   created_at: string;
+  from_number?: string;
 };
 
 export type Message = {
