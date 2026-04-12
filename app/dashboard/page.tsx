@@ -4774,12 +4774,12 @@ export default function DashboardPage() {
             {/* Settings sub-navigation */}
             <div className="flex items-center gap-1 rounded-2xl bg-zinc-900 p-1.5 border border-zinc-800">
               {([
-                { id: "billing", label: "Billing" },
-                { id: "numbers", label: "Numbers" },
-                { id: "team", label: "Team" },
-                { id: "activity", label: "Activity" },
-                { id: "opt-out", label: "Opt-Out / DNC" },
-                { id: "10dlc", label: "10DLC" },
+                { id: "billing", label: "💳 Billing" },
+                { id: "numbers", label: "📱 Numbers" },
+                { id: "team", label: "👥 Team" },
+                { id: "activity", label: "📋 Activity" },
+                { id: "opt-out", label: "🚫 Opt-Out / DNC" },
+                { id: "10dlc", label: "✅ 10DLC" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
