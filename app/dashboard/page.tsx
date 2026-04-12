@@ -439,6 +439,8 @@ export default function DashboardPage() {
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
   const [convShowArchived, setConvShowArchived] = useState(false);
   const [archivedConvIds, setArchivedConvIds] = useState<Set<string>>(new Set());
+  const [convSelectMode, setConvSelectMode] = useState(false);
+  const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
   const [composerText, setComposerText] = useState("");
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
@@ -2867,14 +2869,53 @@ export default function DashboardPage() {
         {activeTab === "conversations" && (
           <div className={`grid min-h-[85vh] gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
-              <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Chats</h2>
-                <button
-                  onClick={() => setConvShowArchived((v) => !v)}
-                  className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                >
-                  {convShowArchived ? "Show Active" : "Archived"}
-                </button>
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">Chats</h2>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                    >
+                      {convSelectMode ? "Cancel" : "Select"}
+                    </button>
+                    <button
+                      onClick={() => setConvShowArchived((v) => !v)}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                    >
+                      {convShowArchived ? "Active" : "Archived"}
+                    </button>
+                  </div>
+                </div>
+                {convSelectMode && selectedConvIds.size > 0 && (
+                  <div className="mt-3 flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        setArchivedConvIds((prev) => {
+                          const next = new Set(prev);
+                          for (const id of selectedConvIds) {
+                            if (convShowArchived) next.delete(id); else next.add(id);
+                          }
+                          return next;
+                        });
+                        setSelectedConvIds(new Set());
+                        setConvSelectMode(false);
+                      }}
+                      className="flex-1 rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium hover:bg-violet-700"
+                    >
+                      {convShowArchived ? `Unarchive ${selectedConvIds.size}` : `Archive ${selectedConvIds.size}`}
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Select all visible
+                        setSelectedConvIds(new Set(filteredConversations.map((c) => c.id)));
+                      }}
+                      className="rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:text-white"
+                    >
+                      All
+                    </button>
+                  </div>
+                )}
               </div>
 
               <input
@@ -2888,20 +2929,33 @@ export default function DashboardPage() {
                 {filteredConversations.map((conversation) => {
                   const contact = conversation.contact;
                   const active = conversation.id === selectedConversation?.id;
+                  const isSelected = selectedConvIds.has(conversation.id);
 
                   return (
-                    <button
+                    <div
                       key={conversation.id}
-                      onClick={() => handleSelectConversation(conversation.id)}
-                      className={`w-full rounded-2xl p-4 text-left transition ${
-                        active
+                      onClick={() => {
+                        if (convSelectMode) {
+                          setSelectedConvIds((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(conversation.id)) next.delete(conversation.id); else next.add(conversation.id);
+                            return next;
+                          });
+                        } else {
+                          handleSelectConversation(conversation.id);
+                        }
+                      }}
+                      className={`w-full cursor-pointer rounded-2xl p-4 text-left transition ${
+                        isSelected
+                          ? "bg-violet-600/40 ring-1 ring-violet-400"
+                          : active
                           ? "bg-violet-600/30 ring-1 ring-violet-500"
                           : "bg-zinc-800/70 hover:bg-zinc-800"
                       }`}
                     >
                       <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
-                          {getInitials(contact?.firstName, contact?.lastName)}
+                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${isSelected ? "bg-violet-600" : "bg-zinc-700"}`}>
+                          {convSelectMode ? (isSelected ? "✓" : "") : getInitials(contact?.firstName, contact?.lastName)}
                         </div>
 
                         <div className="min-w-0 flex-1">
@@ -2927,13 +2981,13 @@ export default function DashboardPage() {
                           </div>
                         )}
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
 
                 {filteredConversations.length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    No conversations found.
+                    {convShowArchived ? "No archived conversations." : "No conversations found."}
                   </div>
                 )}
               </div>
