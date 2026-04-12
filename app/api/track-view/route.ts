@@ -16,6 +16,11 @@ export async function POST(req: NextRequest) {
 
     const userAgent = req.headers.get("user-agent") || "";
 
+    // Capture geo data from Vercel headers
+    const region = req.headers.get("x-vercel-ip-country-region") || "";
+    const country = req.headers.get("x-vercel-ip-country") || "";
+    const city = req.headers.get("x-vercel-ip-city") || "";
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     await supabase.from("page_views").insert({
@@ -23,6 +28,9 @@ export async function POST(req: NextRequest) {
       referrer: referrer || "",
       user_agent: userAgent.slice(0, 500),
       ip_hash: ipHash,
+      region: region || null,
+      country: country || null,
+      city: city ? decodeURIComponent(city) : null,
     });
 
     return NextResponse.json({ success: true });

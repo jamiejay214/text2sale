@@ -10,6 +10,7 @@ import {
   addUsageEntry, fetchProfile, fetchContacts,
 } from "@/lib/supabase-data";
 import type { Profile, Campaign, UsageHistoryItem, OwnedNumber } from "@/lib/types";
+import USMapChart from "@/components/USMapChart";
 
 // Adapter types to keep JSX working with camelCase
 type AccountRecord = {
@@ -196,6 +197,7 @@ export default function AdminPage() {
   const [trafficMonth, setTrafficMonth] = useState(0);
   const [trafficTotal, setTrafficTotal] = useState(0);
   const [trafficByDay, setTrafficByDay] = useState<{ date: string; views: number; unique: number }[]>([]);
+  const [trafficByState, setTrafficByState] = useState<Record<string, number>>({});
 
   // Support chat
   const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
@@ -269,6 +271,22 @@ export default function AdminPage() {
         }
       }
       setTrafficByDay(days);
+
+      // Load traffic by US state
+      const { data: regionViews } = await supabase
+        .from("page_views")
+        .select("region, country")
+        .eq("country", "US")
+        .not("region", "is", null);
+      if (regionViews) {
+        const stateMap: Record<string, number> = {};
+        for (const rv of regionViews) {
+          if (rv.region) {
+            stateMap[rv.region] = (stateMap[rv.region] || 0) + 1;
+          }
+        }
+        setTrafficByState(stateMap);
+      }
 
       // Load support messages
       const { data: supportMsgs } = await supabase
@@ -793,6 +811,9 @@ export default function AdminPage() {
                 <div className="text-center text-sm text-zinc-500 py-6">No traffic data yet. Views will appear as visitors land on your site.</div>
               )}
             </div>
+
+            {/* US Visitor Map */}
+            <USMapChart stateData={trafficByState} />
           </div>
         )}
 
