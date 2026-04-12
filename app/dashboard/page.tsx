@@ -96,6 +96,7 @@ type ConversationMessage = {
   body: string;
   createdAt: string;
   status?: "sent" | "delivered" | "failed" | "received";
+  fromNumber?: string;
 };
 
 type ConversationRecord = {
@@ -225,6 +226,7 @@ function messageToRecord(m: Message): ConversationMessage {
   return {
     id: m.id, direction: m.direction, body: m.body,
     createdAt: m.created_at, status: m.status,
+    fromNumber: m.from_number,
   };
 }
 
@@ -1803,10 +1805,7 @@ export default function DashboardPage() {
   const handleSelectConversation = async (conversationId: string) => {
     setSelectedConversationId(conversationId);
     setComposerText("");
-
-    // Sync the from number dropdown with the conversation's from number
-    const conv = conversations.find((c) => c.id === conversationId);
-    setConvFromNumber(conv?.fromNumber || "");
+    setConvFromNumber("");
 
     setConversations((prev) =>
       prev.map((c) => c.id === conversationId ? { ...c, unread: 0 } : c)
@@ -1876,6 +1875,7 @@ export default function DashboardPage() {
     const dbMsg = await insertMessage({
       conversation_id: selectedConversation.id,
       direction: "outbound", body, status: "sent",
+      from_number: fromNumber,
     });
 
     if (dbMsg) {
@@ -1888,7 +1888,6 @@ export default function DashboardPage() {
       );
       await dbUpdateConversation(selectedConversation.id, {
         preview: body, last_message_at: now,
-        from_number: fromNumber,
       });
     }
 
@@ -2974,11 +2973,6 @@ export default function DashboardPage() {
                             </div>
                           </div>
 
-                          {conversation.fromNumber && (
-                            <div className="mt-0.5 truncate text-[10px] text-zinc-500">
-                              via {conversation.fromNumber}
-                            </div>
-                          )}
                           <div className="mt-1 truncate text-sm text-zinc-400">
                             {conversation.preview}
                           </div>
@@ -3029,40 +3023,12 @@ export default function DashboardPage() {
                       {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 && (
                         currentUser.ownedNumbers.length > 1 ? (
                           <select
-                            value={convFromNumber || selectedConversation?.fromNumber || currentUser.ownedNumbers[0]?.number || ""}
-                            onChange={async (e) => {
-                              const newFrom = e.target.value;
-                              setConvFromNumber(newFrom);
-                              if (!selectedConversation || !userId) return;
-                              const contactId = selectedConversation.contactId;
-                              // Look for an existing conversation with this contact + from number
-                              const existingConv = conversations.find(
-                                (c) => c.contactId === contactId && c.fromNumber === newFrom
-                              );
-                              if (existingConv) {
-                                setSelectedConversationId(existingConv.id);
-                              } else {
-                                // Create a new conversation for this number
-                                const now = new Date().toISOString();
-                                const newConv = await insertConversation({
-                                  user_id: userId,
-                                  contact_id: contactId,
-                                  preview: "",
-                                  unread: 0,
-                                  last_message_at: now,
-                                  starred: false,
-                                  from_number: newFrom,
-                                });
-                                if (newConv) {
-                                  const record = convToRecord(newConv, []);
-                                  setConversations((prev) => [record, ...prev]);
-                                  setSelectedConversationId(newConv.id);
-                                }
-                              }
-                            }}
+                            value={convFromNumber || currentUser.ownedNumbers[0]?.number || ""}
+                            onChange={(e) => setConvFromNumber(e.target.value)}
                             className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:border-violet-500 focus:border-violet-500 focus:outline-none"
                             title="Send from number"
                           >
+                            <option value="">All Messages</option>
                             {currentUser.ownedNumbers.map((n) => (
                               <option key={n.number} value={n.number}>
                                 📱 {n.number}
@@ -3107,7 +3073,9 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="space-y-5">
-                      {selectedConversation.messages.map((item) => (
+                      {selectedConversation.messages
+                        .filter((item) => !convFromNumber || item.direction === "inbound" || item.fromNumber === convFromNumber || !item.fromNumber)
+                        .map((item) => (
                         <div
                           key={item.id}
                           className={`flex ${

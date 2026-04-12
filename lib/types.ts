@@ -194,6 +194,7 @@ export type Message = {
   body: string;
   status: "sent" | "delivered" | "failed" | "received";
   created_at: string;
+  from_number?: string;
 };
 
 // Conversation with messages and contact joined in
