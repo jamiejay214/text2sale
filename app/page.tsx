@@ -135,6 +135,186 @@ export default function HomePage() {
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
             </ul>
           </div>
+
+          {/* Login / Signup */}
+          <div className="mx-auto mt-10 max-w-xl">
+            <div className="w-full rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
+              <div className="mb-6">
+                <div className="text-3xl font-bold text-white">Text2Sale</div>
+                <div className="mt-2 text-sm text-zinc-400">
+                  {mode === "login"
+                    ? "Log in to your account and start texting."
+                    : "Create your account and go straight to your dashboard."}
+                </div>
+              </div>
+
+              <div className="mb-6 flex rounded-2xl bg-zinc-800 p-1">
+                <button
+                  onClick={() => { setMode("login"); setError(""); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
+                    mode === "login" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Login
+                </button>
+                <button
+                  onClick={() => { setMode("signup"); setError(""); }}
+                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
+                    mode === "signup" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
+                  }`}
+                >
+                  Create Account
+                </button>
+              </div>
+
+              {mode === "login" ? (
+                <div className="space-y-4">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
+                    <input
+                      value={loginEmail}
+                      onChange={(e) => setLoginEmail(e.target.value)}
+                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+                      placeholder="Enter your email"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
+                    <input
+                      type="password"
+                      value={loginPassword}
+                      onChange={(e) => setLoginPassword(e.target.value)}
+                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+                      placeholder="Enter your password"
+                    />
+                  </div>
+
+                  {error && (
+                    <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleLogin}
+                    disabled={loading}
+                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
+                  >
+                    {loading ? "Signing in..." : "Sign In"}
+                  </button>
+
+                  <div className="text-center text-sm text-zinc-500">
+                    New here?{" "}
+                    <button onClick={() => { setMode("signup"); setError(""); }} className="font-medium text-violet-400 hover:text-violet-300">
+                      Create an account
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">First name</label>
+                      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter first name" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">Last name</label>
+                      <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter last name" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
+                    <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter email" />
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-300">Phone number</label>
+                    <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter phone number" />
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
+                      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter password" />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">Confirm password</label>
+                      <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Confirm password" />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-zinc-300">Referral Code (Optional — deposit $50 and you both get $50 free!)</label>
+                    <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="e.g. T2S-ABC123" />
+                  </div>
+
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
+                    <div className="font-semibold text-white">Plan: Text2Sale Package</div>
+                    <div className="mt-1">$39.99 per month</div>
+                    <div>$0.012 per text message</div>
+                  </div>
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={agreedToPrivacy}
+                      onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                    />
+                    <span className="text-sm text-zinc-400">
+                      I have read and fully understand the{" "}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }}
+                        className="font-medium text-violet-400 underline hover:text-violet-300"
+                      >
+                        Privacy Policy
+                      </button>{" "}
+                      (<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
+                      , and I agree to all terms outlined within it.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={agreedToTerms}
+                      onChange={(e) => setAgreedToTerms(e.target.checked)}
+                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                    />
+                    <span className="text-sm text-zinc-400">
+                      I have read and fully understand the{" "}
+                      <button
+                        type="button"
+                        onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
+                        className="font-medium text-violet-400 underline hover:text-violet-300"
+                      >
+                        Terms and Conditions
+                      </button>{" "}
+                      (<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
+                      , and I agree to be bound by them.
+                    </span>
+                  </label>
+
+                  {error && (
+                    <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
+                      {error}
+                    </div>
+                  )}
+
+                  <button
+                    onClick={handleSignup}
+                    disabled={loading}
+                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
+                  >
+                    {loading ? "Creating account..." : "Sign Up"}
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -159,187 +339,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      <div className="mx-auto max-w-xl px-6 py-10">
-        <div className="flex items-center justify-center">
-          <div className="w-full max-w-xl rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
-            <div className="mb-6">
-              <div className="text-3xl font-bold text-white">Text2Sale</div>
-              <div className="mt-2 text-sm text-zinc-400">
-                {mode === "login"
-                  ? "Log in to your account and start texting."
-                  : "Create your account and go straight to your dashboard."}
-              </div>
-            </div>
-
-            <div className="mb-6 flex rounded-2xl bg-zinc-800 p-1">
-              <button
-                onClick={() => { setMode("login"); setError(""); }}
-                className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                  mode === "login" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                Login
-              </button>
-              <button
-                onClick={() => { setMode("signup"); setError(""); }}
-                className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                  mode === "signup" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                }`}
-              >
-                Create Account
-              </button>
-            </div>
-
-            {mode === "login" ? (
-              <div className="space-y-4">
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
-                  <input
-                    value={loginEmail}
-                    onChange={(e) => setLoginEmail(e.target.value)}
-                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
-                    placeholder="Enter your email"
-                  />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
-                  <input
-                    type="password"
-                    value={loginPassword}
-                    onChange={(e) => setLoginPassword(e.target.value)}
-                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
-                    placeholder="Enter your password"
-                  />
-                </div>
-
-                {error && (
-                  <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleLogin}
-                  disabled={loading}
-                  className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
-                >
-                  {loading ? "Signing in..." : "Sign In"}
-                </button>
-
-                <div className="text-center text-sm text-zinc-500">
-                  New here?{" "}
-                  <button onClick={() => { setMode("signup"); setError(""); }} className="font-medium text-violet-400 hover:text-violet-300">
-                    Create an account
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">First name</label>
-                    <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter first name" />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Last name</label>
-                    <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter last name" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
-                  <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter email" />
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Phone number</label>
-                  <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter phone number" />
-                </div>
-
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
-                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter password" />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Confirm password</label>
-                    <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Confirm password" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-zinc-300">Referral Code (Optional — deposit $50 and you both get $50 free!)</label>
-                  <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="e.g. T2S-ABC123" />
-                </div>
-
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
-                  <div className="font-semibold text-white">Plan: Text2Sale Package</div>
-                  <div className="mt-1">$39.99 per month</div>
-                  <div>$0.012 per text message</div>
-                </div>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={agreedToPrivacy}
-                    onChange={(e) => setAgreedToPrivacy(e.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
-                  />
-                  <span className="text-sm text-zinc-400">
-                    I have read and fully understand the{" "}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }}
-                      className="font-medium text-violet-400 underline hover:text-violet-300"
-                    >
-                      Privacy Policy
-                    </button>{" "}
-                    (<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
-                    , and I agree to all terms outlined within it.
-                  </span>
-                </label>
-
-                <label className="flex items-start gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={agreedToTerms}
-                    onChange={(e) => setAgreedToTerms(e.target.checked)}
-                    className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
-                  />
-                  <span className="text-sm text-zinc-400">
-                    I have read and fully understand the{" "}
-                    <button
-                      type="button"
-                      onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
-                      className="font-medium text-violet-400 underline hover:text-violet-300"
-                    >
-                      Terms and Conditions
-                    </button>{" "}
-                    (<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
-                    , and I agree to be bound by them.
-                  </span>
-                </label>
-
-                {error && (
-                  <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
-                    {error}
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSignup}
-                  disabled={loading}
-                  className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
-                >
-                  {loading ? "Creating account..." : "Sign Up"}
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
 
       <div className="border-t border-zinc-800 py-6 text-center text-sm text-zinc-600">
         &copy; {new Date().getFullYear()} Text2Sale. All rights reserved. &middot;{" "}

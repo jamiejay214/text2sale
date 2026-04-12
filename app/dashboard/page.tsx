@@ -473,6 +473,8 @@ export default function DashboardPage() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamAddFundsAmount, setTeamAddFundsAmount] = useState("10");
   const [customFundAmount, setCustomFundAmount] = useState("");
+  const [billingTransferMemberId, setBillingTransferMemberId] = useState("");
+  const [billingTransferAmount, setBillingTransferAmount] = useState("");
   const [teamManagerName, setTeamManagerName] = useState("");
 
   // Templates state
@@ -525,6 +527,13 @@ export default function DashboardPage() {
 
   // Notification permission
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+
+  // Support chat
+  const [chatOpen, setChatOpen] = useState(false);
+  const [chatMessages, setChatMessages] = useState<{ id: string; sender_role: string; message: string; created_at: string }[]>([]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatUnread, setChatUnread] = useState(0);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -749,6 +758,61 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId, notificationsEnabled]);
 
+  // Support chat: load messages and subscribe to realtime
+  useEffect(() => {
+    if (!userId) return;
+
+    const loadChat = async () => {
+      const { data } = await supabase
+        .from("support_messages")
+        .select("id, sender_role, message, created_at")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: true });
+      if (data) {
+        setChatMessages(data);
+        const unread = data.filter((m) => m.sender_role === "admin" && !(m as Record<string, unknown>).read).length;
+        setChatUnread(unread);
+      }
+    };
+    loadChat();
+
+    const chatChannel = supabase
+      .channel("support-chat-user")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "support_messages", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const msg = payload.new as { id: string; sender_role: string; message: string; created_at: string };
+          setChatMessages((prev) => {
+            if (prev.some((m) => m.id === msg.id)) return prev;
+            return [...prev, msg];
+          });
+          if (msg.sender_role === "admin") {
+            setChatUnread((prev) => prev + 1);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(chatChannel); };
+  }, [userId]);
+
+  // Auto-scroll chat to bottom
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatMessages, chatOpen]);
+
+  const handleSendChatMessage = async () => {
+    if (!userId || !chatInput.trim()) return;
+    const text = chatInput.trim();
+    setChatInput("");
+    await supabase.from("support_messages").insert({
+      user_id: userId,
+      sender_role: "user",
+      message: text,
+    });
+  };
+
   const userCampaigns = useMemo(() => {
     if (!currentUser) return campaigns;
     return campaigns;
@@ -924,10 +988,19 @@ export default function DashboardPage() {
     }
   };
 
+  const getDiscount = (amount: number) => {
+    if (amount >= 500) return { percent: 15, discounted: Number((amount * 0.85).toFixed(2)) };
+    if (amount >= 100) return { percent: 10, discounted: Number((amount * 0.9).toFixed(2)) };
+    return { percent: 0, discounted: amount };
+  };
+
   const handleAddFunds = async (amount: number) => {
     if (!currentUser || !userId) return;
     if (!Number.isFinite(amount) || amount <= 0) return;
     if (!requireSubscription()) return;
+
+    // Apply discount — user pays less but gets full credit amount
+    const { discounted } = getDiscount(amount);
 
     setMessage("Redirecting to payment...");
 
@@ -936,7 +1009,8 @@ export default function DashboardPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          amount,
+          amount: discounted,
+          creditAmount: amount,
           userId,
           userEmail: currentUser.email,
         }),
@@ -1134,6 +1208,51 @@ export default function DashboardPage() {
     }
 
     setMessage(`✅ $${amount.toFixed(2)} sent to ${member.firstName}`);
+    window.setTimeout(() => setMessage(""), 3000);
+  };
+
+  const handleBillingTransfer = async () => {
+    if (!userId || !billingTransferMemberId) return;
+    const amount = parseFloat(billingTransferAmount);
+    if (!Number.isFinite(amount) || amount < 1) {
+      setMessage("❌ Enter a valid amount (min $1)");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    const managerBalance = currentUser?.walletBalance || 0;
+    if (managerBalance < amount) {
+      setMessage("❌ Insufficient funds in your wallet");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+    const member = teamMembers.find((m) => m.id === billingTransferMemberId);
+    if (!member) { setMessage("❌ Agent not found"); window.setTimeout(() => setMessage(""), 2500); return; }
+
+    const memberEntry: UsageHistoryItem = {
+      id: `team_fund_${Date.now()}`, type: "fund_add", amount,
+      description: `Funds from manager ${currentUser?.firstName || ""}`,
+      createdAt: new Date().toISOString(), status: "succeeded",
+    };
+    const managerEntry: UsageHistoryItem = {
+      id: `team_send_${Date.now()}`, type: "charge", amount,
+      description: `Funds sent to ${member.firstName} ${member.lastName}`,
+      createdAt: new Date().toISOString(), status: "succeeded",
+    };
+
+    await updateProfile(billingTransferMemberId, {
+      wallet_balance: Number(((member.walletBalance || 0) + amount).toFixed(2)),
+      usage_history: addUsageEntry(member.usageHistory || [], memberEntry),
+    });
+    await persistProfile({
+      wallet_balance: Number((managerBalance - amount).toFixed(2)),
+      usage_history: addUsageEntry(currentUser?.usageHistory || [], managerEntry),
+    });
+
+    const refreshedMembers = await fetchTeamMembers(userId);
+    setTeamMembers(refreshedMembers.map(profileToAccount));
+    setBillingTransferAmount("");
+    setBillingTransferMemberId("");
+    setMessage(`✅ $${amount.toFixed(2)} sent to ${member.firstName} ${member.lastName}`);
     window.setTimeout(() => setMessage(""), 3000);
   };
 
@@ -4682,6 +4801,15 @@ export default function DashboardPage() {
                   </div>
                 )}
 
+                {/* Discount tiers */}
+                <div className="mt-5 rounded-2xl border border-emerald-800/40 bg-emerald-950/20 p-4">
+                  <div className="text-sm font-semibold text-emerald-300">Bulk Discounts</div>
+                  <div className="mt-2 flex gap-4 text-xs text-zinc-400">
+                    <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">$100+ = 10% off</span>
+                    <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">$500+ = 15% off</span>
+                  </div>
+                </div>
+
                 <div className="mt-5 grid grid-cols-3 gap-3">
                   <button
                     onClick={() => handleAddFunds(25)}
@@ -4700,9 +4828,29 @@ export default function DashboardPage() {
                   <button
                     onClick={() => handleAddFunds(100)}
                     disabled={!isSubscribed}
-                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    $100
+                    <span>$100</span>
+                    <span className="text-[10px] text-emerald-400">Pay $90</span>
+                  </button>
+                </div>
+
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() => handleAddFunds(250)}
+                    disabled={!isSubscribed}
+                    className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span>$250</span>
+                    <span className="text-[10px] text-emerald-400">Pay $225 — Save $25</span>
+                  </button>
+                  <button
+                    onClick={() => handleAddFunds(500)}
+                    disabled={!isSubscribed}
+                    className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <span>$500</span>
+                    <span className="text-[10px] text-emerald-400">Pay $425 — Save $75</span>
                   </button>
                 </div>
 
@@ -4737,16 +4885,86 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
-                {customFundAmount && parseFloat(customFundAmount) >= 5 && (
-                  <div className="mt-2 text-xs text-zinc-500">
-                    ${parseFloat(customFundAmount).toFixed(2)} = ~{Math.floor(parseFloat(customFundAmount) / (currentUser.plan.messageCost || 0.012)).toLocaleString()} messages
-                  </div>
-                )}
+                {customFundAmount && parseFloat(customFundAmount) >= 5 && (() => {
+                  const amt = parseFloat(customFundAmount);
+                  const disc = getDiscount(amt);
+                  const msgCost = currentUser.plan.messageCost || 0.012;
+                  return (
+                    <div className="mt-2 text-xs text-zinc-400">
+                      {disc.percent > 0 ? (
+                        <span>
+                          <span className="line-through text-zinc-600">${amt.toFixed(2)}</span>{" "}
+                          <span className="text-emerald-400 font-semibold">${disc.discounted.toFixed(2)}</span>{" "}
+                          <span className="text-emerald-400">({disc.percent}% off)</span>{" "}
+                          = ~{Math.floor(amt / msgCost).toLocaleString()} messages
+                        </span>
+                      ) : (
+                        <span>${amt.toFixed(2)} = ~{Math.floor(amt / msgCost).toLocaleString()} messages</span>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 <div className="mt-4 text-xs text-zinc-500">
                   Payments are securely processed via Stripe. Minimum $5.
                 </div>
               </div>
+
+              {/* Manager Transfer Funds */}
+              {(currentUser.role === "manager" || currentUser.role === "admin") && teamMembers.length > 0 && (
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h2 className="text-2xl font-bold">Transfer Funds to Agent</h2>
+                  <p className="mt-1 text-sm text-zinc-500">Send funds from your wallet to a team member.</p>
+
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm text-zinc-400">Select Agent</label>
+                      <select
+                        value={billingTransferMemberId}
+                        onChange={(e) => setBillingTransferMemberId(e.target.value)}
+                        className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-4 text-white outline-none"
+                      >
+                        <option value="">Choose a team member...</option>
+                        {teamMembers.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.firstName} {m.lastName} — ${(m.walletBalance || 0).toFixed(2)} balance
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm text-zinc-400">Amount</label>
+                      <div className="flex gap-3">
+                        <div className="relative flex-1">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                          <input
+                            type="number"
+                            value={billingTransferAmount}
+                            onChange={(e) => setBillingTransferAmount(e.target.value)}
+                            placeholder="Enter amount"
+                            min="1"
+                            step="1"
+                            className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-4 pl-8 pr-4 text-white outline-none placeholder:text-zinc-500"
+                          />
+                        </div>
+                        <button
+                          onClick={handleBillingTransfer}
+                          disabled={!billingTransferMemberId || !billingTransferAmount}
+                          className="rounded-2xl bg-emerald-600 px-6 py-4 font-medium hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          Transfer
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 rounded-2xl bg-zinc-800/60 px-4 py-3 text-sm">
+                      <span className="text-zinc-400">Your wallet:</span>
+                      <span className="font-semibold text-emerald-400">${(currentUser.walletBalance || 0).toFixed(2)}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -6116,7 +6334,7 @@ export default function DashboardPage() {
       )}
 
       {message && (
-        <div className={`fixed bottom-8 right-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium ${
+        <div className={`fixed bottom-8 left-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium z-40 ${
           message.startsWith("❌")
             ? "bg-red-950 text-red-200 ring-1 ring-red-800"
             : message.startsWith("🌙")
@@ -6125,6 +6343,94 @@ export default function DashboardPage() {
         }`}>
           {message}
         </div>
+      )}
+
+      {/* ── Support Chat Widget ── */}
+      {!impersonating && (
+        <>
+          {/* Chat Window */}
+          {chatOpen && (
+            <div className="fixed bottom-24 right-6 z-50 w-[360px] rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl flex flex-col" style={{ height: "480px" }}>
+              {/* Header */}
+              <div className="flex items-center justify-between rounded-t-2xl bg-violet-600 px-5 py-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg">💬</div>
+                  <div>
+                    <div className="font-bold text-white">Support Chat</div>
+                    <div className="text-xs text-violet-200">We typically reply within minutes</div>
+                  </div>
+                </div>
+                <button onClick={() => { setChatOpen(false); setChatUnread(0); }} className="text-white/70 hover:text-white text-xl">✕</button>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {chatMessages.length === 0 && (
+                  <div className="text-center text-sm text-zinc-500 mt-8">
+                    <div className="text-3xl mb-2">👋</div>
+                    <div>Hi there! How can we help you?</div>
+                    <div className="mt-1 text-xs">Send us a message and we&apos;ll get back to you shortly.</div>
+                  </div>
+                )}
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.sender_role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
+                      msg.sender_role === "user"
+                        ? "bg-violet-600 text-white rounded-br-sm"
+                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
+                    }`}>
+                      {msg.sender_role === "admin" && <div className="text-[10px] font-semibold text-violet-400 mb-0.5">Support</div>}
+                      <div>{msg.message}</div>
+                      <div className={`text-[10px] mt-1 ${msg.sender_role === "user" ? "text-violet-300" : "text-zinc-500"}`}>
+                        {new Date(msg.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+
+              {/* Input */}
+              <div className="border-t border-zinc-700 p-3">
+                <div className="flex gap-2">
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChatMessage(); } }}
+                    placeholder="Type a message..."
+                    className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm focus:border-violet-500 focus:outline-none"
+                  />
+                  <button
+                    onClick={handleSendChatMessage}
+                    disabled={!chatInput.trim()}
+                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                  >
+                    Send
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Floating Chat Button */}
+          <button
+            onClick={() => { setChatOpen(!chatOpen); if (!chatOpen) setChatUnread(0); }}
+            className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-violet-600 shadow-lg hover:bg-violet-700 transition-all hover:scale-105"
+          >
+            {chatOpen ? (
+              <span className="text-xl text-white">✕</span>
+            ) : (
+              <>
+                <span className="text-2xl">💬</span>
+                {chatUnread > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {chatUnread}
+                  </span>
+                )}
+              </>
+            )}
+          </button>
+        </>
       )}
     </main>
   );

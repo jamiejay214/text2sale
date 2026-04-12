@@ -52,7 +52,17 @@ type CampaignRecord = {
   logs: { id: string; createdAt: string; success: number; failed: number; attempted: number; notes: string }[];
 };
 
-type AdminTab = "overview" | "users" | "campaigns" | "analytics" | "transactions" | "numbers" | "settings";
+type AdminTab = "overview" | "users" | "campaigns" | "analytics" | "transactions" | "numbers" | "support" | "settings";
+
+type SupportThread = {
+  userId: string;
+  userName: string;
+  userEmail: string;
+  lastMessage: string;
+  lastMessageAt: string;
+  unreadCount: number;
+  messages: { id: string; sender_role: string; message: string; created_at: string }[];
+};
 
 type NewUserForm = {
   firstName: string;
@@ -187,6 +197,12 @@ export default function AdminPage() {
   const [trafficTotal, setTrafficTotal] = useState(0);
   const [trafficByDay, setTrafficByDay] = useState<{ date: string; views: number; unique: number }[]>([]);
 
+  // Support chat
+  const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
+  const [selectedThreadUserId, setSelectedThreadUserId] = useState<string | null>(null);
+  const [supportReplyInput, setSupportReplyInput] = useState("");
+  const supportChatEndRef = React.useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     const loadData = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -254,10 +270,85 @@ export default function AdminPage() {
       }
       setTrafficByDay(days);
 
+      // Load support messages
+      const { data: supportMsgs } = await supabase
+        .from("support_messages")
+        .select("id, user_id, sender_role, message, created_at")
+        .order("created_at", { ascending: true });
+
+      if (supportMsgs && supportMsgs.length > 0) {
+        const threadMap = new Map<string, SupportThread>();
+        for (const msg of supportMsgs) {
+          if (!threadMap.has(msg.user_id)) {
+            const acct = accts.find((a) => a.id === msg.user_id);
+            threadMap.set(msg.user_id, {
+              userId: msg.user_id,
+              userName: acct ? `${acct.firstName} ${acct.lastName}` : "Unknown User",
+              userEmail: acct?.email || "",
+              lastMessage: msg.message,
+              lastMessageAt: msg.created_at,
+              unreadCount: 0,
+              messages: [],
+            });
+          }
+          const thread = threadMap.get(msg.user_id)!;
+          thread.messages.push({ id: msg.id, sender_role: msg.sender_role, message: msg.message, created_at: msg.created_at });
+          thread.lastMessage = msg.message;
+          thread.lastMessageAt = msg.created_at;
+          if (msg.sender_role === "user") thread.unreadCount++;
+        }
+        const threads = [...threadMap.values()].sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+        setSupportThreads(threads);
+      }
+
       setMounted(true);
     };
     loadData();
   }, [router]);
+
+  // Realtime subscription for support messages (admin sees all)
+  useEffect(() => {
+    if (!mounted) return;
+    const channel = supabase
+      .channel("admin-support")
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "support_messages" }, (payload) => {
+        const msg = payload.new as { id: string; user_id: string; sender_role: string; message: string; created_at: string };
+        setSupportThreads((prev) => {
+          const existing = prev.find((t) => t.userId === msg.user_id);
+          if (existing) {
+            return prev.map((t) =>
+              t.userId === msg.user_id
+                ? {
+                    ...t,
+                    messages: [...t.messages, { id: msg.id, sender_role: msg.sender_role, message: msg.message, created_at: msg.created_at }],
+                    lastMessage: msg.message,
+                    lastMessageAt: msg.created_at,
+                    unreadCount: msg.sender_role === "user" ? t.unreadCount + 1 : t.unreadCount,
+                  }
+                : t
+            ).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+          } else {
+            // New thread from a user we haven't seen
+            const acct = accounts.find((a) => a.id === msg.user_id);
+            return [
+              {
+                userId: msg.user_id,
+                userName: acct ? `${acct.firstName} ${acct.lastName}` : "Unknown User",
+                userEmail: acct?.email || "",
+                lastMessage: msg.message,
+                lastMessageAt: msg.created_at,
+                unreadCount: msg.sender_role === "user" ? 1 : 0,
+                messages: [{ id: msg.id, sender_role: msg.sender_role, message: msg.message, created_at: msg.created_at }],
+              },
+              ...prev,
+            ];
+          }
+        });
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [mounted, accounts]);
 
   const selectedAccount = useMemo(
     () => accounts.find((a) => a.id === selectedId) || null,
@@ -321,6 +412,28 @@ export default function AdminPage() {
     const charges = allTransactions.filter((t) => t.type === "charge" || t.type === "number_purchase").reduce((s, t) => s + t.amount, 0);
     return { deposits, charges, net: deposits - charges };
   }, [allTransactions]);
+
+  const selectedThread = useMemo(() => supportThreads.find((t) => t.userId === selectedThreadUserId) || null, [supportThreads, selectedThreadUserId]);
+
+  // Auto-scroll support chat
+  useEffect(() => {
+    if (selectedThread && supportChatEndRef.current) {
+      supportChatEndRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [selectedThread?.messages.length]);
+
+  const handleSendSupportReply = async () => {
+    if (!supportReplyInput.trim() || !selectedThreadUserId) return;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) return;
+
+    await supabase.from("support_messages").insert({
+      user_id: selectedThreadUserId,
+      sender_role: "admin",
+      message: supportReplyInput.trim(),
+    });
+    setSupportReplyInput("");
+  };
 
   const refreshAccount = async (accountId: string) => {
     const profiles = await fetchAllProfiles();
@@ -500,7 +613,7 @@ export default function AdminPage() {
 
         {/* Tabs */}
         <div className="mb-8 flex border-b border-zinc-800">
-          {(["overview", "users", "campaigns", "analytics", "transactions", "numbers", "settings"] as AdminTab[]).map((tab) => (
+          {(["overview", "users", "campaigns", "analytics", "transactions", "numbers", "support", "settings"] as AdminTab[]).map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1151,6 +1264,112 @@ export default function AdminPage() {
         )}
 
         {/* ═══════════════ SETTINGS ═══════════════ */}
+        {/* ═══════════════ SUPPORT ═══════════════ */}
+        {activeTab === "support" && (
+          <div className="flex h-[calc(100vh-280px)] gap-6">
+            {/* Thread list */}
+            <div className="w-80 shrink-0 overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-900">
+              <div className="border-b border-zinc-800 p-5">
+                <h2 className="text-lg font-bold">Support Chats</h2>
+                <p className="text-xs text-zinc-500">{supportThreads.length} conversation{supportThreads.length !== 1 ? "s" : ""}</p>
+              </div>
+              {supportThreads.length === 0 && (
+                <div className="p-8 text-center text-sm text-zinc-500">No support messages yet</div>
+              )}
+              {supportThreads.map((thread) => (
+                <button
+                  key={thread.userId}
+                  onClick={() => { setSelectedThreadUserId(thread.userId); setSupportThreads((prev) => prev.map((t) => t.userId === thread.userId ? { ...t, unreadCount: 0 } : t)); }}
+                  className={`w-full border-b border-zinc-800 p-4 text-left transition hover:bg-zinc-800 ${
+                    selectedThreadUserId === thread.userId ? "bg-zinc-800" : ""
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-semibold truncate">{thread.userName}</span>
+                    {thread.unreadCount > 0 && (
+                      <span className="ml-2 rounded-full bg-violet-600 px-2 py-0.5 text-[10px] font-bold">{thread.unreadCount}</span>
+                    )}
+                  </div>
+                  <div className="mt-0.5 text-xs text-zinc-500 truncate">{thread.userEmail}</div>
+                  <div className="mt-1 text-xs text-zinc-400 truncate">{thread.lastMessage}</div>
+                  <div className="mt-1 text-[10px] text-zinc-600">{timeAgo(thread.lastMessageAt)}</div>
+                </button>
+              ))}
+            </div>
+
+            {/* Chat panel */}
+            <div className="flex flex-1 flex-col rounded-3xl border border-zinc-800 bg-zinc-900">
+              {!selectedThread ? (
+                <div className="flex flex-1 items-center justify-center text-zinc-500">
+                  <div className="text-center">
+                    <div className="text-4xl mb-3">💬</div>
+                    <div className="text-lg font-medium">Select a conversation</div>
+                    <div className="text-sm text-zinc-600 mt-1">Choose a user from the list to view their messages</div>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  {/* Chat header */}
+                  <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+                    <div>
+                      <div className="font-semibold">{selectedThread.userName}</div>
+                      <div className="text-xs text-zinc-500">{selectedThread.userEmail}</div>
+                    </div>
+                    <button
+                      onClick={() => router.push(`/dashboard?impersonate=${selectedThread.userId}`)}
+                      className="rounded-xl bg-zinc-800 px-4 py-2 text-xs font-medium hover:bg-zinc-700"
+                    >
+                      View Dashboard
+                    </button>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                    {selectedThread.messages.map((msg) => (
+                      <div key={msg.id} className={`flex ${msg.sender_role === "admin" ? "justify-end" : "justify-start"}`}>
+                        <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
+                          msg.sender_role === "admin"
+                            ? "bg-violet-600 text-white"
+                            : "bg-zinc-800 text-zinc-100"
+                        }`}>
+                          {msg.sender_role === "user" && (
+                            <div className="text-[10px] font-semibold text-violet-400 mb-0.5">{selectedThread.userName}</div>
+                          )}
+                          <div className="text-sm whitespace-pre-wrap">{msg.message}</div>
+                          <div className={`text-[10px] mt-1 ${msg.sender_role === "admin" ? "text-violet-200" : "text-zinc-500"}`}>
+                            {new Date(msg.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    <div ref={supportChatEndRef} />
+                  </div>
+
+                  {/* Reply input */}
+                  <div className="border-t border-zinc-800 p-4">
+                    <div className="flex gap-3">
+                      <input
+                        value={supportReplyInput}
+                        onChange={(e) => setSupportReplyInput(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendSupportReply(); } }}
+                        placeholder="Type a reply..."
+                        className="flex-1 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm focus:border-violet-500 focus:outline-none"
+                      />
+                      <button
+                        onClick={handleSendSupportReply}
+                        disabled={!supportReplyInput.trim()}
+                        className="rounded-2xl bg-violet-600 px-6 py-3 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+                      >
+                        Send
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTab === "settings" && (
           <div className="max-w-2xl rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
             <h2 className="mb-8 text-2xl font-bold">Platform Settings</h2>
