@@ -1447,15 +1447,13 @@ export default function DashboardPage() {
       const data = await res.json();
       if (!data.success) { setMessage("❌ " + (data.error || "Brand registration failed")); setA2pLoading(false); return; }
 
-      setMessage("Brand registered! Creating campaign...");
-      setA2pStep(2);
-
-      // If brand approved immediately, create campaign
       if (data.nextAction === "create_campaign") {
+        setMessage("Brand approved! Creating campaign...");
+        setA2pStep(3);
         await handleA2pCreateCampaign();
       } else {
-        // Poll for brand approval then create campaign
-        await handleA2pPollAndContinue();
+        setMessage("✅ Brand submitted! Approval can take a few minutes to a few hours. Click 'Check Status' to see if it's approved.");
+        setA2pStep(2);
       }
     } catch { setMessage("❌ Registration failed. Please try again."); }
     setA2pLoading(false);
@@ -1482,25 +1480,28 @@ export default function DashboardPage() {
     setA2pLoading(false);
   };
 
-  const handleA2pPollAndContinue = async () => {
-    // Poll brand status, then create campaign
-    for (let i = 0; i < 12; i++) {
-      await new Promise((r) => setTimeout(r, 5000));
+  const handleA2pCheckBrand = async () => {
+    if (!currentUser) return;
+    setA2pLoading(true);
+    try {
       const res = await fetch("/api/register-10dlc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser!.id, action: "create_campaign" }),
+        body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
       });
       const data = await res.json();
       if (data.success) {
-        setMessage("Campaign created! Waiting for approval...");
+        setMessage("✅ Brand approved! Campaign created. Waiting for campaign approval...");
         setA2pStep(4);
         await handleA2pCheckCampaign();
-        return;
+      } else if (data.brandStatus === "FAILED" || data.brandStatus === "REGISTRATION_FAILED") {
+        setMessage("❌ Brand registration was rejected. Please fix the issues and try again.");
+        setA2pStep(0);
+      } else {
+        setMessage("⏳ Brand is still pending approval. Try again in a few minutes.");
       }
-      if (data.brandStatus === "FAILED") { setMessage("❌ Brand registration failed."); setA2pStep(0); return; }
-    }
-    setMessage("⏳ Brand is still processing. Check back in a few minutes.");
+    } catch { setMessage("❌ Could not check status."); }
+    setA2pLoading(false);
   };
 
   const handleA2pCheckCampaign = async () => {
@@ -5914,7 +5915,7 @@ export default function DashboardPage() {
                 </div>
                 {(currentUser.a2pRegistration.status === "campaign_pending" || currentUser.a2pRegistration.status === "brand_pending") && (
                   <button
-                    onClick={currentUser.a2pRegistration.status === "campaign_pending" ? handleA2pCheckCampaign : handleA2pPollAndContinue}
+                    onClick={currentUser.a2pRegistration.status === "campaign_pending" ? handleA2pCheckCampaign : handleA2pCheckBrand}
                     disabled={a2pLoading}
                     className="mt-3 rounded-xl bg-yellow-600 px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
                   >
