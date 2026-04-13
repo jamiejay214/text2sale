@@ -495,6 +495,7 @@ export default function DashboardPage() {
   const [billingTransferAmount, setBillingTransferAmount] = useState("");
   const [teamManagerName, setTeamManagerName] = useState("");
   const [learnSection, setLearnSection] = useState<string | null>("getting-started");
+  const [demoMode, setDemoMode] = useState(false);
 
   // Templates state
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -2631,13 +2632,114 @@ export default function DashboardPage() {
 
   const requireSubscription = () => {
     if (isSubscribed) return true;
+    if (demoMode) {
+      setMessage("🔒 This feature is disabled in demo mode. Subscribe to unlock full access.");
+      window.setTimeout(() => setMessage(""), 4000);
+      return false;
+    }
     setMessage("❌ Please subscribe and add a payment method before using paid features. Go to the Billing tab.");
     window.setTimeout(() => setMessage(""), 4000);
     return false;
   };
 
+  // ── Paywall Gate ── show subscription wall before accessing the platform
+  if (!isSubscribed && !demoMode) {
+    return (
+      <main className="min-h-screen bg-zinc-950 text-white">
+        <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col items-center justify-center px-6 py-16">
+          <Logo size="xl" />
+
+          <h1 className="mt-8 text-center text-4xl font-bold tracking-tight md:text-5xl">
+            Welcome to Text2Sale
+          </h1>
+          <p className="mx-auto mt-4 max-w-xl text-center text-lg text-zinc-400">
+            The #1 mass texting CRM for insurance agents and sales teams. Subscribe to unlock the full platform — manage contacts, launch campaigns, send texts, and close more deals.
+          </p>
+
+          <div className="mt-10 grid w-full max-w-md gap-4">
+            {/* Subscribe Button */}
+            <button
+              onClick={handleSubscribe}
+              className="w-full rounded-2xl bg-violet-600 px-8 py-5 text-xl font-bold shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 hover:shadow-violet-600/30"
+            >
+              Subscribe — {formatCurrency(currentUser.plan.price)}/month
+            </button>
+
+            {/* Demo Tour Button */}
+            <button
+              onClick={() => setDemoMode(true)}
+              className="w-full rounded-2xl border border-zinc-700 px-8 py-4 text-lg font-medium text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-900 hover:text-white"
+            >
+              👀 Take a Tour (Demo Preview)
+            </button>
+          </div>
+
+          {/* Feature highlights */}
+          <div className="mt-14 grid w-full max-w-3xl gap-5 md:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+              <div className="text-3xl">📱</div>
+              <h3 className="mt-3 text-lg font-bold">Mass Texting</h3>
+              <p className="mt-2 text-sm text-zinc-400">Upload CSV lists and blast campaigns to thousands of leads instantly.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+              <div className="text-3xl">📊</div>
+              <h3 className="mt-3 text-lg font-bold">CRM Dashboard</h3>
+              <p className="mt-2 text-sm text-zinc-400">Track contacts, conversations, delivery rates, and reply rates all in one place.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 text-center">
+              <div className="text-3xl">🔢</div>
+              <h3 className="mt-3 text-lg font-bold">Local Numbers</h3>
+              <p className="mt-2 text-sm text-zinc-400">Purchase local phone numbers to boost trust and deliverability.</p>
+            </div>
+          </div>
+
+          <div className="mt-10 flex items-center gap-3">
+            <button
+              onClick={handleLogout}
+              className="rounded-2xl border border-zinc-800 px-6 py-3 text-sm text-zinc-400 transition hover:bg-zinc-900 hover:text-white"
+            >
+              Logout
+            </button>
+          </div>
+
+          {/* Toast message */}
+          {message && (
+            <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-2xl bg-zinc-800 px-6 py-4 text-sm shadow-xl border border-zinc-700">
+              {message}
+            </div>
+          )}
+        </div>
+      </main>
+    );
+  }
+
   return (
     <main className={`min-h-screen transition-colors duration-300 ${themeMode === "light" ? "t2s-light bg-gray-50 text-zinc-900" : "bg-zinc-950 text-white"}`}>
+      {/* Demo Mode Banner */}
+      {demoMode && !isSubscribed && (
+        <div className="sticky top-0 z-50 flex items-center justify-between bg-gradient-to-r from-violet-700 to-violet-600 px-6 py-3 text-white shadow-lg">
+          <div className="flex items-center gap-3">
+            <span className="text-lg">👀</span>
+            <span className="font-bold">Demo Mode</span>
+            <span className="text-sm opacity-80">— You&apos;re previewing the platform. Subscribe to unlock all features.</span>
+          </div>
+          <div className="flex gap-3">
+            <button
+              onClick={handleSubscribe}
+              className="rounded-xl bg-white px-5 py-2 text-sm font-bold text-violet-700 hover:bg-zinc-100 transition"
+            >
+              Subscribe Now — {formatCurrency(currentUser.plan.price)}/mo
+            </button>
+            <button
+              onClick={() => setDemoMode(false)}
+              className="rounded-xl border border-white/30 px-5 py-2 text-sm font-medium hover:bg-white/10 transition"
+            >
+              Exit Demo
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Impersonation Banner */}
       {impersonating && (
         <div className="sticky top-0 z-50 flex items-center justify-between bg-amber-600 px-6 py-3 text-black shadow-lg">
