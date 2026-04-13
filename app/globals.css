@@ -146,3 +146,78 @@
     text-wrap: balance;
   }
 }
+
+/* ══════════════ Light Mode Overrides ══════════════ */
+/* When .t2s-light is on the parent, remap dark bg/text/border colors */
+
+/* Backgrounds */
+.t2s-light .bg-zinc-950 { background-color: #f9fafb !important; }
+.t2s-light .bg-zinc-900 { background-color: #ffffff !important; }
+.t2s-light .bg-zinc-800 { background-color: #f3f4f6 !important; }
+.t2s-light .bg-zinc-800\/50 { background-color: rgba(243, 244, 246, 0.5) !important; }
+.t2s-light .bg-zinc-800\/60 { background-color: rgba(243, 244, 246, 0.6) !important; }
+.t2s-light .bg-zinc-950\/60 { background-color: rgba(249, 250, 251, 0.6) !important; }
+.t2s-light .bg-zinc-950\/50 { background-color: rgba(249, 250, 251, 0.5) !important; }
+.t2s-light .bg-zinc-900\/80 { background-color: rgba(255, 255, 255, 0.8) !important; }
+.t2s-light .bg-zinc-700 { background-color: #e5e7eb !important; }
+.t2s-light .bg-zinc-600 { background-color: #d1d5db !important; }
+.t2s-light .bg-black\/80 { background-color: rgba(0, 0, 0, 0.4) !important; }
+
+/* Text colors */
+.t2s-light .text-white { color: #111827 !important; }
+.t2s-light .text-zinc-100 { color: #1f2937 !important; }
+.t2s-light .text-zinc-200 { color: #374151 !important; }
+.t2s-light .text-zinc-300 { color: #4b5563 !important; }
+.t2s-light .text-zinc-400 { color: #6b7280 !important; }
+.t2s-light .text-zinc-500 { color: #9ca3af !important; }
+.t2s-light .text-zinc-600 { color: #d1d5db !important; }
+
+/* Border colors */
+.t2s-light .border-zinc-800 { border-color: #e5e7eb !important; }
+.t2s-light .border-zinc-700 { border-color: #d1d5db !important; }
+.t2s-light .border-zinc-700\/50 { border-color: rgba(209, 213, 219, 0.5) !important; }
+.t2s-light .border-zinc-600 { border-color: #d1d5db !important; }
+
+/* Input/form overrides */
+.t2s-light input, .t2s-light textarea, .t2s-light select {
+  color: #111827 !important;
+}
+.t2s-light input::placeholder, .t2s-light textarea::placeholder {
+  color: #9ca3af !important;
+}
+.t2s-light .placeholder\:text-zinc-500::placeholder { color: #9ca3af !important; }
+
+/* Hover states */
+.t2s-light .hover\:bg-zinc-800:hover { background-color: #e5e7eb !important; }
+.t2s-light .hover\:bg-zinc-800\/50:hover { background-color: rgba(229, 231, 235, 0.5) !important; }
+.t2s-light .hover\:bg-zinc-900:hover { background-color: #f3f4f6 !important; }
+.t2s-light .hover\:bg-zinc-700:hover { background-color: #d1d5db !important; }
+.t2s-light .hover\:bg-zinc-600:hover { background-color: #d1d5db !important; }
+.t2s-light .hover\:text-white:hover { color: #111827 !important; }
+.t2s-light .hover\:text-zinc-300:hover { color: #4b5563 !important; }
+
+/* Divide colors */
+.t2s-light .divide-zinc-800 > :not(:last-child) { border-color: #e5e7eb !important; }
+.t2s-light .divide-zinc-700 > :not(:last-child) { border-color: #d1d5db !important; }
+
+/* Dashed borders */
+.t2s-light .border-dashed { border-color: #d1d5db !important; }
+
+/* Specific accent elements stay the same (violet, emerald, red, etc.) */
+/* but adjust their background opacity variants */
+.t2s-light .bg-violet-950\/40 { background-color: rgba(139, 92, 246, 0.1) !important; }
+.t2s-light .bg-violet-950\/30 { background-color: rgba(139, 92, 246, 0.08) !important; }
+.t2s-light .bg-violet-900\/40 { background-color: rgba(139, 92, 246, 0.1) !important; }
+.t2s-light .bg-emerald-950\/20 { background-color: rgba(16, 185, 129, 0.08) !important; }
+.t2s-light .bg-emerald-900\/50 { background-color: rgba(16, 185, 129, 0.12) !important; }
+.t2s-light .bg-amber-950\/20 { background-color: rgba(245, 158, 11, 0.08) !important; }
+.t2s-light .bg-red-900\/40 { background-color: rgba(220, 38, 38, 0.08) !important; }
+.t2s-light .bg-sky-900\/30 { background-color: rgba(14, 165, 233, 0.08) !important; }
+
+/* Shadows for cards in light mode */
+.t2s-light .rounded-3xl { box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.t2s-light .rounded-2xl { box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+
+/* Scrollbar light mode */
+.t2s-light ::-webkit-scrollbar-track { background: #f3f4f6; }
+.t2s-light ::-webkit-scrollbar-thumb { background: #d1d5db; }

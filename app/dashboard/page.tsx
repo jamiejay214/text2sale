@@ -50,6 +50,7 @@ type AccountRecord = {
   referralCode?: string;
   a2pRegistration?: A2PRegistration | null;
   complianceLog?: ComplianceEventRecord[];
+  autoRecharge?: { enabled: boolean; threshold: number; amount: number };
 };
 
 type ContactRecord = {
@@ -110,7 +111,7 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
 type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
 
 type CSVUploadRecord = {
@@ -196,6 +197,7 @@ function profileToAccount(p: Profile): AccountRecord {
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pRegistration: p.a2p_registration || null,
     complianceLog: p.compliance_log || [],
+    autoRecharge: p.auto_recharge || { enabled: false, threshold: 1, amount: 20 },
   };
 }
 
@@ -413,6 +415,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("billing");
   const [message, setMessage] = useState("");
+  const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
     steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
@@ -484,9 +487,13 @@ export default function DashboardPage() {
   const [teamLoading, setTeamLoading] = useState(false);
   const [teamAddFundsAmount, setTeamAddFundsAmount] = useState("10");
   const [customFundAmount, setCustomFundAmount] = useState("");
+  const [autoRechargeEnabled, setAutoRechargeEnabled] = useState(false);
+  const [autoRechargeThreshold, setAutoRechargeThreshold] = useState("1");
+  const [autoRechargeAmount, setAutoRechargeAmount] = useState("20");
   const [billingTransferMemberId, setBillingTransferMemberId] = useState("");
   const [billingTransferAmount, setBillingTransferAmount] = useState("");
   const [teamManagerName, setTeamManagerName] = useState("");
+  const [learnSection, setLearnSection] = useState<string | null>("getting-started");
 
   // Templates state
   const [templates, setTemplates] = useState<MessageTemplate[]>([]);
@@ -596,6 +603,11 @@ export default function DashboardPage() {
       setUserId(uid);
       setCurrentUser(profileToAccount(profile));
       if (profile.opt_out_settings) setOptOutSettings(profile.opt_out_settings);
+      if (profile.auto_recharge) {
+        setAutoRechargeEnabled(profile.auto_recharge.enabled);
+        setAutoRechargeThreshold(String(profile.auto_recharge.threshold));
+        setAutoRechargeAmount(String(profile.auto_recharge.amount));
+      }
 
       // Load archived conversation IDs from localStorage
       try {
@@ -692,6 +704,12 @@ export default function DashboardPage() {
           setOnboardingStep(hasSubscription ? (hasNumbers ? 3 : 2) : 0);
         }
       }
+
+      // Load theme preference
+      try {
+        const savedTheme = window.localStorage.getItem("t2s_theme");
+        if (savedTheme === "light") setThemeMode("light");
+      } catch { /* ignore */ }
 
       setMounted(true);
     };
@@ -1027,6 +1045,34 @@ export default function DashboardPage() {
     }
   };
 
+  // Auto-recharge: charge stored card when balance drops below threshold
+  const checkAutoRecharge = useCallback(async (newBalance: number) => {
+    if (!userId || !currentUser) return;
+    const settings = currentUser.autoRecharge;
+    if (!settings?.enabled) return;
+    if (newBalance >= settings.threshold) return;
+
+    try {
+      const res = await fetch("/api/auto-recharge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, amount: settings.amount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessage(`✅ Auto recharged $${settings.amount.toFixed(2)} — new balance: $${data.newBalance.toFixed(2)}`);
+        // Refresh profile to get updated balance
+        const refreshed = await fetchProfile(userId);
+        if (refreshed) setCurrentUser(profileToAccount(refreshed));
+      } else {
+        setMessage(`⚠️ Auto recharge failed: ${data.error || "Card charge failed"}`);
+      }
+      window.setTimeout(() => setMessage(""), 4000);
+    } catch {
+      console.error("Auto recharge error");
+    }
+  }, [userId, currentUser]);
+
   const getDiscount = (amount: number) => {
     if (amount >= 500) return { percent: 15, discounted: Number((amount * 0.85).toFixed(2)) };
     if (amount >= 100) return { percent: 10, discounted: Number((amount * 0.9).toFixed(2)) };
@@ -1035,7 +1081,11 @@ export default function DashboardPage() {
 
   const handleAddFunds = async (amount: number) => {
     if (!currentUser || !userId) return;
-    if (!Number.isFinite(amount) || amount <= 0) return;
+    if (!Number.isFinite(amount) || amount < 20) {
+      setMessage("❌ Minimum amount is $20");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
     if (!requireSubscription()) return;
 
     // Apply discount — user pays less but gets full credit amount
@@ -1640,7 +1690,7 @@ export default function DashboardPage() {
         steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
       });
       setActiveStepIndex(0);
-      setMessage("✅ Campaign created as draft");
+      setMessage("✅ Campaign saved — upload a CSV to assign contacts, then send");
     } else {
       setMessage("❌ Failed to create campaign");
     }
@@ -1898,10 +1948,14 @@ export default function DashboardPage() {
       description: `SMS to ${contact.phone}`,
       createdAt: now, status: "succeeded",
     };
+    const newBal = Number(((currentUser.walletBalance || 0) - cost).toFixed(2));
     await persistProfile({
-      wallet_balance: Number(((currentUser.walletBalance || 0) - cost).toFixed(2)),
+      wallet_balance: newBal,
       usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
     });
+
+    // Check if auto-recharge should trigger
+    checkAutoRecharge(newBal);
 
     setMessage("✅ Message sent");
     window.setTimeout(() => setMessage(""), 2500);
@@ -2417,6 +2471,113 @@ export default function DashboardPage() {
     };
     setCsvUploadHistory((prev) => [record, ...prev]);
 
+    // If a campaign was selected, send it to the imported contacts
+    if (csvCampaignId && totalImported > 0 && currentUser) {
+      const campaign = campaigns.find((c) => c.id === csvCampaignId);
+      if (campaign) {
+        const ownedNumbers = currentUser.ownedNumbers || [];
+        if (ownedNumbers.length === 0) {
+          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but no phone number to send from. Buy a number first.`);
+          window.setTimeout(() => setMessage(""), 5000);
+          setCsvUploading(false);
+          resetCSVWizard();
+          return;
+        }
+
+        const fromNumbers = campaign.selectedNumbers && campaign.selectedNumbers.length > 0
+          ? campaign.selectedNumbers
+          : ownedNumbers.map((n) => n.number);
+
+        const steps = campaign.steps && campaign.steps.length > 0
+          ? campaign.steps
+          : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
+
+        const totalMessages = totalImported * steps.length;
+        const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
+        const walletBalance = currentUser.walletBalance || 0;
+
+        if (walletBalance < cost) {
+          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need ${formatCurrency(cost)} for ${totalMessages} messages.`);
+          window.setTimeout(() => setMessage(""), 5000);
+          setCsvUploading(false);
+          resetCSVWizard();
+          return;
+        }
+
+        // Charge wallet
+        const chargeEntry: UsageHistoryItem = {
+          id: `charge_${Date.now()}`, type: "charge", amount: cost,
+          description: `Campaign "${campaign.name}" — ${totalMessages} messages (${steps.length} step${steps.length > 1 ? "s" : ""})`,
+          createdAt: new Date().toISOString(), status: "succeeded",
+        };
+        await persistProfile({
+          wallet_balance: Number((walletBalance - cost).toFixed(2)),
+          usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
+        });
+
+        await dbUpdateCampaign(csvCampaignId, { status: "Sending", audience: totalImported });
+        setCampaigns((prev) => prev.map((c) =>
+          c.id === csvCampaignId ? { ...c, status: "Sending" as const, audience: totalImported } : c
+        ));
+
+        setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
+
+        try {
+          let totalSent = 0;
+          let totalFailed = 0;
+
+          for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
+            const step = steps[stepIdx];
+            if (stepIdx > 0 && step.delayMinutes > 0) {
+              setMessage(`⏳ Step ${stepIdx + 1}/${steps.length} — waiting ${step.delayMinutes} minute${step.delayMinutes !== 1 ? "s" : ""}...`);
+              await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
+            }
+
+            setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length} to ${totalImported} contacts...`);
+
+            const res = await fetch("/api/send-campaign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                campaignId: csvCampaignId,
+                userId,
+                fromNumbers,
+                messageTemplate: step.message,
+                campaignName: campaign.name,
+              }),
+            });
+
+            const data = await res.json();
+            if (data.success) {
+              totalSent += data.sent;
+              totalFailed += data.failed;
+            } else {
+              setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
+              break;
+            }
+          }
+
+          setCampaigns((prev) => prev.map((c) =>
+            c.id === csvCampaignId ? {
+              ...c, status: "Completed" as const,
+              sent: (c.sent || 0) + totalSent, failed: (c.failed || 0) + totalFailed, audience: (c.audience || 0) + totalImported,
+            } : c
+          ));
+          await dbUpdateCampaign(csvCampaignId, { status: "Completed", sent: totalSent, failed: totalFailed, audience: totalImported });
+          setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
+          // Check auto-recharge after campaign send
+          checkAutoRecharge(Number((walletBalance - cost).toFixed(2)));
+        } catch {
+          setMessage("❌ Could not connect to SMS service");
+        }
+
+        window.setTimeout(() => setMessage(""), 5000);
+        setCsvUploading(false);
+        resetCSVWizard();
+        return;
+      }
+    }
+
     setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}`);
     window.setTimeout(() => setMessage(""), 4000);
     setCsvUploading(false);
@@ -2474,7 +2635,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className={`min-h-screen transition-colors duration-300 ${themeMode === "light" ? "t2s-light bg-gray-50 text-zinc-900" : "bg-zinc-950 text-white"}`}>
       {/* Impersonation Banner */}
       {impersonating && (
         <div className="sticky top-0 z-50 flex items-center justify-between bg-amber-600 px-6 py-3 text-black shadow-lg">
@@ -2506,6 +2667,17 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              onClick={() => {
+                const next = themeMode === "dark" ? "light" : "dark";
+                setThemeMode(next);
+                try { window.localStorage.setItem("t2s_theme", next); } catch { /* ignore */ }
+              }}
+              className="rounded-2xl border border-zinc-700 px-4 py-3 hover:bg-zinc-900 text-xl"
+              title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            >
+              {themeMode === "dark" ? "☀️" : "🌙"}
+            </button>
             {currentUser.role === "admin" && (
               <button
                 onClick={() => router.push("/admin")}
@@ -2532,6 +2704,7 @@ export default function DashboardPage() {
             { id: "upload", label: "Upload CSV" },
             { id: "templates", label: "Templates" },
             { id: "settings", label: "Settings" },
+            { id: "learn", label: "📖 Learn" },
           ] as { id: DashboardTab; label: string }[]).map((tab) => (
             <button
               key={tab.id}
@@ -3758,7 +3931,7 @@ export default function DashboardPage() {
                   onClick={handleCreateCampaign}
                   className="w-full rounded-2xl bg-violet-600 py-4 hover:bg-violet-700"
                 >
-                  Save as Draft
+                  Save Campaign
                 </button>
               </div>
             </div>
@@ -3783,6 +3956,7 @@ export default function DashboardPage() {
                     campaign.status === "Completed" ? "text-emerald-400" :
                     campaign.status === "Sending" ? "text-amber-400" :
                     campaign.status === "Paused" ? "text-zinc-400" :
+                    campaign.status === "Draft" ? "text-sky-400" :
                     "text-zinc-400";
 
                   if (isEditing) {
@@ -3962,7 +4136,7 @@ export default function DashboardPage() {
                         <div className="flex-1 min-w-0">
                           <div className="text-lg font-semibold truncate">{campaign.name}</div>
                           <div className={`text-sm font-medium ${statusColor}`}>
-                            {isLaunching ? "Sending…" : campaign.status}
+                            {isLaunching ? "Sending…" : campaign.status === "Draft" ? "Ready" : campaign.status}
                           </div>
                           {campaign.message && (
                             <div className="mt-1 truncate text-xs text-zinc-500">{campaign.message}</div>
@@ -3984,21 +4158,7 @@ export default function DashboardPage() {
                             Edit
                           </button>
                           {canLaunch && (
-                            <>
-                              <button
-                                onClick={() => handleLaunchCampaign(campaign.id)}
-                                disabled={isLaunching}
-                                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-medium hover:bg-emerald-600 disabled:opacity-50"
-                              >
-                                Launch Now
-                              </button>
-                              <button
-                                onClick={() => { setScheduleCampaignId(campaign.id); setCampaignScheduleDate(""); setCampaignScheduleTime(""); }}
-                                className="rounded-xl border border-sky-700 px-4 py-2 text-sm font-medium text-sky-300 hover:bg-sky-900/30"
-                              >
-                                Schedule
-                              </button>
-                            </>
+                            <span className="text-xs text-zinc-500 italic">Upload CSV to send</span>
                           )}
                           <button
                             onClick={() => handleDeleteCampaign(campaign.id)}
@@ -4038,7 +4198,7 @@ export default function DashboardPage() {
 
                 {filteredCampaigns.length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    {campaignSearch ? "No campaigns match your search." : "No campaigns yet. Create one to get started."}
+                    {campaignSearch ? "No campaigns match your search." : "No campaigns yet. Create one above, then use it when uploading a CSV."}
                   </div>
                 )}
               </div>
@@ -4583,19 +4743,31 @@ export default function DashboardPage() {
                     </button>
                   </div>
 
-                  {/* Campaign Assignment */}
+                  {/* Campaign Selection */}
                   <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-4">
-                    <label className="text-sm font-medium text-zinc-300 mb-2 block">Assign to Campaign</label>
+                    <label className="text-sm font-medium text-zinc-300 mb-2 block">Send Campaign</label>
                     <select
                       value={csvCampaignId}
                       onChange={(e) => setCsvCampaignId(e.target.value)}
                       className="w-full rounded-xl border border-zinc-600 bg-zinc-900 px-4 py-3 text-sm"
                     >
-                      <option value="">None</option>
+                      <option value="">Import only (no campaign)</option>
                       {campaigns.map((c) => (
                         <option key={c.id} value={c.id}>{c.name}</option>
                       ))}
                     </select>
+                    {csvCampaignId && (() => {
+                      const selected = campaigns.find((c) => c.id === csvCampaignId);
+                      if (!selected) return null;
+                      const steps = selected.steps && selected.steps.length > 0 ? selected.steps : [{ message: selected.message || "" }];
+                      return (
+                        <div className="mt-3 rounded-xl bg-zinc-900 p-3 text-xs text-zinc-400">
+                          <div className="font-medium text-zinc-300 mb-1">{selected.name}</div>
+                          <div className="truncate">{steps[0].message}</div>
+                          {steps.length > 1 && <div className="mt-1 text-violet-400">{steps.length} message steps</div>}
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Tags */}
@@ -4648,7 +4820,7 @@ export default function DashboardPage() {
                       disabled={csvUploading}
                       className="rounded-2xl bg-violet-600 px-10 py-3.5 font-medium hover:bg-violet-700 disabled:opacity-50"
                     >
-                      {csvUploading ? "Uploading..." : "Submit ›"}
+                      {csvUploading ? (csvCampaignId ? "Importing & Sending..." : "Uploading...") : (csvCampaignId ? "Import & Send Campaign ›" : "Import Contacts ›")}
                     </button>
                   </div>
                 </div>
@@ -5065,11 +5237,11 @@ export default function DashboardPage() {
 
                 <div className="mt-5 grid grid-cols-3 gap-3">
                   <button
-                    onClick={() => handleAddFunds(25)}
+                    onClick={() => handleAddFunds(20)}
                     disabled={!isSubscribed}
                     className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    $25
+                    $20
                   </button>
                   <button
                     onClick={() => handleAddFunds(50)}
@@ -5115,7 +5287,7 @@ export default function DashboardPage() {
                       value={customFundAmount}
                       onChange={(e) => setCustomFundAmount(e.target.value)}
                       placeholder="Custom amount"
-                      min="5"
+                      min="20"
                       step="1"
                       disabled={!isSubscribed}
                       className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-4 pl-8 pr-4 text-white outline-none placeholder:text-zinc-500 disabled:opacity-40 disabled:cursor-not-allowed"
@@ -5124,8 +5296,8 @@ export default function DashboardPage() {
                   <button
                     onClick={() => {
                       const amt = parseFloat(customFundAmount);
-                      if (!amt || amt < 5) {
-                        setMessage("❌ Minimum amount is $5");
+                      if (!amt || amt < 20) {
+                        setMessage("❌ Minimum amount is $20");
                         window.setTimeout(() => setMessage(""), 2500);
                         return;
                       }
@@ -5138,7 +5310,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
 
-                {customFundAmount && parseFloat(customFundAmount) >= 5 && (() => {
+                {customFundAmount && parseFloat(customFundAmount) >= 20 && (() => {
                   const amt = parseFloat(customFundAmount);
                   const disc = getDiscount(amt);
                   const msgCost = currentUser.plan.messageCost || 0.012;
@@ -5159,8 +5331,99 @@ export default function DashboardPage() {
                 })()}
 
                 <div className="mt-4 text-xs text-zinc-500">
-                  Payments are securely processed via Stripe. Minimum $5.
+                  Payments are securely processed via Stripe. Minimum $20.
                 </div>
+              </div>
+
+              {/* Auto Recharge */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-2xl font-bold">Auto Recharge</h2>
+                    <p className="mt-1 text-sm text-zinc-500">Automatically add funds when your balance gets low.</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const newEnabled = !autoRechargeEnabled;
+                      setAutoRechargeEnabled(newEnabled);
+                      const amt = parseFloat(autoRechargeAmount) || 20;
+                      const thresh = parseFloat(autoRechargeThreshold) || 1;
+                      await persistProfile({
+                        auto_recharge: { enabled: newEnabled, threshold: thresh, amount: Math.max(amt, 20) },
+                      });
+                      setMessage(newEnabled ? "✅ Auto recharge enabled" : "Auto recharge disabled");
+                      window.setTimeout(() => setMessage(""), 2500);
+                    }}
+                    disabled={!isSubscribed}
+                    className={`relative h-8 w-14 rounded-full transition disabled:opacity-40 ${autoRechargeEnabled ? "bg-emerald-600" : "bg-zinc-600"}`}
+                  >
+                    <div className={`absolute top-1 h-6 w-6 rounded-full bg-white transition ${autoRechargeEnabled ? "left-[30px]" : "left-1"}`} />
+                  </button>
+                </div>
+
+                {autoRechargeEnabled && (
+                  <div className="mt-5 space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="flex-1">
+                        <label className="mb-2 block text-sm text-zinc-400">Recharge when balance falls below</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                          <input
+                            type="number"
+                            value={autoRechargeThreshold}
+                            onChange={(e) => setAutoRechargeThreshold(e.target.value)}
+                            min="1"
+                            step="1"
+                            className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-3 pl-8 pr-4 text-white outline-none"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex-1">
+                        <label className="mb-2 block text-sm text-zinc-400">Recharge amount</label>
+                        <div className="relative">
+                          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400">$</span>
+                          <input
+                            type="number"
+                            value={autoRechargeAmount}
+                            onChange={(e) => setAutoRechargeAmount(e.target.value)}
+                            min="20"
+                            step="1"
+                            className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-3 pl-8 pr-4 text-white outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={async () => {
+                        const amt = parseFloat(autoRechargeAmount);
+                        const thresh = parseFloat(autoRechargeThreshold);
+                        if (!amt || amt < 20) {
+                          setMessage("❌ Minimum recharge amount is $20");
+                          window.setTimeout(() => setMessage(""), 2500);
+                          return;
+                        }
+                        if (!thresh || thresh < 0) {
+                          setMessage("❌ Threshold must be $0 or more");
+                          window.setTimeout(() => setMessage(""), 2500);
+                          return;
+                        }
+                        await persistProfile({
+                          auto_recharge: { enabled: true, threshold: thresh, amount: amt },
+                        });
+                        setMessage("✅ Auto recharge settings saved");
+                        window.setTimeout(() => setMessage(""), 2500);
+                      }}
+                      className="w-full rounded-2xl bg-emerald-700 py-3 font-medium hover:bg-emerald-600"
+                    >
+                      Save Settings
+                    </button>
+
+                    <div className="rounded-2xl bg-zinc-800/60 p-4 text-xs text-zinc-400">
+                      When your balance drops below <span className="text-white font-medium">${autoRechargeThreshold || "1"}</span>, we&apos;ll automatically charge your card on file <span className="text-white font-medium">${autoRechargeAmount || "20"}</span> and add it to your wallet.
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Manager Transfer Funds */}
@@ -6086,6 +6349,314 @@ export default function DashboardPage() {
           </div>
         )}
 
+          </div>
+        )}
+
+        {/* ═══════════════ LEARN / TUTORIAL ═══════════════ */}
+        {activeTab === "learn" && (
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
+              <h1 className="text-3xl font-bold">📖 How to Use Text2Sale</h1>
+              <p className="mt-2 text-zinc-400">Step-by-step guide to get you up and running. Click each section to expand.</p>
+            </div>
+
+            {/* Tutorial sections */}
+            {[
+              {
+                id: "getting-started",
+                title: "1. Getting Started",
+                icon: "🚀",
+                steps: [
+                  {
+                    title: "Subscribe to a Plan",
+                    description: "Go to the Settings tab and click on 💳 Billing. Subscribe to the Text2Sale Package ($35/month) to unlock all features including sending messages, buying numbers, and adding funds.",
+                    tip: "Your subscription gives you access to the platform. Message costs are separate and come from your wallet balance.",
+                  },
+                  {
+                    title: "Add Funds to Your Wallet",
+                    description: "In the 💳 Billing tab, scroll down to Add Funds. Choose a preset amount ($20, $50, $100, $250, $500) or enter a custom amount. Minimum is $20. You can also enable Auto Recharge to automatically top up when your balance gets low.",
+                    tip: "Bulk discounts: $100+ gets 10% off, $500+ gets 15% off!",
+                  },
+                  {
+                    title: "Register for 10DLC (Required)",
+                    description: "Go to Settings > ✅ 10DLC and fill out the registration form with your business details (business name, EIN, address, etc.). This is required by carriers to send text messages. Your brand will be reviewed and approved, then a campaign will be created.",
+                    tip: "Make sure your EIN is exactly 9 digits (XX-XXXXXXX format). Use your official business name as registered with the IRS.",
+                  },
+                  {
+                    title: "Buy a Phone Number",
+                    description: "Go to Settings > 📱 Numbers. Enter an area code (e.g., 954, 214) and search for available numbers. Click Buy to purchase a number for $1.50/month. This is the number your messages will be sent from.",
+                    tip: "You can buy multiple numbers to rotate between when sending campaigns, which helps with deliverability.",
+                  },
+                ],
+              },
+              {
+                id: "importing-contacts",
+                title: "2. Importing Contacts",
+                icon: "📋",
+                steps: [
+                  {
+                    title: "Prepare Your CSV File",
+                    description: "Create a CSV file with columns like First Name, Last Name, Phone, Email, City, State, Address, Zip. The phone number is the most important field — it should be a 10-digit US number.",
+                    tip: "Make sure your CSV has headers in the first row. Common formats like 'Phone', 'phone', 'Phone Number' are all auto-detected.",
+                  },
+                  {
+                    title: "Upload Your CSV",
+                    description: "Go to the Upload CSV tab. Drag and drop your file or click to browse. The system will parse your file and show you how many leads were found.",
+                    tip: "Files are processed entirely in your browser — your data never leaves until you click import.",
+                  },
+                  {
+                    title: "Map Your Columns",
+                    description: "On Step 2, match each column from your CSV to the correct contact field (First Name, Phone, Email, etc.). The system auto-detects common column names, but you can adjust the mapping manually.",
+                    tip: "You must map at least one column to proceed. Phone is the most critical field for sending messages.",
+                  },
+                  {
+                    title: "Configure & Send",
+                    description: "On Step 3, toggle 'Ignore Duplicates' to skip contacts already in your list. Choose a campaign from the 'Send Campaign' dropdown to immediately send messages to the imported contacts. Add tags to organize your contacts.",
+                    tip: "If you select a campaign, the button changes to 'Import & Send Campaign' and will blast all imported contacts with that campaign immediately after import.",
+                  },
+                ],
+              },
+              {
+                id: "creating-campaigns",
+                title: "3. Creating Campaigns",
+                icon: "📢",
+                steps: [
+                  {
+                    title: "Create a New Campaign",
+                    description: "Go to the Campaigns tab. Enter a campaign name and write your message in Step 1. You can use personalization fields like {firstName}, {lastName}, {city}, {state} which get replaced with each contact's actual data.",
+                    tip: "Keep your first message short and personal. Include a clear call-to-action and always mention your business name for compliance.",
+                  },
+                  {
+                    title: "Add Follow-Up Steps",
+                    description: "Click '+ Add Step' to add follow-up messages. Each step can have a delay (1 minute to 7 days). This lets you create drip sequences — e.g., initial message, then a follow-up 1 day later if they don't reply.",
+                    tip: "Multi-step campaigns are powerful for follow-ups. Space them out (1-3 days between steps) to avoid overwhelming contacts.",
+                  },
+                  {
+                    title: "Select Your Numbers",
+                    description: "Choose which phone numbers to send from. If you have multiple numbers, selected numbers will rotate per message to improve deliverability. If none are selected, all your numbers will be used.",
+                    tip: "Using multiple numbers helps distribute your sending volume and reduces the chance of carrier filtering.",
+                  },
+                  {
+                    title: "Save Your Campaign",
+                    description: "Click 'Save Campaign' to save your message template. Campaigns are used when you upload a CSV — you'll select the campaign from a dropdown during import, and it will blast all the new contacts.",
+                    tip: "You can edit campaigns anytime by clicking the Edit button on any saved campaign.",
+                  },
+                ],
+              },
+              {
+                id: "conversations",
+                title: "4. Conversations & Messaging",
+                icon: "💬",
+                steps: [
+                  {
+                    title: "View Your Conversations",
+                    description: "Go to the Conversations tab to see all your text conversations. The sidebar shows each contact with a preview of the last message. Unread conversations are highlighted. Click any conversation to open it.",
+                    tip: "Use the search bar at the top to quickly find a specific contact by name or phone number.",
+                  },
+                  {
+                    title: "Send Individual Messages",
+                    description: "Click on a conversation to open it. Type your message in the text box at the bottom and press Enter or click Send. Messages cost $0.012 each and are deducted from your wallet balance.",
+                    tip: "Press Shift+Enter for a new line without sending. Use the template button to insert saved message templates.",
+                  },
+                  {
+                    title: "Switch Between Numbers",
+                    description: "In the conversation header, use the number dropdown to switch which phone number you're sending from. Select 'All Messages' to see all messages, or pick a specific number to filter messages sent from that number.",
+                    tip: "This is useful if you have different numbers for different purposes (sales, support, etc.).",
+                  },
+                  {
+                    title: "Quick Replies & Templates",
+                    description: "Go to the Templates tab to create reusable message templates. Give each template a name and message body. In conversations, click the template icon to quickly insert a saved template.",
+                    tip: "Templates save time when you're sending similar messages repeatedly. Use personalization fields in templates too!",
+                  },
+                ],
+              },
+              {
+                id: "contacts-management",
+                title: "5. Managing Contacts",
+                icon: "👥",
+                steps: [
+                  {
+                    title: "View & Search Contacts",
+                    description: "The Contacts tab shows all your contacts with their name, phone, email, tags, and status. Use the search bar to find contacts. Filter by status (Active, DNC) or by last contacted date.",
+                    tip: "The contact count at the top shows total, active, and DNC (Do Not Call) numbers at a glance.",
+                  },
+                  {
+                    title: "Add Individual Contacts",
+                    description: "Click '+ Add Contact' to manually add a contact. Fill in their first name, last name, phone number, email, and any other details. The phone number is required for messaging.",
+                    tip: "You can also add contacts directly from the Conversations tab when someone new texts you.",
+                  },
+                  {
+                    title: "Bulk Actions",
+                    description: "Select multiple contacts using the checkboxes, then use the bulk action dropdown to: assign them to a campaign, add/remove tags, mark as DNC, export selected, or delete them.",
+                    tip: "Use 'Select All' to quickly select all visible contacts. Be careful with bulk delete — it cannot be undone!",
+                  },
+                  {
+                    title: "DNC (Do Not Call) Management",
+                    description: "When a contact replies STOP, they're automatically marked as DNC and won't receive any more messages. You can also manually toggle DNC status. Go to Settings > 🚫 Opt-Out / DNC to manage opt-out settings and keywords.",
+                    tip: "DNC compliance is critical. Never message someone who has opted out — it can result in fines and carrier penalties.",
+                  },
+                ],
+              },
+              {
+                id: "team-management",
+                title: "6. Team Management",
+                icon: "🏢",
+                steps: [
+                  {
+                    title: "Generate Your Team Code",
+                    description: "Go to Settings > 👥 Team. Your unique team code is displayed at the top. Share this code with your agents so they can join your team during signup or from their settings.",
+                    tip: "As a manager, you can view your agents' dashboards, contacts, and campaigns. You can also add funds to their wallets.",
+                  },
+                  {
+                    title: "Agent Joins Your Team",
+                    description: "Your agent signs up for their own Text2Sale account, then goes to Settings > 👥 Team and enters your team code to join. Once joined, they appear in your team member list.",
+                    tip: "Each agent has their own separate contacts, campaigns, and conversations. You just get oversight and can transfer funds.",
+                  },
+                  {
+                    title: "Transfer Funds to Agents",
+                    description: "In the 💳 Billing tab, scroll down to 'Transfer Funds to Agent'. Select the agent from the dropdown, enter an amount, and click Transfer. The funds move from your wallet to theirs instantly.",
+                    tip: "You can also add funds directly from the Team tab by clicking on an agent and using the Add Funds button.",
+                  },
+                ],
+              },
+              {
+                id: "billing-wallet",
+                title: "7. Billing & Auto Recharge",
+                icon: "💰",
+                steps: [
+                  {
+                    title: "Understanding Costs",
+                    description: "Subscription: $35/month for platform access. Messages: $0.012 per SMS sent. Phone numbers: $1.50/month each. All message costs are deducted from your wallet balance automatically.",
+                    tip: "At $0.012 per message, $20 gets you about 1,666 messages. $100 (with 10% discount) gets you about 8,333 messages!",
+                  },
+                  {
+                    title: "Auto Recharge",
+                    description: "In the 💳 Billing tab, find the Auto Recharge section. Toggle it on, set a threshold (e.g., $1) and a recharge amount (minimum $20). When your balance drops below the threshold, your card on file is automatically charged.",
+                    tip: "This ensures you never run out of funds mid-campaign. Set the threshold to at least $1 and recharge to $50+ for peace of mind.",
+                  },
+                  {
+                    title: "Usage History",
+                    description: "Scroll down on the Billing tab to see your complete usage history — every charge, top-up, auto recharge, and transfer is logged with the date, amount, and status.",
+                    tip: "Use the filter to search for specific transaction types. Export your history for accounting purposes.",
+                  },
+                ],
+              },
+              {
+                id: "compliance",
+                title: "8. Compliance & Best Practices",
+                icon: "✅",
+                steps: [
+                  {
+                    title: "10DLC Registration",
+                    description: "10DLC (10-digit long code) registration is required by all US carriers. You register your brand (business) and campaign (use case) through Telnyx. This process takes 1-5 business days for approval.",
+                    tip: "Without 10DLC registration, your messages will be filtered or blocked by carriers. Always register before sending.",
+                  },
+                  {
+                    title: "Opt-In Consent",
+                    description: "You must have consent from every contact before messaging them. This means they filled out a form, signed up on your website, or otherwise gave you permission to text them. Keep records of consent.",
+                    tip: "Add an opt-in form on your website with clear disclosure language about what messages they'll receive and how to opt out.",
+                  },
+                  {
+                    title: "Required Message Elements",
+                    description: "Every campaign should include: your business name, what the message is about, and how to opt out (reply STOP). For the first message to a new contact, always include all three.",
+                    tip: "Example: 'Hi {firstName}, this is Jamie from Text2Sale. I wanted to reach out about... Reply STOP to opt out.'",
+                  },
+                  {
+                    title: "Handling Opt-Outs",
+                    description: "When someone replies STOP, UNSUBSCRIBE, CANCEL, END, or QUIT, Text2Sale automatically marks them as DNC and sends a confirmation. They will not receive any more messages from you.",
+                    tip: "Never manually remove someone's DNC status unless they explicitly re-opt in. Violating opt-out requests can result in legal action.",
+                  },
+                ],
+              },
+            ].map((section) => (
+              <div key={section.id} className="rounded-3xl border border-zinc-800 bg-zinc-900 overflow-hidden">
+                <button
+                  onClick={() => setLearnSection(learnSection === section.id ? null : section.id)}
+                  className="w-full flex items-center justify-between p-6 text-left hover:bg-zinc-800/50 transition"
+                >
+                  <div className="flex items-center gap-4">
+                    <span className="text-3xl">{section.icon}</span>
+                    <h2 className="text-xl font-bold">{section.title}</h2>
+                  </div>
+                  <span className={`text-2xl text-zinc-500 transition-transform ${learnSection === section.id ? "rotate-180" : ""}`}>
+                    ▾
+                  </span>
+                </button>
+
+                {learnSection === section.id && (
+                  <div className="border-t border-zinc-800 p-6 space-y-6">
+                    {section.steps.map((step, idx) => (
+                      <div key={idx} className="flex gap-5">
+                        <div className="flex flex-col items-center">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-violet-600 text-sm font-bold">
+                            {idx + 1}
+                          </div>
+                          {idx < section.steps.length - 1 && (
+                            <div className="mt-2 w-0.5 flex-1 bg-zinc-700" />
+                          )}
+                        </div>
+                        <div className="flex-1 pb-4">
+                          <h3 className="text-lg font-semibold">{step.title}</h3>
+                          <p className="mt-2 text-sm text-zinc-400 leading-relaxed">{step.description}</p>
+                          {step.tip && (
+                            <div className="mt-3 rounded-xl bg-violet-950/30 border border-violet-800/30 px-4 py-3 text-xs text-violet-300">
+                              💡 <span className="font-semibold">Tip:</span> {step.tip}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Quick Links */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+              <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+                <button
+                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
+                  className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left hover:border-violet-600 transition"
+                >
+                  <span className="text-2xl">💳</span>
+                  <div>
+                    <div className="font-medium">Add Funds</div>
+                    <div className="text-xs text-zinc-500">Top up your wallet</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); }}
+                  className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left hover:border-violet-600 transition"
+                >
+                  <span className="text-2xl">📱</span>
+                  <div>
+                    <div className="font-medium">Buy Number</div>
+                    <div className="text-xs text-zinc-500">Get a sending number</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("campaigns")}
+                  className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left hover:border-violet-600 transition"
+                >
+                  <span className="text-2xl">📢</span>
+                  <div>
+                    <div className="font-medium">Create Campaign</div>
+                    <div className="text-xs text-zinc-500">Write your message</div>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab("upload")}
+                  className="flex items-center gap-3 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left hover:border-violet-600 transition"
+                >
+                  <span className="text-2xl">📋</span>
+                  <div>
+                    <div className="font-medium">Upload CSV</div>
+                    <div className="text-xs text-zinc-500">Import & send</div>
+                  </div>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 

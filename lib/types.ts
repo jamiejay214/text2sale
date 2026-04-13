@@ -30,6 +30,7 @@ export type Profile = {
   total_deposited: number;
   a2p_registration: A2PRegistration | null;
   compliance_log: ComplianceEventRecord[] | null;
+  auto_recharge: { enabled: boolean; threshold: number; amount: number } | null;
   created_at: string;
 };
 
