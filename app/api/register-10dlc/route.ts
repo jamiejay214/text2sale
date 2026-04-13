@@ -19,9 +19,11 @@ async function telnyxFetch(path: string, options?: RequestInit) {
 }
 
 // Map business type to Telnyx entity type
+// Note: SOLE_PROPRIETOR is NOT a valid entityType in Telnyx brand API.
+// Sole proprietors with an EIN should register as PRIVATE_PROFIT.
 function toEntityType(businessType: string): string {
   switch (businessType) {
-    case "sole_proprietor": return "SOLE_PROPRIETOR";
+    case "sole_proprietor": return "PRIVATE_PROFIT";
     case "partnership": return "PRIVATE_PROFIT";
     case "corporation": return "PRIVATE_PROFIT";
     case "llc": return "PRIVATE_PROFIT";
@@ -63,28 +65,34 @@ export async function POST(req: NextRequest) {
       }
 
       const entityType = toEntityType(businessType);
-      const isSoleProp = entityType === "SOLE_PROPRIETOR";
 
       // Register brand with Telnyx
+      const cleanEin = ein.replace(/\D/g, "");
+      const brandPayload: Record<string, unknown> = {
+        entityType,
+        displayName: businessName,
+        companyName: businessName,
+        ein: cleanEin,
+        einIssuingCountry: "US",
+        phone: `+1${(contactPhone || profile.phone || "").replace(/\D/g, "").replace(/^1/, "")}`,
+        street: businessAddress,
+        city: businessCity,
+        state: businessState,
+        postalCode: businessZip,
+        country: "US",
+        email: contactEmail || profile.email,
+        vertical: "INSURANCE",
+        website: website || "https://jjjohnsonhealth.vercel.app",
+      };
+      // Include first/last name for all registrations
+      if (profile.first_name) brandPayload.firstName = profile.first_name;
+      if (profile.last_name) brandPayload.lastName = profile.last_name;
+
+      console.log("10DLC brand payload:", JSON.stringify(brandPayload, null, 2));
+
       const brandData = await telnyxFetch("/v2/10dlc/brand", {
         method: "POST",
-        body: JSON.stringify({
-          entityType,
-          displayName: businessName,
-          companyName: businessName,
-          ein: ein.replace(/\D/g, ""),
-          einIssuingCountry: "US",
-          phone: contactPhone || profile.phone,
-          street: businessAddress,
-          city: businessCity,
-          state: businessState,
-          postalCode: businessZip,
-          country: "US",
-          email: contactEmail || profile.email,
-          vertical: "INSURANCE",
-          website: website || "https://text2sale.com/#sms-program",
-          ...(isSoleProp ? { firstName: profile.first_name, lastName: profile.last_name } : {}),
-        }),
+        body: JSON.stringify(brandPayload),
       });
 
       if (brandData.errors) {
@@ -192,9 +200,8 @@ export async function POST(req: NextRequest) {
         }, { status: 400 });
       }
 
-      const isSoleProp = brandCheck.entityType === "SOLE_PROPRIETOR";
-      const usecase = isSoleProp ? "SOLE_PROPRIETOR" : "MIXED";
-      const subUsecases = isSoleProp ? ["CUSTOMER_CARE"] : ["MARKETING", "CUSTOMER_CARE"];
+      const usecase = "MIXED";
+      const subUsecases = ["MARKETING", "CUSTOMER_CARE"];
 
       const businessName = reg.businessName || "Text2Sale User";
       const contactEmail = reg.contactEmail || profile.email;
