@@ -618,7 +618,10 @@ export default function AdminPage() {
         {/* Header */}
         <div className="mb-10 flex items-center justify-between">
           <div>
-            <h1 className="text-5xl font-bold tracking-tighter">Admin Portal</h1>
+            <div className="flex items-center gap-4">
+              <img src="/logo.png" alt="Text2Sale" className="h-12 object-contain" />
+              <h1 className="text-5xl font-bold tracking-tighter">Admin Portal</h1>
+            </div>
             <p className="mt-1 text-zinc-400">
               {accounts.length} users · {activeSubscribers} subscribed · {totalNumbers} numbers · {totalContacts.toLocaleString()} contacts
             </p>

@@ -97,8 +97,8 @@ export default function HomePage() {
       {/* Public-facing hero / SMS program info */}
       <section className="border-b border-zinc-800 bg-gradient-to-b from-violet-950/40 via-zinc-950 to-zinc-950">
         <div className="mx-auto max-w-6xl px-6 py-16 text-center">
-          <div className="text-sm uppercase tracking-[0.2em] text-violet-300">SMS Marketing CRM</div>
-          <h1 className="mt-4 text-5xl font-bold tracking-tight">Text2Sale</h1>
+          <img src="/logo.png" alt="Text2Sale" className="mx-auto h-20 object-contain" />
+          <div className="mt-2 text-sm uppercase tracking-[0.2em] text-violet-300">SMS Marketing CRM</div>
           <p className="mx-auto mt-4 max-w-2xl text-lg leading-8 text-zinc-400">
             The all-in-one SMS marketing platform for businesses. Import your contacts, create personalized campaigns, and reach your customers instantly with compliant text messaging.
           </p>
@@ -140,7 +140,7 @@ export default function HomePage() {
           <div className="mx-auto mt-10 max-w-xl">
             <div className="w-full rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
               <div className="mb-6">
-                <div className="text-3xl font-bold text-white">Text2Sale</div>
+                <img src="/logo.png" alt="Text2Sale" className="h-12 object-contain" />
                 <div className="mt-2 text-sm text-zinc-400">
                   {mode === "login"
                     ? "Log in to your account and start texting."

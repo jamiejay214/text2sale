@@ -2655,8 +2655,11 @@ export default function DashboardPage() {
       <div className="mx-auto max-w-screen-2xl px-6 py-8 lg:px-8">
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">
-              {impersonating ? `Viewing ${impersonatingUserName}'s Dashboard` : "Text2Sale Dashboard"}
+            <div className="flex items-center gap-3">
+              <img src="/logo.png" alt="Text2Sale" className="h-10 object-contain" />
+              <span className="text-sm uppercase tracking-[0.2em] text-violet-300">
+                {impersonating ? `Viewing ${impersonatingUserName}'s Dashboard` : ""}
+              </span>
             </div>
             <h1 className="mt-2 text-4xl font-bold tracking-tight">
               Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}
