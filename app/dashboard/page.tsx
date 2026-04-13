@@ -5994,12 +5994,16 @@ export default function DashboardPage() {
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
-                    <input
+                    <select
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="State"
                       value={a2pForm.businessState}
                       onChange={(e) => setA2pForm({ ...a2pForm, businessState: e.target.value })}
-                    />
+                    >
+                      <option value="">Select State</option>
+                      {["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"].map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                     <input
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
                       placeholder="ZIP"
@@ -6012,17 +6016,21 @@ export default function DashboardPage() {
                 <h4 className="mt-4 font-medium text-zinc-300">Contact Information</h4>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                   <div>
+                    <label className="mb-1 block text-sm text-zinc-400">Contact Email</label>
                     <input
+                      type="email"
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Contact Email"
+                      placeholder="email@example.com"
                       value={a2pForm.contactEmail}
                       onChange={(e) => setA2pForm({ ...a2pForm, contactEmail: e.target.value })}
                     />
                   </div>
                   <div>
+                    <label className="mb-1 block text-sm text-zinc-400">Contact Phone</label>
                     <input
+                      type="tel"
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Contact Phone"
+                      placeholder="(555) 123-4567"
                       value={a2pForm.contactPhone}
                       onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: e.target.value })}
                     />
