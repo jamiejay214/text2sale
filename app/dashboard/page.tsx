@@ -1765,6 +1765,7 @@ export default function DashboardPage() {
   };
 
   const handleSearchNumbers = async () => {
+    if (!requireSubscription()) return;
     setSearchingNumbers(true);
     setAvailableNumbers([]);
 
@@ -5011,6 +5012,12 @@ export default function DashboardPage() {
                 <p className="mt-2 text-sm text-zinc-400">
                   Search by area code to find available numbers.
                 </p>
+
+                {!isSubscribed && (
+                  <div className="mt-4 rounded-2xl border border-amber-800/40 bg-amber-950/20 p-4 text-sm text-amber-200/80">
+                    Subscribe first before purchasing phone numbers.
+                  </div>
+                )}
 
                 <div className="mt-5 flex gap-3">
                   <input
