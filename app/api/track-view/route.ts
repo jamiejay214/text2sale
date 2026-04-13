@@ -33,11 +33,12 @@ async function sendVisitorAlert(city: string, region: string, country: string, p
     const adminPhone = adminProfile.phone.replace(/\D/g, "");
     const adminE164 = `+${adminPhone.startsWith("1") ? adminPhone : `1${adminPhone}`}`;
 
-    // Use admin's first owned number as the "from" number
+    // Use admin's last owned number as the "from" number (first valid Telnyx number)
     const ownedNumbers = adminProfile.owned_numbers || [];
     if (ownedNumbers.length === 0) return; // No number to send from
 
-    const fromNumber = ownedNumbers[0].number || ownedNumbers[0].phoneNumber;
+    // Try the last number first (more likely to be a valid Telnyx number)
+    const fromNumber = ownedNumbers[ownedNumbers.length - 1]?.number || ownedNumbers[0]?.number;
     if (!fromNumber) return;
 
     const fromDigits = fromNumber.replace(/\D/g, "");
