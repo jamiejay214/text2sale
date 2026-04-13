@@ -192,6 +192,7 @@ export default function AdminPage() {
   const [globalMessageCost, setGlobalMessageCost] = useState(0.012);
   const [globalNumberCost, setGlobalNumberCost] = useState(1.0);
   const [globalSubscriptionPrice, setGlobalSubscriptionPrice] = useState(39.99);
+  const [visitorAlerts, setVisitorAlerts] = useState(true);
 
   // Traffic analytics
   const [trafficToday, setTrafficToday] = useState(0);
@@ -233,6 +234,11 @@ export default function AdminPage() {
       setContactCounts(counts);
 
       if (accts.length > 0) setSelectedId(accts[0].id);
+
+      // Load visitor alerts preference
+      if (myProfile.visitor_alerts !== undefined) {
+        setVisitorAlerts(myProfile.visitor_alerts !== false);
+      }
 
       // Load traffic analytics
       const now = new Date();
@@ -1432,6 +1438,36 @@ export default function AdminPage() {
               <button onClick={handleSaveGlobalSettings} className="w-full rounded-2xl bg-violet-600 px-8 py-4 hover:bg-violet-700">
                 Save Global Settings
               </button>
+
+              <hr className="border-zinc-800" />
+
+              {/* Visitor Alerts */}
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-bold">🔔 Visitor Alerts</h4>
+                    <p className="mt-1 text-sm text-zinc-400">Get a text message when someone visits your site (max 1 alert every 5 min).</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const newVal = !visitorAlerts;
+                      setVisitorAlerts(newVal);
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (session?.user) {
+                        await supabase.from("profiles").update({ visitor_alerts: newVal }).eq("id", session.user.id);
+                      }
+                      setMessage(newVal ? "✅ Visitor alerts turned ON" : "✅ Visitor alerts turned OFF");
+                      setTimeout(() => setMessage(""), 3000);
+                    }}
+                    className={`relative h-8 w-14 rounded-full transition-colors ${visitorAlerts ? "bg-violet-600" : "bg-zinc-600"}`}
+                  >
+                    <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${visitorAlerts ? "left-7" : "left-1"}`} />
+                  </button>
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                  Alerts include visitor location, page visited, and time. Sent from your first owned number to your admin phone.
+                </div>
+              </div>
 
               <hr className="border-zinc-800" />
 
