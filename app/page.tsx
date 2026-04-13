@@ -137,6 +137,9 @@ export default function HomePage() {
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
             </ul>
+            <div className="mt-4 rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-center text-sm text-emerald-300">
+              💰 <span className="font-semibold">Bulk Discount:</span> Save 10% when you add $100+ to your wallet
+            </div>
           </div>
 
           {/* Login / Signup */}

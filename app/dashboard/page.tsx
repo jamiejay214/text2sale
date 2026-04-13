@@ -2693,6 +2693,11 @@ export default function DashboardPage() {
             </div>
           </div>
 
+          <div className="mt-6 w-full max-w-3xl rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-6 py-4 text-center text-emerald-300">
+            <span className="text-lg font-semibold">💰 Bulk Discount:</span>
+            <span className="ml-2 text-zinc-300">Save 10% when you add $100+ to your wallet &middot; 15% off $500+</span>
+          </div>
+
           <div className="mt-10 flex items-center gap-3">
             <button
               onClick={handleLogout}
