@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
+import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
 import {
@@ -2656,10 +2657,12 @@ export default function DashboardPage() {
         <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Text2Sale" className="h-10 object-contain" />
-              <span className="text-sm uppercase tracking-[0.2em] text-violet-300">
-                {impersonating ? `Viewing ${impersonatingUserName}'s Dashboard` : ""}
-              </span>
+              <Logo size="sm" />
+              {impersonating && (
+                <span className="text-sm uppercase tracking-[0.2em] text-violet-300">
+                  Viewing {impersonatingUserName}&apos;s Dashboard
+                </span>
+              )}
             </div>
             <h1 className="mt-2 text-4xl font-bold tracking-tight">
               Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}

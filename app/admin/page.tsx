@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import {
   fetchAllProfiles, fetchAllCampaigns, updateProfile,
@@ -619,8 +620,9 @@ export default function AdminPage() {
         <div className="mb-10 flex items-center justify-between">
           <div>
             <div className="flex items-center gap-4">
-              <img src="/logo.png" alt="Text2Sale" className="h-12 object-contain" />
-              <h1 className="text-5xl font-bold tracking-tighter">Admin Portal</h1>
+              <Logo size="md" />
+              <span className="text-2xl font-light text-zinc-500">|</span>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-300">Admin</h1>
             </div>
             <p className="mt-1 text-zinc-400">
               {accounts.length} users · {activeSubscribers} subscribed · {totalNumbers} numbers · {totalContacts.toLocaleString()} contacts
