@@ -4,7 +4,8 @@ import crypto from "crypto";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const telnyxApiKey = process.env.TELNYX_API_KEY!;
+const resendApiKey = process.env.RESEND_API_KEY || "";
+const ALERT_EMAIL = "johnsonhealthquotes@gmail.com";
 
 // Rate limit: track last alert time in memory (resets on cold start, which is fine)
 let lastAlertSentAt = 0;
@@ -17,52 +18,65 @@ async function sendVisitorAlert(city: string, region: string, country: string, p
   try {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Find admin profile to get their phone number and a "from" number
+    // Check if admin has visitor alerts enabled
     const { data: adminProfile } = await supabase
       .from("profiles")
-      .select("phone, owned_numbers, visitor_alerts")
+      .select("visitor_alerts")
       .eq("role", "admin")
       .limit(1)
       .single();
 
-    if (!adminProfile?.phone) return;
+    if (adminProfile?.visitor_alerts === false) return;
 
-    // Check if admin has visitor alerts enabled (default: true)
-    if (adminProfile.visitor_alerts === false) return;
-
-    const adminPhone = adminProfile.phone.replace(/\D/g, "");
-    const adminE164 = `+${adminPhone.startsWith("1") ? adminPhone : `1${adminPhone}`}`;
-
-    // Use admin's last owned number as the "from" number (first valid Telnyx number)
-    const ownedNumbers = adminProfile.owned_numbers || [];
-    if (ownedNumbers.length === 0) return; // No number to send from
-
-    // Try the last number first (more likely to be a valid Telnyx number)
-    const fromNumber = ownedNumbers[ownedNumbers.length - 1]?.number || ownedNumbers[0]?.number;
-    if (!fromNumber) return;
-
-    const fromDigits = fromNumber.replace(/\D/g, "");
-    const fromE164 = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
-
-    // Build the alert message
+    // Build alert content
     const location = [city, region, country].filter(Boolean).join(", ") || "Unknown location";
     const page = path || "/";
-    const source = referrer ? `\nFrom: ${referrer}` : "";
+    const source = referrer || "Direct";
     const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
+    const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 
-    const alertBody = `🔔 New Visitor on Text2Sale!\n📍 ${location}\n📄 Page: ${page}${source}\n🕐 ${time} ET`;
+    // Send email via Resend API
+    if (!resendApiKey) {
+      console.error("RESEND_API_KEY not set — skipping visitor alert email");
+      return;
+    }
 
-    await fetch("https://api.telnyx.com/v2/messages", {
+    await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${telnyxApiKey}`,
+        Authorization: `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: fromE164,
-        to: adminE164,
-        text: alertBody,
-        type: "SMS",
+        from: "Text2Sale Alerts <onboarding@resend.dev>",
+        to: [ALERT_EMAIL],
+        subject: `🔔 New Visitor — ${location}`,
+        html: `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 24px; background: #18181b; color: #fff; border-radius: 16px;">
+            <h2 style="margin: 0 0 16px; color: #a78bfa;">🔔 New Visitor on Text2Sale</h2>
+            <div style="background: #27272a; border-radius: 12px; padding: 16px; margin-bottom: 12px;">
+              <table style="width: 100%; border-collapse: collapse; color: #d4d4d8; font-size: 14px;">
+                <tr>
+                  <td style="padding: 6px 12px 6px 0; color: #71717a;">📍 Location</td>
+                  <td style="padding: 6px 0; font-weight: 600; color: #fff;">${location}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 12px 6px 0; color: #71717a;">📄 Page</td>
+                  <td style="padding: 6px 0; font-weight: 600; color: #fff;">${page}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 12px 6px 0; color: #71717a;">🔗 Source</td>
+                  <td style="padding: 6px 0; font-weight: 600; color: #fff;">${source}</td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 12px 6px 0; color: #71717a;">🕐 Time</td>
+                  <td style="padding: 6px 0; font-weight: 600; color: #fff;">${time} ET — ${date}</td>
+                </tr>
+              </table>
+            </div>
+            <p style="margin: 0; font-size: 12px; color: #52525b;">Alerts are rate-limited to 1 every 5 minutes. Toggle in Admin Portal.</p>
+          </div>
+        `,
       }),
     });
 
@@ -101,7 +115,7 @@ export async function POST(req: NextRequest) {
       city: decodedCity || null,
     });
 
-    // Send text alert to admin (rate limited)
+    // Send email alert to admin (rate limited)
     sendVisitorAlert(decodedCity, region, country, path, referrer);
 
     return NextResponse.json({ success: true });

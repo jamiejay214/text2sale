@@ -35,6 +35,13 @@ export default function TermsPage() {
           <h2 className="text-xl font-semibold text-white pt-4">Billing &amp; Payments</h2>
           <p>Users are responsible for maintaining sufficient account balance or active subscription to use the platform. All payments are final and non-refundable unless otherwise required by law. Pricing, subscription fees, and message rates may be updated at any time with notice. Failure to maintain payment may result in suspension of services.</p>
 
+          <h2 className="text-xl font-semibold text-white pt-4">No Refunds; No Guarantee of Service or Results; Limitation of Liability</h2>
+          <p>By registering for and using Text2Sale, you acknowledge and agree that all fees paid to Text2Sale, including but not limited to subscription fees, usage fees, and credits, are non-refundable under any circumstances, including but not limited to dissatisfaction with the service, system errors, downtime, delivery failures, or failure to achieve any desired results such as sales, conversions, or revenue.</p>
+          <p>Text2Sale does not guarantee uninterrupted service, message delivery, system performance, or compatibility with third-party carriers or platforms. You expressly agree that the service is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis, without warranties of any kind, whether express or implied.</p>
+          <p>You further acknowledge that Text2Sale has no control over and makes no guarantees regarding the success, effectiveness, or outcomes of any messaging campaigns, marketing efforts, or communications conducted through the platform.</p>
+          <p>To the fullest extent permitted by law, Text2Sale shall not be liable for any direct, indirect, incidental, consequential, special, or punitive damages, including but not limited to loss of profits, loss of business, loss of data, or failure to achieve expected results, arising out of or related to your use of the service.</p>
+          <p>By using the platform, you agree that you are solely responsible for all messaging activity, including compliance with all applicable laws and regulations (including but not limited to TCPA, CAN-SPAM, and opt-in/opt-out requirements), and for any outcomes resulting from your use of the service.</p>
+
           <h2 className="text-xl font-semibold text-white pt-4">Prohibited Activities</h2>
           <p>You agree not to use Text2Sale for any unlawful, abusive, or prohibited activities, including but not limited to sending spam, phishing messages, fraudulent offers, harassment, or any content that violates applicable laws or regulations.</p>
 
