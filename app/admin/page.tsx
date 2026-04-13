@@ -191,6 +191,7 @@ export default function AdminPage() {
   const [bulkCreditAmount, setBulkCreditAmount] = useState("50");
   const [globalMessageCost, setGlobalMessageCost] = useState(0.012);
   const [globalNumberCost, setGlobalNumberCost] = useState(1.0);
+  const [globalSubscriptionPrice, setGlobalSubscriptionPrice] = useState(39.99);
 
   // Traffic analytics
   const [trafficToday, setTrafficToday] = useState(0);
@@ -390,7 +391,7 @@ export default function AdminPage() {
 
   // ── Computed metrics ──
   const totalRevenue = useMemo(() => accounts.reduce((sum, a) => sum + (a.totalDeposited || 0), 0), [accounts]);
-  const mrr = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").length * 39.99, [accounts]);
+  const mrr = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").reduce((sum, a) => sum + (a.plan.price || 39.99), 0), [accounts]);
   const activeSubscribers = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").length, [accounts]);
   const totalMessagesSent = useMemo(() => campaigns.reduce((s, c) => s + c.sent, 0), [campaigns]);
   const totalFailed = useMemo(() => campaigns.reduce((s, c) => s + c.failed, 0), [campaigns]);
@@ -569,13 +570,13 @@ export default function AdminPage() {
     let updated = 0;
     for (const acct of accounts) {
       await updateProfile(acct.id, {
-        plan: { ...acct.plan, messageCost: globalMessageCost },
+        plan: { ...acct.plan, messageCost: globalMessageCost, price: globalSubscriptionPrice },
       } as Partial<Profile>);
       updated++;
     }
     const profiles = await fetchAllProfiles();
     setAccounts(profiles.map(profileToAccount));
-    setMessage(`✅ Global pricing updated for ${updated} users — $${globalMessageCost}/msg`);
+    setMessage(`✅ Global pricing updated for ${updated} users — $${globalSubscriptionPrice}/mo, $${globalMessageCost}/msg`);
     window.setTimeout(() => setMessage(""), 3000);
   };
 
@@ -583,9 +584,9 @@ export default function AdminPage() {
     const acct = accounts.find((a) => a.id === accountId);
     if (!acct) return;
     await updateProfile(accountId, {
-      plan: { ...acct.plan, messageCost: acct.plan.messageCost },
+      plan: { ...acct.plan, messageCost: acct.plan.messageCost, price: acct.plan.price },
     } as Partial<Profile>);
-    setMessage(`✅ ${acct.firstName}'s pricing updated — $${acct.plan.messageCost}/msg`);
+    setMessage(`✅ ${acct.firstName}'s pricing updated — $${acct.plan.price}/mo, $${acct.plan.messageCost}/msg`);
     window.setTimeout(() => setMessage(""), 3000);
   };
 
@@ -657,7 +658,7 @@ export default function AdminPage() {
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <div className="text-sm text-zinc-400">Monthly Revenue (MRR)</div>
                 <div className="mt-2 text-4xl font-bold text-emerald-400">{formatCurrency(mrr)}</div>
-                <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers × $39.99</div>
+                <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers</div>
               </div>
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <div className="text-sm text-zinc-400">Total Deposited</div>
@@ -1114,7 +1115,7 @@ export default function AdminPage() {
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-800 p-5">
                     <div>
                       <div className="text-sm text-zinc-400">Subscription Revenue (MRR)</div>
-                      <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} subscribers × $39.99/mo</div>
+                      <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers</div>
                     </div>
                     <div className="text-2xl font-bold text-emerald-400">{formatCurrency(mrr)}</div>
                   </div>
@@ -1401,15 +1402,32 @@ export default function AdminPage() {
             <h2 className="mb-8 text-2xl font-bold">Platform Settings</h2>
             <div className="space-y-8">
               <div>
+                <label className="mb-2 block text-sm">Default Subscription Price (monthly)</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.01" value={globalSubscriptionPrice} onChange={(e) => setGlobalSubscriptionPrice(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/month</span>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">Sets the subscription price for all users. Customize per-user below.</p>
+              </div>
+              <div>
                 <label className="mb-2 block text-sm">Default Message Cost (per segment)</label>
-                <input type="number" step="0.001" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value) || 0)}
-                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
-                <p className="mt-1 text-xs text-zinc-500">Sets default for new users. Use per-user pricing below to customize.</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.001" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/msg</span>
+                </div>
               </div>
               <div>
                 <label className="mb-2 block text-sm">Default Phone Number Cost (monthly)</label>
-                <input type="number" step="0.01" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value) || 0)}
-                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.01" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/month</span>
+                </div>
               </div>
               <button onClick={handleSaveGlobalSettings} className="w-full rounded-2xl bg-violet-600 px-8 py-4 hover:bg-violet-700">
                 Save Global Settings
@@ -1428,13 +1446,22 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div>
+                        <label className="mb-0.5 block text-[10px] text-zinc-500">$/month</label>
+                        <input type="number" step="0.01" value={acct.plan.price}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setAccounts((prev) => prev.map((a) => a.id === acct.id ? { ...a, plan: { ...a.plan, price: val } } : a));
+                          }}
+                          className="w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
+                      </div>
+                      <div>
                         <label className="mb-0.5 block text-[10px] text-zinc-500">$/msg</label>
                         <input type="number" step="0.001" value={acct.plan.messageCost}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setAccounts((prev) => prev.map((a) => a.id === acct.id ? { ...a, plan: { ...a.plan, messageCost: val } } : a));
                           }}
-                          className="w-24 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
+                          className="w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
                       </div>
                       <button onClick={() => handleSaveUserPricing(acct.id)}
                         className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium hover:bg-violet-700">Save</button>
