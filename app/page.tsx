@@ -90,7 +90,10 @@ export default function HomePage() {
       return;
     }
 
-    router.push("/dashboard");
+    try {
+      localStorage.setItem("textalot_signup_first_name", firstName);
+    } catch {}
+    router.push("/thank-you");
   };
 
   return (
