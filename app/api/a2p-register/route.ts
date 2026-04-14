@@ -167,6 +167,7 @@ async function handleRegisterBrand(client: ReturnType<typeof twilio>, body: Reco
   // 10. Create A2P Trust Product
   const trustProduct = await client.trusthub.v1.trustProducts.create({
     friendlyName: `${businessName} - A2P Trust Product`,
+    email: contactEmail,
     policySid: A2P_TRUST_PRODUCT_POLICY_SID,
   });
 

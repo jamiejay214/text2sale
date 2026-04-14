@@ -32,7 +32,7 @@ function toSlug(name: string): string {
 
 // Ensure slug is unique, appending -2, -3, etc. if needed
 async function getUniqueSlug(
-  supabase: ReturnType<typeof createClient>,
+  supabase: ReturnType<typeof createClient<any, any, any>>,
   base: string,
   userId: string
 ): Promise<string> {
