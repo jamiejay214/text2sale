@@ -201,12 +201,21 @@ export default function AdminPage() {
   const [trafficTotal, setTrafficTotal] = useState(0);
   const [trafficByDay, setTrafficByDay] = useState<{ date: string; views: number; unique: number }[]>([]);
   const [trafficByState, setTrafficByState] = useState<Record<string, number>>({});
+  const [newViewers, setNewViewers] = useState(0);
+  const [returningViewers, setReturningViewers] = useState(0);
 
   // Support chat
   const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
   const [selectedThreadUserId, setSelectedThreadUserId] = useState<string | null>(null);
   const [supportReplyInput, setSupportReplyInput] = useState("");
   const supportChatEndRef = React.useRef<HTMLDivElement>(null);
+
+  // New-chat initiation modal
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState("");
+  const [newChatUserId, setNewChatUserId] = useState<string | null>(null);
+  const [newChatMessage, setNewChatMessage] = useState("");
+  const [newChatSending, setNewChatSending] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -279,6 +288,27 @@ export default function AdminPage() {
         }
       }
       setTrafficByDay(days);
+
+      // Compute new vs returning viewers (last 14 days window)
+      if (recentViews && recentViews.length > 0) {
+        const ipsInWindow = new Set(recentViews.map((v) => v.ip_hash).filter(Boolean));
+        const windowStart = new Date(now.getTime() - 14 * 86400000).toISOString();
+        // Find IPs that were seen BEFORE the window (returning visitors)
+        const { data: priorViews } = await supabase
+          .from("page_views")
+          .select("ip_hash")
+          .lt("created_at", windowStart)
+          .not("ip_hash", "is", null);
+        const priorIps = new Set((priorViews || []).map((v) => v.ip_hash));
+        let newCount = 0;
+        let returningCount = 0;
+        for (const ip of ipsInWindow) {
+          if (priorIps.has(ip)) returningCount++;
+          else newCount++;
+        }
+        setNewViewers(newCount);
+        setReturningViewers(returningCount);
+      }
 
       // Load traffic by US state
       const { data: regionViews } = await supabase
@@ -459,6 +489,28 @@ export default function AdminPage() {
       message: supportReplyInput.trim(),
     });
     setSupportReplyInput("");
+  };
+
+  const handleInitiateChat = async () => {
+    if (!newChatUserId || !newChatMessage.trim()) return;
+    setNewChatSending(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) { setNewChatSending(false); return; }
+
+    await supabase.from("support_messages").insert({
+      user_id: newChatUserId,
+      sender_role: "admin",
+      message: newChatMessage.trim(),
+    });
+
+    // Realtime sub will add the thread; select it immediately for UX
+    setSelectedThreadUserId(newChatUserId);
+    setShowNewChatModal(false);
+    setNewChatUserId(null);
+    setNewChatMessage("");
+    setNewChatSearch("");
+    setNewChatSending(false);
+    setMessage("✅ Chat initiated!");
   };
 
   const refreshAccount = async (accountId: string) => {
@@ -759,7 +811,7 @@ export default function AdminPage() {
                 <h3 className="text-lg font-bold">Website Traffic</h3>
                 <span className="text-xs text-zinc-500">Last 14 days</span>
               </div>
-              <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="rounded-2xl bg-zinc-800 p-4 text-center">
                   <div className="text-2xl font-bold text-violet-400">{trafficToday.toLocaleString()}</div>
                   <div className="mt-1 text-[10px] text-zinc-500">Today</div>
@@ -775,6 +827,30 @@ export default function AdminPage() {
                 <div className="rounded-2xl bg-zinc-800 p-4 text-center">
                   <div className="text-2xl font-bold">{trafficTotal.toLocaleString()}</div>
                   <div className="mt-1 text-[10px] text-zinc-500">All Time</div>
+                </div>
+              </div>
+
+              {/* New vs Returning Viewers */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="rounded-2xl border border-emerald-800/40 bg-emerald-950/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-3xl font-bold text-emerald-400">{newViewers.toLocaleString()}</div>
+                      <div className="mt-1 text-xs text-zinc-400">New Viewers</div>
+                    </div>
+                    <div className="text-3xl">🆕</div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-zinc-500">First-time visitors in the last 14 days</div>
+                </div>
+                <div className="rounded-2xl border border-sky-800/40 bg-sky-950/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-3xl font-bold text-sky-400">{returningViewers.toLocaleString()}</div>
+                      <div className="mt-1 text-xs text-zinc-400">Returning Viewers</div>
+                    </div>
+                    <div className="text-3xl">🔁</div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-zinc-500">Visitors who&apos;ve been here before</div>
                 </div>
               </div>
               {trafficByDay.length > 0 && (
@@ -1303,8 +1379,19 @@ export default function AdminPage() {
             {/* Thread list */}
             <div className="w-80 shrink-0 overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-900">
               <div className="border-b border-zinc-800 p-5">
-                <h2 className="text-lg font-bold">Support Chats</h2>
-                <p className="text-xs text-zinc-500">{supportThreads.length} conversation{supportThreads.length !== 1 ? "s" : ""}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold">Support Chats</h2>
+                    <p className="text-xs text-zinc-500">{supportThreads.length} conversation{supportThreads.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <button
+                    onClick={() => setShowNewChatModal(true)}
+                    className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-700"
+                    title="Start a chat with a user"
+                  >
+                    + New Chat
+                  </button>
+                </div>
               </div>
               {supportThreads.length === 0 && (
                 <div className="p-8 text-center text-sm text-zinc-500">No support messages yet</div>
@@ -1536,6 +1623,85 @@ export default function AdminPage() {
             <div className="flex gap-3">
               <button onClick={resetCreateUserModal} className="flex-1 rounded-2xl border border-zinc-700 py-4">Cancel</button>
               <button onClick={createNewUser} className="flex-1 rounded-2xl bg-violet-600 py-4">Create User</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Chat Modal — admin initiates chat with a user */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-zinc-900 p-8">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold">Start a Chat</h3>
+              <button
+                onClick={() => { setShowNewChatModal(false); setNewChatUserId(null); setNewChatMessage(""); setNewChatSearch(""); }}
+                className="text-zinc-500 hover:text-zinc-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            <label className="mb-1 block text-sm text-zinc-400">Select a user</label>
+            <input
+              value={newChatSearch}
+              onChange={(e) => setNewChatSearch(e.target.value)}
+              placeholder="Search by name or email..."
+              className="mb-3 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm focus:border-violet-500 focus:outline-none"
+            />
+
+            <div className="mb-4 max-h-60 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+              {accounts
+                .filter((a) => a.role !== "admin")
+                .filter((a) => {
+                  const q = newChatSearch.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    `${a.firstName} ${a.lastName}`.toLowerCase().includes(q) ||
+                    (a.email || "").toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 20)
+                .map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => setNewChatUserId(a.id)}
+                    className={`w-full border-b border-zinc-800 px-4 py-3 text-left transition hover:bg-zinc-800 ${
+                      newChatUserId === a.id ? "bg-violet-600/20" : ""
+                    }`}
+                  >
+                    <div className="text-sm font-medium">{a.firstName} {a.lastName}</div>
+                    <div className="text-xs text-zinc-500">{a.email}</div>
+                  </button>
+                ))}
+              {accounts.filter((a) => a.role !== "admin").length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-zinc-500">No users found</div>
+              )}
+            </div>
+
+            <label className="mb-1 block text-sm text-zinc-400">Message</label>
+            <textarea
+              value={newChatMessage}
+              onChange={(e) => setNewChatMessage(e.target.value)}
+              placeholder="Hi! Just wanted to check in…"
+              rows={4}
+              className="mb-6 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm focus:border-violet-500 focus:outline-none"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowNewChatModal(false); setNewChatUserId(null); setNewChatMessage(""); setNewChatSearch(""); }}
+                className="flex-1 rounded-2xl border border-zinc-700 py-3 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInitiateChat}
+                disabled={!newChatUserId || !newChatMessage.trim() || newChatSending}
+                className="flex-1 rounded-2xl bg-violet-600 py-3 text-sm font-medium disabled:opacity-50"
+              >
+                {newChatSending ? "Sending..." : "Send & Open Chat"}
+              </button>
             </div>
           </div>
         </div>

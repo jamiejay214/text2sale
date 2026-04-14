@@ -527,7 +527,8 @@ export default function DashboardPage() {
   const [a2pForm, setA2pForm] = useState({
     businessName: "", businessType: "llc" as "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit",
     ein: "", businessAddress: "", businessCity: "", businessState: "", businessZip: "", businessCountry: "US",
-    website: "", contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
+    website: "", hasWebsite: "yes" as "yes" | "no", buildPage: false, businessDescription: "",
+    contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
     useCase: "MIXED", description: "", sampleMessage1: "", sampleMessage2: "",
     messageFlow: "End users opt-in by signing up on our website and providing their phone number. They can opt out at any time by replying STOP.",
     optInMessage: "You have opted in to receive messages. Reply STOP to unsubscribe.",
@@ -1492,6 +1493,9 @@ export default function DashboardPage() {
           businessState: a2pForm.businessState,
           businessZip: a2pForm.businessZip,
           website: a2pForm.website,
+          hasWebsite: a2pForm.hasWebsite,
+          buildPage: a2pForm.buildPage,
+          businessDescription: a2pForm.businessDescription,
           contactEmail: a2pForm.contactEmail || currentUser.email,
           contactPhone: a2pForm.contactPhone || currentUser.phone,
         }),
@@ -6348,15 +6352,96 @@ export default function DashboardPage() {
                       <option value="non_profit">Non-Profit</option>
                     </select>
                   </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Website</label>
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="https://yourbusiness.com"
-                      value={a2pForm.website}
-                      onChange={(e) => setA2pForm({ ...a2pForm, website: e.target.value })}
-                    />
+                  <div className="md:col-span-2">
+                    <label className="mb-2 block text-sm text-zinc-400">
+                      Do you have a business website? *
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setA2pForm({ ...a2pForm, hasWebsite: "yes", buildPage: false })}
+                        className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition ${
+                          a2pForm.hasWebsite === "yes"
+                            ? "border-violet-500 bg-violet-600/20 text-violet-300"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                        }`}
+                      >
+                        Yes, I have a website
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setA2pForm({ ...a2pForm, hasWebsite: "no", website: "" })}
+                        className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition ${
+                          a2pForm.hasWebsite === "no"
+                            ? "border-violet-500 bg-violet-600/20 text-violet-300"
+                            : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
+                        }`}
+                      >
+                        No, I don&apos;t have one
+                      </button>
+                    </div>
                   </div>
+
+                  {a2pForm.hasWebsite === "yes" && (
+                    <div className="md:col-span-2">
+                      <label className="mb-1 block text-sm text-zinc-400">Website URL *</label>
+                      <input
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                        placeholder="https://yourbusiness.com"
+                        value={a2pForm.website}
+                        onChange={(e) => setA2pForm({ ...a2pForm, website: e.target.value })}
+                      />
+                      <p className="mt-1 text-xs text-zinc-500">
+                        A Facebook Business page, LinkedIn company page, or Google Business Profile URL also works.
+                      </p>
+                    </div>
+                  )}
+
+                  {a2pForm.hasWebsite === "no" && (
+                    <div className="md:col-span-2 rounded-2xl border border-violet-800/40 bg-violet-950/20 p-4">
+                      <label className="flex items-start gap-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={a2pForm.buildPage}
+                          onChange={(e) => setA2pForm({ ...a2pForm, buildPage: e.target.checked })}
+                          className="mt-1 h-5 w-5 flex-shrink-0 accent-violet-600"
+                        />
+                        <div>
+                          <div className="font-medium text-violet-300">
+                            Build me a free business page
+                          </div>
+                          <div className="mt-1 text-sm text-zinc-400">
+                            We&apos;ll auto-generate a professional business page at{" "}
+                            <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-violet-300">
+                              text2sale.com/biz/
+                              {a2pForm.businessName
+                                ? a2pForm.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+                                : "your-business"}
+                            </code>{" "}
+                            with your business info, contact details, and SMS opt-in disclosures. Required for 10DLC
+                            approval — takes a few seconds.
+                          </div>
+                        </div>
+                      </label>
+                      {a2pForm.buildPage && (
+                        <div className="mt-4">
+                          <label className="mb-1 block text-sm text-zinc-400">
+                            Short description of your business (optional)
+                          </label>
+                          <textarea
+                            className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                            rows={3}
+                            placeholder="We help families find affordable health insurance plans tailored to their needs..."
+                            value={a2pForm.businessDescription}
+                            onChange={(e) => setA2pForm({ ...a2pForm, businessDescription: e.target.value })}
+                          />
+                          <p className="mt-1 text-xs text-zinc-500">
+                            Leave blank to use a default description. You can edit your page anytime.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 <h4 className="mt-4 font-medium text-zinc-300">Business Address</h4>
@@ -6423,7 +6508,13 @@ export default function DashboardPage() {
 
                 <button
                   onClick={handleA2pRegister}
-                  disabled={a2pLoading || !a2pForm.businessName || !a2pForm.ein}
+                  disabled={
+                    a2pLoading ||
+                    !a2pForm.businessName ||
+                    !a2pForm.ein ||
+                    (a2pForm.hasWebsite === "yes" && !a2pForm.website) ||
+                    (a2pForm.hasWebsite === "no" && !a2pForm.buildPage)
+                  }
                   className="mt-4 w-full rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50"
                 >
                   {a2pLoading ? (

@@ -32,6 +32,9 @@ export type Profile = {
   compliance_log: ComplianceEventRecord[] | null;
   auto_recharge: { enabled: boolean; threshold: number; amount: number } | null;
   visitor_alerts?: boolean;
+  business_slug?: string | null;
+  business_description?: string | null;
+  business_logo_url?: string | null;
   created_at: string;
 };
 
