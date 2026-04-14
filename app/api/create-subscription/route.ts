@@ -29,10 +29,10 @@ export async function POST(req: NextRequest) {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com";
 
-    // Check if user already has a Stripe customer ID
+    // Get user's profile including their plan price
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, subscription_status")
+      .select("stripe_customer_id, subscription_status, plan")
       .eq("id", userId)
       .single();
 
@@ -42,6 +42,11 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Get the user's plan price (default to $39.99 if not set)
+    const planPrice = profile?.plan?.price || 39.99;
+    const planPriceCents = Math.round(planPrice * 100);
+    const messageCost = profile?.plan?.messageCost || 0.012;
 
     let customerId = profile?.stripe_customer_id;
 
@@ -53,35 +58,33 @@ export async function POST(req: NextRequest) {
       });
       customerId = customer.id;
 
-      // Save customer ID to profile
       await supabase
         .from("profiles")
         .update({ stripe_customer_id: customerId })
         .eq("id", userId);
     }
 
-    // Create or find the $39.99/month price
-    // Search for existing product first
+    // Create or find the product
     const products = await stripe.products.list({ limit: 10, active: true });
     let product = products.data.find((p) => p.name === "Text2Sale Monthly Plan");
 
     if (!product) {
       product = await stripe.products.create({
         name: "Text2Sale Monthly Plan",
-        description: "Unlimited access to Text2Sale CRM — $0.012 per message",
+        description: `Unlimited access to Text2Sale CRM — $${messageCost} per message`,
       });
     }
 
-    // Find existing price or create one
+    // Find existing price matching user's plan price, or create one
     const prices = await stripe.prices.list({
       product: product.id,
       active: true,
-      limit: 10,
+      limit: 50,
     });
 
     let price = prices.data.find(
       (p) =>
-        p.unit_amount === 3999 &&
+        p.unit_amount === planPriceCents &&
         p.recurring?.interval === "month" &&
         p.currency === "usd"
     );
@@ -89,7 +92,7 @@ export async function POST(req: NextRequest) {
     if (!price) {
       price = await stripe.prices.create({
         product: product.id,
-        unit_amount: 3999, // $39.99
+        unit_amount: planPriceCents,
         currency: "usd",
         recurring: { interval: "month" },
       });

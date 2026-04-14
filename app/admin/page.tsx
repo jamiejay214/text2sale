@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import {
   fetchAllProfiles, fetchAllCampaigns, updateProfile,
@@ -190,6 +191,8 @@ export default function AdminPage() {
   const [bulkCreditAmount, setBulkCreditAmount] = useState("50");
   const [globalMessageCost, setGlobalMessageCost] = useState(0.012);
   const [globalNumberCost, setGlobalNumberCost] = useState(1.0);
+  const [globalSubscriptionPrice, setGlobalSubscriptionPrice] = useState(39.99);
+  const [visitorAlerts, setVisitorAlerts] = useState(true);
 
   // Traffic analytics
   const [trafficToday, setTrafficToday] = useState(0);
@@ -198,12 +201,21 @@ export default function AdminPage() {
   const [trafficTotal, setTrafficTotal] = useState(0);
   const [trafficByDay, setTrafficByDay] = useState<{ date: string; views: number; unique: number }[]>([]);
   const [trafficByState, setTrafficByState] = useState<Record<string, number>>({});
+  const [newViewers, setNewViewers] = useState(0);
+  const [returningViewers, setReturningViewers] = useState(0);
 
   // Support chat
   const [supportThreads, setSupportThreads] = useState<SupportThread[]>([]);
   const [selectedThreadUserId, setSelectedThreadUserId] = useState<string | null>(null);
   const [supportReplyInput, setSupportReplyInput] = useState("");
   const supportChatEndRef = React.useRef<HTMLDivElement>(null);
+
+  // New-chat initiation modal
+  const [showNewChatModal, setShowNewChatModal] = useState(false);
+  const [newChatSearch, setNewChatSearch] = useState("");
+  const [newChatUserId, setNewChatUserId] = useState<string | null>(null);
+  const [newChatMessage, setNewChatMessage] = useState("");
+  const [newChatSending, setNewChatSending] = useState(false);
 
   useEffect(() => {
     const loadData = async () => {
@@ -231,6 +243,11 @@ export default function AdminPage() {
       setContactCounts(counts);
 
       if (accts.length > 0) setSelectedId(accts[0].id);
+
+      // Load visitor alerts preference
+      if (myProfile.visitor_alerts !== undefined) {
+        setVisitorAlerts(myProfile.visitor_alerts !== false);
+      }
 
       // Load traffic analytics
       const now = new Date();
@@ -271,6 +288,27 @@ export default function AdminPage() {
         }
       }
       setTrafficByDay(days);
+
+      // Compute new vs returning viewers (last 14 days window)
+      if (recentViews && recentViews.length > 0) {
+        const ipsInWindow = new Set(recentViews.map((v) => v.ip_hash).filter(Boolean));
+        const windowStart = new Date(now.getTime() - 14 * 86400000).toISOString();
+        // Find IPs that were seen BEFORE the window (returning visitors)
+        const { data: priorViews } = await supabase
+          .from("page_views")
+          .select("ip_hash")
+          .lt("created_at", windowStart)
+          .not("ip_hash", "is", null);
+        const priorIps = new Set((priorViews || []).map((v) => v.ip_hash));
+        let newCount = 0;
+        let returningCount = 0;
+        for (const ip of ipsInWindow) {
+          if (priorIps.has(ip)) returningCount++;
+          else newCount++;
+        }
+        setNewViewers(newCount);
+        setReturningViewers(returningCount);
+      }
 
       // Load traffic by US state
       const { data: regionViews } = await supabase
@@ -389,7 +427,7 @@ export default function AdminPage() {
 
   // ── Computed metrics ──
   const totalRevenue = useMemo(() => accounts.reduce((sum, a) => sum + (a.totalDeposited || 0), 0), [accounts]);
-  const mrr = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").length * 39.99, [accounts]);
+  const mrr = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").reduce((sum, a) => sum + (a.plan.price || 39.99), 0), [accounts]);
   const activeSubscribers = useMemo(() => accounts.filter((a) => a.subscriptionStatus === "active" || a.subscriptionStatus === "canceling").length, [accounts]);
   const totalMessagesSent = useMemo(() => campaigns.reduce((s, c) => s + c.sent, 0), [campaigns]);
   const totalFailed = useMemo(() => campaigns.reduce((s, c) => s + c.failed, 0), [campaigns]);
@@ -451,6 +489,28 @@ export default function AdminPage() {
       message: supportReplyInput.trim(),
     });
     setSupportReplyInput("");
+  };
+
+  const handleInitiateChat = async () => {
+    if (!newChatUserId || !newChatMessage.trim()) return;
+    setNewChatSending(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) { setNewChatSending(false); return; }
+
+    await supabase.from("support_messages").insert({
+      user_id: newChatUserId,
+      sender_role: "admin",
+      message: newChatMessage.trim(),
+    });
+
+    // Realtime sub will add the thread; select it immediately for UX
+    setSelectedThreadUserId(newChatUserId);
+    setShowNewChatModal(false);
+    setNewChatUserId(null);
+    setNewChatMessage("");
+    setNewChatSearch("");
+    setNewChatSending(false);
+    setMessage("✅ Chat initiated!");
   };
 
   const refreshAccount = async (accountId: string) => {
@@ -568,13 +628,13 @@ export default function AdminPage() {
     let updated = 0;
     for (const acct of accounts) {
       await updateProfile(acct.id, {
-        plan: { ...acct.plan, messageCost: globalMessageCost },
+        plan: { ...acct.plan, messageCost: globalMessageCost, price: globalSubscriptionPrice },
       } as Partial<Profile>);
       updated++;
     }
     const profiles = await fetchAllProfiles();
     setAccounts(profiles.map(profileToAccount));
-    setMessage(`✅ Global pricing updated for ${updated} users — $${globalMessageCost}/msg`);
+    setMessage(`✅ Global pricing updated for ${updated} users — $${globalSubscriptionPrice}/mo, $${globalMessageCost}/msg`);
     window.setTimeout(() => setMessage(""), 3000);
   };
 
@@ -582,9 +642,9 @@ export default function AdminPage() {
     const acct = accounts.find((a) => a.id === accountId);
     if (!acct) return;
     await updateProfile(accountId, {
-      plan: { ...acct.plan, messageCost: acct.plan.messageCost },
+      plan: { ...acct.plan, messageCost: acct.plan.messageCost, price: acct.plan.price },
     } as Partial<Profile>);
-    setMessage(`✅ ${acct.firstName}'s pricing updated — $${acct.plan.messageCost}/msg`);
+    setMessage(`✅ ${acct.firstName}'s pricing updated — $${acct.plan.price}/mo, $${acct.plan.messageCost}/msg`);
     window.setTimeout(() => setMessage(""), 3000);
   };
 
@@ -618,7 +678,11 @@ export default function AdminPage() {
         {/* Header */}
         <div className="mb-10 flex items-center justify-between">
           <div>
-            <h1 className="text-5xl font-bold tracking-tighter">Admin Portal</h1>
+            <div className="flex items-center gap-4">
+              <Logo size="md" />
+              <span className="text-2xl font-light text-zinc-500">|</span>
+              <h1 className="text-3xl font-bold tracking-tight text-zinc-300">Admin</h1>
+            </div>
             <p className="mt-1 text-zinc-400">
               {accounts.length} users · {activeSubscribers} subscribed · {totalNumbers} numbers · {totalContacts.toLocaleString()} contacts
             </p>
@@ -652,7 +716,7 @@ export default function AdminPage() {
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <div className="text-sm text-zinc-400">Monthly Revenue (MRR)</div>
                 <div className="mt-2 text-4xl font-bold text-emerald-400">{formatCurrency(mrr)}</div>
-                <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers × $39.99</div>
+                <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers</div>
               </div>
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                 <div className="text-sm text-zinc-400">Total Deposited</div>
@@ -747,7 +811,7 @@ export default function AdminPage() {
                 <h3 className="text-lg font-bold">Website Traffic</h3>
                 <span className="text-xs text-zinc-500">Last 14 days</span>
               </div>
-              <div className="grid grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                 <div className="rounded-2xl bg-zinc-800 p-4 text-center">
                   <div className="text-2xl font-bold text-violet-400">{trafficToday.toLocaleString()}</div>
                   <div className="mt-1 text-[10px] text-zinc-500">Today</div>
@@ -763,6 +827,30 @@ export default function AdminPage() {
                 <div className="rounded-2xl bg-zinc-800 p-4 text-center">
                   <div className="text-2xl font-bold">{trafficTotal.toLocaleString()}</div>
                   <div className="mt-1 text-[10px] text-zinc-500">All Time</div>
+                </div>
+              </div>
+
+              {/* New vs Returning Viewers */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div className="rounded-2xl border border-emerald-800/40 bg-emerald-950/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-3xl font-bold text-emerald-400">{newViewers.toLocaleString()}</div>
+                      <div className="mt-1 text-xs text-zinc-400">New Viewers</div>
+                    </div>
+                    <div className="text-3xl">🆕</div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-zinc-500">First-time visitors in the last 14 days</div>
+                </div>
+                <div className="rounded-2xl border border-sky-800/40 bg-sky-950/20 p-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-3xl font-bold text-sky-400">{returningViewers.toLocaleString()}</div>
+                      <div className="mt-1 text-xs text-zinc-400">Returning Viewers</div>
+                    </div>
+                    <div className="text-3xl">🔁</div>
+                  </div>
+                  <div className="mt-2 text-[10px] text-zinc-500">Visitors who&apos;ve been here before</div>
                 </div>
               </div>
               {trafficByDay.length > 0 && (
@@ -1109,7 +1197,7 @@ export default function AdminPage() {
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-800 p-5">
                     <div>
                       <div className="text-sm text-zinc-400">Subscription Revenue (MRR)</div>
-                      <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} subscribers × $39.99/mo</div>
+                      <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers</div>
                     </div>
                     <div className="text-2xl font-bold text-emerald-400">{formatCurrency(mrr)}</div>
                   </div>
@@ -1291,8 +1379,19 @@ export default function AdminPage() {
             {/* Thread list */}
             <div className="w-80 shrink-0 overflow-y-auto rounded-3xl border border-zinc-800 bg-zinc-900">
               <div className="border-b border-zinc-800 p-5">
-                <h2 className="text-lg font-bold">Support Chats</h2>
-                <p className="text-xs text-zinc-500">{supportThreads.length} conversation{supportThreads.length !== 1 ? "s" : ""}</p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold">Support Chats</h2>
+                    <p className="text-xs text-zinc-500">{supportThreads.length} conversation{supportThreads.length !== 1 ? "s" : ""}</p>
+                  </div>
+                  <button
+                    onClick={() => setShowNewChatModal(true)}
+                    className="rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium text-white hover:bg-violet-700"
+                    title="Start a chat with a user"
+                  >
+                    + New Chat
+                  </button>
+                </div>
               </div>
               {supportThreads.length === 0 && (
                 <div className="p-8 text-center text-sm text-zinc-500">No support messages yet</div>
@@ -1396,19 +1495,66 @@ export default function AdminPage() {
             <h2 className="mb-8 text-2xl font-bold">Platform Settings</h2>
             <div className="space-y-8">
               <div>
+                <label className="mb-2 block text-sm">Default Subscription Price (monthly)</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.01" value={globalSubscriptionPrice} onChange={(e) => setGlobalSubscriptionPrice(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/month</span>
+                </div>
+                <p className="mt-1 text-xs text-zinc-500">Sets the subscription price for all users. Customize per-user below.</p>
+              </div>
+              <div>
                 <label className="mb-2 block text-sm">Default Message Cost (per segment)</label>
-                <input type="number" step="0.001" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value) || 0)}
-                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
-                <p className="mt-1 text-xs text-zinc-500">Sets default for new users. Use per-user pricing below to customize.</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.001" value={globalMessageCost} onChange={(e) => setGlobalMessageCost(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/msg</span>
+                </div>
               </div>
               <div>
                 <label className="mb-2 block text-sm">Default Phone Number Cost (monthly)</label>
-                <input type="number" step="0.01" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value) || 0)}
-                  className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                <div className="flex items-center gap-2">
+                  <span className="text-zinc-400">$</span>
+                  <input type="number" step="0.01" value={globalNumberCost} onChange={(e) => setGlobalNumberCost(parseFloat(e.target.value) || 0)}
+                    className="w-48 rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
+                  <span className="text-sm text-zinc-500">/month</span>
+                </div>
               </div>
               <button onClick={handleSaveGlobalSettings} className="w-full rounded-2xl bg-violet-600 px-8 py-4 hover:bg-violet-700">
                 Save Global Settings
               </button>
+
+              <hr className="border-zinc-800" />
+
+              {/* Visitor Alerts */}
+              <div className="rounded-2xl border border-zinc-700 bg-zinc-800 p-5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-lg font-bold">🔔 Visitor Alerts</h4>
+                    <p className="mt-1 text-sm text-zinc-400">Get a text message when someone visits your site (max 1 alert every 5 min).</p>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      const newVal = !visitorAlerts;
+                      setVisitorAlerts(newVal);
+                      const { data: { session } } = await supabase.auth.getSession();
+                      if (session?.user) {
+                        await supabase.from("profiles").update({ visitor_alerts: newVal }).eq("id", session.user.id);
+                      }
+                      setMessage(newVal ? "✅ Visitor alerts turned ON" : "✅ Visitor alerts turned OFF");
+                      setTimeout(() => setMessage(""), 3000);
+                    }}
+                    className={`relative h-8 w-14 rounded-full transition-colors ${visitorAlerts ? "bg-violet-600" : "bg-zinc-600"}`}
+                  >
+                    <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-transform ${visitorAlerts ? "left-7" : "left-1"}`} />
+                  </button>
+                </div>
+                <div className="mt-3 text-xs text-zinc-500">
+                  Alerts include visitor location, page visited, and time. Sent from your first owned number to your admin phone.
+                </div>
+              </div>
 
               <hr className="border-zinc-800" />
 
@@ -1423,13 +1569,22 @@ export default function AdminPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div>
+                        <label className="mb-0.5 block text-[10px] text-zinc-500">$/month</label>
+                        <input type="number" step="0.01" value={acct.plan.price}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            setAccounts((prev) => prev.map((a) => a.id === acct.id ? { ...a, plan: { ...a.plan, price: val } } : a));
+                          }}
+                          className="w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
+                      </div>
+                      <div>
                         <label className="mb-0.5 block text-[10px] text-zinc-500">$/msg</label>
                         <input type="number" step="0.001" value={acct.plan.messageCost}
                           onChange={(e) => {
                             const val = parseFloat(e.target.value) || 0;
                             setAccounts((prev) => prev.map((a) => a.id === acct.id ? { ...a, plan: { ...a.plan, messageCost: val } } : a));
                           }}
-                          className="w-24 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
+                          className="w-20 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm focus:border-violet-500 focus:outline-none" />
                       </div>
                       <button onClick={() => handleSaveUserPricing(acct.id)}
                         className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium hover:bg-violet-700">Save</button>
@@ -1468,6 +1623,85 @@ export default function AdminPage() {
             <div className="flex gap-3">
               <button onClick={resetCreateUserModal} className="flex-1 rounded-2xl border border-zinc-700 py-4">Cancel</button>
               <button onClick={createNewUser} className="flex-1 rounded-2xl bg-violet-600 py-4">Create User</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* New Chat Modal — admin initiates chat with a user */}
+      {showNewChatModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-xl rounded-3xl bg-zinc-900 p-8">
+            <div className="mb-6 flex items-center justify-between">
+              <h3 className="text-2xl font-bold">Start a Chat</h3>
+              <button
+                onClick={() => { setShowNewChatModal(false); setNewChatUserId(null); setNewChatMessage(""); setNewChatSearch(""); }}
+                className="text-zinc-500 hover:text-zinc-300"
+              >
+                ✕
+              </button>
+            </div>
+
+            <label className="mb-1 block text-sm text-zinc-400">Select a user</label>
+            <input
+              value={newChatSearch}
+              onChange={(e) => setNewChatSearch(e.target.value)}
+              placeholder="Search by name or email..."
+              className="mb-3 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm focus:border-violet-500 focus:outline-none"
+            />
+
+            <div className="mb-4 max-h-60 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-950">
+              {accounts
+                .filter((a) => a.role !== "admin")
+                .filter((a) => {
+                  const q = newChatSearch.toLowerCase();
+                  if (!q) return true;
+                  return (
+                    `${a.firstName} ${a.lastName}`.toLowerCase().includes(q) ||
+                    (a.email || "").toLowerCase().includes(q)
+                  );
+                })
+                .slice(0, 20)
+                .map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => setNewChatUserId(a.id)}
+                    className={`w-full border-b border-zinc-800 px-4 py-3 text-left transition hover:bg-zinc-800 ${
+                      newChatUserId === a.id ? "bg-violet-600/20" : ""
+                    }`}
+                  >
+                    <div className="text-sm font-medium">{a.firstName} {a.lastName}</div>
+                    <div className="text-xs text-zinc-500">{a.email}</div>
+                  </button>
+                ))}
+              {accounts.filter((a) => a.role !== "admin").length === 0 && (
+                <div className="px-4 py-6 text-center text-sm text-zinc-500">No users found</div>
+              )}
+            </div>
+
+            <label className="mb-1 block text-sm text-zinc-400">Message</label>
+            <textarea
+              value={newChatMessage}
+              onChange={(e) => setNewChatMessage(e.target.value)}
+              placeholder="Hi! Just wanted to check in…"
+              rows={4}
+              className="mb-6 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-sm focus:border-violet-500 focus:outline-none"
+            />
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowNewChatModal(false); setNewChatUserId(null); setNewChatMessage(""); setNewChatSearch(""); }}
+                className="flex-1 rounded-2xl border border-zinc-700 py-3 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleInitiateChat}
+                disabled={!newChatUserId || !newChatMessage.trim() || newChatSending}
+                className="flex-1 rounded-2xl bg-violet-600 py-3 text-sm font-medium disabled:opacity-50"
+              >
+                {newChatSending ? "Sending..." : "Send & Open Chat"}
+              </button>
             </div>
           </div>
         </div>

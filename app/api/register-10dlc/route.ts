@@ -21,6 +21,36 @@ async function telnyxFetch(path: string, options?: RequestInit) {
 // Map business type to Telnyx entity type
 // Note: SOLE_PROPRIETOR is NOT a valid entityType in Telnyx brand API.
 // Sole proprietors with an EIN should register as PRIVATE_PROFIT.
+// Generate a URL-safe slug from a business name
+function toSlug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+}
+
+// Ensure slug is unique, appending -2, -3, etc. if needed
+async function getUniqueSlug(
+  supabase: ReturnType<typeof createClient>,
+  base: string,
+  userId: string
+): Promise<string> {
+  let slug = base;
+  let suffix = 1;
+  while (true) {
+    const { data } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("business_slug", slug)
+      .neq("id", userId)
+      .maybeSingle();
+    if (!data) return slug;
+    suffix += 1;
+    slug = `${base}-${suffix}`;
+  }
+}
+
 function toEntityType(businessType: string): string {
   switch (businessType) {
     case "sole_proprietor": return "PRIVATE_PROFIT";
@@ -58,10 +88,35 @@ export async function POST(req: NextRequest) {
       const {
         businessName, businessType, ein, businessAddress, businessCity,
         businessState, businessZip, website, contactEmail, contactPhone,
+        hasWebsite, buildPage, businessDescription,
       } = body;
 
       if (!ein || !businessName) {
         return NextResponse.json({ success: false, error: "EIN and business name are required" }, { status: 400 });
+      }
+
+      // If the user has no website and opted to auto-generate one, create a public biz page
+      // and use that URL for the 10DLC brand registration.
+      let finalWebsite = website;
+      if (hasWebsite === "no" && buildPage) {
+        const base = toSlug(businessName);
+        if (!base) {
+          return NextResponse.json(
+            { success: false, error: "Could not generate a page slug from your business name. Please use letters/numbers." },
+            { status: 400 }
+          );
+        }
+        const slug = await getUniqueSlug(supabase, base, userId);
+        const origin = req.headers.get("origin") || "https://text2sale.com";
+        finalWebsite = `${origin.replace(/\/$/, "")}/biz/${slug}`;
+
+        await supabase
+          .from("profiles")
+          .update({
+            business_slug: slug,
+            business_description: businessDescription || null,
+          })
+          .eq("id", userId);
       }
 
       const entityType = toEntityType(businessType);
@@ -82,7 +137,7 @@ export async function POST(req: NextRequest) {
         country: "US",
         email: contactEmail || profile.email,
         vertical: "INSURANCE",
-        website: website || "https://jjjohnsonhealth.vercel.app",
+        website: finalWebsite || "https://text2sale.com",
       };
       // Include first/last name for all registrations
       if (profile.first_name) brandPayload.firstName = profile.first_name;
@@ -105,7 +160,7 @@ export async function POST(req: NextRequest) {
             errors: [errMsg],
             updatedAt: new Date().toISOString(),
             businessName, businessType, ein, businessAddress, businessCity,
-            businessState, businessZip, businessCountry: "US", website,
+            businessState, businessZip, businessCountry: "US", website: finalWebsite,
             contactFirstName: profile.first_name, contactLastName: profile.last_name,
             contactEmail: contactEmail || profile.email, contactPhone: contactPhone || profile.phone,
           },
@@ -129,7 +184,7 @@ export async function POST(req: NextRequest) {
           campaignStatus: null,
           businessName, businessType, ein,
           businessAddress, businessCity, businessState, businessZip, businessCountry: "US",
-          website: website || "https://text2sale.com/#sms-program",
+          website: finalWebsite || "https://text2sale.com/#sms-program",
           contactFirstName: profile.first_name,
           contactLastName: profile.last_name,
           contactEmail: contactEmail || profile.email,
