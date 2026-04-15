@@ -30,15 +30,20 @@ export async function POST(req: NextRequest) {
       : (telnyxStatus === "sent" || telnyxStatus === "delivery_unconfirmed") ? "sent"
       : "sent";
 
-    // Normalize phone for lookup
+    // Normalize phone for lookup. Contacts in this DB are usually stored as
+    // unformatted 10 digits (e.g. "5613445416"), but legacy rows may be in
+    // "(561) 344-5416" or "+15613445416" shape — check every reasonable form.
     const toDigits = to.replace(/\D/g, "");
     const toNormalized = toDigits.startsWith("1") ? toDigits.slice(1) : toDigits;
     const toFormatted = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
+    const toDashed = `${toNormalized.slice(0, 3)}-${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
 
+    // Search by exact match across all likely formats. We use .in() because
+    // .or() with parens in values gets mis-parsed by PostgREST.
     const { data: contacts } = await supabase
       .from("contacts")
       .select("id")
-      .or(`phone.eq.${toFormatted},phone.eq.+1${toNormalized},phone.eq.${toDigits},phone.eq.${to}`);
+      .in("phone", [toNormalized, toFormatted, toDashed, `+1${toNormalized}`, `1${toNormalized}`, to]);
 
     if (!contacts || contacts.length === 0) {
       return NextResponse.json({ success: true });
