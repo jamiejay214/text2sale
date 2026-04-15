@@ -61,18 +61,18 @@ export default function ThankYouPage() {
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/20 text-xl">
               1️⃣
             </div>
-            <h3 className="mt-4 font-semibold">Complete verification</h3>
+            <h3 className="mt-4 font-semibold">Register your business (10DLC)</h3>
             <p className="mt-1 text-sm text-zinc-400">
-              Submit your business details so your campaigns stay carrier-compliant.
+              Carriers require 10DLC approval before you can purchase a number. Takes 1–3 business days.
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-600/20 text-xl">
               2️⃣
             </div>
-            <h3 className="mt-4 font-semibold">Import your contacts</h3>
+            <h3 className="mt-4 font-semibold">Buy a phone number</h3>
             <p className="mt-1 text-sm text-zinc-400">
-              Drop a CSV or add leads one-by-one — we&apos;ll organize the rest.
+              Once your 10DLC is approved, pick a local number and start messaging.
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
@@ -81,19 +81,24 @@ export default function ThankYouPage() {
             </div>
             <h3 className="mt-4 font-semibold">Launch a campaign</h3>
             <p className="mt-1 text-sm text-zinc-400">
-              Craft a message, pick an audience, hit send. It&apos;s that
-              simple.
+              Import contacts, craft a message, hit send. It&apos;s that simple.
             </p>
           </div>
         </div>
 
         {/* CTA */}
-        <div className="mt-12 flex justify-center">
+        <div className="mt-12 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <Link
-            href="/dashboard"
+            href="/dashboard?tab=settings&subtab=10dlc"
             className="rounded-2xl bg-violet-600 px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition hover:bg-violet-500"
           >
-            Go to Dashboard →
+            Start 10DLC Registration →
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-2xl border border-zinc-700 px-8 py-4 text-sm font-semibold text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+          >
+            View Dashboard
           </Link>
         </div>
 

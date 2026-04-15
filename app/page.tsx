@@ -93,7 +93,23 @@ export default function HomePage() {
     try {
       localStorage.setItem("textalot_signup_first_name", firstName);
     } catch {}
-    router.push("/thank-you");
+
+    // Fire Meta Pixel signup event (account created, not yet paid)
+    try {
+      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+      if (typeof w.fbq === "function") {
+        w.fbq("track", "CompleteRegistration");
+      }
+    } catch {}
+
+    // Fire welcome email (non-blocking; no-ops if Resend not configured)
+    fetch("/api/welcome-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: signupEmail.trim(), firstName }),
+    }).catch(() => {});
+
+    router.push("/dashboard");
   };
 
   return (
@@ -499,6 +515,20 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* Footer */}
+      <footer className="border-t border-zinc-800 bg-zinc-950">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
+          <div className="text-sm text-zinc-500">
+            © {new Date().getFullYear()} Text2Sale. All rights reserved.
+          </div>
+          <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+            <a href="/terms" className="text-zinc-400 hover:text-white transition">Terms</a>
+            <a href="/privacy-policy" className="text-zinc-400 hover:text-white transition">Privacy</a>
+            <a href="mailto:support@text2sale.com" className="text-zinc-400 hover:text-white transition">Support</a>
+          </nav>
+        </div>
+      </footer>
     </main>
   );
 }

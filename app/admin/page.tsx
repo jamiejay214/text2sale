@@ -35,6 +35,12 @@ type AccountRecord = {
   managerId?: string | null;
   referralCode?: string;
   a2pStatus?: string;
+  a2pBusinessName?: string;
+  a2pEin?: string;
+  einCertificatePath?: string | null;
+  einCertificateName?: string | null;
+  einCertificateType?: string | null;
+  einCertificateUploadedAt?: string | null;
   stripeCustomerId?: string | null;
   totalDeposited?: number;
   contactCount?: number;
@@ -86,6 +92,12 @@ function profileToAccount(p: Profile): AccountRecord {
     subscriptionStatus: p.subscription_status || "inactive",
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pStatus: p.a2p_registration?.status || "not_started",
+    a2pBusinessName: p.a2p_registration?.businessName || "",
+    a2pEin: p.a2p_registration?.ein || "",
+    einCertificatePath: p.a2p_registration?.einCertificatePath || null,
+    einCertificateName: p.a2p_registration?.einCertificateName || null,
+    einCertificateType: p.a2p_registration?.einCertificateType || null,
+    einCertificateUploadedAt: p.a2p_registration?.einCertificateUploadedAt || null,
     stripeCustomerId: p.stripe_customer_id,
     totalDeposited: p.total_deposited || 0,
   };
@@ -216,6 +228,7 @@ export default function AdminPage() {
   const [newChatUserId, setNewChatUserId] = useState<string | null>(null);
   const [newChatMessage, setNewChatMessage] = useState("");
   const [newChatSending, setNewChatSending] = useState(false);
+  const [adminUserId, setAdminUserId] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -224,6 +237,7 @@ export default function AdminPage() {
 
       const myProfile = await fetchProfile(session.user.id);
       if (!myProfile || myProfile.role !== "admin") { router.replace("/dashboard"); return; }
+      setAdminUserId(session.user.id);
 
       const [profiles, dbCampaigns] = await Promise.all([
         fetchAllProfiles(),
@@ -1055,6 +1069,76 @@ export default function AdminPage() {
                         {selectedAccount.ownedNumbers?.map((n) => (
                           <span key={n.id} className="rounded-full bg-zinc-700 px-3 py-1 text-xs font-mono">{n.number} <span className="text-zinc-500">{n.alias || ""}</span></span>
                         ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 10DLC / EIN Details */}
+                  {(selectedAccount.a2pStatus && selectedAccount.a2pStatus !== "not_started") && (
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-800/50 p-4">
+                      <div className="mb-3 flex items-center justify-between">
+                        <div className="text-[10px] uppercase tracking-wide text-zinc-500">10DLC / EIN</div>
+                        {(() => { const a = a2pStatusBadge(selectedAccount.a2pStatus); return <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${a.cls}`}>{a.label}</span>; })()}
+                      </div>
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        {selectedAccount.a2pBusinessName && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-zinc-500">Business</div>
+                            <div className="mt-0.5 font-medium">{selectedAccount.a2pBusinessName}</div>
+                          </div>
+                        )}
+                        {selectedAccount.a2pEin && (
+                          <div>
+                            <div className="text-[10px] uppercase tracking-wide text-zinc-500">EIN</div>
+                            <div className="mt-0.5 font-mono">{selectedAccount.a2pEin}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="mb-2 text-[10px] uppercase tracking-wide text-zinc-500">EIN Certificate</div>
+                        {selectedAccount.einCertificatePath ? (
+                          <div className="flex items-center justify-between gap-3 rounded-xl bg-zinc-900 px-3 py-2.5">
+                            <div className="min-w-0 flex items-center gap-2">
+                              <span className="text-emerald-400">📄</span>
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-medium">{selectedAccount.einCertificateName || "certificate"}</div>
+                                {selectedAccount.einCertificateUploadedAt && (
+                                  <div className="text-[11px] text-zinc-500">
+                                    Uploaded {new Date(selectedAccount.einCertificateUploadedAt).toLocaleString()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                if (!adminUserId) return;
+                                try {
+                                  const res = await fetch("/api/ein-certificate-url", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ userId: selectedAccount.id, requestingUserId: adminUserId }),
+                                  });
+                                  const json = await res.json();
+                                  if (json.success && json.url) {
+                                    window.open(json.url, "_blank");
+                                  } else {
+                                    alert(json.error || "Could not generate download link");
+                                  }
+                                } catch (err) {
+                                  alert(err instanceof Error ? err.message : "Download failed");
+                                }
+                              }}
+                              className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-medium hover:bg-emerald-700 flex items-center gap-1.5"
+                            >
+                              <span>⬇</span> Download
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-dashed border-zinc-700 px-3 py-3 text-xs text-zinc-500">
+                            User has not uploaded an EIN certificate yet.
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}

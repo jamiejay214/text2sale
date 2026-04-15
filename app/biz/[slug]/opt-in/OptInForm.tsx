@@ -15,8 +15,26 @@ export default function OptInForm({
   const [consent, setConsent] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Persist the opt-in lead
+    try {
+      await fetch("/api/opt-in", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ slug, firstName, lastName, phone, consent }),
+      });
+    } catch { /* non-blocking */ }
+
+    // Fire Meta Pixel Lead event
+    try {
+      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+      if (typeof w.fbq === "function") {
+        w.fbq("track", "Lead", { content_name: businessName });
+      }
+    } catch { /* ignore */ }
+
     setSubmitted(true);
   };
 

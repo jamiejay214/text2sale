@@ -87,6 +87,11 @@ export type A2PRegistration = {
   helpMessage: string;
   hasEmbeddedLinks: boolean;
   hasEmbeddedPhone: boolean;
+  // EIN certificate (uploaded proof of EIN)
+  einCertificatePath?: string | null;
+  einCertificateName?: string | null;
+  einCertificateType?: string | null;
+  einCertificateUploadedAt?: string | null;
   // Errors
   errors: string[];
   updatedAt: string;

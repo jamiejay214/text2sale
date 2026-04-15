@@ -52,6 +52,9 @@ type AccountRecord = {
   a2pRegistration?: A2PRegistration | null;
   complianceLog?: ComplianceEventRecord[];
   autoRecharge?: { enabled: boolean; threshold: number; amount: number };
+  businessSlug?: string | null;
+  businessDescription?: string | null;
+  businessLogoUrl?: string | null;
 };
 
 type ContactRecord = {
@@ -113,7 +116,7 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
-type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc";
+type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page";
 
 type CSVUploadRecord = {
   id: string;
@@ -199,6 +202,9 @@ function profileToAccount(p: Profile): AccountRecord {
     a2pRegistration: p.a2p_registration || null,
     complianceLog: p.compliance_log || [],
     autoRecharge: p.auto_recharge || { enabled: false, threshold: 1, amount: 20 },
+    businessSlug: p.business_slug || null,
+    businessDescription: p.business_description || null,
+    businessLogoUrl: p.business_logo_url || null,
   };
 }
 
@@ -689,10 +695,19 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
-      // Handle tab redirect (e.g. from Stripe portal return)
+      // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
-      if (tabParam && ["overview","conversations","campaigns","contacts","upload","numbers","billing","opt-out","activity","team","10dlc"].includes(tabParam)) {
+      const subtabParam = params.get("subtab");
+      const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","upload","templates","settings","learn"];
+      const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page"];
+      if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
+      }
+      if (subtabParam && validSubtabs.includes(subtabParam as SettingsSubTab)) {
+        setActiveTab("settings");
+        setSettingsSubTab(subtabParam as SettingsSubTab);
+      }
+      if (tabParam || subtabParam) {
         window.history.replaceState({}, "", "/dashboard");
       }
 
@@ -1803,6 +1818,7 @@ export default function DashboardPage() {
 
   const handleBuyNumber = async (phoneNumber: string, displayNumber: string) => {
     if (!requireSubscription()) return;
+    if (!require10DLCApproved()) return;
     if (!currentUser || !userId) return;
 
     const walletBalance = currentUser.walletBalance || 0;
@@ -1818,7 +1834,7 @@ export default function DashboardPage() {
       const res = await fetch("/api/buy-number", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phoneNumber }),
+        body: JSON.stringify({ phoneNumber, userId }),
       });
 
       const data = await res.json();
@@ -1850,8 +1866,14 @@ export default function DashboardPage() {
 
       // Remove purchased number from available list
       setAvailableNumbers((prev) => prev.filter((n) => n.raw !== phoneNumber));
-      setMessage(`✅ Number ${data.number} purchased`);
-      window.setTimeout(() => setMessage(""), 3000);
+      if (data.campaignAssigned) {
+        setMessage(`✅ ${data.number} purchased and assigned to your 10DLC campaign`);
+      } else if (data.campaignAssignmentError) {
+        setMessage(`✅ ${data.number} purchased. Campaign assignment pending — check back shortly.`);
+      } else {
+        setMessage(`✅ Number ${data.number} purchased`);
+      }
+      window.setTimeout(() => setMessage(""), 3500);
     } catch {
       setMessage("❌ Could not connect to SMS service");
       window.setTimeout(() => setMessage(""), 3000);
@@ -2634,6 +2656,9 @@ export default function DashboardPage() {
 
   const isSubscribed = currentUser.subscriptionStatus === "active" || currentUser.subscriptionStatus === "canceling";
 
+  const a2pStatus = currentUser.a2pRegistration?.status;
+  const is10DLCApproved = a2pStatus === "completed" || a2pStatus === "campaign_approved";
+
   const requireSubscription = () => {
     if (isSubscribed) return true;
     if (demoMode) {
@@ -2643,6 +2668,16 @@ export default function DashboardPage() {
     }
     setMessage("❌ Please subscribe and add a payment method before using paid features. Go to the Billing tab.");
     window.setTimeout(() => setMessage(""), 4000);
+    return false;
+  };
+
+  const require10DLCApproved = () => {
+    if (is10DLCApproved) return true;
+    if (demoMode) return true;
+    setMessage("🔒 Complete 10DLC registration and wait for carrier approval before purchasing numbers.");
+    window.setTimeout(() => setMessage(""), 5000);
+    setActiveTab("settings");
+    setSettingsSubTab("10dlc");
     return false;
   };
 
@@ -5100,6 +5135,7 @@ export default function DashboardPage() {
                 { id: "activity", label: "📋 Activity" },
                 { id: "opt-out", label: "🚫 Opt-Out / DNC" },
                 { id: "10dlc", label: "✅ 10DLC" },
+                { id: "biz-page", label: "🌐 Biz Page" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
@@ -5127,6 +5163,25 @@ export default function DashboardPage() {
                 {!isSubscribed && (
                   <div className="mt-4 rounded-2xl border border-amber-800/40 bg-amber-950/20 p-4 text-sm text-amber-200/80">
                     Subscribe first before purchasing phone numbers.
+                  </div>
+                )}
+
+                {isSubscribed && !is10DLCApproved && (
+                  <div className="mt-4 rounded-2xl border border-amber-800/40 bg-amber-950/20 p-4 text-sm text-amber-200/90">
+                    <div className="font-semibold">🔒 10DLC approval required</div>
+                    <p className="mt-1 text-amber-200/70">
+                      Carriers require every business to be registered and approved before sending A2P SMS. Finish 10DLC registration first — approval takes 1–3 business days.
+                    </p>
+                    <button
+                      onClick={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }}
+                      className="mt-3 rounded-xl bg-amber-600 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-500 transition"
+                    >
+                      {a2pStatus === "not_started" || !a2pStatus ? "Start 10DLC Registration" :
+                       a2pStatus === "brand_pending" ? "Brand Registration Pending — View Status" :
+                       a2pStatus === "campaign_pending" ? "Campaign Pending Approval — View Status" :
+                       a2pStatus === "brand_approved" ? "Brand Approved — Finish Registration" :
+                       "View 10DLC Status"}
+                    </button>
                   </div>
                 )}
 
@@ -5162,8 +5217,8 @@ export default function DashboardPage() {
                       <button
                         key={num.raw}
                         onClick={() => handleBuyNumber(num.raw, num.display)}
-                        disabled={buyingNumber === num.raw || (currentUser.walletBalance || 0) < 1.5}
-                        className="w-full flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/60 px-5 py-4 text-left hover:bg-zinc-700/60 hover:border-violet-600 transition disabled:opacity-50"
+                        disabled={buyingNumber === num.raw || (currentUser.walletBalance || 0) < 1.5 || !is10DLCApproved}
+                        className="w-full flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/60 px-5 py-4 text-left hover:bg-zinc-700/60 hover:border-violet-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <div>
                           <div className="font-mono text-lg font-semibold">{num.display}</div>
@@ -6338,6 +6393,45 @@ export default function DashboardPage() {
                       onChange={(e) => setA2pForm({ ...a2pForm, ein: e.target.value })}
                     />
                   </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-sm text-zinc-400">EIN Certificate (CP-575 or EIN verification letter)</label>
+                    <EinCertificateUpload
+                      userId={userId}
+                      certificate={currentUser?.a2pRegistration ? {
+                        path: currentUser.a2pRegistration.einCertificatePath || null,
+                        name: currentUser.a2pRegistration.einCertificateName || null,
+                        uploadedAt: currentUser.a2pRegistration.einCertificateUploadedAt || null,
+                      } : null}
+                      onUploaded={(info) => {
+                        setCurrentUser((prev) => {
+                          if (!prev) return prev;
+                          const prevReg = prev.a2pRegistration || {
+                            status: "not_started" as const,
+                            customerProfileSid: null, trustProductSid: null, brandRegistrationSid: null, brandStatus: null,
+                            messagingServiceSid: null, campaignSid: null, campaignStatus: null,
+                            businessName: "", businessType: "llc" as const, ein: "",
+                            businessAddress: "", businessCity: "", businessState: "", businessZip: "", businessCountry: "US",
+                            website: "",
+                            contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
+                            useCase: "", description: "", sampleMessages: [], messageFlow: "",
+                            optInMessage: "", optOutMessage: "", helpMessage: "",
+                            hasEmbeddedLinks: false, hasEmbeddedPhone: false,
+                            errors: [], updatedAt: new Date().toISOString(),
+                          };
+                          return {
+                            ...prev,
+                            a2pRegistration: {
+                              ...prevReg,
+                              einCertificatePath: info.path,
+                              einCertificateName: info.name,
+                              einCertificateType: info.type,
+                              einCertificateUploadedAt: info.uploadedAt,
+                            },
+                          };
+                        });
+                      }}
+                    />
+                  </div>
                   <div>
                     <label className="mb-1 block text-sm text-zinc-400">Business Type</label>
                     <select
@@ -6537,6 +6631,29 @@ export default function DashboardPage() {
                   <div><span className="text-zinc-400">Campaign:</span> {currentUser.a2pRegistration.useCase}</div>
                   <div><span className="text-zinc-400">Status:</span> <span className="text-emerald-400">Active</span></div>
                 </div>
+                <div className="mt-4">
+                  <div className="mb-2 text-sm font-medium text-zinc-300">EIN Certificate</div>
+                  <EinCertificateUpload
+                    userId={userId}
+                    certificate={{
+                      path: currentUser.a2pRegistration.einCertificatePath || null,
+                      name: currentUser.a2pRegistration.einCertificateName || null,
+                      uploadedAt: currentUser.a2pRegistration.einCertificateUploadedAt || null,
+                    }}
+                    onUploaded={(info) => {
+                      setCurrentUser((prev) => prev && prev.a2pRegistration ? {
+                        ...prev,
+                        a2pRegistration: {
+                          ...prev.a2pRegistration,
+                          einCertificatePath: info.path,
+                          einCertificateName: info.name,
+                          einCertificateType: info.type,
+                          einCertificateUploadedAt: info.uploadedAt,
+                        },
+                      } : prev);
+                    }}
+                  />
+                </div>
               </div>
             )}
 
@@ -6558,6 +6675,24 @@ export default function DashboardPage() {
               )}
             </div>
           </div>
+        )}
+
+        {/* ═══════════════ BUSINESS PAGE EDITOR ═══════════════ */}
+        {settingsSubTab === "biz-page" && (
+          <BizPageEditor
+            slug={currentUser.businessSlug || ""}
+            description={currentUser.businessDescription || ""}
+            logoUrl={currentUser.businessLogoUrl || ""}
+            onSave={async (updates) => {
+              await persistProfile({
+                business_slug: updates.slug || null,
+                business_description: updates.description || null,
+                business_logo_url: updates.logoUrl || null,
+              });
+              setMessage("✅ Business page updated.");
+              window.setTimeout(() => setMessage(""), 3000);
+            }}
+          />
         )}
 
           </div>
@@ -7487,5 +7622,260 @@ export default function DashboardPage() {
         </>
       )}
     </main>
+  );
+}
+
+// ═══════════════════════ BIZ PAGE EDITOR ═══════════════════════
+function BizPageEditor({
+  slug: initialSlug,
+  description: initialDescription,
+  logoUrl: initialLogoUrl,
+  onSave,
+}: {
+  slug: string;
+  description: string;
+  logoUrl: string;
+  onSave: (updates: { slug: string; description: string; logoUrl: string }) => Promise<void>;
+}) {
+  const [slug, setSlug] = useState(initialSlug);
+  const [description, setDescription] = useState(initialDescription);
+  const [logoUrl, setLogoUrl] = useState(initialLogoUrl);
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  const normalizedSlug = slug.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  const previewUrl = normalizedSlug ? `/biz/${normalizedSlug}` : "";
+
+  const handleSave = async () => {
+    setLocalError("");
+    if (slug && !normalizedSlug) {
+      setLocalError("Slug must contain letters, numbers, or hyphens.");
+      return;
+    }
+    if (normalizedSlug.length > 0 && normalizedSlug.length < 3) {
+      setLocalError("Slug must be at least 3 characters.");
+      return;
+    }
+    if (description.length > 500) {
+      setLocalError("Description must be 500 characters or fewer.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave({ slug: normalizedSlug, description: description.trim(), logoUrl: logoUrl.trim() });
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : "Failed to save.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+        <h2 className="text-2xl font-bold">🌐 Your Business Page</h2>
+        <p className="mt-2 text-sm text-zinc-400">
+          Text2Sale hosts a free public landing page at{" "}
+          <code className="rounded bg-zinc-800 px-2 py-0.5 text-xs text-violet-300">text2sale.com/biz/your-slug</code>{" "}
+          with an SMS opt-in form. Use this for ads, Instagram bios, QR codes — anywhere you collect leads.
+        </p>
+
+        <div className="mt-6 space-y-5">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-300">Page Slug</label>
+            <div className="flex items-center gap-2">
+              <span className="rounded-l-2xl border border-r-0 border-zinc-700 bg-zinc-800/60 px-3 py-3 text-sm text-zinc-500">text2sale.com/biz/</span>
+              <input
+                value={slug}
+                onChange={(e) => setSlug(e.target.value)}
+                placeholder="your-business"
+                className="flex-1 rounded-r-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+              />
+            </div>
+            {normalizedSlug && slug !== normalizedSlug && (
+              <p className="mt-1 text-xs text-zinc-500">Will be saved as: <span className="text-violet-400">{normalizedSlug}</span></p>
+            )}
+            {previewUrl && (
+              <p className="mt-2 text-xs text-zinc-500">
+                Preview:{" "}
+                <a
+                  href={previewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-violet-400 hover:text-violet-300 underline"
+                >
+                  text2sale.com{previewUrl}
+                </a>
+              </p>
+            )}
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-300">
+              Business Description
+              <span className="ml-2 text-xs text-zinc-500">({description.length}/500)</span>
+            </label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={4}
+              maxLength={500}
+              placeholder="Describe what your business does in 1-2 sentences. This shows on your page and in search results."
+              className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+            />
+          </div>
+
+          <div>
+            <label className="mb-2 block text-sm font-medium text-zinc-300">Logo URL (optional)</label>
+            <input
+              value={logoUrl}
+              onChange={(e) => setLogoUrl(e.target.value)}
+              placeholder="https://..."
+              className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
+            />
+            <p className="mt-1 text-xs text-zinc-500">Paste a public URL to your logo. Leave blank if you don&apos;t have one yet.</p>
+          </div>
+
+          {localError && (
+            <div className="rounded-xl border border-red-800/40 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+              {localError}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className="rounded-2xl bg-violet-600 px-6 py-3 text-sm font-semibold text-white hover:bg-violet-500 transition disabled:opacity-50"
+            >
+              {saving ? "Saving..." : "Save Changes"}
+            </button>
+            {previewUrl && (
+              <a
+                href={previewUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-2xl border border-zinc-700 px-6 py-3 text-sm font-semibold text-zinc-300 hover:border-zinc-600 hover:text-white transition"
+              >
+                View Live Page ↗
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── EIN Certificate Upload ──
+function EinCertificateUpload({
+  userId,
+  certificate,
+  onUploaded,
+}: {
+  userId: string | null;
+  certificate: { path: string | null; name: string | null; uploadedAt: string | null } | null;
+  onUploaded: (info: { path: string; name: string; type: string; uploadedAt: string }) => void;
+}) {
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleFile = async (file: File) => {
+    if (!userId) {
+      setError("Please wait a moment and try again.");
+      return;
+    }
+    setError(null);
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append("userId", userId);
+      fd.append("file", file);
+      const res = await fetch("/api/upload-ein-certificate", { method: "POST", body: fd });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error || "Upload failed.");
+      } else {
+        onUploaded({ path: json.path, name: json.name, type: json.type, uploadedAt: json.uploadedAt });
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!userId) return;
+    try {
+      const res = await fetch("/api/ein-certificate-url", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId, requestingUserId: userId }),
+      });
+      const json = await res.json();
+      if (json.success && json.url) {
+        window.open(json.url, "_blank");
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const hasCert = !!certificate?.path;
+
+  return (
+    <div className="rounded-xl border border-dashed border-zinc-700 bg-zinc-800/60 p-4">
+      {hasCert && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-lg bg-zinc-800 px-3 py-2 text-sm">
+          <div className="min-w-0 flex items-center gap-2">
+            <span className="text-emerald-400">📄</span>
+            <div className="min-w-0">
+              <div className="truncate text-zinc-200">{certificate?.name}</div>
+              {certificate?.uploadedAt && (
+                <div className="text-xs text-zinc-500">
+                  Uploaded {new Date(certificate.uploadedAt).toLocaleDateString()}
+                </div>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="shrink-0 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-medium hover:bg-zinc-600"
+          >
+            View / Download
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center gap-3">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="application/pdf,image/png,image/jpeg,image/jpg,image/webp"
+          onChange={(e) => {
+            const f = e.target.files?.[0];
+            if (f) handleFile(f);
+          }}
+          disabled={uploading}
+          className="block w-full text-sm text-zinc-400 file:mr-3 file:rounded-lg file:border-0 file:bg-violet-600 file:px-4 file:py-2 file:text-sm file:font-medium file:text-white hover:file:bg-violet-700 file:cursor-pointer"
+        />
+        {uploading && <span className="text-xs text-zinc-400">Uploading...</span>}
+      </div>
+
+      <p className="mt-2 text-xs text-zinc-500">
+        {hasCert
+          ? "Uploading a new file will replace the existing one. "
+          : ""}
+        PDF, PNG, JPG, or WebP · Max 10MB
+      </p>
+
+      {error && (
+        <div className="mt-2 text-xs text-red-400">{error}</div>
+      )}
+    </div>
   );
 }
