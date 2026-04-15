@@ -51,29 +51,19 @@ export async function POST(req: NextRequest) {
 
     let sent = 0;
     let failed = 0;
-    let deferred = 0;
+    const deferred = 0;
     let paused = false;
     const replies = 0;
     const errors: string[] = [];
 
-    for (let i = 0; i < contacts.length; i++) {
-      // Every 10 contacts, re-check the campaign's status so the user can
-      // hit "Pause" mid-send and actually stop within seconds.
-      if (i > 0 && i % 10 === 0) {
-        const { data: liveCampaign } = await supabase
-          .from("campaigns")
-          .select("status")
-          .eq("id", campaignId)
-          .single();
-        if (liveCampaign?.status === "Paused") {
-          paused = true;
-          break;
-        }
-      }
+    // Process contacts in parallel chunks. Sequential sends were ~4 round
+    // trips per contact (Telnyx + 2-3 Supabase) — at ~250ms each that's a
+    // full second per contact. With CHUNK=25 we get ~25× throughput while
+    // staying well under serverless concurrency / Telnyx burst limits.
+    const CHUNK = 25;
 
-      const contact = contacts[i];
-      const fromNumber = fromList[i % fromList.length];
-
+    const processOne = async (contact: typeof contacts[number], idx: number) => {
+      const fromNumber = fromList[idx % fromList.length];
       try {
         const personalizedBody = messageTemplate
           .replace(/\{firstName\}/gi, contact.first_name || "")
@@ -96,7 +86,6 @@ export async function POST(req: NextRequest) {
         const toDigits = contact.phone.replace(/\D/g, "");
         const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
 
-        // Send via Telnyx
         const res = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
           headers: {
@@ -119,60 +108,93 @@ export async function POST(req: NextRequest) {
 
         sent++;
 
+        // Best-effort writes — kicked off in parallel and not awaited
+        // individually. We await them at the chunk boundary below.
+        const writes: Promise<unknown>[] = [];
+
         if (campaignName && !contact.campaign) {
-          await supabase.from("contacts").update({ campaign: campaignName }).eq("id", contact.id);
+          writes.push(
+            (async () => {
+              await supabase.from("contacts").update({ campaign: campaignName }).eq("id", contact.id);
+            })()
+          );
         }
 
-        // Create/update conversation
-        const { data: existingConv } = await supabase
-          .from("conversations")
-          .select("id")
-          .eq("contact_id", contact.id)
-          .eq("user_id", userId)
-          .single();
+        writes.push(
+          (async () => {
+            const { data: existingConv } = await supabase
+              .from("conversations")
+              .select("id")
+              .eq("contact_id", contact.id)
+              .eq("user_id", userId)
+              .single();
 
-        if (!existingConv) {
-          const { data: newConv } = await supabase
-            .from("conversations")
-            .insert({
-              user_id: userId,
-              contact_id: contact.id,
-              preview: personalizedBody.slice(0, 100),
-              unread: 0,
-              last_message_at: new Date().toISOString(),
-            })
-            .select()
-            .single();
+            if (!existingConv) {
+              const { data: newConv } = await supabase
+                .from("conversations")
+                .insert({
+                  user_id: userId,
+                  contact_id: contact.id,
+                  preview: personalizedBody.slice(0, 100),
+                  unread: 0,
+                  last_message_at: new Date().toISOString(),
+                })
+                .select()
+                .single();
 
-          if (newConv) {
-            await supabase.from("messages").insert({
-              conversation_id: newConv.id,
-              direction: "outbound",
-              body: personalizedBody,
-              status: "sent",
-            });
-          }
-        } else {
-          await supabase
-            .from("conversations")
-            .update({
-              preview: personalizedBody.slice(0, 100),
-              last_message_at: new Date().toISOString(),
-            })
-            .eq("id", existingConv.id);
+              if (newConv) {
+                await supabase.from("messages").insert({
+                  conversation_id: newConv.id,
+                  direction: "outbound",
+                  body: personalizedBody,
+                  status: "sent",
+                });
+              }
+            } else {
+              await Promise.all([
+                supabase
+                  .from("conversations")
+                  .update({
+                    preview: personalizedBody.slice(0, 100),
+                    last_message_at: new Date().toISOString(),
+                  })
+                  .eq("id", existingConv.id),
+                supabase.from("messages").insert({
+                  conversation_id: existingConv.id,
+                  direction: "outbound",
+                  body: personalizedBody,
+                  status: "sent",
+                }),
+              ]);
+            }
+          })()
+        );
 
-          await supabase.from("messages").insert({
-            conversation_id: existingConv.id,
-            direction: "outbound",
-            body: personalizedBody,
-            status: "sent",
-          });
-        }
+        await Promise.all(writes);
       } catch (err: unknown) {
         failed++;
         const msg = err instanceof Error ? err.message : "Send failed";
         errors.push(`${contact.phone}: ${msg}`);
       }
+    };
+
+    for (let i = 0; i < contacts.length; i += CHUNK) {
+      // Pause check between chunks — gives the user a few-second response
+      // when they hit Pause mid-send.
+      if (i > 0) {
+        const { data: liveCampaign } = await supabase
+          .from("campaigns")
+          .select("status")
+          .eq("id", campaignId)
+          .single();
+        if (liveCampaign?.status === "Paused") {
+          paused = true;
+          break;
+        }
+      }
+
+      const slice = contacts.slice(i, i + CHUNK);
+      await Promise.all(slice.map((c, j) => processOne(c, i + j)));
     }
 
     // Keep the first few distinct error messages on the log so the user can

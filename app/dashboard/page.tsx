@@ -119,16 +119,16 @@ type ConversationRecord = {
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
 type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page";
 
-// Map internal Telnyx status to user-facing labels. Our DB stores "sent" as
-// the "Telnyx accepted, not yet confirmed delivered" state — from the user's
-// perspective that's still in-flight, so we show "Sending". Only when the
-// delivery-receipt webhook confirms delivery do we flip to "Delivered".
+// Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
+// is unreliable (carrier-dependent), so we treat a successful API ack ("sent")
+// as Delivered — the alternative is leaving most messages stuck on "Sending"
+// forever even though they actually went through. Only "queued"/"sending"
+// (pre-handoff to Telnyx) count as in-flight in the UI.
 function displayMessageStatus(status?: string): string {
-  if (status === "delivered") return "Delivered";
   if (status === "failed") return "Failed";
   if (status === "received") return "Received";
-  // "sent", "queued", "sending", undefined, or anything else → still in flight.
-  return "Sending";
+  if (status === "queued" || status === "sending") return "Sending";
+  return "Delivered";
 }
 
 type CSVUploadRecord = {
