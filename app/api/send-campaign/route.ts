@@ -175,6 +175,12 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Keep the first few distinct error messages on the log so the user can
+    // actually see *why* a campaign failed instead of just a count.
+    const distinctErrors = Array.from(new Set(errors)).slice(0, 5);
+    const errorSummary = distinctErrors.length > 0
+      ? ` — ${distinctErrors.join(" | ")}`
+      : "";
     const logs = [{
       id: `log_${Date.now()}`,
       createdAt: new Date().toISOString(),
@@ -184,7 +190,7 @@ export async function POST(req: NextRequest) {
       notes: paused
         ? `Paused after ${sent} sent, ${failed} failed (${contacts.length - sent - failed} skipped)`
         : failed > 0
-          ? `${errors.length} errors`
+          ? `${failed} errors${errorSummary}`
           : "All sent successfully",
     }];
 
