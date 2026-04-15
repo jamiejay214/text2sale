@@ -52,10 +52,25 @@ export async function POST(req: NextRequest) {
     let sent = 0;
     let failed = 0;
     let deferred = 0;
+    let paused = false;
     const replies = 0;
     const errors: string[] = [];
 
     for (let i = 0; i < contacts.length; i++) {
+      // Every 10 contacts, re-check the campaign's status so the user can
+      // hit "Pause" mid-send and actually stop within seconds.
+      if (i > 0 && i % 10 === 0) {
+        const { data: liveCampaign } = await supabase
+          .from("campaigns")
+          .select("status")
+          .eq("id", campaignId)
+          .single();
+        if (liveCampaign?.status === "Paused") {
+          paused = true;
+          break;
+        }
+      }
+
       const contact = contacts[i];
       const fromNumber = fromList[i % fromList.length];
 
@@ -163,25 +178,43 @@ export async function POST(req: NextRequest) {
     const logs = [{
       id: `log_${Date.now()}`,
       createdAt: new Date().toISOString(),
-      attempted: contacts.length,
+      attempted: sent + failed,
       success: sent,
       failed,
-      notes: failed > 0 ? `${errors.length} errors` : "All sent successfully",
+      notes: paused
+        ? `Paused after ${sent} sent, ${failed} failed (${contacts.length - sent - failed} skipped)`
+        : failed > 0
+          ? `${errors.length} errors`
+          : "All sent successfully",
     }];
 
+    // If the user paused mid-send, leave the campaign in "Paused" status so
+    // they can resume/relaunch. Otherwise mark it completed.
     await supabase
       .from("campaigns")
-      .update({ status: "Completed", audience: contacts.length, sent, failed, replies, logs })
+      .update({
+        status: paused ? "Paused" : "Completed",
+        audience: contacts.length,
+        sent,
+        failed,
+        replies,
+        logs,
+      })
       .eq("id", campaignId);
 
     return NextResponse.json({
       success: true,
+      paused,
       sent,
       failed,
       deferred,
       total: contacts.length,
       errors: errors.slice(0, 10),
-      message: deferred > 0 ? `${deferred} contact(s) skipped due to quiet hours (9 PM - 8 AM)` : undefined,
+      message: paused
+        ? `Campaign paused — ${sent} sent before stop`
+        : deferred > 0
+          ? `${deferred} contact(s) skipped due to quiet hours (9 PM - 8 AM)`
+          : undefined,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";

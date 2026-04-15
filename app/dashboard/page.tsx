@@ -2274,6 +2274,18 @@ export default function DashboardPage() {
       for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
         const step = steps[stepIdx];
 
+        // Before each step, re-check the campaign's status so a pause while
+        // waiting between steps actually stops the next step from firing.
+        const { data: liveCampaign } = await supabase
+          .from("campaigns")
+          .select("status")
+          .eq("id", campaignId)
+          .single();
+        if (liveCampaign?.status === "Paused") {
+          setMessage(`⏸ Campaign paused — stopped before step ${stepIdx + 1}/${steps.length}`);
+          break;
+        }
+
         // Wait for delay (skip delay for first step)
         if (stepIdx > 0 && step.delayMinutes > 0) {
           setMessage(`⏳ Step ${stepIdx + 1}/${steps.length} — waiting ${step.delayMinutes} minute${step.delayMinutes !== 1 ? "s" : ""}...`);
@@ -2298,25 +2310,59 @@ export default function DashboardPage() {
         if (data.success) {
           totalSent += data.sent;
           totalFailed += data.failed;
+          if (data.paused) {
+            // User hit pause mid-step — stop the outer loop too.
+            setMessage(`⏸ Campaign paused — ${totalSent} sent before stop`);
+            setCampaigns((prev) => prev.map((c) =>
+              c.id === campaignId ? {
+                ...c, status: "Paused" as const,
+                sent: totalSent, failed: totalFailed, audience,
+              } : c
+            ));
+            setLaunchingCampaignId(null);
+            window.setTimeout(() => setMessage(""), 4000);
+            return;
+          }
         } else {
           setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
           break;
         }
       }
 
+      // If the outer loop broke on pause, reflect that status instead of Completed.
+      const { data: finalCampaign } = await supabase
+        .from("campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .single();
+      const finalStatus: "Completed" | "Paused" =
+        finalCampaign?.status === "Paused" ? "Paused" : "Completed";
       setCampaigns((prev) => prev.map((c) =>
         c.id === campaignId ? {
-          ...c, status: "Completed" as const,
+          ...c, status: finalStatus,
           sent: totalSent, failed: totalFailed, audience,
         } : c
       ));
-      setMessage(`✅ Campaign complete — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
+      if (finalStatus === "Completed") {
+        setMessage(`✅ Campaign complete — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
+      }
     } catch {
       setMessage("❌ Could not connect to SMS service");
     }
 
     setLaunchingCampaignId(null);
     window.setTimeout(() => setMessage(""), 4000);
+  };
+
+  const handlePauseCampaign = async (campaignId: string) => {
+    const campaign = campaigns.find((c) => c.id === campaignId);
+    if (!campaign) return;
+    await dbUpdateCampaign(campaignId, { status: "Paused" });
+    setCampaigns((prev) => prev.map((c) =>
+      c.id === campaignId ? { ...c, status: "Paused" as const } : c
+    ));
+    setMessage("⏸ Pausing campaign — remaining messages will stop within a few seconds");
+    window.setTimeout(() => setMessage(""), 3500);
   };
 
   const handleScheduleCampaign = async () => {
@@ -4408,6 +4454,14 @@ export default function DashboardPage() {
                           </button>
                           {canLaunch && (
                             <span className="text-xs text-zinc-500 italic">Upload CSV to send</span>
+                          )}
+                          {(campaign.status === "Sending" || isLaunching) && (
+                            <button
+                              onClick={() => handlePauseCampaign(campaign.id)}
+                              className="rounded-xl border border-amber-700 bg-amber-900/30 px-4 py-2 text-sm font-medium text-amber-300 hover:bg-amber-900/50"
+                            >
+                              ⏸ Pause
+                            </button>
                           )}
                           <button
                             onClick={() => handleDeleteCampaign(campaign.id)}
