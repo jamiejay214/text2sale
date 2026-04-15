@@ -156,31 +156,12 @@ const CSV_CONTACT_FIELDS = [
   { value: "tags", label: "Tags" },
 ];
 
-function autoDetectMapping(header: string): string {
-  const h = header.toLowerCase().trim().replace(/[_\-\s]+/g, "");
-  // Note: we deliberately do NOT auto-detect phone columns. Many CRM exports
-  // have Mobile/Home/Business columns where the real number is inconsistently
-  // placed, so auto-detecting the wrong one silently dropped rows at send time.
-  // The user now picks the phone column explicitly.
-  const map: Record<string, string> = {
-    firstname: "first_name", first: "first_name", fname: "first_name",
-    lastname: "last_name", last: "last_name", lname: "last_name",
-    email: "email", emailaddress: "email",
-    city: "city", town: "city",
-    state: "state", st: "state", province: "state",
-    address: "address", streetaddress: "address", street: "address", addr: "address",
-    zip: "zip", zipcode: "zip", postalcode: "zip", postal: "zip",
-    leadsource: "lead_source", source: "lead_source",
-    dateofbirth: "date_of_birth", dob: "date_of_birth", birthday: "date_of_birth", birthdate: "date_of_birth",
-    age: "age",
-    quote: "quote",
-    policyid: "policy_id", policy: "policy_id", policynumber: "policy_id",
-    timeline: "timeline",
-    householdsize: "household_size", household: "household_size", hhsize: "household_size",
-    notes: "notes", note: "notes", comments: "notes", comment: "notes",
-    tags: "tags", tag: "tags",
-  };
-  return map[h] || "";
+function autoDetectMapping(_header: string): string {
+  // Auto-detection is deliberately disabled. CRM exports vary too much — e.g.
+  // the real phone number can be under Business/Mobile/Home/Work — so any
+  // automatic guess silently dropped rows at send time. The user maps every
+  // column themselves.
+  return "";
 }
 
 type TeamMemberDetail = {
