@@ -32,6 +32,8 @@ type AccountRecord = {
   role?: "user" | "admin" | "manager";
   subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
   freeSubscription?: boolean;
+  aiPlan?: boolean;
+  freeAiPlan?: boolean;
   teamCode?: string;
   managerId?: string | null;
   referralCode?: string;
@@ -92,6 +94,8 @@ function profileToAccount(p: Profile): AccountRecord {
     ownedNumbers: p.owned_numbers || [],
     subscriptionStatus: p.subscription_status || "inactive",
     freeSubscription: p.free_subscription || false,
+    aiPlan: p.ai_plan || false,
+    freeAiPlan: p.free_ai_plan || false,
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pStatus: p.a2p_registration?.status || "not_started",
     a2pBusinessName: p.a2p_registration?.businessName || "",
@@ -626,6 +630,28 @@ export default function AdminPage() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
+  const toggleAiPlan = async (id: string) => {
+    const acct = accounts.find((a) => a.id === id);
+    if (!acct) return;
+    const next = !acct.aiPlan;
+    await updateProfile(id, { ai_plan: next });
+    await refreshAccount(id);
+    setMessage(next ? "✅ AI plan activated" : "✅ AI plan deactivated");
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const toggleFreeAiPlan = async (id: string) => {
+    const acct = accounts.find((a) => a.id === id);
+    if (!acct) return;
+    const next = !acct.freeAiPlan;
+    const update: Record<string, unknown> = { free_ai_plan: next };
+    if (next) update.ai_plan = true;
+    await updateProfile(id, update);
+    await refreshAccount(id);
+    setMessage(next ? "✅ Free AI plan granted" : "✅ Free AI plan revoked");
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
   const createNewUser = async () => {
     setCreateUserError("");
     if (!newUserForm.firstName.trim()) return setCreateUserError("First name is required.");
@@ -1005,6 +1031,8 @@ export default function AdminPage() {
                         <div className="flex gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${sub.cls}`}>{sub.label}</span>
                           {acct.freeSubscription && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE</span>}
+                          {acct.aiPlan && <span className="rounded-full bg-cyan-900 px-2.5 py-0.5 text-[10px] font-medium text-cyan-300">AI</span>}
+                          {acct.freeAiPlan && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE AI</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
                         </div>
                       </div>
@@ -1229,6 +1257,62 @@ export default function AdminPage() {
                       <span
                         className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
                           selectedAccount.freeSubscription ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* AI Plan toggle */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                    <div>
+                      <div className="text-sm font-medium text-white">
+                        AI Plan
+                        {selectedAccount.aiPlan && <span className="ml-2 rounded-full bg-cyan-900 px-2.5 py-0.5 text-[10px] font-medium text-cyan-300">ACTIVE</span>}
+                        {selectedAccount.freeAiPlan && <span className="ml-1 rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE</span>}
+                      </div>
+                      <div className="text-xs text-zinc-400">
+                        {selectedAccount.aiPlan
+                          ? "AI auto-reply and appointment booking are enabled."
+                          : "Enable AI features ($59.99/mo plan) for this user."}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleAiPlan(selectedAccount.id)}
+                      role="switch"
+                      aria-checked={!!selectedAccount.aiPlan}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+                        selectedAccount.aiPlan ? "bg-cyan-500" : "bg-zinc-600"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                          selectedAccount.aiPlan ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
+
+                  {/* Free AI Plan toggle */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                    <div>
+                      <div className="text-sm font-medium text-white">Free AI Plan</div>
+                      <div className="text-xs text-zinc-400">
+                        {selectedAccount.freeAiPlan
+                          ? "User has free AI access — no $59.99/mo charge."
+                          : "Grant this user AI features at no cost."}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleFreeAiPlan(selectedAccount.id)}
+                      role="switch"
+                      aria-checked={!!selectedAccount.freeAiPlan}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+                        selectedAccount.freeAiPlan ? "bg-emerald-500" : "bg-zinc-600"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                          selectedAccount.freeAiPlan ? "translate-x-6" : "translate-x-1"
                         }`}
                       />
                     </button>
