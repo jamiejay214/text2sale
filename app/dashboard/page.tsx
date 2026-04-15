@@ -3036,28 +3036,36 @@ export default function DashboardPage() {
         </div>
 
         <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-          {([
-            { id: "overview", label: "Overview" },
-            { id: "conversations", label: "Conversations" },
-            { id: "campaigns", label: "Campaigns" },
-            { id: "contacts", label: "Contacts" },
-            { id: "upload", label: "Upload CSV" },
-            { id: "templates", label: "Templates" },
-            { id: "settings", label: "Settings" },
-            { id: "learn", label: "📖 Learn" },
-          ] as { id: DashboardTab; label: string }[]).map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`rounded-2xl px-5 py-3 text-sm font-medium transition ${
-                activeTab === tab.id
-                  ? "bg-violet-600 text-white"
-                  : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-              }`}
-            >
-              {tab.label}
-            </button>
-          ))}
+          {(() => {
+            const totalUnread = conversations.reduce((sum, c) => sum + (c.unread || 0), 0);
+            return ([
+              { id: "overview", label: "Overview" },
+              { id: "conversations", label: "Conversations" },
+              { id: "campaigns", label: "Campaigns" },
+              { id: "contacts", label: "Contacts" },
+              { id: "upload", label: "Upload CSV" },
+              { id: "templates", label: "Templates" },
+              { id: "settings", label: "Settings" },
+              { id: "learn", label: "📖 Learn" },
+            ] as { id: DashboardTab; label: string }[]).map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium transition ${
+                  activeTab === tab.id
+                    ? "bg-violet-600 text-white"
+                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
+                }`}
+              >
+                {tab.label}
+                {tab.id === "conversations" && totalUnread > 0 && (
+                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
+                    {totalUnread > 99 ? "99+" : totalUnread}
+                  </span>
+                )}
+              </button>
+            ));
+          })()}
         </div>
 
         {activeTab === "overview" && (
