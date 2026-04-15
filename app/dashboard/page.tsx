@@ -3387,9 +3387,9 @@ export default function DashboardPage() {
           <div className={`grid min-h-[85vh] gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
               <div className="mb-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3">
                   <h2 className="text-2xl font-bold">Chats</h2>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); setConvSelectMode(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowAll ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
