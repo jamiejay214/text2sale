@@ -42,6 +42,8 @@ export type Profile = {
   ai_instructions?: string | null;
   ai_auto_reply?: boolean;
   ai_plan?: boolean;
+  available_hours?: Record<string, unknown> | null;
+  appointment_reminders?: Record<string, unknown> | null;
   created_at: string;
 };
 

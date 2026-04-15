@@ -60,6 +60,14 @@ type AccountRecord = {
   aiPlan?: boolean;
   aiAutoReply?: boolean;
   aiInstructions?: string;
+  availableHours?: {
+    enabled: boolean;
+    timezone: string;
+    slots: Record<string, { enabled: boolean; start: string; end: string }>;
+    slotDuration: number;
+    bufferMinutes: number;
+    maxDaysOut: number;
+  };
 };
 
 type ContactRecord = {
@@ -120,7 +128,7 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
+type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai";
 
 // Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
@@ -230,6 +238,7 @@ function profileToAccount(p: Profile): AccountRecord {
     aiPlan: p.ai_plan || false,
     aiAutoReply: p.ai_auto_reply || false,
     aiInstructions: p.ai_instructions || "",
+    availableHours: (p.available_hours as AccountRecord["availableHours"]) || undefined,
   };
 }
 
@@ -518,6 +527,17 @@ export default function DashboardPage() {
   const [tagManagerColor, setTagManagerColor] = useState<string>("violet");
   const [aiSuggestedReply, setAiSuggestedReply] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
+  // Appointments
+  type AppointmentRecord = {
+    id: string; user_id: string; contact_id: string | null; conversation_id: string | null;
+    title: string; date: string; time: string; duration_minutes: number;
+    notes: string; status: string; reminder_sent: boolean; created_at: string;
+    contacts?: { first_name: string; last_name: string; phone: string } | null;
+  };
+  const [appointments, setAppointments] = useState<AppointmentRecord[]>([]);
+  const [appointmentFilter, setAppointmentFilter] = useState<"upcoming" | "past" | "cancelled">("upcoming");
+  const [showNewAppointment, setShowNewAppointment] = useState(false);
+  const [newAptForm, setNewAptForm] = useState({ contactId: "", date: "", time: "", title: "Appointment", notes: "" });
   const [viewContactId, setViewContactId] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
@@ -709,6 +729,13 @@ export default function DashboardPage() {
         setSelectedConversationId(convRecords[0].id);
       }
 
+      // Load appointments
+      try {
+        const aptRes = await fetch(`/api/appointments?userId=${uid}`);
+        const aptData = await aptRes.json();
+        if (aptData.appointments) setAppointments(aptData.appointments);
+      } catch { /* ignore */ }
+
       // Load team data for managers
       if (profile.role === "manager" || profile.role === "admin") {
         const members = await fetchTeamMembers(uid);
@@ -757,7 +784,7 @@ export default function DashboardPage() {
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
-      const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","upload","templates","settings","learn"];
+      const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","appointments","upload","templates","settings","learn"];
       const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
@@ -3252,6 +3279,7 @@ export default function DashboardPage() {
               { id: "conversations", label: "Conversations" },
               { id: "campaigns", label: "Campaigns" },
               { id: "contacts", label: "Contacts" },
+              { id: "appointments", label: "Appointments" },
               { id: "upload", label: "Upload CSV" },
               { id: "templates", label: "Templates" },
               { id: "settings", label: "Settings" },
@@ -5433,6 +5461,290 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ═══════════════ APPOINTMENTS ═══════════════ */}
+        {activeTab === "appointments" && (
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Appointments</h1>
+                  <p className="mt-1 text-sm text-zinc-400">Manage your scheduled calls and meetings</p>
+                </div>
+                <button
+                  onClick={() => setShowNewAppointment(true)}
+                  className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700"
+                >
+                  + New Appointment
+                </button>
+              </div>
+            </div>
+
+            {/* Filter buttons */}
+            <div className="flex gap-2">
+              {(["upcoming", "past", "cancelled"] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => setAppointmentFilter(f)}
+                  className={`rounded-xl px-4 py-2 text-sm font-medium capitalize ${
+                    appointmentFilter === f
+                      ? "bg-violet-600 text-white"
+                      : "border border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            {/* New appointment form */}
+            {showNewAppointment && (
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <h3 className="mb-4 text-lg font-bold">Schedule New Appointment</h3>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-500">Contact</label>
+                    <select
+                      value={newAptForm.contactId}
+                      onChange={(e) => setNewAptForm((p) => ({ ...p, contactId: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    >
+                      <option value="">Select contact...</option>
+                      {contacts.filter((c) => !c.dnc).map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.firstName} {c.lastName} — {c.phone}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-500">Title</label>
+                    <input
+                      value={newAptForm.title}
+                      onChange={(e) => setNewAptForm((p) => ({ ...p, title: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-500">Date</label>
+                    <input
+                      type="date"
+                      value={newAptForm.date}
+                      onChange={(e) => setNewAptForm((p) => ({ ...p, date: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-500">Time</label>
+                    <input
+                      type="time"
+                      value={newAptForm.time}
+                      onChange={(e) => setNewAptForm((p) => ({ ...p, time: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-500">Notes</label>
+                    <textarea
+                      value={newAptForm.notes}
+                      onChange={(e) => setNewAptForm((p) => ({ ...p, notes: e.target.value }))}
+                      placeholder="Optional notes..."
+                      className="h-20 w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                    />
+                  </div>
+                </div>
+                <div className="mt-4 flex gap-2">
+                  <button
+                    onClick={async () => {
+                      if (!userId || !newAptForm.date || !newAptForm.time) {
+                        setMessage("Date and time are required");
+                        window.setTimeout(() => setMessage(""), 2500);
+                        return;
+                      }
+                      try {
+                        const res = await fetch("/api/appointments", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({
+                            userId,
+                            contactId: newAptForm.contactId || null,
+                            date: newAptForm.date,
+                            time: newAptForm.time + ":00",
+                            title: newAptForm.title || "Appointment",
+                            notes: newAptForm.notes,
+                          }),
+                        });
+                        const data = await res.json();
+                        if (!res.ok) {
+                          setMessage(`Error: ${data.error}`);
+                        } else {
+                          setAppointments((prev) => [...prev, data.appointment]);
+                          setShowNewAppointment(false);
+                          setNewAptForm({ contactId: "", date: "", time: "", title: "Appointment", notes: "" });
+                          setMessage("Appointment created!");
+                        }
+                      } catch {
+                        setMessage("Failed to create appointment");
+                      }
+                      window.setTimeout(() => setMessage(""), 3000);
+                    }}
+                    className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium hover:bg-violet-700"
+                  >
+                    Create
+                  </button>
+                  <button
+                    onClick={() => setShowNewAppointment(false)}
+                    className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm hover:bg-zinc-800"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Appointments list */}
+            {(() => {
+              const today = new Date().toISOString().split("T")[0];
+              const filtered = appointments.filter((a) => {
+                if (appointmentFilter === "cancelled") return a.status === "cancelled";
+                if (appointmentFilter === "past") return a.date < today || a.status === "completed" || a.status === "no_show";
+                return a.date >= today && a.status === "confirmed";
+              });
+
+              if (filtered.length === 0) {
+                return (
+                  <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-10 text-center">
+                    <p className="text-zinc-500">
+                      {appointmentFilter === "upcoming"
+                        ? "No upcoming appointments. When AI books a call with a customer, it'll appear here."
+                        : `No ${appointmentFilter} appointments.`}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3">
+                  {filtered.map((apt) => {
+                    const [h, m] = (apt.time || "00:00").split(":").map(Number);
+                    const ampm = h >= 12 ? "PM" : "AM";
+                    const h12 = h % 12 || 12;
+                    const timeDisplay = `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
+                    const dateDisplay = new Date(apt.date + "T12:00:00").toLocaleDateString("en-US", {
+                      weekday: "short", month: "short", day: "numeric",
+                    });
+                    const contactName = apt.contacts
+                      ? `${apt.contacts.first_name || ""} ${apt.contacts.last_name || ""}`.trim() || "Unknown"
+                      : contacts.find((c) => c.id === apt.contact_id)
+                        ? `${contacts.find((c) => c.id === apt.contact_id)!.firstName} ${contacts.find((c) => c.id === apt.contact_id)!.lastName}`.trim()
+                        : "No contact";
+
+                    return (
+                      <div key={apt.id} className="flex items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900 p-5">
+                        {/* Date badge */}
+                        <div className="flex h-14 w-14 flex-col items-center justify-center rounded-xl bg-violet-900/40 text-center">
+                          <span className="text-lg font-bold text-violet-300">
+                            {new Date(apt.date + "T12:00:00").getDate()}
+                          </span>
+                          <span className="text-[10px] font-medium uppercase text-violet-400">
+                            {new Date(apt.date + "T12:00:00").toLocaleDateString("en-US", { month: "short" })}
+                          </span>
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="font-semibold text-white">{apt.title}</div>
+                          <div className="text-sm text-zinc-400">
+                            {dateDisplay} at {timeDisplay} — {apt.duration_minutes}min
+                          </div>
+                          <div className="text-sm text-zinc-500">
+                            {contactName}
+                            {apt.contacts?.phone ? ` (${apt.contacts.phone})` : ""}
+                          </div>
+                          {apt.notes && (
+                            <div className="mt-1 text-xs text-zinc-600">{apt.notes}</div>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {apt.status === "confirmed" && apt.date >= today && (
+                            <>
+                              <button
+                                onClick={async () => {
+                                  await fetch("/api/appointments", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: apt.id, status: "completed" }),
+                                  });
+                                  setAppointments((prev) =>
+                                    prev.map((a) => a.id === apt.id ? { ...a, status: "completed" } : a)
+                                  );
+                                  setMessage("Marked as completed");
+                                  window.setTimeout(() => setMessage(""), 2000);
+                                }}
+                                className="rounded-lg bg-emerald-900/50 px-3 py-1.5 text-xs font-medium text-emerald-300 hover:bg-emerald-800/50"
+                              >
+                                Complete
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  await fetch("/api/appointments", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: apt.id, status: "no_show" }),
+                                  });
+                                  setAppointments((prev) =>
+                                    prev.map((a) => a.id === apt.id ? { ...a, status: "no_show" } : a)
+                                  );
+                                  setMessage("Marked as no-show");
+                                  window.setTimeout(() => setMessage(""), 2000);
+                                }}
+                                className="rounded-lg bg-amber-900/50 px-3 py-1.5 text-xs font-medium text-amber-300 hover:bg-amber-800/50"
+                              >
+                                No Show
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (!window.confirm("Cancel this appointment?")) return;
+                                  await fetch("/api/appointments", {
+                                    method: "PATCH",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({ id: apt.id, status: "cancelled" }),
+                                  });
+                                  setAppointments((prev) =>
+                                    prev.map((a) => a.id === apt.id ? { ...a, status: "cancelled" } : a)
+                                  );
+                                  setMessage("Appointment cancelled");
+                                  window.setTimeout(() => setMessage(""), 2000);
+                                }}
+                                className="rounded-lg bg-red-900/50 px-3 py-1.5 text-xs font-medium text-red-300 hover:bg-red-800/50"
+                              >
+                                Cancel
+                              </button>
+                            </>
+                          )}
+                          {apt.status !== "confirmed" && (
+                            <span className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
+                              apt.status === "completed" ? "bg-emerald-900/40 text-emerald-300"
+                              : apt.status === "no_show" ? "bg-amber-900/40 text-amber-300"
+                              : "bg-red-900/40 text-red-300"
+                            }`}>
+                              {apt.status === "no_show" ? "No Show" : apt.status}
+                            </span>
+                          )}
+                          {apt.reminder_sent && (
+                            <span className="text-xs text-zinc-600" title="Reminder sent">
+                              Reminded
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        )}
+
         {/* ═══════════════ UPLOAD CSV ═══════════════ */}
         {activeTab === "upload" && (
           <div className="space-y-8">
@@ -7545,6 +7857,122 @@ export default function DashboardPage() {
                   <p className="mt-4 text-xs text-zinc-500">
                     AI replies are charged from your wallet balance. Regular SMS messages still cost $0.012. All charges appear in your Activity log.
                   </p>
+                </div>
+
+                {/* Available Hours for AI Booking */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h3 className="text-lg font-bold">Available Hours</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Set when the AI can book appointments. Customers will only be offered slots during these hours.
+                  </p>
+                  {(() => {
+                    const hours = (currentUser as unknown as { availableHours?: { enabled: boolean; timezone: string; slots: Record<string, { enabled: boolean; start: string; end: string }>; slotDuration: number; bufferMinutes: number; maxDaysOut: number } })?.availableHours || {
+                      enabled: true, timezone: "America/New_York",
+                      slots: {
+                        monday: { enabled: true, start: "09:00", end: "18:00" },
+                        tuesday: { enabled: true, start: "09:00", end: "18:00" },
+                        wednesday: { enabled: true, start: "09:00", end: "18:00" },
+                        thursday: { enabled: true, start: "09:00", end: "18:00" },
+                        friday: { enabled: true, start: "09:00", end: "18:00" },
+                        saturday: { enabled: false, start: "10:00", end: "14:00" },
+                        sunday: { enabled: false, start: "10:00", end: "14:00" },
+                      },
+                      slotDuration: 30, bufferMinutes: 15, maxDaysOut: 14,
+                    };
+                    const days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+                    const updateHours = async (updated: typeof hours) => {
+                      setCurrentUser((prev) => prev ? { ...prev, availableHours: updated } as typeof prev : prev);
+                      await persistProfile({ available_hours: updated });
+                    };
+
+                    return (
+                      <div className="mt-4 space-y-4">
+                        <div className="flex items-center gap-4">
+                          <label className="text-sm text-zinc-400">Timezone</label>
+                          <select
+                            value={hours.timezone}
+                            onChange={(e) => updateHours({ ...hours, timezone: e.target.value })}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                          >
+                            <option value="America/New_York">Eastern (ET)</option>
+                            <option value="America/Chicago">Central (CT)</option>
+                            <option value="America/Denver">Mountain (MT)</option>
+                            <option value="America/Los_Angeles">Pacific (PT)</option>
+                          </select>
+
+                          <label className="text-sm text-zinc-400">Slot length</label>
+                          <select
+                            value={hours.slotDuration}
+                            onChange={(e) => updateHours({ ...hours, slotDuration: Number(e.target.value) })}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                          >
+                            <option value={15}>15 min</option>
+                            <option value={30}>30 min</option>
+                            <option value={45}>45 min</option>
+                            <option value={60}>60 min</option>
+                          </select>
+
+                          <label className="text-sm text-zinc-400">Book up to</label>
+                          <select
+                            value={hours.maxDaysOut}
+                            onChange={(e) => updateHours({ ...hours, maxDaysOut: Number(e.target.value) })}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                          >
+                            <option value={7}>1 week out</option>
+                            <option value={14}>2 weeks out</option>
+                            <option value={21}>3 weeks out</option>
+                            <option value={30}>1 month out</option>
+                          </select>
+                        </div>
+
+                        <div className="space-y-2">
+                          {days.map((day) => {
+                            const slot = hours.slots[day] || { enabled: false, start: "09:00", end: "17:00" };
+                            return (
+                              <div key={day} className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-800/40 px-4 py-3">
+                                <button
+                                  onClick={() => {
+                                    const updated = { ...hours, slots: { ...hours.slots, [day]: { ...slot, enabled: !slot.enabled } } };
+                                    updateHours(updated);
+                                  }}
+                                  className={`relative inline-flex h-6 w-10 items-center rounded-full transition ${slot.enabled ? "bg-violet-600" : "bg-zinc-700"}`}
+                                >
+                                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition ${slot.enabled ? "translate-x-5" : "translate-x-1"}`} />
+                                </button>
+                                <span className={`w-24 text-sm font-medium capitalize ${slot.enabled ? "text-white" : "text-zinc-500"}`}>
+                                  {day}
+                                </span>
+                                {slot.enabled && (
+                                  <>
+                                    <input
+                                      type="time"
+                                      value={slot.start}
+                                      onChange={(e) => {
+                                        const updated = { ...hours, slots: { ...hours.slots, [day]: { ...slot, start: e.target.value } } };
+                                        updateHours(updated);
+                                      }}
+                                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+                                    />
+                                    <span className="text-zinc-500">to</span>
+                                    <input
+                                      type="time"
+                                      value={slot.end}
+                                      onChange={(e) => {
+                                        const updated = { ...hours, slots: { ...hours.slots, [day]: { ...slot, end: e.target.value } } };
+                                        updateHours(updated);
+                                      }}
+                                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm"
+                                    />
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Deactivate */}
