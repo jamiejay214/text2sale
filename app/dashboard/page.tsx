@@ -896,6 +896,27 @@ export default function DashboardPage() {
     convMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [selectedConversationId, selectedConvMsgCount]);
 
+  // Poll wallet balance every 5 seconds so the user sees deposits / campaign
+  // charges reflected without refreshing. Lightweight single-column query.
+  useEffect(() => {
+    if (!userId) return;
+    const interval = window.setInterval(async () => {
+      const { data } = await supabase
+        .from("profiles")
+        .select("wallet_balance")
+        .eq("id", userId)
+        .single();
+      if (data) {
+        const fresh = Number(data.wallet_balance) || 0;
+        setCurrentUser((prev) => {
+          if (!prev || prev.walletBalance === fresh) return prev;
+          return { ...prev, walletBalance: fresh };
+        });
+      }
+    }, 5000);
+    return () => window.clearInterval(interval);
+  }, [userId]);
+
   const handleSendChatMessage = async () => {
     if (!userId || !chatInput.trim()) return;
     const text = chatInput.trim();
