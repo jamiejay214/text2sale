@@ -93,7 +93,16 @@ export default function HomePage() {
     try {
       localStorage.setItem("textalot_signup_first_name", firstName);
     } catch {}
-    router.push("/thank-you");
+
+    // Fire Meta Pixel signup event (account created, not yet paid)
+    try {
+      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+      if (typeof w.fbq === "function") {
+        w.fbq("track", "CompleteRegistration");
+      }
+    } catch {}
+
+    router.push("/dashboard");
   };
 
   return (

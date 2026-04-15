@@ -13,11 +13,17 @@ export default function ThankYouPage() {
       if (saved) setFirstName(saved);
     } catch {}
 
-    // Fire Meta Pixel signup conversion event
+    // Fire Meta Pixel Purchase event (user has subscribed via Stripe)
     try {
+      const params = new URLSearchParams(window.location.search);
+      const amount = parseFloat(params.get("amount") || "0");
       const w = window as unknown as { fbq?: (...args: unknown[]) => void };
       if (typeof w.fbq === "function") {
-        w.fbq("track", "CompleteRegistration");
+        if (amount > 0) {
+          w.fbq("track", "Purchase", { value: amount, currency: "USD" });
+        } else {
+          w.fbq("track", "Purchase", { value: 39.99, currency: "USD" });
+        }
       }
     } catch {}
   }, []);
