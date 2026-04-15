@@ -587,6 +587,8 @@ export default function DashboardPage() {
   const [chatInput, setChatInput] = useState("");
   const [chatUnread, setChatUnread] = useState(0);
   const chatEndRef = useRef<HTMLDivElement>(null);
+  // Auto-scroll the main conversation messages to bottom on open + new message.
+  const convMessagesEndRef = useRef<HTMLDivElement>(null);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -900,6 +902,14 @@ export default function DashboardPage() {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages, chatOpen]);
+
+  // Auto-scroll the main conversation thread to the latest message whenever
+  // the user switches threads or a new message arrives.
+  const selectedConvMsgCount =
+    conversations.find((c) => c.id === selectedConversationId)?.messages.length ?? 0;
+  useEffect(() => {
+    convMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [selectedConversationId, selectedConvMsgCount]);
 
   const handleSendChatMessage = async () => {
     if (!userId || !chatInput.trim()) return;
@@ -3388,7 +3398,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            <div className="flex min-h-[85vh] flex-col rounded-3xl border border-zinc-800 bg-zinc-900">
+            <div className="flex h-[85vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
               {selectedConversation && selectedContact ? (
                 <>
                   <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
@@ -3520,6 +3530,8 @@ export default function DashboardPage() {
                         </div>
                       ))}
                     </div>
+                    {/* Sentinel for auto-scroll to latest message */}
+                    <div ref={convMessagesEndRef} />
                   </div>
 
                   <div className="border-t border-zinc-800 px-5 py-4">
