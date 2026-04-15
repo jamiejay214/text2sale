@@ -41,17 +41,71 @@ export async function POST(req: NextRequest) {
     const fromNormalized = fromDigits.startsWith("1") ? fromDigits.slice(1) : fromDigits;
     const fromFormatted = `(${fromNormalized.slice(0, 3)}) ${fromNormalized.slice(3, 6)}-${fromNormalized.slice(6)}`;
 
-    // Find the contact by phone number
-    const { data: contacts } = await supabase
+    // Normalize the `to` number (the user's 10DLC number that received the message)
+    const toDigitsRaw = to.replace(/\D/g, "");
+    const toNormalized = toDigitsRaw.startsWith("1") ? toDigitsRaw.slice(1) : toDigitsRaw;
+    const toFormattedIn = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
+
+    // Step 1: Identify which user owns the receiving number.
+    // Do this FIRST so we can route the message even when the sender isn't a saved contact.
+    let owningUserId: string | null = null;
+    const { data: owners } = await supabase
+      .from("profiles")
+      .select("id, owned_numbers")
+      .not("owned_numbers", "is", null);
+
+    if (owners) {
+      for (const p of owners) {
+        const nums = (p.owned_numbers as Array<{ number?: string }> | null) || [];
+        const match = nums.some((n) => {
+          const d = (n.number || "").replace(/\D/g, "");
+          const norm = d.startsWith("1") ? d.slice(1) : d;
+          return norm && norm === toNormalized;
+        });
+        if (match) {
+          owningUserId = p.id;
+          break;
+        }
+      }
+    }
+
+    // Step 2: Find an existing contact for the sender, scoped to the owning user when known.
+    let contactQuery = supabase
       .from("contacts")
       .select("id, user_id, first_name, last_name, phone")
       .or(`phone.eq.${fromFormatted},phone.eq.+1${fromNormalized},phone.eq.${fromDigits},phone.eq.${from}`);
+    if (owningUserId) contactQuery = contactQuery.eq("user_id", owningUserId);
+    const { data: contacts } = await contactQuery.limit(1);
 
-    if (!contacts || contacts.length === 0) {
+    let contact: { id: string; user_id: string; first_name?: string; last_name?: string; phone?: string } | null =
+      contacts && contacts.length > 0 ? contacts[0] : null;
+
+    // Step 3: If no contact exists but we know the owning user, auto-create one so the reply is captured.
+    if (!contact && owningUserId) {
+      const { data: newContact } = await supabase
+        .from("contacts")
+        .insert({
+          user_id: owningUserId,
+          first_name: "",
+          last_name: "",
+          phone: fromFormatted,
+          email: "",
+          lead_source: "inbound_sms",
+          tags: ["inbound"],
+          notes: `Auto-created from inbound SMS to ${toFormattedIn} on ${new Date().toISOString()}`,
+          dnc: false,
+        })
+        .select("id, user_id, first_name, last_name, phone")
+        .single();
+      if (newContact) contact = newContact;
+    }
+
+    if (!contact) {
+      // No owning user found and no matching contact — nothing we can route this to.
+      console.warn("Inbound SMS dropped: no owning user for", to, "and no matching contact for", from);
       return NextResponse.json({ status: "ok" });
     }
 
-    const contact = contacts[0];
     const bodyUpper = body.trim().toUpperCase();
 
     // Fetch user's opt-out settings
