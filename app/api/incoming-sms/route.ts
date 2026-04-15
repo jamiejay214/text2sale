@@ -253,6 +253,41 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // AI Auto-Reply — if the user has AI plan + auto-reply enabled, fire off
+    // an AI reply. Done via internal fetch to our own /api/ai-reply endpoint
+    // so all billing/sending logic stays in one place.
+    if (conversation) {
+      try {
+        const { data: aiProfile } = await supabase
+          .from("profiles")
+          .select("ai_plan, ai_auto_reply, wallet_balance")
+          .eq("id", contact.user_id)
+          .single();
+
+        if (aiProfile?.ai_plan && aiProfile?.ai_auto_reply) {
+          const balance = Number(aiProfile.wallet_balance) || 0;
+          if (balance >= 0.025) {
+            // Fire-and-forget — don't block the webhook response
+            const origin = req.headers.get("x-forwarded-proto") === "https"
+              ? `https://${req.headers.get("host")}`
+              : `http://${req.headers.get("host")}`;
+            fetch(`${origin}/api/ai-reply`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                userId: contact.user_id,
+                conversationId: conversation.id,
+                contactId: contact.id,
+                sendReply: true,
+              }),
+            }).catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
+          }
+        }
+      } catch (err) {
+        console.error("AI auto-reply check error:", err);
+      }
+    }
+
     return NextResponse.json({ status: "ok" });
   } catch (error) {
     console.error("Incoming SMS webhook error:", error);

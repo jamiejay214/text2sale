@@ -39,6 +39,9 @@ export type Profile = {
   business_description?: string | null;
   business_logo_url?: string | null;
   tag_library?: TagLibraryEntry[] | null;
+  ai_instructions?: string | null;
+  ai_auto_reply?: boolean;
+  ai_plan?: boolean;
   created_at: string;
 };
 

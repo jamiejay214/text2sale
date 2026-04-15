@@ -57,6 +57,9 @@ type AccountRecord = {
   businessDescription?: string | null;
   businessLogoUrl?: string | null;
   tagLibrary?: { name: string; color: string }[];
+  aiPlan?: boolean;
+  aiAutoReply?: boolean;
+  aiInstructions?: string;
 };
 
 type ContactRecord = {
@@ -118,7 +121,7 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
-type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page";
+type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai";
 
 // Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
 // is unreliable (carrier-dependent), so we treat a successful API ack ("sent")
@@ -224,6 +227,9 @@ function profileToAccount(p: Profile): AccountRecord {
     businessDescription: p.business_description || null,
     businessLogoUrl: p.business_logo_url || null,
     tagLibrary: p.tag_library || [],
+    aiPlan: p.ai_plan || false,
+    aiAutoReply: p.ai_auto_reply || false,
+    aiInstructions: p.ai_instructions || "",
   };
 }
 
@@ -510,6 +516,8 @@ export default function DashboardPage() {
   const [showTagManager, setShowTagManager] = useState(false);
   const [tagManagerName, setTagManagerName] = useState("");
   const [tagManagerColor, setTagManagerColor] = useState<string>("violet");
+  const [aiSuggestedReply, setAiSuggestedReply] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
   const [viewContactId, setViewContactId] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
@@ -2232,6 +2240,84 @@ export default function DashboardPage() {
     };
     const dbField = fieldMap[field] || field;
     await dbUpdateContact(contactId, { [dbField]: value });
+  };
+
+  // ---------- AI Reply ----------
+
+  const handleAiSuggest = async () => {
+    if (!selectedConversationId || !userId) return;
+    setAiLoading(true);
+    setAiSuggestedReply("");
+    try {
+      const conv = conversations.find((c) => c.id === selectedConversationId);
+      const res = await fetch("/api/ai-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          conversationId: selectedConversationId,
+          contactId: conv?.contactId || null,
+          sendReply: false,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(`❌ ${data.error || "AI failed"}`);
+        window.setTimeout(() => setMessage(""), 4000);
+      } else {
+        setAiSuggestedReply(data.reply);
+      }
+    } catch {
+      setMessage("❌ Failed to generate AI reply");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+    setAiLoading(false);
+  };
+
+  const handleAiSendReply = async () => {
+    if (!selectedConversationId || !userId || !aiSuggestedReply) return;
+    setAiLoading(true);
+    try {
+      const conv = conversations.find((c) => c.id === selectedConversationId);
+      const res = await fetch("/api/ai-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId,
+          conversationId: selectedConversationId,
+          contactId: conv?.contactId || null,
+          sendReply: true,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(`❌ ${data.error || "Failed to send AI reply"}`);
+        window.setTimeout(() => setMessage(""), 4000);
+      } else {
+        setMessage(`✅ AI reply sent — charged $${data.cost}`);
+        window.setTimeout(() => setMessage(""), 3000);
+        setAiSuggestedReply("");
+        // Refresh messages for this conversation
+        if (selectedConversationId) {
+          const msgs = await fetchMessages(selectedConversationId);
+          setConversations((prev) =>
+            prev.map((c) =>
+              c.id === selectedConversationId
+                ? { ...c, messages: msgs.map(messageToRecord), preview: data.reply?.slice(0, 100) || c.preview, lastMessageAt: new Date().toISOString() }
+                : c
+            )
+          );
+        }
+        // Update wallet
+        if (typeof data.newBalance === "number") {
+          setCurrentUser((prev) => prev ? { ...prev, walletBalance: data.newBalance } : prev);
+        }
+      }
+    } catch {
+      setMessage("❌ Failed to send AI reply");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+    setAiLoading(false);
   };
 
   // ---------- Tag library ----------
@@ -3975,6 +4061,16 @@ export default function DashboardPage() {
                             className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
                             Quick
                           </button>
+                          {currentUser?.aiPlan && (
+                            <button
+                              onClick={handleAiSuggest}
+                              disabled={aiLoading}
+                              className="rounded-xl border border-cyan-700 bg-cyan-950/30 px-3 py-2 text-sm font-medium text-cyan-300 hover:bg-cyan-900/40 disabled:opacity-50"
+                              title="Generate AI-suggested reply"
+                            >
+                              {aiLoading ? "Thinking..." : "AI Reply"}
+                            </button>
+                          )}
                         </div>
 
                         <div className="flex items-center gap-2">
@@ -3992,6 +4088,48 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
+
+                      {/* AI Suggestion panel */}
+                      {aiSuggestedReply && (
+                        <div className="mt-3 rounded-2xl border border-cyan-800 bg-cyan-950/30 p-4">
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-medium uppercase tracking-wide text-cyan-400">AI Suggested Reply</span>
+                            <span className="text-xs text-cyan-600">$0.025 per AI message</span>
+                          </div>
+                          <p className="mb-3 text-sm text-cyan-100">{aiSuggestedReply}</p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={handleAiSendReply}
+                              disabled={aiLoading}
+                              className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 disabled:opacity-50"
+                            >
+                              {aiLoading ? "Sending..." : "Send AI Reply"}
+                            </button>
+                            <button
+                              onClick={() => {
+                                setComposerText(aiSuggestedReply);
+                                setAiSuggestedReply("");
+                              }}
+                              className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:bg-cyan-900/40"
+                            >
+                              Edit First
+                            </button>
+                            <button
+                              onClick={handleAiSuggest}
+                              disabled={aiLoading}
+                              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                            >
+                              Regenerate
+                            </button>
+                            <button
+                              onClick={() => setAiSuggestedReply("")}
+                              className="ml-auto text-xs text-zinc-500 hover:text-zinc-300"
+                            >
+                              Dismiss
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </>
@@ -5718,6 +5856,7 @@ export default function DashboardPage() {
                 { id: "opt-out", label: "🚫 Opt-Out / DNC" },
                 { id: "10dlc", label: "✅ 10DLC" },
                 { id: "biz-page", label: "🌐 Biz Page" },
+                { id: "ai", label: "🤖 AI" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
@@ -7275,6 +7414,162 @@ export default function DashboardPage() {
               window.setTimeout(() => setMessage(""), 3000);
             }}
           />
+        )}
+
+        {settingsSubTab === "ai" && (
+          <div className="space-y-6">
+            {/* AI Plan status */}
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-2xl font-bold">🤖 AI Auto-Reply</h2>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Let AI respond to your customers automatically or generate suggested replies on demand.
+                  </p>
+                </div>
+                <div className={`rounded-full px-4 py-1.5 text-sm font-semibold ${currentUser.aiPlan ? "bg-cyan-900/50 text-cyan-300" : "bg-zinc-800 text-zinc-400"}`}>
+                  {currentUser.aiPlan ? "AI Plan Active" : "Not Subscribed"}
+                </div>
+              </div>
+
+              {!currentUser.aiPlan && (
+                <div className="mt-6 rounded-2xl border border-cyan-800 bg-gradient-to-br from-cyan-950/50 to-zinc-900 p-6">
+                  <h3 className="text-lg font-bold text-cyan-200">Upgrade to Text2Sale + AI</h3>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2 text-sm text-zinc-300">
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> AI-powered reply suggestions</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Full auto-reply mode</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Customizable AI instructions</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Appointment booking via AI</div>
+                    </div>
+                    <div className="space-y-2 text-sm text-zinc-300">
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Context-aware responses</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Reads full conversation history</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> Uses contact details for personalization</div>
+                      <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> $0.025 per AI reply (cheaper than competitors)</div>
+                    </div>
+                  </div>
+                  <div className="mt-5 flex items-center gap-4">
+                    <div className="text-3xl font-bold text-white">$59.99<span className="text-base font-normal text-zinc-400">/mo</span></div>
+                    <button
+                      onClick={async () => {
+                        await persistProfile({ ai_plan: true });
+                        setMessage("✅ AI plan activated! Configure your instructions below.");
+                        window.setTimeout(() => setMessage(""), 4000);
+                      }}
+                      className="rounded-2xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white hover:bg-cyan-700"
+                    >
+                      Activate AI Plan
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-zinc-500">AI messages billed at $0.025 each from wallet. Regular SMS stays at $0.012.</p>
+                </div>
+              )}
+            </div>
+
+            {/* AI Configuration (only when plan is active) */}
+            {currentUser.aiPlan && (
+              <>
+                {/* Auto-Reply Toggle */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold">Auto-Reply</h3>
+                      <p className="mt-1 text-sm text-zinc-400">
+                        When enabled, AI will automatically respond to every inbound message. You can always use the manual &quot;AI Reply&quot; button in conversations regardless of this setting.
+                      </p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const next = !currentUser.aiAutoReply;
+                        await persistProfile({ ai_auto_reply: next });
+                        setMessage(next ? "✅ Auto-reply enabled — AI will now respond to incoming messages" : "Auto-reply disabled");
+                        window.setTimeout(() => setMessage(""), 3000);
+                      }}
+                      className={`relative inline-flex h-8 w-14 items-center rounded-full transition ${currentUser.aiAutoReply ? "bg-cyan-600" : "bg-zinc-700"}`}
+                    >
+                      <span className={`inline-block h-6 w-6 transform rounded-full bg-white transition ${currentUser.aiAutoReply ? "translate-x-7" : "translate-x-1"}`} />
+                    </button>
+                  </div>
+                  {currentUser.aiAutoReply && (
+                    <div className="mt-3 rounded-xl bg-cyan-900/20 px-4 py-3 text-sm text-cyan-300">
+                      <strong>Active</strong> — AI is responding to inbound messages. Each AI reply costs $0.025 from your wallet. Opt-out keywords (STOP, etc.) are handled before AI and won&apos;t trigger an AI response.
+                    </div>
+                  )}
+                </div>
+
+                {/* AI Instructions */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h3 className="text-lg font-bold">AI Instructions</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Tell the AI who you are, what you sell, and how you want it to respond. The more context you give, the better the replies.
+                  </p>
+                  <textarea
+                    value={currentUser.aiInstructions || ""}
+                    onChange={(e) => setCurrentUser((prev) => prev ? { ...prev, aiInstructions: e.target.value } : prev)}
+                    placeholder={`Example:\nI'm an insurance agent in South Florida. I sell auto, home, and life insurance.\nAlways try to book a phone call or appointment.\nBe friendly and casual but professional.\nIf they ask about pricing, say I'll prepare a custom quote.\nMy available hours are Mon-Fri 9am-6pm EST.\nDon't be pushy — if they say no, thank them and move on.`}
+                    className="mt-4 h-48 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white placeholder:text-zinc-600"
+                  />
+                  <div className="mt-3 flex items-center justify-between">
+                    <span className="text-xs text-zinc-500">{(currentUser.aiInstructions || "").length} characters</span>
+                    <button
+                      onClick={async () => {
+                        await persistProfile({ ai_instructions: currentUser.aiInstructions || "" });
+                        setMessage("✅ AI instructions saved");
+                        window.setTimeout(() => setMessage(""), 2500);
+                      }}
+                      className="rounded-xl bg-violet-600 px-5 py-2.5 text-sm font-medium hover:bg-violet-700"
+                    >
+                      Save Instructions
+                    </button>
+                  </div>
+                </div>
+
+                {/* AI Pricing Info */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h3 className="text-lg font-bold">AI Pricing</h3>
+                  <div className="mt-4 grid gap-4 sm:grid-cols-3">
+                    <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                      <div className="text-2xl font-bold text-white">$0.012</div>
+                      <div className="mt-1 text-xs text-zinc-400">Regular SMS</div>
+                    </div>
+                    <div className="rounded-2xl bg-cyan-900/30 p-4 text-center">
+                      <div className="text-2xl font-bold text-cyan-300">$0.025</div>
+                      <div className="mt-1 text-xs text-cyan-400">AI-generated reply</div>
+                    </div>
+                    <div className="rounded-2xl bg-zinc-800 p-4 text-center">
+                      <div className="text-2xl font-bold text-white">$59.99</div>
+                      <div className="mt-1 text-xs text-zinc-400">Monthly AI plan</div>
+                    </div>
+                  </div>
+                  <p className="mt-4 text-xs text-zinc-500">
+                    AI replies are charged from your wallet balance. Regular SMS messages still cost $0.012. All charges appear in your Activity log.
+                  </p>
+                </div>
+
+                {/* Deactivate */}
+                <div className="rounded-3xl border border-red-900/50 bg-zinc-900 p-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-bold text-red-300">Deactivate AI Plan</h3>
+                      <p className="mt-1 text-sm text-zinc-400">Turn off AI features. You can reactivate anytime.</p>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        if (!window.confirm("Deactivate AI plan? Auto-reply will be disabled and the AI Reply button will be hidden.")) return;
+                        await persistProfile({ ai_plan: false, ai_auto_reply: false });
+                        setMessage("AI plan deactivated");
+                        window.setTimeout(() => setMessage(""), 3000);
+                      }}
+                      className="rounded-xl border border-red-800 bg-red-950/50 px-4 py-2 text-sm text-red-300 hover:bg-red-900/50"
+                    >
+                      Deactivate
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
           </div>
