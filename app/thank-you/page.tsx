@@ -12,6 +12,20 @@ export default function ThankYouPage() {
       const saved = localStorage.getItem("textalot_signup_first_name");
       if (saved) setFirstName(saved);
     } catch {}
+
+    // Fire Meta Pixel Purchase event (user has subscribed via Stripe)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const amount = parseFloat(params.get("amount") || "0");
+      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+      if (typeof w.fbq === "function") {
+        if (amount > 0) {
+          w.fbq("track", "Purchase", { value: amount, currency: "USD" });
+        } else {
+          w.fbq("track", "Purchase", { value: 39.99, currency: "USD" });
+        }
+      }
+    } catch {}
   }, []);
 
   return (
