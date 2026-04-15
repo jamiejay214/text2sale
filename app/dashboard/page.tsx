@@ -119,6 +119,18 @@ type ConversationRecord = {
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "upload" | "templates" | "settings" | "learn";
 type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page";
 
+// Map internal Telnyx status to user-facing labels. Our DB stores "sent" as
+// the "Telnyx accepted, not yet confirmed delivered" state — from the user's
+// perspective that's still in-flight, so we show "Sending". Only when the
+// delivery-receipt webhook confirms delivery do we flip to "Delivered".
+function displayMessageStatus(status?: string): string {
+  if (status === "delivered") return "Delivered";
+  if (status === "failed") return "Failed";
+  if (status === "received") return "Received";
+  // "sent", "queued", "sending", undefined, or anything else → still in flight.
+  return "Sending";
+}
+
 type CSVUploadRecord = {
   id: string;
   fileName: string;
@@ -3493,7 +3505,6 @@ export default function DashboardPage() {
                     const statusColor =
                       msg.status === "failed" ? "text-red-400"
                       : msg.status === "delivered" ? "text-emerald-400"
-                      : msg.status === "sent" ? "text-zinc-400"
                       : "text-amber-300";
                     return (
                       <div
@@ -3521,7 +3532,7 @@ export default function DashboardPage() {
                             </div>
                             <div className="mt-1 flex items-center gap-2">
                               <span className={`text-[10px] font-medium uppercase ${statusColor}`}>
-                                {msg.status}
+                                {displayMessageStatus(msg.status)}
                               </span>
                               {msg.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
                                 <span
@@ -3754,8 +3765,8 @@ export default function DashboardPage() {
                               }`}
                             >
                               {formatTime(item.createdAt)}
-                              {item.direction === "outbound" && item.status
-                                ? ` • ${item.status}`
+                              {item.direction === "outbound"
+                                ? ` • ${displayMessageStatus(item.status)}`
                                 : ""}
                             </div>
                           </div>
