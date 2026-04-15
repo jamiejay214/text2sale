@@ -608,10 +608,36 @@ export default function AdminPage() {
     setCreateUserError("Admin user creation requires server-side setup. Have the user sign up at the login page, then manage them here.");
   };
 
-  const handleDeleteSelectedUser = () => {
+  const handleDeleteSelectedUser = async () => {
     if (!selectedAccount) return setDeleteUserError("No user selected.");
     if (selectedAccount.role === "admin") return setDeleteUserError("Admin accounts cannot be deleted from this screen.");
-    setDeleteUserError("User deletion requires server-side admin API. Pause the account instead.");
+
+    setDeleteUserError("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) {
+      return setDeleteUserError("Session expired. Please re-login.");
+    }
+
+    try {
+      const res = await fetch("/api/admin/delete-user", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetUserId: selectedAccount.id, accessToken }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        return setDeleteUserError(result.error || "Failed to delete user.");
+      }
+
+      setAccounts((prev) => prev.filter((a) => a.id !== selectedAccount.id));
+      closeDeleteUserModal();
+      setMessage(`✅ ${selectedAccount.firstName} ${selectedAccount.lastName} deleted`);
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch (err) {
+      setDeleteUserError(err instanceof Error ? err.message : "Network error.");
+    }
   };
 
   const handlePromoteToManager = async (accountId: string) => {
