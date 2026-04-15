@@ -464,6 +464,8 @@ export default function DashboardPage() {
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
   const [convShowArchived, setConvShowArchived] = useState(false);
   const [convShowAll, setConvShowAll] = useState(false);
+  const [convShowUnread, setConvShowUnread] = useState(false);
+  const [convShowRecents, setConvShowRecents] = useState(false);
   const [archivedConvIds, setArchivedConvIds] = useState<Set<string>>(new Set());
   const [convSelectMode, setConvSelectMode] = useState(false);
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
@@ -1056,6 +1058,17 @@ export default function DashboardPage() {
       list = list.filter((c) => !archivedConvIds.has(c.id));
     }
 
+    // Unread filter — just conversations with pending unread messages.
+    if (convShowUnread) {
+      list = list.filter((c) => c.unread > 0);
+    }
+
+    // Recents filter — conversations the contact has actually replied in
+    // (has at least one inbound message). Filters out one-way blasts.
+    if (convShowRecents) {
+      list = list.filter((c) => c.messages.some((m) => m.direction === "inbound"));
+    }
+
     if (!search) return list;
 
     return list.filter((conversation) => {
@@ -1066,7 +1079,7 @@ export default function DashboardPage() {
         fullName.includes(search) || phone.includes(search) || preview.includes(search)
       );
     });
-  }, [conversationSearch, conversationsWithContacts, convShowArchived, archivedConvIds]);
+  }, [conversationSearch, conversationsWithContacts, convShowArchived, convShowUnread, convShowRecents, archivedConvIds]);
 
   // Flat list of every outbound message across all conversations — used by
   // the "All" view so the user can see everything that's been sent and what's
@@ -2071,13 +2084,15 @@ export default function DashboardPage() {
       // Lock the conversation to this from_number the first time it's set, so
       // future replies (and the badge in the conv list) always match.
       const shouldLockFromNumber = !selectedConversation.fromNumber && fromNumber;
-      setConversations((prev) =>
-        prev.map((c) => c.id !== selectedConversation.id ? c : {
+      setConversations((prev) => {
+        const updated = prev.map((c) => c.id !== selectedConversation.id ? c : {
           ...c, preview: body, lastMessageAt: now,
           fromNumber: c.fromNumber || fromNumber,
           messages: [...c.messages, newMsg],
-        })
-      );
+        });
+        // Re-sort so the freshly-active conversation stays at the top.
+        return updated.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+      });
       const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now };
       if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
       await dbUpdateConversation(selectedConversation.id, convUpdate);
@@ -3376,10 +3391,22 @@ export default function DashboardPage() {
                   <h2 className="text-2xl font-bold">Chats</h2>
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvSelectMode(false); }}
+                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); setConvSelectMode(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowAll ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       All
+                    </button>
+                    <button
+                      onClick={() => { setConvShowUnread((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowRecents(false); }}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowUnread ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                    >
+                      Unread
+                    </button>
+                    <button
+                      onClick={() => { setConvShowRecents((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); }}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowRecents ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                    >
+                      Recents
                     </button>
                     <button
                       onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
@@ -3388,7 +3415,7 @@ export default function DashboardPage() {
                       {convSelectMode ? "Cancel" : "Select"}
                     </button>
                     <button
-                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); }}
+                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); setConvShowUnread(false); setConvShowRecents(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       {convShowArchived ? "Active" : "Archived"}
