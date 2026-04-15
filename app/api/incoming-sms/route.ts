@@ -174,12 +174,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "ok" });
     }
 
-    // Find or create conversation
-    let { data: conversation } = await supabase
+    // Find or create conversation.
+    // Use .limit(1) (not .single()) so we still match when duplicate conversations
+    // exist — otherwise .single() errors out and we silently create yet another one.
+    // Reuse the most recently-active conversation for this contact so every inbound
+    // message from the same number lands in the same thread.
+    const { data: existingConvs } = await supabase
       .from("conversations")
       .select("id")
       .eq("contact_id", contact.id)
-      .single();
+      .order("last_message_at", { ascending: false })
+      .limit(1);
+
+    let conversation: { id: string } | null =
+      existingConvs && existingConvs.length > 0 ? existingConvs[0] : null;
 
     if (!conversation) {
       const { data: newConv } = await supabase
@@ -191,7 +199,7 @@ export async function POST(req: NextRequest) {
           unread: 1,
           last_message_at: new Date().toISOString(),
         })
-        .select()
+        .select("id")
         .single();
       conversation = newConv;
     } else {
