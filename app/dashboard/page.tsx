@@ -158,10 +158,13 @@ const CSV_CONTACT_FIELDS = [
 
 function autoDetectMapping(header: string): string {
   const h = header.toLowerCase().trim().replace(/[_\-\s]+/g, "");
+  // Note: we deliberately do NOT auto-detect phone columns. Many CRM exports
+  // have Mobile/Home/Business columns where the real number is inconsistently
+  // placed, so auto-detecting the wrong one silently dropped rows at send time.
+  // The user now picks the phone column explicitly.
   const map: Record<string, string> = {
     firstname: "first_name", first: "first_name", fname: "first_name",
     lastname: "last_name", last: "last_name", lname: "last_name",
-    phone: "phone", phonenumber: "phone", mobilenumber: "phone", mobile: "phone", cell: "phone", cellphone: "phone",
     email: "email", emailaddress: "email",
     city: "city", town: "city",
     state: "state", st: "state", province: "state",
@@ -2599,7 +2602,7 @@ export default function DashboardPage() {
         dnc: false,
         campaign: campaignName,
       }))
-      .filter((c) => c.first_name || c.phone); // Must have at least name or phone
+      .filter((c) => c.phone.replace(/\D/g, "").length >= 10); // Must have a valid 10+ digit phone
 
     const invalidCount = csvRawData.length - rows.length;
 
@@ -3581,25 +3584,25 @@ export default function DashboardPage() {
             </div>
 
             <div className="flex h-[85vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
-              {selectedConversation && selectedContact ? (
+              {selectedConversation ? (
                 <>
                   <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
-                        {getInitials(selectedContact.firstName, selectedContact.lastName)}
+                        {selectedContact ? getInitials(selectedContact.firstName, selectedContact.lastName) : "?"}
                       </div>
                       <div>
                         <div className="font-semibold text-white">
-                          {selectedContact.firstName} {selectedContact.lastName}
+                          {selectedContact ? `${selectedContact.firstName} ${selectedContact.lastName}` : "Unknown Contact"}
                         </div>
                         <div className="text-sm text-zinc-400">
-                          {selectedContact.phone}
+                          {selectedContact?.phone || "No contact linked"}
                         </div>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {selectedContact.dnc && (
+                      {selectedContact?.dnc && (
                         <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-300">
                           DNC
                         </span>
@@ -3812,7 +3815,9 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={handleSendConversationMessage}
-                            className="rounded-2xl bg-violet-600 px-6 py-3 font-medium hover:bg-violet-700"
+                            disabled={!selectedContact}
+                            title={!selectedContact ? "No contact linked to this conversation" : undefined}
+                            className="rounded-2xl bg-violet-600 px-6 py-3 font-medium hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             Send
                           </button>
@@ -5138,10 +5143,19 @@ export default function DashboardPage() {
                     </button>
                     <button
                       onClick={() => {
-                        const hasMapped = csvColumnMappings.some((c) => c.mappedTo !== "");
-                        if (!hasMapped) {
-                          setMessage("❌ Map at least one column to a contact field");
-                          window.setTimeout(() => setMessage(""), 2500);
+                        const phoneCol = csvColumnMappings.find((c) => c.mappedTo === "phone");
+                        if (!phoneCol) {
+                          setMessage("❌ You must map one column to Phone Number — pick the column that has the actual mobile/cell number");
+                          window.setTimeout(() => setMessage(""), 4000);
+                          return;
+                        }
+                        const phoneHasValues = csvRawData.some((row) => {
+                          const val = String(row[phoneCol.csvHeader] || "").replace(/\D/g, "");
+                          return val.length >= 10;
+                        });
+                        if (!phoneHasValues) {
+                          setMessage(`❌ Column "${phoneCol.csvHeader}" has no valid phone numbers — pick a different column`);
+                          window.setTimeout(() => setMessage(""), 4000);
                           return;
                         }
                         setCsvUploadStep(3);
