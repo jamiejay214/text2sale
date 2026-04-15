@@ -20,6 +20,9 @@ export type Profile = {
   owned_numbers: OwnedNumber[];
   plan: Plan;
   subscription_status: "active" | "canceling" | "past_due" | "inactive";
+  // Admin-granted comp — when true, user is treated as subscribed even without
+  // an active Stripe subscription, and Stripe webhooks won't override the flag.
+  free_subscription: boolean;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
   opt_out_settings: OptOutSettings;

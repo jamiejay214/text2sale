@@ -46,6 +46,7 @@ type AccountRecord = {
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
   subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
+  freeSubscription?: boolean;
   teamCode?: string;
   managerId?: string | null;
   referralCode?: string;
@@ -198,6 +199,7 @@ function profileToAccount(p: Profile): AccountRecord {
     createdAt: p.created_at, walletBalance: p.wallet_balance,
     ownedNumbers: p.owned_numbers || [],
     subscriptionStatus: p.subscription_status || "inactive",
+    freeSubscription: p.free_subscription || false,
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pRegistration: p.a2p_registration || null,
     complianceLog: p.compliance_log || [],
@@ -2699,7 +2701,11 @@ export default function DashboardPage() {
     );
   }
 
-  const isSubscribed = currentUser.subscriptionStatus === "active" || currentUser.subscriptionStatus === "canceling";
+  // Admin-granted free subs unlock paid features without a Stripe subscription.
+  const isSubscribed =
+    currentUser.freeSubscription === true ||
+    currentUser.subscriptionStatus === "active" ||
+    currentUser.subscriptionStatus === "canceling";
 
   const a2pStatus = currentUser.a2pRegistration?.status;
   const is10DLCApproved = a2pStatus === "completed" || a2pStatus === "campaign_approved";

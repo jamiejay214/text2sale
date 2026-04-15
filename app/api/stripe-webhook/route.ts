@@ -157,13 +157,18 @@ export async function POST(req: NextRequest) {
               ? "past_due"
               : "inactive";
 
-        await supabase
+        // Skip status override if admin has granted a free subscription — we
+        // don't want Stripe's "inactive" state to clobber the comp.
+        const { data: current } = await supabase
           .from("profiles")
-          .update({
-            subscription_status: subStatus,
-            stripe_subscription_id: subscription.id,
-          })
-          .eq("id", userId);
+          .select("free_subscription")
+          .eq("id", userId)
+          .single();
+        const update: Record<string, unknown> = {
+          stripe_subscription_id: subscription.id,
+        };
+        if (!current?.free_subscription) update.subscription_status = subStatus;
+        await supabase.from("profiles").update(update).eq("id", userId);
       }
     }
 
@@ -173,13 +178,14 @@ export async function POST(req: NextRequest) {
       const userId = subscription.metadata?.userId;
 
       if (userId) {
-        await supabase
+        const { data: current } = await supabase
           .from("profiles")
-          .update({
-            subscription_status: "inactive",
-            stripe_subscription_id: null,
-          })
-          .eq("id", userId);
+          .select("free_subscription")
+          .eq("id", userId)
+          .single();
+        const update: Record<string, unknown> = { stripe_subscription_id: null };
+        if (!current?.free_subscription) update.subscription_status = "inactive";
+        await supabase.from("profiles").update(update).eq("id", userId);
       }
     }
 

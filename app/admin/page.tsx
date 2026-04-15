@@ -31,6 +31,7 @@ type AccountRecord = {
   ownedNumbers?: OwnedNumber[];
   role?: "user" | "admin" | "manager";
   subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
+  freeSubscription?: boolean;
   teamCode?: string;
   managerId?: string | null;
   referralCode?: string;
@@ -90,6 +91,7 @@ function profileToAccount(p: Profile): AccountRecord {
     createdAt: p.created_at, walletBalance: Number(p.wallet_balance),
     ownedNumbers: p.owned_numbers || [],
     subscriptionStatus: p.subscription_status || "inactive",
+    freeSubscription: p.free_subscription || false,
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pStatus: p.a2p_registration?.status || "not_started",
     a2pBusinessName: p.a2p_registration?.businessName || "",
@@ -605,6 +607,25 @@ export default function AdminPage() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
+  const toggleFreeSubscription = async (id: string) => {
+    const acct = accounts.find((a) => a.id === id);
+    if (!acct) return;
+    const next = !acct.freeSubscription;
+    // When granting, also flip subscription_status to "active" so all
+    // downstream UI (badges, gating) reflects it immediately. When revoking,
+    // drop to "inactive" unless they have a real Stripe sub — Stripe will
+    // re-sync from the next webhook.
+    const update: Record<string, unknown> = { free_subscription: next };
+    if (next) update.subscription_status = "active";
+    else if (acct.subscriptionStatus === "active" && !acct.stripeCustomerId) {
+      update.subscription_status = "inactive";
+    }
+    await updateProfile(id, update);
+    await refreshAccount(id);
+    setMessage(next ? "✅ Free subscription granted" : "✅ Free subscription revoked");
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
   const createNewUser = async () => {
     setCreateUserError("");
     if (!newUserForm.firstName.trim()) return setCreateUserError("First name is required.");
@@ -983,6 +1004,7 @@ export default function AdminPage() {
                         </div>
                         <div className="flex gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${sub.cls}`}>{sub.label}</span>
+                          {acct.freeSubscription && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
                         </div>
                       </div>
@@ -1015,6 +1037,7 @@ export default function AdminPage() {
                           selectedAccount.role === "manager" ? "bg-amber-900 text-amber-300" : "bg-zinc-700 text-zinc-300"
                         }`}>{selectedAccount.role?.toUpperCase() || "USER"}</span>
                         {(() => { const s = subStatusBadge(selectedAccount.subscriptionStatus); return <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${s.cls}`}>Sub: {s.label}</span>; })()}
+                        {selectedAccount.freeSubscription && <span className="rounded-full bg-emerald-900 px-3 py-0.5 text-xs font-medium text-emerald-300">FREE (Comp)</span>}
                         {(() => { const a = a2pStatusBadge(selectedAccount.a2pStatus); return <span className={`rounded-full px-3 py-0.5 text-xs font-medium ${a.cls}`}>10DLC: {a.label}</span>; })()}
                       </div>
                     </div>
@@ -1183,6 +1206,33 @@ export default function AdminPage() {
                     className={`w-full rounded-2xl py-3.5 font-medium ${selectedAccount.paused ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}`}>
                     {selectedAccount.paused ? "Unpause Account" : "Pause Account"}
                   </button>
+
+                  {/* Free subscription toggle — grants paid-feature access
+                      without requiring a Stripe subscription. */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                    <div>
+                      <div className="text-sm font-medium text-white">Free Subscription</div>
+                      <div className="text-xs text-zinc-400">
+                        {selectedAccount.freeSubscription
+                          ? "User has comp access — Stripe will not override."
+                          : "Grant this user full paid features at no cost."}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => toggleFreeSubscription(selectedAccount.id)}
+                      role="switch"
+                      aria-checked={!!selectedAccount.freeSubscription}
+                      className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition ${
+                        selectedAccount.freeSubscription ? "bg-emerald-500" : "bg-zinc-600"
+                      }`}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                          selectedAccount.freeSubscription ? "translate-x-6" : "translate-x-1"
+                        }`}
+                      />
+                    </button>
+                  </div>
 
                   <textarea value={selectedAccount.workflowNote || ""}
                     onChange={async (e) => {
