@@ -408,6 +408,7 @@ ${conversationHistory}`;
           to: toE164,
           text: aiReply,
           type: "SMS",
+          ...(process.env.TELNYX_MESSAGING_PROFILE_ID ? { messaging_profile_id: process.env.TELNYX_MESSAGING_PROFILE_ID } : {}),
         }),
       });
 

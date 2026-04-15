@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const telnyxKey = process.env.TELNYX_API_KEY!;
+const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 
 // Called by Vercel Cron — checks for appointments happening in ~24 hours and
 // sends a reminder text to the customer if the user has reminders enabled.
@@ -99,7 +100,10 @@ export async function GET(req: NextRequest) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${telnyxKey}`,
         },
-        body: JSON.stringify({ from: fromE164, to: toE164, text: msg, type: "SMS" }),
+        body: JSON.stringify({
+          from: fromE164, to: toE164, text: msg, type: "SMS",
+          ...(messagingProfileId ? { messaging_profile_id: messagingProfileId } : {}),
+        }),
       });
 
       const data = await res.json();

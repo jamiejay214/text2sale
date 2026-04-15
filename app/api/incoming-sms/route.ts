@@ -6,6 +6,7 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const apiKey = process.env.TELNYX_API_KEY!;
+const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 
 // Telnyx sends inbound SMS as POST webhook
 export async function POST(req: NextRequest) {
@@ -303,7 +304,10 @@ async function sendTelnyxReply(from: string, to: string, text: string) {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ from, to, text, type: "SMS" }),
+    body: JSON.stringify({
+      from, to, text, type: "SMS",
+      ...(messagingProfileId ? { messaging_profile_id: messagingProfileId } : {}),
+    }),
   });
 }
 
