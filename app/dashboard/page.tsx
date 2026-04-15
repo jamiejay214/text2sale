@@ -479,6 +479,7 @@ export default function DashboardPage() {
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
   const [convShowArchived, setConvShowArchived] = useState(false);
+  const [convShowAll, setConvShowAll] = useState(false);
   const [archivedConvIds, setArchivedConvIds] = useState<Set<string>>(new Set());
   const [convSelectMode, setConvSelectMode] = useState(false);
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
@@ -1061,6 +1062,55 @@ export default function DashboardPage() {
       );
     });
   }, [conversationSearch, conversationsWithContacts, convShowArchived, archivedConvIds]);
+
+  // Flat list of every outbound message across all conversations — used by
+  // the "All" view so the user can see everything that's been sent and what's
+  // currently in-flight (campaigns write rows as they send).
+  const allSentMessages = useMemo(() => {
+    const items: {
+      id: string;
+      conversationId: string;
+      contactName: string;
+      contactPhone: string;
+      body: string;
+      status: string;
+      createdAt: string;
+      fromNumber?: string;
+    }[] = [];
+    for (const conv of conversationsWithContacts) {
+      for (const msg of conv.messages) {
+        if (msg.direction !== "outbound") continue;
+        items.push({
+          id: msg.id,
+          conversationId: conv.id,
+          contactName: conv.contact
+            ? `${conv.contact.firstName} ${conv.contact.lastName}`.trim()
+            : "Unknown Contact",
+          contactPhone: conv.contact?.phone || "",
+          body: msg.body,
+          status: msg.status || "sent",
+          createdAt: msg.createdAt,
+          fromNumber: msg.fromNumber || conv.fromNumber,
+        });
+      }
+    }
+    const search = conversationSearch.trim().toLowerCase();
+    const filtered = search
+      ? items.filter((m) =>
+          m.contactName.toLowerCase().includes(search) ||
+          m.contactPhone.toLowerCase().includes(search) ||
+          m.body.toLowerCase().includes(search)
+        )
+      : items;
+    return filtered.sort(
+      (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    );
+  }, [conversationsWithContacts, conversationSearch]);
+
+  const activeSendingCampaigns = useMemo(
+    () => campaigns.filter((c) => c.status === "Sending"),
+    [campaigns]
+  );
 
   const selectedConversation = useMemo(() => {
     return (
@@ -3311,13 +3361,19 @@ export default function DashboardPage() {
                   <h2 className="text-2xl font-bold">Chats</h2>
                   <div className="flex items-center gap-2">
                     <button
+                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvSelectMode(false); }}
+                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowAll ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                    >
+                      All
+                    </button>
+                    <button
                       onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       {convSelectMode ? "Cancel" : "Select"}
                     </button>
                     <button
-                      onClick={() => setConvShowArchived((v) => !v)}
+                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       {convShowArchived ? "Active" : "Archived"}
@@ -3358,10 +3414,89 @@ export default function DashboardPage() {
               <input
                 value={conversationSearch}
                 onChange={(e) => setConversationSearch(e.target.value)}
-                placeholder="Search conversations..."
+                placeholder={convShowAll ? "Search messages..." : "Search conversations..."}
                 className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
               />
 
+              {convShowAll ? (
+                <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
+                  {activeSendingCampaigns.length > 0 && (
+                    <div className="rounded-2xl border border-amber-700/50 bg-amber-900/20 p-3">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
+                        <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-amber-400" />
+                        Actively sending
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {activeSendingCampaigns.map((c) => (
+                          <div key={c.id} className="flex items-center justify-between text-xs">
+                            <span className="truncate text-amber-100">{c.name}</span>
+                            <span className="shrink-0 text-amber-300/70">
+                              {c.sent}/{c.audience}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {allSentMessages.map((msg) => {
+                    const statusColor =
+                      msg.status === "failed" ? "text-red-400"
+                      : msg.status === "delivered" ? "text-emerald-400"
+                      : msg.status === "sent" ? "text-zinc-400"
+                      : "text-amber-300";
+                    return (
+                      <div
+                        key={msg.id}
+                        onClick={() => {
+                          setConvShowAll(false);
+                          handleSelectConversation(msg.conversationId);
+                        }}
+                        className="cursor-pointer rounded-2xl bg-zinc-800/70 p-3 hover:bg-zinc-800"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="truncate text-sm font-semibold text-white">
+                                {msg.contactName}
+                              </span>
+                              {msg.contactPhone && (
+                                <span className="shrink-0 text-[11px] text-zinc-500">
+                                  {msg.contactPhone}
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-0.5 line-clamp-2 text-xs text-zinc-400">
+                              {msg.body}
+                            </div>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className={`text-[10px] font-medium uppercase ${statusColor}`}>
+                                {msg.status}
+                              </span>
+                              {msg.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
+                                <span
+                                  className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] ring-1 ring-inset ${getNumberColor(msg.fromNumber)}`}
+                                >
+                                  •••{getLastFour(msg.fromNumber)}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-[10px] text-zinc-500">
+                            {formatTime(msg.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {allSentMessages.length === 0 && activeSendingCampaigns.length === 0 && (
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
+                      No messages sent yet.
+                    </div>
+                  )}
+                </div>
+              ) : (
               <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
                 {filteredConversations.map((conversation) => {
                   const contact = conversation.contact;
@@ -3442,6 +3577,7 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+              )}
             </div>
 
             <div className="flex h-[85vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
