@@ -70,10 +70,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Step 2: Find an existing contact for the sender, scoped to the owning user when known.
+    // NOTE: Supabase's .or() filter treats parentheses as grouping syntax, so a phone like
+    // "(954) 805-7882" silently breaks the query. Use .in() with all common variants instead.
+    const phoneVariants = [
+      fromFormatted,                        // (954) 805-7882
+      fromNormalized,                       // 9548057882
+      `1${fromNormalized}`,                 // 19548057882
+      `+1${fromNormalized}`,                // +19548057882
+      `${fromNormalized.slice(0, 3)}-${fromNormalized.slice(3, 6)}-${fromNormalized.slice(6)}`, // 954-805-7882
+      `${fromNormalized.slice(0, 3)}.${fromNormalized.slice(3, 6)}.${fromNormalized.slice(6)}`, // 954.805.7882
+      from,                                 // whatever Telnyx sent
+    ].filter((v, i, arr) => v && arr.indexOf(v) === i);
+
     let contactQuery = supabase
       .from("contacts")
       .select("id, user_id, first_name, last_name, phone")
-      .or(`phone.eq.${fromFormatted},phone.eq.+1${fromNormalized},phone.eq.${fromDigits},phone.eq.${from}`);
+      .in("phone", phoneVariants);
     if (owningUserId) contactQuery = contactQuery.eq("user_id", owningUserId);
     const { data: contacts } = await contactQuery.limit(1);
 
