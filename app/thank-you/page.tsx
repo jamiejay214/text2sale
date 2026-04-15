@@ -102,12 +102,18 @@ export default function ThankYouPage() {
         </div>
 
         {/* CTA */}
-        <div className="mt-12 flex justify-center">
+        <div className="mt-12 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <Link
-            href="/dashboard"
+            href="/verify"
             className="rounded-2xl bg-violet-600 px-8 py-4 text-sm font-semibold text-white shadow-lg shadow-violet-600/30 transition hover:bg-violet-500"
           >
-            Go to Dashboard →
+            Complete Registration →
+          </Link>
+          <Link
+            href="/dashboard"
+            className="rounded-2xl border border-zinc-700 px-8 py-4 text-sm font-semibold text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+          >
+            View Dashboard
           </Link>
         </div>
 
