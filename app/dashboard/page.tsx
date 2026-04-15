@@ -2531,8 +2531,18 @@ export default function DashboardPage() {
           return;
         }
         setCsvRawData(results.data);
-        // Build column mappings with auto-detect
-        const headers = Object.keys(results.data[0]);
+        // Hide columns that are never useful for SMS — keeps the mapping
+        // table focused on things the user actually might want to map.
+        const EXCLUDED_CSV_HEADERS = new Set([
+          "contactid", "flagged", "address2", "leadstatus", "addeddate",
+          "contactowner", "spousename", "medicationtaken", "highbloodpressure",
+          "diabetes", "children", "tobaccouse", "lastresultcode",
+        ]);
+        const normalize = (s: string) =>
+          s.toLowerCase().trim().replace(/[_\-\s]+/g, "");
+        const headers = Object.keys(results.data[0]).filter(
+          (h) => !EXCLUDED_CSV_HEADERS.has(normalize(h))
+        );
         const mappings: CSVColumnMapping[] = headers.map((header) => ({
           csvHeader: header,
           preview: results.data.slice(0, 2).map((row) => row[header] || ""),
