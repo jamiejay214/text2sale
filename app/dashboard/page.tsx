@@ -56,6 +56,7 @@ type AccountRecord = {
   businessSlug?: string | null;
   businessDescription?: string | null;
   businessLogoUrl?: string | null;
+  tagLibrary?: { name: string; color: string }[];
 };
 
 type ContactRecord = {
@@ -131,6 +132,25 @@ function displayMessageStatus(status?: string): string {
   return "Delivered";
 }
 
+// Tag color palette — small curated set so users can't pick collisions /
+// readability disasters. The map values are tailwind utility strings used
+// directly in className.
+const TAG_COLORS: Record<string, { bg: string; text: string; ring: string; dot: string }> = {
+  violet:  { bg: "bg-violet-600/20",  text: "text-violet-300",  ring: "ring-violet-500/40",  dot: "bg-violet-500" },
+  emerald: { bg: "bg-emerald-600/20", text: "text-emerald-300", ring: "ring-emerald-500/40", dot: "bg-emerald-500" },
+  amber:   { bg: "bg-amber-600/20",   text: "text-amber-300",   ring: "ring-amber-500/40",   dot: "bg-amber-500" },
+  red:     { bg: "bg-red-600/20",     text: "text-red-300",     ring: "ring-red-500/40",     dot: "bg-red-500" },
+  blue:    { bg: "bg-blue-600/20",    text: "text-blue-300",    ring: "ring-blue-500/40",    dot: "bg-blue-500" },
+  pink:    { bg: "bg-pink-600/20",    text: "text-pink-300",    ring: "ring-pink-500/40",    dot: "bg-pink-500" },
+  cyan:    { bg: "bg-cyan-600/20",    text: "text-cyan-300",    ring: "ring-cyan-500/40",    dot: "bg-cyan-500" },
+  orange:  { bg: "bg-orange-600/20",  text: "text-orange-300",  ring: "ring-orange-500/40",  dot: "bg-orange-500" },
+  lime:    { bg: "bg-lime-600/20",    text: "text-lime-300",    ring: "ring-lime-500/40",    dot: "bg-lime-500" },
+  fuchsia: { bg: "bg-fuchsia-600/20", text: "text-fuchsia-300", ring: "ring-fuchsia-500/40", dot: "bg-fuchsia-500" },
+  zinc:    { bg: "bg-zinc-600/40",    text: "text-zinc-200",    ring: "ring-zinc-500/40",    dot: "bg-zinc-500" },
+};
+const TAG_COLOR_KEYS = Object.keys(TAG_COLORS);
+const DEFAULT_TAG_COLOR = "zinc";
+
 type CSVUploadRecord = {
   id: string;
   fileName: string;
@@ -203,6 +223,7 @@ function profileToAccount(p: Profile): AccountRecord {
     businessSlug: p.business_slug || null,
     businessDescription: p.business_description || null,
     businessLogoUrl: p.business_logo_url || null,
+    tagLibrary: p.tag_library || [],
   };
 }
 
@@ -486,6 +507,9 @@ export default function DashboardPage() {
   const [contactSearch, setContactSearch] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
+  const [showTagManager, setShowTagManager] = useState(false);
+  const [tagManagerName, setTagManagerName] = useState("");
+  const [tagManagerColor, setTagManagerColor] = useState<string>("violet");
   const [viewContactId, setViewContactId] = useState<string | null>(null);
   const [showAddContact, setShowAddContact] = useState(false);
   const [addContactForm, setAddContactForm] = useState({ firstName: "", lastName: "", phone: "", email: "", city: "", state: "" });
@@ -981,9 +1005,22 @@ export default function DashboardPage() {
 
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
+    // Library tags always show in the filter bar even if no contact has them
+    // yet — so the user sees "Sold" right after creating it.
+    (currentUser?.tagLibrary || []).forEach((t) => { if (t.name.trim()) tagSet.add(t.name.trim()); });
     contacts.forEach((c) => (c.tags || []).forEach((t) => { if (t.trim()) tagSet.add(t.trim()); }));
     return Array.from(tagSet).sort();
-  }, [contacts]);
+  }, [contacts, currentUser?.tagLibrary]);
+
+  // Look up the color a user assigned to a tag in their library; fall back
+  // to a stable hash-based color for tags that exist on contacts but were
+  // never registered (legacy / typed-in tags).
+  const getTagStyle = (name: string) => {
+    const key = name.trim().toLowerCase();
+    const lib = (currentUser?.tagLibrary || []).find((t) => t.name.trim().toLowerCase() === key);
+    if (lib && TAG_COLORS[lib.color]) return TAG_COLORS[lib.color];
+    return TAG_COLORS[DEFAULT_TAG_COLOR];
+  };
 
   // Pick one motivational quote per page load (stable across re-renders)
   const dailyQuote = useMemo(() => SALES_QUOTES[Math.floor(Math.random() * SALES_QUOTES.length)], []);
@@ -2195,6 +2232,80 @@ export default function DashboardPage() {
     };
     const dbField = fieldMap[field] || field;
     await dbUpdateContact(contactId, { [dbField]: value });
+  };
+
+  // ---------- Tag library ----------
+  // The library is an array of {name, color} on the user's profile. It's the
+  // single source of truth for tag definitions (color + sort order); contacts
+  // still store tags as plain strings on `tags`, joined by name.
+
+  const persistTagLibrary = async (next: { name: string; color: string }[]) => {
+    if (!userId) return;
+    setCurrentUser((prev) => (prev ? { ...prev, tagLibrary: next } : prev));
+    await updateProfile(userId, { tag_library: next });
+  };
+
+  const handleCreateTag = async (rawName: string, color: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+    const lib = currentUser?.tagLibrary || [];
+    if (lib.some((t) => t.name.trim().toLowerCase() === name.toLowerCase())) {
+      setMessage(`⚠️ Tag "${name}" already exists`);
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    await persistTagLibrary([...lib, { name, color }]);
+    setMessage(`✅ Tag "${name}" created`);
+    window.setTimeout(() => setMessage(""), 2000);
+  };
+
+  const handleUpdateTagColor = async (name: string, color: string) => {
+    const lib = currentUser?.tagLibrary || [];
+    const next = lib.map((t) => (t.name === name ? { ...t, color } : t));
+    await persistTagLibrary(next);
+  };
+
+  const handleRenameTag = async (oldName: string, newRawName: string) => {
+    const newName = newRawName.trim();
+    if (!newName || newName === oldName) return;
+    const lib = currentUser?.tagLibrary || [];
+    if (lib.some((t) => t.name.trim().toLowerCase() === newName.toLowerCase())) {
+      setMessage(`⚠️ Tag "${newName}" already exists`);
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    const nextLib = lib.map((t) => (t.name === oldName ? { ...t, name: newName } : t));
+    await persistTagLibrary(nextLib);
+    // Update every contact that had the old name. Done in parallel.
+    const affected = contacts.filter((c) => (c.tags || []).includes(oldName));
+    setContacts((prev) => prev.map((c) => (
+      (c.tags || []).includes(oldName)
+        ? { ...c, tags: (c.tags || []).map((t) => (t === oldName ? newName : t)) }
+        : c
+    )));
+    await Promise.all(affected.map((c) => dbUpdateContact(c.id, {
+      tags: (c.tags || []).map((t) => (t === oldName ? newName : t)),
+    })));
+    // Keep filter selection working through the rename.
+    setTagFilter((prev) => prev.map((t) => (t === oldName ? newName : t)));
+  };
+
+  const handleDeleteTag = async (name: string) => {
+    if (!window.confirm(`Delete the "${name}" tag? It will be removed from every contact that has it.`)) return;
+    const lib = currentUser?.tagLibrary || [];
+    await persistTagLibrary(lib.filter((t) => t.name !== name));
+    const affected = contacts.filter((c) => (c.tags || []).includes(name));
+    setContacts((prev) => prev.map((c) => (
+      (c.tags || []).includes(name)
+        ? { ...c, tags: (c.tags || []).filter((t) => t !== name) }
+        : c
+    )));
+    await Promise.all(affected.map((c) => dbUpdateContact(c.id, {
+      tags: (c.tags || []).filter((t) => t !== name),
+    })));
+    setTagFilter((prev) => prev.filter((t) => t !== name));
+    setMessage(`✅ Tag "${name}" deleted`);
+    window.setTimeout(() => setMessage(""), 2000);
   };
 
   const handleAddContact = async () => {
@@ -4900,6 +5011,110 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* Tag manager — collapsible CRUD over tag library */}
+            <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-800/40">
+              <button
+                onClick={() => setShowTagManager((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-3 text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium uppercase tracking-wide text-zinc-400">Manage Tags</span>
+                  <span className="text-xs text-zinc-500">
+                    {(currentUser?.tagLibrary || []).length} defined
+                  </span>
+                </div>
+                <span className="text-xs text-zinc-500">{showTagManager ? "Hide" : "Show"}</span>
+              </button>
+              {showTagManager && (
+                <div className="space-y-3 border-t border-zinc-800 px-4 py-3">
+                  {/* Existing library tags */}
+                  {(currentUser?.tagLibrary || []).length > 0 && (
+                    <div className="space-y-2">
+                      {(currentUser?.tagLibrary || []).map((t) => {
+                        const style = TAG_COLORS[t.color] || TAG_COLORS[DEFAULT_TAG_COLOR];
+                        const usage = contacts.filter((c) => (c.tags || []).includes(t.name)).length;
+                        return (
+                          <div key={t.name} className="flex items-center gap-3 rounded-xl border border-zinc-800 bg-zinc-900/60 px-3 py-2">
+                            <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ${style.bg} ${style.text} ${style.ring}`}>
+                              <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+                              {t.name}
+                            </span>
+                            <span className="text-xs text-zinc-500">{usage} contact{usage !== 1 ? "s" : ""}</span>
+                            <div className="ml-auto flex items-center gap-1">
+                              {TAG_COLOR_KEYS.map((c) => (
+                                <button
+                                  key={c}
+                                  title={c}
+                                  onClick={() => handleUpdateTagColor(t.name, c)}
+                                  className={`h-5 w-5 rounded-full ${TAG_COLORS[c].dot} ${t.color === c ? "ring-2 ring-white" : "ring-1 ring-zinc-700 hover:ring-zinc-500"}`}
+                                />
+                              ))}
+                              <button
+                                onClick={() => {
+                                  const next = window.prompt(`Rename tag "${t.name}" to:`, t.name);
+                                  if (next && next.trim() && next.trim() !== t.name) handleRenameTag(t.name, next.trim());
+                                }}
+                                className="ml-2 rounded-lg border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-700"
+                              >
+                                Rename
+                              </button>
+                              <button
+                                onClick={() => handleDeleteTag(t.name)}
+                                className="rounded-lg border border-red-900 bg-red-950/40 px-2 py-1 text-xs text-red-300 hover:bg-red-900/40"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Create new tag */}
+                  <div className="flex flex-wrap items-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-3">
+                    <input
+                      placeholder="New tag name (e.g. Sold, Appointment, Broke)"
+                      value={tagManagerName}
+                      onChange={(e) => setTagManagerName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          handleCreateTag(tagManagerName, tagManagerColor);
+                          setTagManagerName("");
+                        }
+                      }}
+                      className="flex-1 min-w-[200px] rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm outline-none placeholder:text-zinc-500"
+                    />
+                    <div className="flex items-center gap-1">
+                      {TAG_COLOR_KEYS.map((c) => (
+                        <button
+                          key={c}
+                          title={c}
+                          onClick={() => setTagManagerColor(c)}
+                          className={`h-6 w-6 rounded-full ${TAG_COLORS[c].dot} ${tagManagerColor === c ? "ring-2 ring-white" : "ring-1 ring-zinc-700 hover:ring-zinc-500"}`}
+                        />
+                      ))}
+                    </div>
+                    <button
+                      onClick={() => {
+                        handleCreateTag(tagManagerName, tagManagerColor);
+                        setTagManagerName("");
+                      }}
+                      className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-700"
+                    >
+                      + Create Tag
+                    </button>
+                  </div>
+
+                  {(currentUser?.tagLibrary || []).length === 0 && (
+                    <p className="text-xs text-zinc-500">
+                      No tags yet. Common tags to start: <span className="text-zinc-300">Sold</span>, <span className="text-zinc-300">Appointment</span>, <span className="text-zinc-300">Broke</span>, <span className="text-zinc-300">Follow Up</span>, <span className="text-zinc-300">Not Interested</span>.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Tag filter bar */}
             {allTags.length > 0 && (
               <div className="mb-4 rounded-2xl border border-zinc-800 bg-zinc-800/40 p-4">
@@ -4914,6 +5129,7 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap gap-2">
                   {allTags.map((tag) => {
                     const active = tagFilter.includes(tag);
+                    const style = getTagStyle(tag);
                     return (
                       <button
                         key={tag}
@@ -4922,14 +5138,15 @@ export default function DashboardPage() {
                             active ? prev.filter((t) => t !== tag) : [...prev, tag]
                           );
                         }}
-                        className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                        className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition ring-1 ${
                           active
-                            ? "bg-violet-600 text-white ring-1 ring-violet-500"
-                            : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600"
+                            ? `${style.bg} ${style.text} ${style.ring} ring-2`
+                            : "bg-zinc-700 text-zinc-300 hover:bg-zinc-600 ring-transparent"
                         }`}
                       >
+                        <span className={`h-2 w-2 rounded-full ${style.dot}`} />
                         {tag}
-                        <span className="ml-1.5 text-[10px] text-zinc-400">
+                        <span className="ml-1 text-[10px] text-zinc-400">
                           ({contacts.filter((c) => (c.tags || []).includes(tag)).length})
                         </span>
                       </button>
@@ -5014,11 +5231,18 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex flex-wrap gap-1">
                       {(contact.tags || []).length > 0 ? (
-                        (contact.tags || []).slice(0, 3).map((tag) => (
-                          <span key={tag} className="rounded-full bg-violet-900/50 px-2 py-0.5 text-[10px] font-medium text-violet-300">
-                            {tag}
-                          </span>
-                        ))
+                        (contact.tags || []).slice(0, 3).map((tag) => {
+                          const style = getTagStyle(tag);
+                          return (
+                            <span
+                              key={tag}
+                              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ${style.bg} ${style.text} ${style.ring}`}
+                            >
+                              <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                              {tag}
+                            </span>
+                          );
+                        })
                       ) : (
                         <span className="text-xs text-zinc-600">—</span>
                       )}
@@ -7628,23 +7852,27 @@ export default function DashboardPage() {
               <div className="col-span-2">
                 <label className="mb-1.5 block text-xs font-medium text-zinc-500">Tags</label>
                 <div className="mb-2 flex flex-wrap gap-2">
-                  {(viewContact.tags || []).map((tag, idx) => (
-                    <span
-                      key={`${tag}-${idx}`}
-                      className="flex items-center gap-1 rounded-full bg-violet-900/50 px-3 py-1 text-xs font-medium text-violet-300"
-                    >
-                      {tag}
-                      <button
-                        onClick={async () => {
-                          const newTags = (viewContact.tags || []).filter((_, i) => i !== idx);
-                          await handleUpdateContactField(viewContact.id, "tags", newTags);
-                        }}
-                        className="ml-0.5 text-violet-400 hover:text-red-300"
+                  {(viewContact.tags || []).map((tag, idx) => {
+                    const style = getTagStyle(tag);
+                    return (
+                      <span
+                        key={`${tag}-${idx}`}
+                        className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ring-1 ${style.bg} ${style.text} ${style.ring}`}
                       >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
+                        <span className={`h-2 w-2 rounded-full ${style.dot}`} />
+                        {tag}
+                        <button
+                          onClick={async () => {
+                            const newTags = (viewContact.tags || []).filter((_, i) => i !== idx);
+                            await handleUpdateContactField(viewContact.id, "tags", newTags);
+                          }}
+                          className={`ml-0.5 ${style.text} hover:text-red-300`}
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    );
+                  })}
                   {(viewContact.tags || []).length === 0 && (
                     <span className="text-xs text-zinc-500">No tags</span>
                   )}
@@ -7686,15 +7914,19 @@ export default function DashboardPage() {
                 </div>
                 {allTags.filter((t) => !(viewContact.tags || []).includes(t)).length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    {allTags.filter((t) => !(viewContact.tags || []).includes(t)).slice(0, 10).map((tag) => (
-                      <button
-                        key={tag}
-                        onClick={() => handleUpdateContactField(viewContact.id, "tags", [...(viewContact.tags || []), tag])}
-                        className="rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:border-violet-600 hover:bg-violet-900/30 hover:text-violet-300"
-                      >
-                        + {tag}
-                      </button>
-                    ))}
+                    {allTags.filter((t) => !(viewContact.tags || []).includes(t)).slice(0, 10).map((tag) => {
+                      const style = getTagStyle(tag);
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() => handleUpdateContactField(viewContact.id, "tags", [...(viewContact.tags || []), tag])}
+                          className={`inline-flex items-center gap-1 rounded-full border border-zinc-700 px-2.5 py-0.5 text-[11px] text-zinc-400 hover:${style.bg} hover:${style.text}`}
+                        >
+                          <span className={`h-1.5 w-1.5 rounded-full ${style.dot}`} />
+                          + {tag}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

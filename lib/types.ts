@@ -38,7 +38,16 @@ export type Profile = {
   business_slug?: string | null;
   business_description?: string | null;
   business_logo_url?: string | null;
+  tag_library?: TagLibraryEntry[] | null;
   created_at: string;
+};
+
+export type TagLibraryEntry = {
+  name: string;
+  // Tailwind color key — one of "violet" | "emerald" | "amber" | "red" |
+  // "blue" | "pink" | "cyan" | "indigo" | "orange" | "lime" | "fuchsia" |
+  // "zinc". Stored as a string so we can extend without a migration.
+  color: string;
 };
 
 export type ComplianceEventRecord = {
