@@ -778,48 +778,62 @@ export default function DashboardPage() {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages" },
         async (payload) => {
-          const newMsg = payload.new as { id: string; conversation_id: string; direction: string; body: string; status: string; created_at: string };
+          const newMsg = payload.new as { id: string; conversation_id: string; direction: string; body: string; status: string; created_at: string; from_number?: string };
           if (newMsg.direction !== "inbound") return;
 
-          // Check if this conversation belongs to the current user
-          const matchingConv = conversations.find((c) => c.id === newMsg.conversation_id);
-          if (!matchingConv) {
-            // Might be a new conversation — re-fetch conversations
-            const freshConvs = await dbFetchConversations(userId);
-            const match = freshConvs.find((c) => c.id === newMsg.conversation_id);
-            if (!match) return; // Not ours
-          }
-
-          // Add message to conversation state
           const msgRecord: ConversationMessage = {
             id: newMsg.id,
             direction: newMsg.direction as "inbound" | "outbound",
             body: newMsg.body,
             status: newMsg.status as ConversationMessage["status"],
             createdAt: newMsg.created_at,
+            fromNumber: newMsg.from_number,
           };
 
-          setConversations((prev) =>
-            prev.map((c) => {
-              if (c.id !== newMsg.conversation_id) return c;
-              return {
-                ...c,
-                preview: newMsg.body.slice(0, 100),
-                lastMessageAt: newMsg.created_at,
-                unread: c.id === selectedConversationId ? c.unread : c.unread + 1,
-                messages: [...c.messages, msgRecord],
-              };
-            })
-          );
+          // Functional update — avoid stale closures on the conversations array.
+          // If we don't have the conversation yet, it's a brand-new thread — fetch it,
+          // add the message, and merge it into state so the UI updates immediately.
+          let conversationExists = false;
+          setConversations((prev) => {
+            const idx = prev.findIndex((c) => c.id === newMsg.conversation_id);
+            if (idx === -1) return prev;
+            conversationExists = true;
+            // Skip if we've already applied this message (echoes from our own insert).
+            if (prev[idx].messages.some((m) => m.id === newMsg.id)) return prev;
+            const next = [...prev];
+            next[idx] = {
+              ...next[idx],
+              preview: newMsg.body.slice(0, 100),
+              lastMessageAt: newMsg.created_at,
+              unread: next[idx].id === selectedConversationId ? next[idx].unread : next[idx].unread + 1,
+              messages: [...next[idx].messages, msgRecord],
+            };
+            // Re-sort so the freshly-active conversation jumps to the top of the list.
+            next.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+            return next;
+          });
+
+          if (!conversationExists) {
+            // New conversation — pull it + its messages and merge in.
+            const freshConvs = await dbFetchConversations(userId);
+            const freshConv = freshConvs.find((c) => c.id === newMsg.conversation_id);
+            if (!freshConv) return; // Not ours (wrong user).
+            const msgs = await fetchMessages(freshConv.id);
+            const freshRecord = convToRecord(freshConv, msgs.map(messageToRecord));
+            setConversations((prev) => {
+              if (prev.some((c) => c.id === freshRecord.id)) return prev;
+              return [freshRecord, ...prev].sort(
+                (a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || "")
+              );
+            });
+            // If the contact was auto-created by the webhook, refresh contacts too.
+            const dbContacts = await dbFetchContacts(userId);
+            setContacts(dbContacts.map(contactToRecord));
+          }
 
           // Browser notification
-          if (notificationsEnabled && document.hidden) {
-            const contact = contacts.find((ct) => {
-              const conv = conversations.find((cv) => cv.id === newMsg.conversation_id);
-              return conv && ct.id === conv.contactId;
-            });
-            const title = contact ? `${contact.firstName} ${contact.lastName}` : "New Message";
-            new Notification(title, {
+          if (notificationsEnabled && typeof document !== "undefined" && document.hidden) {
+            new Notification("New Message", {
               body: newMsg.body.slice(0, 100),
               icon: "/favicon.ico",
             });
