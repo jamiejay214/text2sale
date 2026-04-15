@@ -12,6 +12,14 @@ export default function ThankYouPage() {
       const saved = localStorage.getItem("textalot_signup_first_name");
       if (saved) setFirstName(saved);
     } catch {}
+
+    // Fire Meta Pixel signup conversion event
+    try {
+      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
+      if (typeof w.fbq === "function") {
+        w.fbq("track", "CompleteRegistration");
+      }
+    } catch {}
   }, []);
 
   return (
