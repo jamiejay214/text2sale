@@ -198,19 +198,27 @@ export async function POST(req: NextRequest) {
           preview: body.slice(0, 100),
           unread: 1,
           last_message_at: new Date().toISOString(),
+          // Stick the conversation to whichever of the user's numbers received
+          // this message — replies will default to going out on the same line.
+          from_number: toFormattedIn,
         })
         .select("id")
         .single();
       conversation = newConv;
     } else {
-      await supabase
+      // Backfill from_number on older conversations that don't have it set yet.
+      const { data: existing } = await supabase
         .from("conversations")
-        .update({
-          preview: body.slice(0, 100),
-          unread: 1,
-          last_message_at: new Date().toISOString(),
-        })
-        .eq("id", conversation.id);
+        .select("from_number")
+        .eq("id", conversation.id)
+        .single();
+      const update: Record<string, unknown> = {
+        preview: body.slice(0, 100),
+        unread: 1,
+        last_message_at: new Date().toISOString(),
+      };
+      if (!existing?.from_number) update.from_number = toFormattedIn;
+      await supabase.from("conversations").update(update).eq("id", conversation.id);
     }
 
     if (conversation) {

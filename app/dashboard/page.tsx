@@ -301,6 +301,30 @@ function getInitials(firstName?: string, lastName?: string) {
   return `${first}${last}`.toUpperCase() || "?";
 }
 
+// Deterministic color per phone number — so each of the user's lines gets a
+// consistent dot/badge color in the conversation list.
+const NUMBER_BADGE_COLORS = [
+  "bg-sky-500/20 text-sky-300 ring-sky-500/40",
+  "bg-emerald-500/20 text-emerald-300 ring-emerald-500/40",
+  "bg-amber-500/20 text-amber-300 ring-amber-500/40",
+  "bg-pink-500/20 text-pink-300 ring-pink-500/40",
+  "bg-violet-500/20 text-violet-300 ring-violet-500/40",
+  "bg-teal-500/20 text-teal-300 ring-teal-500/40",
+  "bg-orange-500/20 text-orange-300 ring-orange-500/40",
+  "bg-fuchsia-500/20 text-fuchsia-300 ring-fuchsia-500/40",
+];
+function getNumberColor(num?: string) {
+  const digits = (num || "").replace(/\D/g, "");
+  if (!digits) return NUMBER_BADGE_COLORS[0];
+  let hash = 0;
+  for (let i = 0; i < digits.length; i++) hash = (hash * 31 + digits.charCodeAt(i)) | 0;
+  return NUMBER_BADGE_COLORS[Math.abs(hash) % NUMBER_BADGE_COLORS.length];
+}
+function getLastFour(num?: string) {
+  const digits = (num || "").replace(/\D/g, "");
+  return digits.slice(-4);
+}
+
 // No more demo data builders — data comes from Supabase
 
 const SALES_QUOTES = [
@@ -1885,7 +1909,10 @@ export default function DashboardPage() {
   const handleSelectConversation = async (conversationId: string) => {
     setSelectedConversationId(conversationId);
     setComposerText("");
-    setConvFromNumber("");
+    // Default the reply-from number to whatever this conversation was started on,
+    // so the user never has to remember which of their lines the thread is on.
+    const conv = conversations.find((c) => c.id === conversationId);
+    setConvFromNumber(conv?.fromNumber || "");
 
     setConversations((prev) =>
       prev.map((c) => c.id === conversationId ? { ...c, unread: 0 } : c)
@@ -1960,15 +1987,19 @@ export default function DashboardPage() {
 
     if (dbMsg) {
       const newMsg: ConversationMessage = messageToRecord(dbMsg);
+      // Lock the conversation to this from_number the first time it's set, so
+      // future replies (and the badge in the conv list) always match.
+      const shouldLockFromNumber = !selectedConversation.fromNumber && fromNumber;
       setConversations((prev) =>
         prev.map((c) => c.id !== selectedConversation.id ? c : {
           ...c, preview: body, lastMessageAt: now,
+          fromNumber: c.fromNumber || fromNumber,
           messages: [...c.messages, newMsg],
         })
       );
-      await dbUpdateConversation(selectedConversation.id, {
-        preview: body, last_message_at: now,
-      });
+      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now };
+      if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
+      await dbUpdateConversation(selectedConversation.id, convUpdate);
     }
 
     // Deduct message cost
@@ -3303,6 +3334,20 @@ export default function DashboardPage() {
                           <div className="mt-1 truncate text-sm text-zinc-400">
                             {conversation.preview}
                           </div>
+
+                          {/* Which of the user's lines this thread is on —
+                              shown only when more than one number is owned. */}
+                          {conversation.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
+                            <div className="mt-1.5 flex items-center gap-1.5">
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${getNumberColor(conversation.fromNumber)}`}
+                                title={`On ${conversation.fromNumber}`}
+                              >
+                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                                •••{getLastFour(conversation.fromNumber)}
+                              </span>
+                            </div>
+                          )}
                         </div>
 
                         {conversation.unread > 0 && (
@@ -3347,27 +3392,46 @@ export default function DashboardPage() {
                           DNC
                         </span>
                       )}
-                      {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 && (
-                        currentUser.ownedNumbers.length > 1 ? (
-                          <select
-                            value={convFromNumber || currentUser.ownedNumbers[0]?.number || ""}
-                            onChange={(e) => setConvFromNumber(e.target.value)}
-                            className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white hover:border-violet-500 focus:border-violet-500 focus:outline-none"
-                            title="Send from number"
-                          >
-                            <option value="">All Messages</option>
-                            {currentUser.ownedNumbers.map((n) => (
-                              <option key={n.number} value={n.number}>
-                                📱 {n.number}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <span className="rounded-xl border border-zinc-800 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-400" title="Sending from">
-                            📱 {currentUser.ownedNumbers[0].number}
-                          </span>
-                        )
-                      )}
+                      {currentUser?.ownedNumbers && currentUser.ownedNumbers.length > 0 && (() => {
+                        const activeNumber =
+                          convFromNumber ||
+                          selectedConversation?.fromNumber ||
+                          currentUser.ownedNumbers[0]?.number ||
+                          "";
+                        const color = getNumberColor(activeNumber);
+                        // Single line — no dropdown needed.
+                        if (currentUser.ownedNumbers.length === 1) {
+                          return (
+                            <span
+                              className={`inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-medium ring-1 ring-inset ${color}`}
+                              title="Sending from"
+                            >
+                              <span className="h-1.5 w-1.5 rounded-full bg-current" />
+                              From {activeNumber}
+                            </span>
+                          );
+                        }
+                        // Multi-line — show the current number as a color pill,
+                        // with a subtle dropdown to change it if needed.
+                        return (
+                          <div className="relative">
+                            <select
+                              value={activeNumber}
+                              onChange={(e) => setConvFromNumber(e.target.value)}
+                              className={`cursor-pointer appearance-none rounded-xl border-0 py-2 pl-7 pr-8 text-xs font-medium ring-1 ring-inset hover:brightness-110 focus:outline-none ${color}`}
+                              title="This conversation's number — click to change"
+                            >
+                              {currentUser.ownedNumbers.map((n) => (
+                                <option key={n.number} value={n.number} className="bg-zinc-900 text-white">
+                                  From {n.number}
+                                </option>
+                              ))}
+                            </select>
+                            <span className="pointer-events-none absolute left-2.5 top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-current" />
+                            <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] opacity-70">▼</span>
+                          </div>
+                        );
+                      })()}
                       <button
                         onClick={() => {
                           if (selectedConversation) {
@@ -6806,8 +6870,8 @@ export default function DashboardPage() {
                   },
                   {
                     title: "Switch Between Numbers",
-                    description: "In the conversation header, use the number dropdown to switch which phone number you're sending from. Select 'All Messages' to see all messages, or pick a specific number to filter messages sent from that number.",
-                    tip: "This is useful if you have different numbers for different purposes (sales, support, etc.).",
+                    description: "Each conversation is automatically pinned to the number it started on — you'll see a colored pill in the conversation list showing which of your lines it's on. Inside a conversation, the colored pill in the header shows (and lets you change) the number you're replying from.",
+                    tip: "Useful if you have different numbers for different purposes (sales, support, etc.). You rarely need to change it manually — the app picks the right one for each thread.",
                   },
                   {
                     title: "Quick Replies & Templates",
