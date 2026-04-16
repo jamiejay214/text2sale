@@ -537,7 +537,12 @@ export default function DashboardPage() {
   const [convShowAll, setConvShowAll] = useState(false);
   const [convShowUnread, setConvShowUnread] = useState(false);
   const [convShowRecents, setConvShowRecents] = useState(false);
+  const [convShowWorking, setConvShowWorking] = useState(false);
   const [archivedConvIds, setArchivedConvIds] = useState<Set<string>>(new Set());
+  // Working-lead pins — conversations the user has flagged as actively being
+  // worked. Persists locally per-user so it survives refreshes without a
+  // schema change.
+  const [workingLeadConvIds, setWorkingLeadConvIds] = useState<Set<string>>(new Set());
   const [convSelectMode, setConvSelectMode] = useState(false);
   const [selectedConvIds, setSelectedConvIds] = useState<Set<string>>(new Set());
   const [composerText, setComposerText] = useState("");
@@ -735,6 +740,12 @@ export default function DashboardPage() {
       try {
         const stored = window.localStorage.getItem(`t2s_archived_convs_${uid}`);
         if (stored) setArchivedConvIds(new Set(JSON.parse(stored)));
+      } catch { /* ignore */ }
+
+      // Load working-lead pins from localStorage
+      try {
+        const stored = window.localStorage.getItem(`t2s_working_leads_${uid}`);
+        if (stored) setWorkingLeadConvIds(new Set(JSON.parse(stored)));
       } catch { /* ignore */ }
 
       // Load CSV upload history from DB
@@ -1244,6 +1255,13 @@ export default function DashboardPage() {
     }
   }, [archivedConvIds, userId]);
 
+  // Persist working-lead pins
+  useEffect(() => {
+    if (userId) {
+      try { window.localStorage.setItem(`t2s_working_leads_${userId}`, JSON.stringify([...workingLeadConvIds])); } catch { /* ignore */ }
+    }
+  }, [workingLeadConvIds, userId]);
+
   const filteredConversations = useMemo(() => {
     const search = conversationSearch.trim().toLowerCase();
     let list = conversationsWithContacts;
@@ -1282,6 +1300,13 @@ export default function DashboardPage() {
       list = list.filter((c) => c.messages.some((m) => m.direction === "inbound"));
     }
 
+    // Working-lead filter — just the conversations the user has actively
+    // pinned as "I'm working this". Pure user-flagged list, no automatic
+    // heuristics, so it mirrors how a rep thinks about their pipeline.
+    if (convShowWorking) {
+      list = list.filter((c) => workingLeadConvIds.has(c.id));
+    }
+
     if (!search) return list;
 
     return list.filter((conversation) => {
@@ -1292,7 +1317,7 @@ export default function DashboardPage() {
         fullName.includes(search) || phone.includes(search) || preview.includes(search)
       );
     });
-  }, [conversationSearch, conversationsWithContacts, convShowArchived, convShowUnread, convShowRecents, archivedConvIds, selectedConversationId]);
+  }, [conversationSearch, conversationsWithContacts, convShowArchived, convShowUnread, convShowRecents, convShowWorking, workingLeadConvIds, archivedConvIds, selectedConversationId]);
 
   // Flat list of every outbound message across all conversations — used by
   // the "All" view so the user can see everything that's been sent and what's
@@ -4332,22 +4357,34 @@ export default function DashboardPage() {
                   <h2 className="text-2xl font-bold">Chats</h2>
                   <div className="flex items-center gap-2 flex-wrap">
                     <button
-                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); setConvSelectMode(false); }}
+                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); setConvShowWorking(false); setConvSelectMode(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowAll ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       All
                     </button>
                     <button
-                      onClick={() => { setConvShowUnread((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowRecents(false); }}
+                      onClick={() => { setConvShowUnread((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowRecents(false); setConvShowWorking(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowUnread ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       Unread
                     </button>
                     <button
-                      onClick={() => { setConvShowRecents((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); }}
+                      onClick={() => { setConvShowRecents((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); setConvShowWorking(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowRecents ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       Recents
+                    </button>
+                    <button
+                      onClick={() => { setConvShowWorking((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); }}
+                      className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium ${convShowWorking ? "bg-emerald-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                      title="Show only leads you're actively working"
+                    >
+                      Working
+                      {workingLeadConvIds.size > 0 && (
+                        <span className={`rounded-full px-1.5 text-[10px] ${convShowWorking ? "bg-emerald-800 text-emerald-100" : "bg-zinc-800 text-emerald-400"}`}>
+                          {workingLeadConvIds.size}
+                        </span>
+                      )}
                     </button>
                     <button
                       onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
@@ -4356,7 +4393,7 @@ export default function DashboardPage() {
                       {convSelectMode ? "Cancel" : "Select"}
                     </button>
                     <button
-                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); setConvShowUnread(false); setConvShowRecents(false); }}
+                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); setConvShowUnread(false); setConvShowRecents(false); setConvShowWorking(false); }}
                       className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                     >
                       {convShowArchived ? "Active" : "Archived"}
@@ -4597,7 +4634,11 @@ export default function DashboardPage() {
 
                 {filteredConversations.length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    {convShowArchived ? "No archived conversations." : "No conversations found."}
+                    {convShowArchived
+                      ? "No archived conversations."
+                      : convShowWorking
+                        ? "No working leads yet. Open a conversation and tap \"Working Lead\" to pin it here."
+                        : "No conversations found."}
                   </div>
                 )}
               </div>
@@ -4801,6 +4842,37 @@ export default function DashboardPage() {
                           Cancel Workflow
                         </button>
                       )}
+                      {/* Working Lead pin — flag this conversation as one
+                          the user is actively working so they can jump back
+                          to it fast via the "Working" tab in the sidebar. */}
+                      {selectedConversation && (() => {
+                        const isWorking = workingLeadConvIds.has(selectedConversation.id);
+                        return (
+                          <button
+                            onClick={() => {
+                              setWorkingLeadConvIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(selectedConversation.id)) next.delete(selectedConversation.id);
+                                else next.add(selectedConversation.id);
+                                return next;
+                              });
+                              setMessage(isWorking ? "Removed from Working Leads" : "✅ Marked as Working Lead");
+                              window.setTimeout(() => setMessage(""), 2000);
+                            }}
+                            className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                              isWorking
+                                ? "bg-emerald-600/20 text-emerald-400 ring-1 ring-emerald-500/50"
+                                : "border border-zinc-700 text-zinc-500 hover:text-emerald-300 hover:bg-zinc-800"
+                            }`}
+                            title={isWorking ? "This lead is pinned as working — click to unpin" : "Pin as a lead you're actively working"}
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M11.48 3.499a.562.562 0 011.04 0l2.125 5.111a.563.563 0 00.475.345l5.518.442c.499.04.701.663.321.988l-4.204 3.602a.563.563 0 00-.182.557l1.285 5.385a.562.562 0 01-.84.61l-4.725-2.885a.562.562 0 00-.586 0L6.982 20.54a.562.562 0 01-.84-.61l1.285-5.386a.562.562 0 00-.182-.557l-4.204-3.602a.562.562 0 01.321-.988l5.518-.442a.563.563 0 00.475-.345L11.48 3.5z" />
+                            </svg>
+                            {isWorking ? "Working" : "Working Lead"}
+                          </button>
+                        );
+                      })()}
                       <button
                         onClick={() => {
                           if (selectedConversation) {
