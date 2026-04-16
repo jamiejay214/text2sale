@@ -3961,7 +3961,15 @@ export default function DashboardPage() {
 
         <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
           {(() => {
-            const totalUnread = conversations.reduce((sum, c) => sum + (c.unread || 0), 0);
+            // Badge count must match the Unread tab filter — only count leads
+            // who actually texted back (inbound exists) and aren't DNC.
+            // Otherwise the badge shows "10" while the tab lists nothing.
+            const totalUnread = conversationsWithContacts.reduce((sum, c) => {
+              if (!c.unread || c.unread <= 0) return sum;
+              if (c.contact?.dnc) return sum;
+              if (!c.messages.some((m) => m.direction === "inbound")) return sum;
+              return sum + c.unread;
+            }, 0);
             return ([
               { id: "overview", label: "Overview" },
               { id: "conversations", label: "Conversations" },
