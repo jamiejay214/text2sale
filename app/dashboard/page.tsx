@@ -60,6 +60,7 @@ type AccountRecord = {
   aiPlan?: boolean;
   aiAutoReply?: boolean;
   aiInstructions?: string;
+  industry?: string;
   availableHours?: {
     enabled: boolean;
     timezone: string;
@@ -129,7 +130,7 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
-type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai";
+type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai" | "suggestions";
 
 // Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
 // is unreliable (carrier-dependent), so we treat a successful API ack ("sent")
@@ -238,6 +239,7 @@ function profileToAccount(p: Profile): AccountRecord {
     aiPlan: p.ai_plan || false,
     aiAutoReply: p.ai_auto_reply || false,
     aiInstructions: p.ai_instructions || "",
+    industry: p.industry || "",
     availableHours: (p.available_hours as AccountRecord["availableHours"]) || undefined,
   };
 }
@@ -6192,6 +6194,7 @@ export default function DashboardPage() {
                 { id: "10dlc", label: "✅ 10DLC" },
                 { id: "biz-page", label: "🌐 Biz Page" },
                 { id: "ai", label: "🤖 AI" },
+                { id: "suggestions", label: "💡 Suggestions" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
@@ -7784,18 +7787,49 @@ export default function DashboardPage() {
                       <div className="flex items-center gap-2"><span className="text-cyan-400">✓</span> $0.025 per AI reply (cheaper than competitors)</div>
                     </div>
                   </div>
-                  <div className="mt-5 flex items-center gap-4">
-                    <div className="text-3xl font-bold text-white">$59.99<span className="text-base font-normal text-zinc-400">/mo</span></div>
-                    <button
-                      onClick={async () => {
-                        await persistProfile({ ai_plan: true });
-                        setMessage("✅ AI plan activated! Configure your instructions below.");
-                        window.setTimeout(() => setMessage(""), 4000);
-                      }}
-                      className="rounded-2xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white hover:bg-cyan-700"
-                    >
-                      Activate AI Plan
-                    </button>
+                  <div className="mt-5 space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">What industry are you in?</label>
+                      <select
+                        value={currentUser.industry || ""}
+                        onChange={(e) => setCurrentUser((prev) => prev ? { ...prev, industry: e.target.value } : prev)}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white"
+                      >
+                        <option value="">Select your industry...</option>
+                        <option value="health_insurance">Health Insurance</option>
+                        <option value="life_insurance">Life Insurance</option>
+                        <option value="auto_insurance">Auto Insurance</option>
+                        <option value="home_insurance">Home / Property Insurance</option>
+                        <option value="medicare">Medicare</option>
+                        <option value="real_estate">Real Estate</option>
+                        <option value="solar">Solar Energy</option>
+                        <option value="roofing">Roofing / Home Services</option>
+                        <option value="financial_services">Financial Services</option>
+                        <option value="auto_dealer">Auto Dealership</option>
+                        <option value="debt_settlement">Debt Settlement / Credit Repair</option>
+                        <option value="legal">Legal Services</option>
+                        <option value="other">Other</option>
+                      </select>
+                      <p className="mt-1 text-xs text-zinc-500">The AI will be trained as a top producer in your industry — handling objections, rebuttals, and closing like the best in the business.</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div className="text-3xl font-bold text-white">$59.99<span className="text-base font-normal text-zinc-400">/mo</span></div>
+                      <button
+                        onClick={async () => {
+                          if (!currentUser.industry) {
+                            setMessage("❌ Please select your industry first");
+                            window.setTimeout(() => setMessage(""), 3000);
+                            return;
+                          }
+                          await persistProfile({ ai_plan: true, industry: currentUser.industry });
+                          setMessage("✅ AI plan activated! Your AI is trained for " + (currentUser.industry || "").replace(/_/g, " ") + ".");
+                          window.setTimeout(() => setMessage(""), 4000);
+                        }}
+                        className="rounded-2xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white hover:bg-cyan-700"
+                      >
+                        Activate AI Plan
+                      </button>
+                    </div>
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">AI messages billed at $0.025 each from wallet. Regular SMS stays at $0.012.</p>
                 </div>
@@ -7831,6 +7865,47 @@ export default function DashboardPage() {
                       <strong>Active</strong> — AI is responding to inbound messages. Each AI reply costs $0.025 from your wallet. Opt-out keywords (STOP, etc.) are handled before AI and won&apos;t trigger an AI response.
                     </div>
                   )}
+                </div>
+
+                {/* Industry Selector */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <h3 className="text-lg font-bold">Your Industry</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    The AI is trained as a top producer in your industry — it knows how to handle objections, rebuttals, and close deals using proven sales frameworks.
+                  </p>
+                  <div className="mt-4 flex items-center gap-3">
+                    <select
+                      value={currentUser.industry || ""}
+                      onChange={async (e) => {
+                        const val = e.target.value;
+                        setCurrentUser((prev) => prev ? { ...prev, industry: val } : prev);
+                        await persistProfile({ industry: val });
+                        setMessage("✅ Industry updated — AI is now trained for " + val.replace(/_/g, " "));
+                        window.setTimeout(() => setMessage(""), 3000);
+                      }}
+                      className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white"
+                    >
+                      <option value="">Select your industry...</option>
+                      <option value="health_insurance">Health Insurance</option>
+                      <option value="life_insurance">Life Insurance</option>
+                      <option value="auto_insurance">Auto Insurance</option>
+                      <option value="home_insurance">Home / Property Insurance</option>
+                      <option value="medicare">Medicare</option>
+                      <option value="real_estate">Real Estate</option>
+                      <option value="solar">Solar Energy</option>
+                      <option value="roofing">Roofing / Home Services</option>
+                      <option value="financial_services">Financial Services</option>
+                      <option value="auto_dealer">Auto Dealership</option>
+                      <option value="debt_settlement">Debt Settlement / Credit Repair</option>
+                      <option value="legal">Legal Services</option>
+                      <option value="other">Other</option>
+                    </select>
+                    {currentUser.industry && (
+                      <span className="rounded-full bg-cyan-900/40 px-3 py-1.5 text-xs font-medium text-cyan-300">
+                        {currentUser.industry.replace(/_/g, " ")}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* AI Instructions */}
@@ -8023,6 +8098,90 @@ export default function DashboardPage() {
           </div>
         )}
 
+          </div>
+        )}
+
+        {settingsSubTab === "suggestions" && (
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+              <h2 className="text-2xl font-bold">💡 Share Your Ideas</h2>
+              <p className="mt-2 text-sm text-zinc-400">
+                Have a feature idea, improvement, or something you wish Text2Sale could do? Let us know! We read every suggestion and do our best to build what our users need.
+              </p>
+              <div className="mt-5 space-y-4">
+                <select
+                  id="suggestion-category"
+                  defaultValue=""
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white"
+                >
+                  <option value="" disabled>Select a category...</option>
+                  <option value="new_feature">New Feature</option>
+                  <option value="improvement">Improvement to Existing Feature</option>
+                  <option value="ai">AI / Auto-Reply</option>
+                  <option value="campaigns">Campaigns</option>
+                  <option value="contacts">Contacts / CRM</option>
+                  <option value="ui">Design / UI</option>
+                  <option value="integrations">Integrations</option>
+                  <option value="bug">Bug Report</option>
+                  <option value="other">Other</option>
+                </select>
+                <textarea
+                  id="suggestion-text"
+                  placeholder="Describe your idea or suggestion in detail..."
+                  className="h-40 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-4 text-sm text-white placeholder:text-zinc-500"
+                />
+                <button
+                  onClick={async () => {
+                    const textEl = document.getElementById("suggestion-text") as HTMLTextAreaElement;
+                    const catEl = document.getElementById("suggestion-category") as HTMLSelectElement;
+                    const text = textEl?.value?.trim();
+                    const category = catEl?.value;
+                    if (!text) {
+                      setMessage("❌ Please describe your idea");
+                      window.setTimeout(() => setMessage(""), 3000);
+                      return;
+                    }
+                    try {
+                      const res = await fetch("/api/suggestions", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          userId: currentUser?.id,
+                          userName: `${currentUser?.firstName || ""} ${currentUser?.lastName || ""}`.trim(),
+                          userEmail: currentUser?.email,
+                          category: category || "other",
+                          text,
+                        }),
+                      });
+                      if (res.ok) {
+                        textEl.value = "";
+                        catEl.value = "";
+                        setMessage("✅ Thank you! Your suggestion has been submitted. We review every one!");
+                        window.setTimeout(() => setMessage(""), 5000);
+                      } else {
+                        setMessage("❌ Failed to submit. Please try again.");
+                        window.setTimeout(() => setMessage(""), 3000);
+                      }
+                    } catch {
+                      setMessage("❌ Failed to submit. Please try again.");
+                      window.setTimeout(() => setMessage(""), 3000);
+                    }
+                  }}
+                  className="w-full rounded-2xl bg-violet-600 py-4 text-base font-semibold hover:bg-violet-700"
+                >
+                  Submit Suggestion
+                </button>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 text-sm text-zinc-400">
+              <div className="font-medium text-zinc-300 mb-2">What happens next?</div>
+              <ul className="space-y-1.5">
+                <li>• Our team reviews every suggestion personally</li>
+                <li>• Popular requests get prioritized for development</li>
+                <li>• We&apos;ll notify you if your feature gets built</li>
+              </ul>
+            </div>
           </div>
         )}
 
