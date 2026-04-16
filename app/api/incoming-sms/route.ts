@@ -327,11 +327,28 @@ export async function POST(req: NextRequest) {
         const globalAi = aiProfile?.ai_plan && aiProfile?.ai_auto_reply;
         const perConvAi = aiProfile?.ai_plan && convData?.ai_enabled;
 
-        // Skip AI if the lead clearly doesn't want to engage ("N", "No",
-        // "Not interested", "Remove me", etc.). We don't mark them DNC for
-        // this — that only happens on formal opt-out keywords handled above.
-        // This just keeps the AI from looking tone-deaf.
-        if (shouldAiSkipReply(body)) {
+        // Context-aware decline filter.
+        //
+        // A bare "No" means very different things depending on where we are
+        // in the conversation:
+        //   - First reply after our initial outreach: lead isn't interested.
+        //     Skip the AI so we don't look tone-deaf chasing a hard no.
+        //   - Reply to a qualifying question ("do you take any medications?",
+        //     "what's your situation?"): "No" / "Lost coverage" / etc. is
+        //     legitimate context a human agent would run with. Let the AI
+        //     handle it and book the appointment.
+        //
+        // Formal opt-outs (STOP, UNSUBSCRIBE, CANCEL, END, QUIT) are already
+        // matched earlier in this webhook and mark DNC, so they never reach
+        // this branch.
+        const { count: inboundCount } = await supabase
+          .from("messages")
+          .select("id", { count: "exact", head: true })
+          .eq("conversation_id", conversation.id)
+          .eq("direction", "inbound");
+
+        const isFirstInbound = (inboundCount ?? 0) <= 1;
+        if (isFirstInbound && shouldAiSkipReply(body)) {
           return NextResponse.json({ status: "ok", aiSkipped: "decline_response" });
         }
 

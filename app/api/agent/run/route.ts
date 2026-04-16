@@ -222,9 +222,12 @@ export async function GET(req: NextRequest) {
         const lastMsg = msgs[0];
         if (lastMsg.direction !== "inbound") continue;
 
-        // If the lead's last message was a decline ("N", "No", "Not interested",
-        // etc.) don't chase them — would look pushy and hurt the user's reputation.
-        if (shouldAiSkipReply(lastMsg.body)) continue;
+        // Context-aware decline filter. If the lead's FIRST reply was a bare
+        // "No" / "Not interested", don't chase them. But if we're mid-convo
+        // and the "No" was an answer to a qualifying question ("do you take
+        // meds?" → "No"), keep going — that's what a human agent would do.
+        const inboundCount = msgs.filter((m) => m.direction === "inbound").length;
+        if (inboundCount <= 1 && shouldAiSkipReply(lastMsg.body)) continue;
 
         const history = msgs
           .reverse()
