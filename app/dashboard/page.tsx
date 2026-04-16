@@ -1259,14 +1259,21 @@ export default function DashboardPage() {
       list = list.filter((c) => !archivedConvIds.has(c.id) && !c.contact?.dnc);
     }
 
-    // Unread filter — just conversations with pending unread messages.
-    // Keep the currently-selected conversation in the list even if its
-    // unread count just dropped to 0 (because we auto-mark as read on
-    // click). Without this, the conversation vanishes from the sidebar
-    // the instant the user clicks it, and they can't easily get back to
-    // it without switching tabs.
+    // Unread filter — only conversations where a lead actually texted the
+    // user and the user hasn't opened it yet. Requires both (a) pending
+    // unread count and (b) at least one inbound message, so one-way
+    // campaign blasts with no replies never surface here. DNC contacts are
+    // already excluded above.
+    //
+    // We keep the currently-selected conversation visible even after its
+    // unread drops to 0 (auto-mark-as-read on click), otherwise it
+    // vanishes the instant you click it and there's no way back without
+    // switching tabs.
     if (convShowUnread) {
-      list = list.filter((c) => c.unread > 0 || c.id === selectedConversationId);
+      list = list.filter((c) =>
+        (c.unread > 0 && c.messages.some((m) => m.direction === "inbound"))
+        || c.id === selectedConversationId
+      );
     }
 
     // Recents filter — conversations the contact has actually replied in
