@@ -36,6 +36,17 @@ export default function HomePage() {
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<"standard" | "ai">("standard");
+
+  const handleSelectPlan = (plan: "standard" | "ai") => {
+    setSelectedPlan(plan);
+    setMode("signup");
+    setError("");
+    // Scroll to signup form
+    setTimeout(() => {
+      document.getElementById("auth-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -187,7 +198,10 @@ export default function HomePage() {
 
           <div className="mx-auto mt-10 grid max-w-4xl gap-6 md:grid-cols-2">
             {/* Standard Plan */}
-            <div className="rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur text-left">
+            <div
+              onClick={() => handleSelectPlan("standard")}
+              className={`cursor-pointer rounded-3xl border ${selectedPlan === "standard" ? "border-emerald-500 ring-2 ring-emerald-500/30" : "border-zinc-700"} bg-zinc-800/60 p-6 backdrop-blur text-left transition hover:border-emerald-500/60`}
+            >
               <div className="text-center">
                 <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Standard</div>
                 <div className="mt-2 text-3xl font-bold text-emerald-400">$39.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
@@ -203,10 +217,19 @@ export default function HomePage() {
                 <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Team management</li>
                 <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
               </ul>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSelectPlan("standard"); }}
+                className="mt-5 w-full rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700 transition"
+              >
+                Get Started
+              </button>
             </div>
 
             {/* AI Plan */}
-            <div className="relative rounded-3xl border-2 border-cyan-600 bg-gradient-to-b from-cyan-950/40 to-zinc-800/60 p-6 backdrop-blur text-left">
+            <div
+              onClick={() => handleSelectPlan("ai")}
+              className={`relative cursor-pointer rounded-3xl border-2 ${selectedPlan === "ai" ? "border-cyan-400 ring-2 ring-cyan-400/30" : "border-cyan-600"} bg-gradient-to-b from-cyan-950/40 to-zinc-800/60 p-6 backdrop-blur text-left transition hover:border-cyan-400/80`}
+            >
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-600 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white">Most Popular</div>
               <div className="text-center">
                 <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Text2Sale + AI</div>
@@ -223,6 +246,12 @@ export default function HomePage() {
                 <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Industry-trained (insurance, real estate, etc.)</li>
                 <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> SPIN selling &amp; objection handling</li>
               </ul>
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSelectPlan("ai"); }}
+                className="mt-5 w-full rounded-2xl bg-cyan-600 px-5 py-3 font-semibold text-white hover:bg-cyan-700 transition"
+              >
+                Get Started with AI
+              </button>
             </div>
           </div>
 
@@ -233,7 +262,7 @@ export default function HomePage() {
           </div>
 
           {/* Login / Signup */}
-          <div className="mx-auto mt-10 max-w-xl">
+          <div id="auth-form" className="mx-auto mt-10 max-w-xl">
             <div className="w-full rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
               <div className="mb-6">
                 <Logo size="md" />
@@ -309,6 +338,23 @@ export default function HomePage() {
                 </div>
               ) : (
                 <div className="space-y-4">
+                  {/* Selected plan badge */}
+                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2.5 w-2.5 rounded-full ${selectedPlan === "ai" ? "bg-cyan-400" : "bg-emerald-400"}`} />
+                      <span className="text-sm font-medium text-zinc-300">
+                        {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — {selectedPlan === "ai" ? "$59.99" : "$39.99"}/mo
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedPlan(selectedPlan === "ai" ? "standard" : "ai")}
+                      className="text-xs text-violet-400 hover:text-violet-300"
+                    >
+                      Switch plan
+                    </button>
+                  </div>
+
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div>
                       <label className="mb-2 block text-sm font-medium text-zinc-300">First name</label>
