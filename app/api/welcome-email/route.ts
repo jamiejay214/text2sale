@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { sendAdminAlertSMS } from "@/lib/admin-alert";
 
 const resendApiKey = process.env.RESEND_API_KEY;
 const fromAddress = process.env.RESEND_FROM_ADDRESS || "Text2Sale <hello@text2sale.com>";
@@ -17,6 +18,12 @@ export async function POST(req: NextRequest) {
 
     const name = (firstName || "there").trim();
     const subject = "Welcome to Text2Sale 👋";
+
+    // Ping the owner's cell on every signup — rare event, no cooldown.
+    // Non-blocking so a Telnyx hiccup never breaks the welcome email.
+    sendAdminAlertSMS(
+      `🎉 New Text2Sale signup\n👤 ${name}\n📧 ${email}`
+    ).catch(() => {});
 
     const html = `
 <!DOCTYPE html>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
+import { sendAdminAlertSMS } from "@/lib/admin-alert";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -35,9 +36,16 @@ async function sendVisitorAlert(city: string, region: string, country: string, p
     const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
     const date = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "America/New_York" });
 
+    // Fire an SMS ping to the owner's cell too — shares the 5-min cooldown
+    // with the email so a spike of visits doesn't flood the phone.
+    sendAdminAlertSMS(
+      `🔔 Text2Sale visitor\n📍 ${location}\n📄 ${page}\n🔗 ${source}\n🕐 ${time} ET`
+    ).catch(() => {});
+
     // Send email via Resend API
     if (!resendApiKey) {
       console.error("RESEND_API_KEY not set — skipping visitor alert email");
+      lastAlertSentAt = now; // still mark cooldown so SMS isn't spammed
       return;
     }
 
