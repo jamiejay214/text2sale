@@ -1248,11 +1248,15 @@ export default function DashboardPage() {
     const search = conversationSearch.trim().toLowerCase();
     let list = conversationsWithContacts;
 
-    // Filter by archive status
+    // Filter by archive status. Opted-out (DNC) contacts are treated as
+    // archived automatically — once someone replies STOP (or the user marks
+    // them DNC), their conversation drops out of the main chat area so the
+    // inbox stays focused on people who actually want to hear back. They
+    // remain reachable via the Archived tab if the user needs to review.
     if (convShowArchived) {
-      list = list.filter((c) => archivedConvIds.has(c.id));
+      list = list.filter((c) => archivedConvIds.has(c.id) || !!c.contact?.dnc);
     } else {
-      list = list.filter((c) => !archivedConvIds.has(c.id));
+      list = list.filter((c) => !archivedConvIds.has(c.id) && !c.contact?.dnc);
     }
 
     // Unread filter — just conversations with pending unread messages.
