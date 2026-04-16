@@ -4480,6 +4480,30 @@ export default function DashboardPage() {
                 className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
               />
 
+              {/* Quick actions for the Working tab — lets the user reset
+                  the whole pinned set if they over-pinned by mistake,
+                  without having to open each conversation one by one. */}
+              {convShowWorking && workingLeadConvIds.size > 0 && (
+                <div className="mb-3 flex items-center justify-between rounded-xl border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-xs">
+                  <span className="text-emerald-300">
+                    {workingLeadConvIds.size} pinned lead{workingLeadConvIds.size === 1 ? "" : "s"}
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (window.confirm("Clear all pinned Working Leads?")) {
+                        setWorkingLeadConvIds(new Set());
+                        setMessage("Cleared all Working Lead pins");
+                        window.setTimeout(() => setMessage(""), 2000);
+                      }
+                    }}
+                    className="rounded-lg border border-emerald-700/60 px-2 py-1 text-emerald-300 hover:bg-emerald-900/40"
+                    title="Unpin every Working Lead"
+                  >
+                    Clear all
+                  </button>
+                </div>
+              )}
+
               {convShowAll ? (
                 <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
                   {activeSendingCampaigns.length > 0 && (
@@ -4593,10 +4617,21 @@ export default function DashboardPage() {
 
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
-                            <div className="truncate font-semibold text-white">
-                              {contact
-                                ? `${contact.firstName} ${contact.lastName}`
-                                : "Unknown Contact"}
+                            <div className="flex min-w-0 items-center gap-1.5">
+                              {workingLeadConvIds.has(conversation.id) && (
+                                <span
+                                  className="text-emerald-400"
+                                  title="Pinned as Working Lead"
+                                  aria-label="Working Lead"
+                                >
+                                  ★
+                                </span>
+                              )}
+                              <div className="truncate font-semibold text-white">
+                                {contact
+                                  ? `${contact.firstName} ${contact.lastName}`
+                                  : "Unknown Contact"}
+                              </div>
                             </div>
                             <div className="text-xs text-zinc-400">
                               {formatTime(conversation.lastMessageAt)}
