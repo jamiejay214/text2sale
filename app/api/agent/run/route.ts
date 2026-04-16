@@ -130,6 +130,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  // Test mode bypasses the 22h silence rule and TCPA quiet-hours (still honors
+  // DNC, wallet, and max follow-ups). Append ?test=1 (auth still required).
+  const url = new URL(req.url);
+  const testMode = url.searchParams.get("test") === "1";
+  const testConversationId = url.searchParams.get("conversation_id");
+
   const supabase = createClient(supabaseUrl, supabaseKey);
   const anthropicKey = process.env.ANTHROPIC_API_KEY;
   const telnyxKey = process.env.TELNYX_API_KEY;
@@ -160,39 +166,45 @@ export async function GET(req: NextRequest) {
     if (ownedNumbers.length === 0) continue;
 
     // Find agent-enabled conversations for this account
-    const { data: convs } = await supabase
+    let convQuery = supabase
       .from("conversations")
-      .select("id, contact_id, last_message_at, agent_follow_up_count, agent_last_follow_up_at, from_number, contacts(first_name, last_name, phone, opt_out)")
+      .select("id, contact_id, last_message_at, agent_follow_up_count, agent_last_follow_up_at, from_number, contacts(first_name, last_name, phone, dnc)")
       .eq("user_id", account.id)
       .eq("agent_enabled", true);
+    if (testMode && testConversationId) {
+      convQuery = convQuery.eq("id", testConversationId);
+    }
+    const { data: convs } = await convQuery;
 
     if (!convs) continue;
 
     for (const conv of convs) {
       processed++;
       try {
-        const contact = conv.contacts as unknown as { first_name?: string; last_name?: string; phone?: string; opt_out?: boolean } | null;
+        const contact = conv.contacts as unknown as { first_name?: string; last_name?: string; phone?: string; dnc?: boolean } | null;
         if (!contact || !contact.phone) continue;
-        if (contact.opt_out) continue;
+        if (contact.dnc) continue;
 
         // Cap follow-ups
         const followUpCount = conv.agent_follow_up_count || 0;
         if (followUpCount >= MAX_FOLLOW_UPS) continue;
 
-        // Need at least MIN_HOURS_SINCE_LAST hours of silence
-        const lastMsgTime = new Date(conv.last_message_at).getTime();
-        const hoursSince = (Date.now() - lastMsgTime) / (1000 * 60 * 60);
-        if (hoursSince < MIN_HOURS_SINCE_LAST) continue;
+        // Need at least MIN_HOURS_SINCE_LAST hours of silence (bypassed in test mode)
+        if (!testMode) {
+          const lastMsgTime = new Date(conv.last_message_at).getTime();
+          const hoursSince = (Date.now() - lastMsgTime) / (1000 * 60 * 60);
+          if (hoursSince < MIN_HOURS_SINCE_LAST) continue;
+        }
 
         // Don't re-follow up within 24 hours of our own last agent follow-up
-        if (conv.agent_last_follow_up_at) {
+        if (!testMode && conv.agent_last_follow_up_at) {
           const lastAgentTime = new Date(conv.agent_last_follow_up_at).getTime();
           const hoursSinceAgent = (Date.now() - lastAgentTime) / (1000 * 60 * 60);
           if (hoursSinceAgent < 24) continue;
         }
 
-        // Respect TCPA quiet hours
-        if (!isWithinQuietHours(contact.phone)) continue;
+        // Respect TCPA quiet hours (bypassed in test mode)
+        if (!testMode && !isWithinQuietHours(contact.phone)) continue;
 
         // Fetch recent message history to build context
         const { data: msgs } = await supabase
