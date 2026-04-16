@@ -3930,6 +3930,29 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
+                      {/* AI Auto-Reply toggle — only visible when user has AI plan */}
+                      {currentUser.aiPlan && (
+                        <button
+                          onClick={async () => {
+                            const next = !currentUser.aiAutoReply;
+                            await persistProfile({ ai_auto_reply: next });
+                            setCurrentUser((prev) => prev ? { ...prev, aiAutoReply: next } : prev);
+                            setMessage(next ? "AI auto-reply ON" : "AI auto-reply OFF");
+                            window.setTimeout(() => setMessage(""), 2000);
+                          }}
+                          className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                            currentUser.aiAutoReply
+                              ? "bg-cyan-600/20 text-cyan-400 ring-1 ring-cyan-500/50"
+                              : "border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                          }`}
+                          title={currentUser.aiAutoReply ? "AI auto-reply is ON — click to turn off" : "Turn on AI auto-reply"}
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+                          </svg>
+                          AI {currentUser.aiAutoReply ? "ON" : "OFF"}
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           if (selectedConversation) {
@@ -4480,41 +4503,41 @@ export default function DashboardPage() {
         )}
 
         {activeTab === "campaigns" && (
-          <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr]">
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Create Campaign</h2>
+          <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
+              <h2 className="text-3xl font-bold">Create Campaign</h2>
 
-              <div className="mt-5 space-y-4">
+              <div className="mt-6 space-y-5">
                 <input
                   placeholder="Campaign name"
                   value={newCampaignForm.name}
                   onChange={(e) =>
                     setNewCampaignForm((prev) => ({ ...prev, name: e.target.value }))
                   }
-                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-4 text-base"
                 />
 
                 {/* Multi-step message builder */}
-                <div className="space-y-3">
+                <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <div className="text-sm font-medium text-zinc-300">Message Steps</div>
+                    <div className="text-base font-semibold text-zinc-200">Message Steps</div>
                     <button
                       type="button"
                       onClick={handleAddStep}
-                      className="rounded-lg bg-violet-600 px-3 py-1.5 text-xs font-medium hover:bg-violet-700"
+                      className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium hover:bg-violet-700"
                     >
                       + Add Step
                     </button>
                   </div>
 
                   {/* Step tabs */}
-                  <div className="flex flex-wrap gap-1">
+                  <div className="flex flex-wrap gap-2">
                     {newCampaignForm.steps.map((step, idx) => (
                       <button
                         key={step.id}
                         type="button"
                         onClick={() => setActiveStepIndex(idx)}
-                        className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
                           activeStepIndex === idx
                             ? "bg-violet-600 text-white"
                             : "bg-zinc-800 text-zinc-400 hover:text-white"
@@ -4527,7 +4550,7 @@ export default function DashboardPage() {
                         {newCampaignForm.steps.length > 1 && (
                           <span
                             onClick={(e) => { e.stopPropagation(); handleRemoveStep(idx); }}
-                            className="ml-1 text-zinc-500 hover:text-red-400"
+                            className="ml-1 text-zinc-500 hover:text-red-400 text-base"
                           >
                             ×
                           </span>
@@ -4538,7 +4561,7 @@ export default function DashboardPage() {
 
                   {/* Active step editor */}
                   {newCampaignForm.steps[activeStepIndex] && (
-                    <div className="space-y-3">
+                    <div className="space-y-4">
                       {activeStepIndex > 0 && (
                         <div className="flex items-center gap-3">
                           <label className="text-sm text-zinc-400">Delay before this step:</label>
@@ -4553,7 +4576,7 @@ export default function DashboardPage() {
                                 ),
                               }));
                             }}
-                            className="rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                            className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm"
                           >
                             <option value={1}>1 minute</option>
                             <option value={5}>5 minutes</option>
@@ -4584,7 +4607,7 @@ export default function DashboardPage() {
                             ),
                           }));
                         }}
-                        className="h-32 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3"
+                        className="h-44 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-4 text-base"
                       />
 
                       {(() => {
@@ -4614,11 +4637,11 @@ export default function DashboardPage() {
                   )}
                 </div>
 
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
                   <button
                     type="button"
                     onClick={() => setShowFieldPicker(!showFieldPicker)}
-                    className="flex items-center gap-2 text-sm font-medium text-violet-400 hover:text-violet-300"
+                    className="flex items-center gap-2 text-base font-medium text-violet-400 hover:text-violet-300"
                   >
                     <span>{showFieldPicker ? "▾" : "▸"}</span>
                     Insert Personalization Field
@@ -4630,22 +4653,22 @@ export default function DashboardPage() {
                           key={field.tag}
                           type="button"
                           onClick={() => insertField(field.tag)}
-                          className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-violet-600 hover:bg-violet-950/40 hover:text-violet-300 transition"
+                          className="rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-medium text-zinc-300 hover:border-violet-600 hover:bg-violet-950/40 hover:text-violet-300 transition"
                         >
                           {field.label}
                         </button>
                       ))}
                     </div>
                   )}
-                  <div className="mt-2 text-xs text-zinc-500">
+                  <div className="mt-2 text-sm text-zinc-500">
                     Tags like <code className="text-violet-400">{"{firstName}"}</code> are replaced with each contact&apos;s data when sent
                   </div>
                 </div>
 
                 {(currentUser.ownedNumbers || []).length > 0 && (
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
-                    <div className="text-sm font-medium text-zinc-300 mb-3">
-                      Send from numbers <span className="text-zinc-500 font-normal">(selected numbers rotate per message)</span>
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+                    <div className="text-base font-semibold text-zinc-200 mb-3">
+                      Send from numbers <span className="text-zinc-500 font-normal text-sm">(selected numbers rotate per message)</span>
                     </div>
                     <div className="space-y-2">
                       {(currentUser.ownedNumbers || []).map((num) => {
@@ -4662,34 +4685,34 @@ export default function DashboardPage() {
                                   : [...prev.selectedNumbers, num.number],
                               }));
                             }}
-                            className={`w-full flex items-center justify-between rounded-xl px-4 py-3 text-left text-sm transition ${
+                            className={`w-full flex items-center justify-between rounded-xl px-5 py-3.5 text-left text-base transition ${
                               isSelected
                                 ? "border border-violet-600 bg-violet-950/40 text-white"
                                 : "border border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
                             }`}
                           >
                             <div className="flex items-center gap-3">
-                              <div className={`h-4 w-4 rounded border flex items-center justify-center ${
+                              <div className={`h-5 w-5 rounded border flex items-center justify-center ${
                                 isSelected ? "bg-violet-600 border-violet-600" : "border-zinc-600"
                               }`}>
-                                {isSelected && <span className="text-xs text-white">✓</span>}
+                                {isSelected && <span className="text-sm text-white">✓</span>}
                               </div>
-                              <span className="font-mono">{num.number}</span>
+                              <span className="font-mono text-base">{num.number}</span>
                             </div>
-                            <span className="text-xs text-zinc-500">{num.alias}</span>
+                            <span className="text-sm text-zinc-500">{num.alias}</span>
                           </button>
                         );
                       })}
                     </div>
                     {newCampaignForm.selectedNumbers.length === 0 && (
-                      <div className="mt-2 text-xs text-zinc-500">
+                      <div className="mt-2 text-sm text-zinc-500">
                         No numbers selected — all owned numbers will be used
                       </div>
                     )}
                   </div>
                 )}
 
-                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 text-base text-zinc-400">
                   <div>{newCampaignForm.steps.length} message step{newCampaignForm.steps.length > 1 ? "s" : ""}</div>
                   {newCampaignForm.selectedNumbers.length > 0 && (
                     <div className="mt-1">
@@ -4700,7 +4723,7 @@ export default function DashboardPage() {
 
                 <button
                   onClick={handleCreateCampaign}
-                  className="w-full rounded-2xl bg-violet-600 py-4 hover:bg-violet-700"
+                  className="w-full rounded-2xl bg-violet-600 py-4 text-lg font-semibold hover:bg-violet-700"
                 >
                   Save Campaign
                 </button>
