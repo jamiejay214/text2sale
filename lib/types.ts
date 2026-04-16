@@ -43,6 +43,7 @@ export type Profile = {
   ai_auto_reply?: boolean;
   ai_plan?: boolean;
   free_ai_plan?: boolean;
+  industry?: string;
   available_hours?: Record<string, unknown> | null;
   appointment_reminders?: Record<string, unknown> | null;
   created_at: string;
