@@ -496,6 +496,19 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Per-wave progress write so the dashboard's polling/realtime can drive
+      // a live progress bar. Fire-and-forget — if this write is slow we don't
+      // want to stall the next wave waiting on it. audience is written every
+      // time so the client knows the denominator even if the initial launch
+      // request undercounted (e.g. contacts added mid-send).
+      supabase
+        .from("campaigns")
+        .update({ sent, failed, audience: contacts.length })
+        .eq("id", campaignId)
+        .then(({ error }) => {
+          if (error) console.error("progress update failed:", error.message);
+        });
+
       if (outOfFunds) break;
 
       // Re-check pause between waves too, so a click mid-long-wave is still honored.

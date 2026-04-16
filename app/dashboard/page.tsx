@@ -659,6 +659,22 @@ export default function DashboardPage() {
   const [workflowSaving, setWorkflowSaving] = useState(false);
   const [workflowBulkMode, setWorkflowBulkMode] = useState(false);
 
+  // Schedule Follow-up — one-click Calendar event from the conversation.
+  const [showFollowUpModal, setShowFollowUpModal] = useState(false);
+  const [followUpDate, setFollowUpDate] = useState("");
+  const [followUpTime, setFollowUpTime] = useState("10:00");
+  const [followUpTitle, setFollowUpTitle] = useState("");
+  const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
+
+  // Response-time SLA stats — computed server-side via the first_reply_stats
+  // RPC so it stays accurate regardless of how many messages are loaded
+  // client-side. Refreshed every 30s while the dashboard is open.
+  const [firstReplyStats, setFirstReplyStats] = useState<{
+    avgMinutes: number;
+    repliedCount: number;
+    hotLeads: number;
+  }>({ avgMinutes: 0, repliedCount: 0, hotLeads: 0 });
+
   // Quick replies (stored in profile as JSONB)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([
     { id: "qr1", label: "Thanks", body: "Thank you for your message! I'll get back to you shortly." },
@@ -1135,6 +1151,80 @@ export default function DashboardPage() {
       supabase.removeChannel(channel);
     };
   }, [userId]);
+
+  // First-reply SLA feed — keeps the Overview card fresh. Every 30s rather
+  // than every 2s because these numbers don't move that often and the RPC
+  // does a messages-wide scan per call.
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+
+    const loadStats = async () => {
+      const { data, error } = await supabase.rpc("first_reply_stats", {
+        p_user_id: userId,
+        p_days: 30,
+      });
+      if (cancelled || error || !data || !Array.isArray(data) || data.length === 0) return;
+      const row = data[0] as { avg_minutes: number | string; replied_count: number | string; hot_leads: number | string };
+      setFirstReplyStats({
+        avgMinutes: Number(row.avg_minutes) || 0,
+        repliedCount: Number(row.replied_count) || 0,
+        hotLeads: Number(row.hot_leads) || 0,
+      });
+    };
+
+    loadStats();
+    const interval = window.setInterval(loadStats, 30_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [userId]);
+
+  // Poll campaigns in "Sending" status so the progress bar on each card
+  // actually moves. send-campaign writes sent/failed/audience per wave, and
+  // a 10k blast takes ~90s — without a live feed the user sees a spinner
+  // with no feedback and refreshes, triggering a duplicate launch.
+  useEffect(() => {
+    if (!userId) return;
+    const hasActive = campaigns.some((c) => c.status === "Sending");
+    if (!hasActive) return;
+
+    const interval = window.setInterval(async () => {
+      const activeIds = campaigns.filter((c) => c.status === "Sending").map((c) => c.id);
+      if (activeIds.length === 0) return;
+      const { data } = await supabase
+        .from("campaigns")
+        .select("id, sent, failed, audience, status")
+        .in("id", activeIds);
+      if (!data) return;
+      setCampaigns((prev) => {
+        let changed = false;
+        const next = prev.map((c) => {
+          const fresh = (data as Array<{ id: string; sent: number; failed: number; audience: number; status: string }>)
+            .find((d) => d.id === c.id);
+          if (!fresh) return c;
+          if (
+            c.sent === fresh.sent &&
+            c.failed === fresh.failed &&
+            c.audience === fresh.audience &&
+            c.status === fresh.status
+          ) return c;
+          changed = true;
+          return {
+            ...c,
+            sent: fresh.sent,
+            failed: fresh.failed,
+            audience: fresh.audience,
+            status: fresh.status as typeof c.status,
+          };
+        });
+        return changed ? next : prev;
+      });
+    }, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [userId, campaigns]);
 
   const handleSendChatMessage = async () => {
     if (!userId || !chatInput.trim()) return;
@@ -3562,20 +3652,68 @@ export default function DashboardPage() {
 
     // Dedup (runs on the post-DNC list so dedupe counts don't double-count
     // rows we already dropped for DNC).
+    //
+    // Previously this only deduped against the in-memory `contacts` state
+    // array, which is paginated — so a user with 50k contacts would happily
+    // re-import any phone not currently rendered. We now ask the DB directly
+    // via `check_existing_phones`, in chunks of 1000, so dedup is accurate
+    // regardless of how much of the contact list is loaded client-side.
     let deduped = afterDnc;
     let dupeCount = 0;
     if (csvIgnoreDuplicates) {
-      const existingPhones = new Set(contacts.map((c) => c.phone.replace(/\D/g, "")).filter(Boolean));
+      // Normalize each incoming phone to last-10 digits — matches the SQL
+      // side so formatting differences between CSV and stored rows don't
+      // cause false misses.
+      const csvLast10ByRow = afterDnc.map((row) => {
+        const d = row.phone.replace(/\D/g, "");
+        const last10 = d.length >= 10 ? d.slice(-10) : "";
+        return last10;
+      });
+
+      // Collect the unique set we need to check against the DB. Skip rows
+      // with unparseable phones (length < 10) — those stay in the import.
+      const uniqueCsvLast10 = Array.from(
+        new Set(csvLast10ByRow.filter((p) => p.length === 10))
+      );
+
+      // Chunked RPC — 1000 per call keeps the request payload small and
+      // lets the functional index short-circuit each call to an indexed
+      // lookup.
+      const existingLast10 = new Set<string>();
+      const CHUNK_SIZE = 1000;
+      for (let i = 0; i < uniqueCsvLast10.length; i += CHUNK_SIZE) {
+        const chunk = uniqueCsvLast10.slice(i, i + CHUNK_SIZE);
+        const { data, error } = await supabase.rpc("check_existing_phones", {
+          p_user_id: userId,
+          p_phones_last10: chunk,
+        });
+        if (error) {
+          // Fail open — if the dedup RPC errors we'd rather let the import
+          // through than block it. Duplicates will just land as extra rows.
+          console.warn("check_existing_phones failed:", error.message);
+          break;
+        }
+        if (Array.isArray(data)) {
+          for (const row of data as Array<string | { check_existing_phones?: string }>) {
+            const v = typeof row === "string" ? row : row?.check_existing_phones;
+            if (v) existingLast10.add(v);
+          }
+        }
+      }
+
+      // Also dedup within the CSV itself so two rows with the same phone
+      // don't both land.
       const csvPhoneSeen = new Set<string>();
       deduped = [];
-      for (const row of afterDnc) {
-        const normalized = row.phone.replace(/\D/g, "");
-        if (!normalized) { deduped.push(row); continue; }
-        if (existingPhones.has(normalized) || csvPhoneSeen.has(normalized)) {
+      for (let idx = 0; idx < afterDnc.length; idx++) {
+        const row = afterDnc[idx];
+        const last10 = csvLast10ByRow[idx];
+        if (!last10) { deduped.push(row); continue; }
+        if (existingLast10.has(last10) || csvPhoneSeen.has(last10)) {
           dupeCount++;
           continue;
         }
-        csvPhoneSeen.add(normalized);
+        csvPhoneSeen.add(last10);
         deduped.push(row);
       }
     }
@@ -4178,6 +4316,65 @@ export default function DashboardPage() {
                 </div>
                 <div className="mt-2 text-xs text-zinc-500">{contacts.filter(c => c.dnc).length} on DNC list</div>
               </div>
+            </div>
+
+            {/* Response-time SLA row — the "speed to lead" metrics sales managers
+                actually care about. Left card shows our 30-day avg first-reply
+                time; right card highlights hot leads that just replied and are
+                waiting for a callback. Clicking the hot-leads card jumps to the
+                Unread filter so the rep can start dialing. */}
+            <div className="grid gap-5 md:grid-cols-2">
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <div className="text-sm text-zinc-400">Avg First-Reply Time</div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <div className="text-4xl font-bold text-cyan-400">
+                    {firstReplyStats.repliedCount === 0
+                      ? "—"
+                      : firstReplyStats.avgMinutes >= 60
+                        ? `${(firstReplyStats.avgMinutes / 60).toFixed(1)}h`
+                        : `${firstReplyStats.avgMinutes.toFixed(1)}m`}
+                  </div>
+                  {firstReplyStats.repliedCount > 0 && (
+                    <div className="text-sm text-zinc-500">
+                      across {firstReplyStats.repliedCount.toLocaleString()} repl{firstReplyStats.repliedCount === 1 ? "y" : "ies"}
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  Outbound → first inbound reply · last 30 days
+                </div>
+              </div>
+
+              <button
+                onClick={() => {
+                  setActiveTab("conversations");
+                  setConvShowUnread(true);
+                  setConvShowRecents(false);
+                  setConvShowArchived(false);
+                  setConvShowWorking(false);
+                }}
+                className={`rounded-3xl border p-6 text-left transition ${
+                  firstReplyStats.hotLeads > 0
+                    ? "border-amber-500/40 bg-amber-500/10 hover:border-amber-400"
+                    : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
+                }`}
+              >
+                <div className="flex items-center gap-2 text-sm text-zinc-400">
+                  {firstReplyStats.hotLeads > 0 && <span className="animate-pulse">🔥</span>}
+                  <span>Hot Leads Waiting</span>
+                </div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <div className={`text-4xl font-bold ${firstReplyStats.hotLeads > 0 ? "text-amber-400" : "text-zinc-500"}`}>
+                    {firstReplyStats.hotLeads}
+                  </div>
+                  {firstReplyStats.hotLeads > 0 && (
+                    <div className="text-sm text-amber-300">call them now</div>
+                  )}
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  Unread inbound in the last hour · click to open
+                </div>
+              </button>
             </div>
 
             <div className="grid gap-8 lg:grid-cols-[1.3fr_0.9fr]">
@@ -5013,6 +5210,34 @@ export default function DashboardPage() {
                         </svg>
                         Workflow
                       </button>
+                      {/* Schedule Follow-up — drops a Google Calendar event for
+                          this lead onto the rep's primary calendar. Only shown
+                          when Calendar is connected; otherwise this would open
+                          a modal that only errored on submit. */}
+                      {currentUser?.googleCalendarConnected && (
+                        <button
+                          onClick={() => {
+                            // Default to tomorrow at 10:00 local — a reasonable
+                            // follow-up slot with almost no typing required.
+                            const tomorrow = new Date();
+                            tomorrow.setDate(tomorrow.getDate() + 1);
+                            const yyyy = tomorrow.getFullYear();
+                            const mm = String(tomorrow.getMonth() + 1).padStart(2, "0");
+                            const dd = String(tomorrow.getDate()).padStart(2, "0");
+                            setFollowUpDate(`${yyyy}-${mm}-${dd}`);
+                            setFollowUpTime("10:00");
+                            setFollowUpTitle("");
+                            setShowFollowUpModal(true);
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 hover:border-emerald-500 hover:text-emerald-300"
+                          title="Add a follow-up event for this lead to your Google Calendar."
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6.75 3v2.25M17.25 3v2.25M3 18.75V7.5a2.25 2.25 0 012.25-2.25h13.5A2.25 2.25 0 0121 7.5v11.25m-18 0A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75m-18 0v-7.5A2.25 2.25 0 015.25 9h13.5A2.25 2.25 0 0121 11.25v7.5" />
+                          </svg>
+                          Follow-up
+                        </button>
+                      )}
                       {/* Cancel Workflow — only visible when this contact has
                           pending drip steps queued. One click yanks them off
                           every workflow they're enrolled in. */}
@@ -6179,6 +6404,30 @@ export default function DashboardPage() {
                           </button>
                         </div>
                       </div>
+
+                      {(campaign.status === "Sending" || isLaunching) && campaign.audience > 0 && (() => {
+                        // Live progress bar driven by the 2s campaign poller.
+                        // Percent accounts for both sent and failed so a stuck
+                        // chunk of rejects doesn't make the bar look frozen.
+                        const processed = (campaign.sent || 0) + (campaign.failed || 0);
+                        const pct = Math.min(100, Math.round((processed / campaign.audience) * 100));
+                        return (
+                          <div className="mt-4">
+                            <div className="mb-1 flex items-center justify-between text-xs">
+                              <span className="text-sky-300">
+                                Sending… {processed.toLocaleString()} / {campaign.audience.toLocaleString()}
+                              </span>
+                              <span className="text-zinc-400">{pct}%</span>
+                            </div>
+                            <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+                              <div
+                                className="h-full bg-gradient-to-r from-sky-500 to-violet-500 transition-all duration-500"
+                                style={{ width: `${pct}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                       <div className="mt-4 grid gap-3 md:grid-cols-3">
                         <div className="rounded-2xl bg-zinc-900 p-4">
@@ -10156,6 +10405,115 @@ export default function DashboardPage() {
         )}
 
       </div>
+
+      {/* ── Schedule Follow-up Modal ──
+          Lightweight "drop an event on my calendar for this lead" flow.
+          Intentionally thinner than the appointments booking: no conflict
+          check, no appointment row — just a Google Calendar event. */}
+      {showFollowUpModal && selectedConversation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <h3 className="text-xl font-bold">Schedule Follow-up</h3>
+            <p className="mt-1 text-sm text-zinc-400">
+              Adds a reminder event to your Google Calendar for{" "}
+              <span className="text-emerald-300">
+                {selectedContact?.firstName || "this lead"}
+                {selectedContact?.lastName ? ` ${selectedContact.lastName}` : ""}
+              </span>.
+            </p>
+            <div className="mt-5 grid gap-3">
+              <div>
+                <label className="mb-1 block text-sm text-zinc-400">Date</label>
+                <input
+                  type="date"
+                  value={followUpDate}
+                  onChange={(e) => setFollowUpDate(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-zinc-400">Time</label>
+                <input
+                  type="time"
+                  value={followUpTime}
+                  onChange={(e) => setFollowUpTime(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm text-zinc-400">Title (optional)</label>
+                <input
+                  type="text"
+                  value={followUpTitle}
+                  onChange={(e) => setFollowUpTitle(e.target.value)}
+                  placeholder={`Follow-up — ${selectedContact?.firstName || "lead"}`}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-emerald-500 focus:outline-none"
+                />
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                onClick={() => setShowFollowUpModal(false)}
+                className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!followUpDate || !followUpTime || followUpSubmitting}
+                onClick={async () => {
+                  if (!selectedConversation || !followUpDate || !followUpTime) return;
+                  setFollowUpSubmitting(true);
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const token = session?.access_token;
+                    if (!token) {
+                      setMessage("❌ Please sign in again to schedule.");
+                      window.setTimeout(() => setMessage(""), 3000);
+                      return;
+                    }
+                    const res = await fetch("/api/google-calendar/create-event", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                      },
+                      body: JSON.stringify({
+                        contactId: selectedConversation.contactId,
+                        date: followUpDate,
+                        time: followUpTime,
+                        title: followUpTitle.trim() || undefined,
+                        duration: 30,
+                      }),
+                    });
+                    const data = await res.json();
+                    if (!res.ok || !data.success) {
+                      if (data?.code === "not_connected") {
+                        setMessage("❌ Connect Google Calendar in Settings first.");
+                      } else {
+                        setMessage(`❌ ${data?.error || "Failed to schedule follow-up"}`);
+                      }
+                      window.setTimeout(() => setMessage(""), 4000);
+                      return;
+                    }
+                    setShowFollowUpModal(false);
+                    setMessage("✅ Follow-up added to your Google Calendar");
+                    window.setTimeout(() => setMessage(""), 3000);
+                  } catch (err) {
+                    const m = err instanceof Error ? err.message : "Failed to schedule";
+                    setMessage(`❌ ${m}`);
+                    window.setTimeout(() => setMessage(""), 3000);
+                  } finally {
+                    setFollowUpSubmitting(false);
+                  }
+                }}
+                className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {followUpSubmitting ? "Scheduling…" : "Add to Calendar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Schedule Message Modal ── */}
       {/* ── Add to Workflow Modal ── */}
