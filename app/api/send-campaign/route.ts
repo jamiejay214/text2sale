@@ -1,15 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+// Give the route the full Pro-plan budget so a 10k send doesn't hit the
+// default 60s cap mid-run. At CHUNK=100 with PIPE=2, 10k takes roughly
+// 90-120 s — well inside 300.
+export const maxDuration = 300;
+
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Per-chunk parallelism. Sequential sends are ~4 round trips per contact
-// (Telnyx + Supabase) — at ~250ms each that's a full second per contact.
-// CHUNK=50 gives ~50× throughput while staying under Telnyx burst limits.
-const CHUNK = 50;
+// Per-chunk parallelism. Every contact costs ~4 round-trips (Telnyx +
+// Supabase) ≈ 250 ms each, so serial would be 1 s/contact. Bursting 100
+// Telnyx sends in parallel per chunk is still well within 10DLC MPS
+// limits and roughly doubles throughput over the old 50.
+const CHUNK = 100;
+
+// How many chunks can have their Telnyx sends + DB writes in flight at
+// once. With PIPE=2 a 10k campaign finishes ~2× faster than strict
+// sequential chunks, and wallet decrements are still serialized inside
+// each chunk so we can't double-bill.
+const PIPE = 2;
 
 type CampaignContact = {
   id: string;
@@ -87,6 +99,12 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    // O(1) lookup by contact id — used later for campaign-assign checks.
+    // Without this, a 10k send was doing 10k linear scans inside the loop
+    // (quadratic). Cheap up-front cost, huge savings at scale.
+    const contactById = new Map<string, CampaignContact>();
+    for (const c of contacts) contactById.set(c.id, c);
 
     // --- Pre-fetch all existing conversations for this user ----------------
     // Previously we looked up the conversation per contact inside processOne,
@@ -208,71 +226,44 @@ export async function POST(req: NextRequest) {
       }
     };
 
-    // --- Main loop --------------------------------------------------------
-    for (let i = 0; i < contacts.length; i += CHUNK) {
-      // Pause check between chunks — gives the user a few-second response
-      // when they hit Pause mid-send.
-      if (i > 0) {
-        const { data: liveCampaign } = await supabase
-          .from("campaigns")
-          .select("status")
-          .eq("id", campaignId)
-          .single();
-        if (liveCampaign?.status === "Paused") {
-          paused = true;
-          break;
-        }
-      }
-
-      const slice = contacts.slice(i, i + CHUNK);
-
-      // Stop early if the wallet obviously can't cover the next chunk. The
-      // atomic decrement below is the real source of truth, but this saves
-      // us from firing a batch of Telnyx sends we'll never record.
-      const chunkMaxCost = slice.length * messageCost;
-      if (walletBalance < messageCost) {
-        outOfFunds = true;
-        break;
-      }
-
-      const results = await Promise.all(slice.map((c, j) => sendOne(c, i + j)));
+    // Per-chunk processor. Pulled out so we can run PIPE of them
+    // concurrently below. Returns what happened in this chunk so the
+    // outer loop can roll up totals / detect pause + out-of-funds.
+    const processChunk = async (chunkOffset: number): Promise<{
+      sentCount: number;
+      failedCount: number;
+      chunkErrors: string[];
+      ranOutOfFunds: boolean;
+      newBalance: number | null;
+    }> => {
+      const slice = contacts.slice(chunkOffset, chunkOffset + CHUNK);
+      const results = await Promise.all(slice.map((c, j) => sendOne(c, chunkOffset + j)));
 
       const successful = results.filter((r) => r.success);
       const chunkSentCount = successful.length;
       const chunkFailed = results.length - chunkSentCount;
-      sent += chunkSentCount;
-      failed += chunkFailed;
-
+      const chunkErrors: string[] = [];
       for (const r of results) {
-        if (!r.success && r.error) errors.push(`${r.contactId}: ${r.error}`);
+        if (!r.success && r.error) chunkErrors.push(`${r.contactId}: ${r.error}`);
       }
 
-      if (chunkSentCount === 0) continue;
+      if (chunkSentCount === 0) {
+        return { sentCount: 0, failedCount: chunkFailed, chunkErrors, ranOutOfFunds: false, newBalance: null };
+      }
 
-      // --- Atomically charge the wallet for this chunk ------------------
-      // One DB call per chunk (instead of per message) — still live enough
-      // for the dashboard to tick the balance down smoothly.
+      // Atomic wallet decrement — safe to call in parallel across chunks
+      // because the RPC is SECURITY DEFINER + Postgres row-locked.
       const chunkCost = Number((chunkSentCount * messageCost).toFixed(4));
       const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
         p_user_id: userId,
         p_amount: chunkCost,
       });
+      const ranOutOfFunds = !!decErr || newBal === null;
 
-      if (decErr || newBal === null) {
-        // Couldn't charge — treat the rest of the campaign as out-of-funds.
-        // We don't refund the Telnyx sends that already went through; those
-        // are on the house (rare edge case, acceptable vs. complex rollback).
-        outOfFunds = true;
-        walletBalance = 0;
-      } else {
-        walletBalance = Number(newBal);
-        void chunkMaxCost; // retained for future per-chunk telemetry
-      }
-
-      // --- Batch DB writes for successful sends -------------------------
+      // Batch DB writes for successful sends.
       const existingConvMsgs: Array<Record<string, unknown>> = [];
       const newConvRows: Array<Record<string, unknown>> = [];
-      const newConvBodies = new Map<string, string>(); // contact_id -> body
+      const newConvBodies = new Map<string, string>();
       const convIdsToTouch: string[] = [];
       const previewByConvId = new Map<string, string>();
       const campaignAssigns: string[] = [];
@@ -300,12 +291,11 @@ export async function POST(req: NextRequest) {
         }
 
         if (campaignName) {
-          const c = contacts.find((x) => x.id === r.contactId);
+          const c = contactById.get(r.contactId);
           if (c && !c.campaign) campaignAssigns.push(r.contactId);
         }
       }
 
-      // 1) Insert new conversations in one call, collect their IDs.
       let insertedConvs: Array<{ id: string; contact_id: string }> = [];
       if (newConvRows.length > 0) {
         const { data: convData } = await supabase
@@ -320,7 +310,6 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // 2) Messages: existing-conv batch + new-conv batch in parallel.
       const newConvMsgs = insertedConvs.map((c) => ({
         conversation_id: c.id,
         direction: "outbound" as const,
@@ -328,8 +317,6 @@ export async function POST(req: NextRequest) {
         status: "sent" as const,
       }));
 
-      // PostgrestFilterBuilder is thenable but not a real Promise — wrap
-      // each call so Promise.all's type inference is happy.
       const writes: Promise<unknown>[] = [];
       if (existingConvMsgs.length > 0) {
         writes.push(Promise.resolve(supabase.from("messages").insert(existingConvMsgs)));
@@ -338,9 +325,6 @@ export async function POST(req: NextRequest) {
         writes.push(Promise.resolve(supabase.from("messages").insert(newConvMsgs)));
       }
 
-      // 3) Touch existing conversations' preview/last_message_at. Supabase
-      //    can't batch-update disparate values in one call, so issue them
-      //    in parallel but only for distinct conv IDs.
       const touchedIds = Array.from(new Set(convIdsToTouch));
       for (const cid of touchedIds) {
         writes.push(
@@ -356,7 +340,6 @@ export async function POST(req: NextRequest) {
         );
       }
 
-      // 4) Set contacts.campaign for any unassigned ones, in one shot.
       if (campaignName && campaignAssigns.length > 0) {
         writes.push(
           Promise.resolve(
@@ -369,6 +352,59 @@ export async function POST(req: NextRequest) {
       }
 
       await Promise.all(writes);
+
+      return {
+        sentCount: chunkSentCount,
+        failedCount: chunkFailed,
+        chunkErrors,
+        ranOutOfFunds,
+        newBalance: ranOutOfFunds ? null : Number(newBal),
+      };
+    };
+
+    // --- Main loop --------------------------------------------------------
+    // Run PIPE chunks concurrently per wave. For a 10k send with CHUNK=100
+    // and PIPE=2, that's 50 waves of 2 parallel chunks — typically ~90-120s.
+    for (let waveStart = 0; waveStart < contacts.length; waveStart += CHUNK * PIPE) {
+      // Pause check once per wave, not per chunk — cheaper at scale.
+      if (waveStart > 0) {
+        const { data: liveCampaign } = await supabase
+          .from("campaigns")
+          .select("status")
+          .eq("id", campaignId)
+          .single();
+        if (liveCampaign?.status === "Paused") {
+          paused = true;
+          break;
+        }
+      }
+
+      // Stop before firing a wave we can't afford. One chunk might barely
+      // fit; the atomic decrement is still the real source of truth.
+      if (walletBalance < messageCost) {
+        outOfFunds = true;
+        break;
+      }
+
+      const chunkOffsets: number[] = [];
+      for (let p = 0; p < PIPE; p++) {
+        const off = waveStart + p * CHUNK;
+        if (off < contacts.length) chunkOffsets.push(off);
+      }
+
+      const waveResults = await Promise.all(chunkOffsets.map((off) => processChunk(off)));
+
+      for (const r of waveResults) {
+        sent += r.sentCount;
+        failed += r.failedCount;
+        errors.push(...r.chunkErrors);
+        if (r.ranOutOfFunds) {
+          outOfFunds = true;
+          walletBalance = 0;
+        } else if (r.newBalance !== null) {
+          walletBalance = r.newBalance;
+        }
+      }
 
       if (outOfFunds) break;
     }
