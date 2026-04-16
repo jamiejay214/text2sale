@@ -1256,8 +1256,13 @@ export default function DashboardPage() {
     }
 
     // Unread filter — just conversations with pending unread messages.
+    // Keep the currently-selected conversation in the list even if its
+    // unread count just dropped to 0 (because we auto-mark as read on
+    // click). Without this, the conversation vanishes from the sidebar
+    // the instant the user clicks it, and they can't easily get back to
+    // it without switching tabs.
     if (convShowUnread) {
-      list = list.filter((c) => c.unread > 0);
+      list = list.filter((c) => c.unread > 0 || c.id === selectedConversationId);
     }
 
     // Recents filter — conversations the contact has actually replied in
@@ -1276,7 +1281,7 @@ export default function DashboardPage() {
         fullName.includes(search) || phone.includes(search) || preview.includes(search)
       );
     });
-  }, [conversationSearch, conversationsWithContacts, convShowArchived, convShowUnread, convShowRecents, archivedConvIds]);
+  }, [conversationSearch, conversationsWithContacts, convShowArchived, convShowUnread, convShowRecents, archivedConvIds, selectedConversationId]);
 
   // Flat list of every outbound message across all conversations — used by
   // the "All" view so the user can see everything that's been sent and what's
@@ -4583,7 +4588,7 @@ export default function DashboardPage() {
             <div className="flex h-[90vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
               {selectedConversation ? (
                 <>
-                  <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-y-2 border-b border-zinc-800 px-5 py-4">
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
                         {selectedContact ? getInitials(selectedContact.firstName, selectedContact.lastName) : "?"}
@@ -4616,7 +4621,7 @@ export default function DashboardPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center justify-end gap-2">
                       {selectedContact?.dnc && (
                         <span className="rounded-full bg-red-500/20 px-3 py-1 text-xs font-semibold text-red-300">
                           DNC
@@ -5019,13 +5024,28 @@ export default function DashboardPage() {
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-5">
               {selectedContact ? (
                 <div className="max-h-[80vh] overflow-y-auto pr-1">
-                  <div className="mb-5 border-b border-zinc-800 pb-4">
-                    <div className="text-xl font-bold">
-                      {selectedContact.firstName} {selectedContact.lastName}
+                  <div className="mb-5 flex items-start justify-between gap-3 border-b border-zinc-800 pb-4">
+                    <div className="min-w-0">
+                      <div className="truncate text-xl font-bold">
+                        {selectedContact.firstName} {selectedContact.lastName}
+                      </div>
+                      <div className="mt-1 text-sm text-zinc-400">
+                        Contact details and notes
+                      </div>
                     </div>
-                    <div className="mt-1 text-sm text-zinc-400">
-                      Contact details and notes
-                    </div>
+                    {/* Close button inside the panel — the toolbar "More"
+                        button can get clipped on narrow widths, so the
+                        panel needs its own way to close itself. */}
+                    <button
+                      onClick={() => setShowConvContactPanel(false)}
+                      className="shrink-0 rounded-lg border border-zinc-700 p-1.5 text-zinc-400 hover:border-violet-500 hover:bg-zinc-800 hover:text-violet-300"
+                      title="Close contact panel"
+                      aria-label="Close contact panel"
+                    >
+                      <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
                   </div>
 
                   <div className="grid grid-cols-2 gap-3">
