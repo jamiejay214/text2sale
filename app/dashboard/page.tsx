@@ -1726,6 +1726,50 @@ export default function DashboardPage() {
     if (ok) setScheduledMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "cancelled" as const } : m));
   };
 
+  // Pull a contact off any workflows they're currently enrolled in. Cancels
+  // every pending workflow-scheduled message for those contacts — i.e.,
+  // scheduled_messages where status='pending' AND cancel_on_reply=true (the
+  // flag that workflow enrollment always sets). Returns how many drip steps
+  // we actually stopped so the caller can message the user.
+  const handleCancelWorkflow = async (contactIds: string[]): Promise<number> => {
+    if (!userId || contactIds.length === 0) return 0;
+    const pendingIds = scheduledMessages
+      .filter((m) => m.status === "pending" && m.cancel_on_reply && contactIds.includes(m.contact_id))
+      .map((m) => m.id);
+    if (pendingIds.length === 0) return 0;
+
+    // Optimistic update first so the UI reflects instantly; reconcile after.
+    setScheduledMessages((prev) => prev.map((m) =>
+      pendingIds.includes(m.id) ? { ...m, status: "cancelled" as const } : m
+    ));
+
+    const { error } = await supabase
+      .from("scheduled_messages")
+      .update({ status: "cancelled" })
+      .in("id", pendingIds);
+    if (error) {
+      // Roll back the optimistic state if the DB rejected it.
+      setScheduledMessages((prev) => prev.map((m) =>
+        pendingIds.includes(m.id) ? { ...m, status: "pending" as const } : m
+      ));
+      setMessage(`❌ Failed to cancel workflow: ${error.message}`);
+      window.setTimeout(() => setMessage(""), 3000);
+      return 0;
+    }
+
+    // Clear the campaign tag on those contacts so the campaign card's
+    // enrolled count drops and the Contacts table no longer shows them
+    // as assigned to that campaign.
+    await supabase
+      .from("contacts")
+      .update({ campaign: "" })
+      .in("id", contactIds);
+    const idSet = new Set(contactIds);
+    setContacts((prev) => prev.map((c) => idSet.has(c.id) ? { ...c, campaign: "" } : c));
+
+    return pendingIds.length;
+  };
+
   // Add one contact or a bulk selection of conversations to a workflow
   // (campaign). Every step is written to scheduled_messages with
   // cancel_on_reply so the drip halts the instant the lead texts back.
@@ -4310,6 +4354,34 @@ export default function DashboardPage() {
                       >
                         Workflow ({selectedConvIds.size})
                       </button>
+                      {/* Bulk cancel workflow — only shows when at least one of the
+                          selected conversations has pending workflow steps. */}
+                      {(() => {
+                        const selectedContactIds = Array.from(selectedConvIds)
+                          .map((cid) => conversations.find((c) => c.id === cid)?.contactId)
+                          .filter((x): x is string => Boolean(x));
+                        const anyPending = scheduledMessages.some(
+                          (m) => m.status === "pending" && m.cancel_on_reply && selectedContactIds.includes(m.contact_id)
+                        );
+                        if (!anyPending) return null;
+                        return (
+                          <button
+                            onClick={async () => {
+                              const count = await handleCancelWorkflow(selectedContactIds);
+                              if (count > 0) {
+                                setMessage(`✅ Cancelled ${count} pending workflow step${count === 1 ? "" : "s"} across ${selectedContactIds.length} contact${selectedContactIds.length === 1 ? "" : "s"}.`);
+                                window.setTimeout(() => setMessage(""), 3500);
+                                setSelectedConvIds(new Set());
+                                setConvSelectMode(false);
+                              }
+                            }}
+                            className="flex-1 rounded-xl border border-amber-700 bg-amber-900/30 px-3 py-2 text-xs font-medium text-amber-300 hover:bg-amber-900/50"
+                            title="Cancel pending workflow steps for selected contacts"
+                          >
+                            Cancel Workflow
+                          </button>
+                        );
+                      })()}
                       <button
                         onClick={() => {
                           setArchivedConvIds((prev) => {
@@ -4681,6 +4753,30 @@ export default function DashboardPage() {
                         </svg>
                         Workflow
                       </button>
+                      {/* Cancel Workflow — only visible when this contact has
+                          pending drip steps queued. One click yanks them off
+                          every workflow they're enrolled in. */}
+                      {selectedConversation && scheduledMessages.some(
+                        (m) => m.status === "pending" && m.cancel_on_reply && m.contact_id === selectedConversation.contactId
+                      ) && (
+                        <button
+                          onClick={async () => {
+                            if (!selectedConversation) return;
+                            const count = await handleCancelWorkflow([selectedConversation.contactId]);
+                            if (count > 0) {
+                              setMessage(`✅ Cancelled ${count} pending workflow step${count === 1 ? "" : "s"} for this contact.`);
+                              window.setTimeout(() => setMessage(""), 3500);
+                            }
+                          }}
+                          className="flex items-center gap-1.5 rounded-xl border border-amber-700 bg-amber-900/30 px-3 py-2 text-sm text-amber-300 hover:bg-amber-900/50"
+                          title="Cancel all pending workflow steps for this contact."
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                          Cancel Workflow
+                        </button>
+                      )}
                       <button
                         onClick={() => {
                           if (selectedConversation) {
@@ -5859,6 +5955,31 @@ export default function DashboardPage() {
                       ))}
                       <option value="__new__">+ Create new tag...</option>
                     </select>
+                    {/* Cancel Workflow — only shown when at least one of the
+                        selected contacts has a pending workflow step queued. */}
+                    {(() => {
+                      const ids = Array.from(selectedContactIds);
+                      const anyPending = scheduledMessages.some(
+                        (m) => m.status === "pending" && m.cancel_on_reply && ids.includes(m.contact_id)
+                      );
+                      if (!anyPending) return null;
+                      return (
+                        <button
+                          onClick={async () => {
+                            const count = await handleCancelWorkflow(ids);
+                            if (count > 0) {
+                              setMessage(`✅ Cancelled ${count} pending workflow step${count === 1 ? "" : "s"} across ${ids.length} contact${ids.length === 1 ? "" : "s"}.`);
+                              window.setTimeout(() => setMessage(""), 3500);
+                              setSelectedContactIds(new Set());
+                            }
+                          }}
+                          className="rounded-2xl border border-amber-700 bg-amber-900/30 px-5 py-3 text-sm font-medium text-amber-300 hover:bg-amber-900/50"
+                          title="Cancel pending workflow steps for selected contacts"
+                        >
+                          Cancel Workflow
+                        </button>
+                      );
+                    })()}
                     <button
                       onClick={handleBulkDelete}
                       disabled={deletingBulk}
