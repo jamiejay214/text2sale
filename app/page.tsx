@@ -185,23 +185,50 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mx-auto mt-10 max-w-2xl rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur text-left">
-            <div className="text-center">
-              <div className="text-3xl font-bold text-emerald-400">$39.99 <span className="text-lg font-normal text-zinc-400">/ month</span></div>
-              <div className="mt-1 text-zinc-400">$0.012 per text message</div>
+          <div className="mx-auto mt-10 grid max-w-4xl gap-6 md:grid-cols-2">
+            {/* Standard Plan */}
+            <div className="rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur text-left">
+              <div className="text-center">
+                <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Standard</div>
+                <div className="mt-2 text-3xl font-bold text-emerald-400">$39.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
+                <div className="mt-1 text-zinc-400">$0.012 per text message</div>
+              </div>
+              <ul className="mt-5 space-y-2 text-sm text-zinc-400">
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Unlimited contacts</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Campaign builder</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> 2-way conversations</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Multi-step drip sequences</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> CSV import &amp; blast</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Team management</li>
+                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
+              </ul>
             </div>
-            <ul className="mt-4 grid gap-2 text-sm text-zinc-400 sm:grid-cols-2">
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Unlimited contacts</li>
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Campaign builder</li>
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> 2-way conversations</li>
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Quiet hours compliance</li>
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
-              <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
-              <li className="flex items-center gap-2"><span className="text-violet-400">&#10003;</span> AI auto-replies</li>
-              <li className="flex items-center gap-2"><span className="text-violet-400">&#10003;</span> AI appointment booking</li>
-            </ul>
-            <div className="mt-4 rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-center text-sm text-emerald-300">
-              💰 <span className="font-semibold">Bulk Discount:</span> Save 10% when you add $100+ to your wallet
+
+            {/* AI Plan */}
+            <div className="relative rounded-3xl border-2 border-cyan-600 bg-gradient-to-b from-cyan-950/40 to-zinc-800/60 p-6 backdrop-blur text-left">
+              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-600 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white">Most Popular</div>
+              <div className="text-center">
+                <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Text2Sale + AI</div>
+                <div className="mt-2 text-3xl font-bold text-cyan-400">$59.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
+                <div className="mt-1 text-zinc-400">$0.012 per SMS + $0.025 per AI reply</div>
+              </div>
+              <ul className="mt-5 space-y-2 text-sm text-zinc-300">
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Everything in Standard</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> AI auto-replies (sounds human)</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Full AI mode — handles all replies</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Per-conversation AI toggle</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> AI appointment booking</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Google Calendar sync</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Industry-trained (insurance, real estate, etc.)</li>
+                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> SPIN selling &amp; objection handling</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-4 max-w-4xl">
+            <div className="rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-center text-sm text-emerald-300">
+              💰 <span className="font-semibold">Bulk Discount:</span> Save 10% when you add $100+ to your wallet &middot; Save 15% on $500+
             </div>
           </div>
 
