@@ -215,6 +215,7 @@ export type Conversation = {
   starred: boolean;
   created_at: string;
   from_number?: string;
+  ai_enabled?: boolean;
 };
 
 export type Message = {

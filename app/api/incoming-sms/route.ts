@@ -254,9 +254,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // AI Auto-Reply — if the user has AI plan + auto-reply enabled, fire off
-    // an AI reply. Done via internal fetch to our own /api/ai-reply endpoint
-    // so all billing/sending logic stays in one place.
+    // AI Auto-Reply — triggers if EITHER:
+    //   1. Full AI is on (ai_auto_reply on profile) → replies to ALL conversations
+    //   2. Per-conversation AI is on (ai_enabled on conversation) → replies to just this one
     if (conversation) {
       try {
         const { data: aiProfile } = await supabase
@@ -265,7 +265,17 @@ export async function POST(req: NextRequest) {
           .eq("id", contact.user_id)
           .single();
 
-        if (aiProfile?.ai_plan && aiProfile?.ai_auto_reply) {
+        // Check per-conversation AI flag
+        const { data: convData } = await supabase
+          .from("conversations")
+          .select("ai_enabled")
+          .eq("id", conversation.id)
+          .single();
+
+        const globalAi = aiProfile?.ai_plan && aiProfile?.ai_auto_reply;
+        const perConvAi = aiProfile?.ai_plan && convData?.ai_enabled;
+
+        if (aiProfile?.ai_plan && (globalAi || perConvAi)) {
           const balance = Number(aiProfile.wallet_balance) || 0;
           if (balance >= 0.025) {
             // Fire-and-forget — don't block the webhook response
