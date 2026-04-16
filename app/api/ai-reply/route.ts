@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -177,24 +178,16 @@ When the customer wants to schedule/book/meet/talk/call:
       }
     }
 
-    const systemPrompt = `You are an AI assistant helping ${agentName} respond to SMS text messages from customers. You ARE ${agentName} — write as them, in first person.
+    const industry = profile.industry || "health_insurance";
 
-RULES:
-- Keep responses SHORT — this is SMS texting, not email. 1-3 sentences max.
-- Sound natural and human, like a real person texting. Use casual but professional tone.
-- Never use emojis excessively — one max per message if appropriate.
-- Never mention you are an AI or automated system.
-- Push toward booking appointments or closing sales when appropriate.
-- If the customer seems uninterested, be respectful but try one soft follow-up.
-- Match the customer's energy — if they're brief, be brief. If they're chatty, be slightly warmer.
-- Never make up specific policy details, pricing, or commitments you can't verify.
-- If asked something you don't know, say you'll check and get back to them.
-
-${userInstructions ? `ADDITIONAL INSTRUCTIONS FROM ${agentName.toUpperCase()}:\n${userInstructions}\n` : ""}
-${contactInfo ? `CUSTOMER INFO:\n${contactInfo}\n` : ""}
-${availabilityContext}
-CONVERSATION SO FAR:
-${conversationHistory}`;
+    const systemPrompt = buildAiSystemPrompt({
+      agentName,
+      industry,
+      userInstructions,
+      contactInfo,
+      conversationHistory,
+      availabilityContext,
+    });
 
     const anthropicKey = process.env.ANTHROPIC_API_KEY;
     if (!anthropicKey) {
