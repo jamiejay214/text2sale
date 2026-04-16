@@ -25,19 +25,59 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    let contactsQuery = supabase
-      .from("contacts")
-      .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes, campaign")
-      .eq("user_id", userId)
-      .eq("dnc", false);
+    // Paginate. Supabase caps single queries at 1000 rows — without this,
+    // a 4k-contact campaign silently truncates to the first 1000.
+    type CampaignContact = {
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      phone: string;
+      email: string | null;
+      city: string | null;
+      state: string | null;
+      address: string | null;
+      zip: string | null;
+      lead_source: string | null;
+      quote: string | null;
+      policy_id: string | null;
+      timeline: string | null;
+      household_size: string | null;
+      date_of_birth: string | null;
+      age: string | null;
+      notes: string | null;
+      campaign: string | null;
+    };
 
-    if (campaignName) {
-      contactsQuery = contactsQuery.eq("campaign", campaignName);
+    const PAGE_SIZE = 1000;
+    let contacts: CampaignContact[] = [];
+    for (let page = 0; page < 50; page++) {
+      const from = page * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+      let contactsQuery = supabase
+        .from("contacts")
+        .select("id, first_name, last_name, phone, email, city, state, address, zip, lead_source, quote, policy_id, timeline, household_size, date_of_birth, age, notes, campaign")
+        .eq("user_id", userId)
+        .eq("dnc", false)
+        .order("created_at", { ascending: false })
+        .range(from, to);
+
+      if (campaignName) {
+        contactsQuery = contactsQuery.eq("campaign", campaignName);
+      }
+
+      const { data: pageData, error: contactsErr } = await contactsQuery;
+      if (contactsErr) {
+        return NextResponse.json(
+          { success: false, error: `Contacts query failed: ${contactsErr.message}` },
+          { status: 500 }
+        );
+      }
+      if (!pageData || pageData.length === 0) break;
+      contacts = contacts.concat(pageData as CampaignContact[]);
+      if (pageData.length < PAGE_SIZE) break;
     }
 
-    const { data: contacts, error: contactsErr } = await contactsQuery;
-
-    if (contactsErr || !contacts || contacts.length === 0) {
+    if (contacts.length === 0) {
       return NextResponse.json(
         { success: false, error: "No eligible contacts found" },
         { status: 404 }
