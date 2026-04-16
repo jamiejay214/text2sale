@@ -3,7 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
 
 const apiKey = process.env.TELNYX_API_KEY!;
@@ -62,7 +62,11 @@ export async function POST(req: NextRequest) {
       owningUserId = ownership.user_id as string;
     } else {
       // Fallback — older accounts might have numbers only on profiles.owned_numbers.
-      // This keeps routing working while the backfill catches up.
+      // This keeps routing working while the backfill catches up. Every time
+      // we hit this path we self-heal by inserting into owned_phone_numbers so
+      // the next inbound for this line takes the fast path. Without this the
+      // fallback quietly gets worse as user count grows.
+      console.warn(`[incoming-sms] slow-path lookup for ${toNormalized} — backfill triggered`);
       const { data: owners } = await supabase
         .from("profiles")
         .select("id, owned_numbers")
@@ -77,6 +81,14 @@ export async function POST(req: NextRequest) {
           });
           if (match) {
             owningUserId = p.id;
+            // Self-heal: push the denormalized row so next time we hit the
+            // fast path. Ignore duplicates (someone else may have just done it).
+            supabase
+              .from("owned_phone_numbers")
+              .upsert({ user_id: p.id, digits: toNormalized }, { onConflict: "digits" })
+              .then(({ error }) => {
+                if (error) console.error("[incoming-sms] backfill upsert failed:", error.message);
+              });
             break;
           }
         }
@@ -152,34 +164,51 @@ export async function POST(req: NextRequest) {
       companyName: "",
     };
 
-    // Check for opt-out keyword
-    const isOptOut = (optSettings.keywords || []).some(
-      (kw: string) => bodyUpper === kw.toUpperCase()
+    // CTIA / carrier-mandated opt-out keywords. These MUST be honored regardless
+    // of what the user has configured — failing to honor STOP/END/QUIT/CANCEL/
+    // UNSUBSCRIBE is a fast path to 10DLC suspension. Merge them with the user's
+    // custom list so custom keywords still work, but the mandatory five always do.
+    const MANDATORY_STOP = ["STOP", "END", "QUIT", "CANCEL", "UNSUBSCRIBE"];
+    const MANDATORY_HELP = ["HELP", "INFO"];
+    const MANDATORY_START = ["START", "UNSTOP", "YES"];
+
+    const stopKeywords = Array.from(
+      new Set([...(optSettings.keywords || []), ...MANDATORY_STOP].map((k) => String(k).toUpperCase()))
+    );
+    const startKeywords = Array.from(
+      new Set([...(optSettings.optInKeywords || []), ...MANDATORY_START].map((k) => String(k).toUpperCase()))
     );
 
-    // Check for opt-in keyword
-    const isOptIn = (optSettings.optInKeywords || []).some(
-      (kw: string) => bodyUpper === kw.toUpperCase()
-    );
+    const isOptOut = stopKeywords.includes(bodyUpper);
+    const isOptIn = startKeywords.includes(bodyUpper);
+    const isHelp = MANDATORY_HELP.includes(bodyUpper);
+
+    // HELP is also carrier-mandated. Auto-reply with company + support info.
+    // We do NOT mark DNC or change subscription state.
+    if (isHelp) {
+      const companyName = optSettings.companyName || "Text2Sale";
+      const helpMsg = `${companyName}: Reply STOP to unsubscribe. For support, contact us at support@text2sale.com. Msg&data rates may apply.`;
+      await sendTelnyxReply(to, from, helpMsg);
+      // still record the inbound message below
+    }
 
     if (isOptOut) {
-      if (optSettings.autoMarkDnc) {
-        await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
+      // Always mark DNC on mandatory-opt-out keywords, regardless of the user's
+      // autoMarkDnc toggle — that toggle can't override carrier rules.
+      await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
+      // Always send a confirmation reply so the carrier sees compliance.
+      let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.";
+      if (optSettings.includeCompanyName && optSettings.companyName) {
+        replyMsg += ` — ${optSettings.companyName}`;
       }
-      if (optSettings.confirmOptOut) {
-        let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed.";
-        if (optSettings.includeCompanyName && optSettings.companyName) {
-          replyMsg += ` — ${optSettings.companyName}`;
-        }
-        await sendTelnyxReply(to, from, replyMsg);
-      }
+      await sendTelnyxReply(to, from, replyMsg);
       return NextResponse.json({ status: "ok" });
     }
 
     if (isOptIn) {
       await supabase.from("contacts").update({ dnc: false }).eq("id", contact.id);
       if (optSettings.confirmOptOut) {
-        let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed.";
+        let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed. Reply STOP to unsubscribe.";
         if (optSettings.includeCompanyName && optSettings.companyName) {
           replyMsg += ` — ${optSettings.companyName}`;
         }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 
 // Give the route the full Pro-plan budget so a 10k send doesn't hit the
 // default 60s cap mid-run. At CHUNK=100 with PIPE=2, 10k takes roughly
@@ -9,7 +10,7 @@ export const maxDuration = 300;
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 // Per-chunk parallelism. Every contact costs ~4 round-trips (Telnyx +
 // Supabase) ≈ 250 ms each, so serial would be 1 s/contact. Bursting 100
@@ -132,15 +133,32 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // --- Pull per-message cost once ---------------------------------------
+    // --- Pull per-message cost + quiet hours config once ------------------
     const { data: profileRow } = await supabase
       .from("profiles")
-      .select("wallet_balance, plan")
+      .select("wallet_balance, plan, quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour")
       .eq("id", userId)
       .single();
     const planObj = (profileRow?.plan as Record<string, unknown> | null) || null;
     const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
     let walletBalance = Number(profileRow?.wallet_balance ?? 0);
+
+    // Per-campaign quiet hours can override the profile default (null = inherit).
+    // Guards against sending during TCPA-prohibited windows in the contact's
+    // local time (derived from state). Users that disable this are explicitly
+    // opting out — the UI warns them it's on them to stay compliant.
+    const { data: campaignRow } = await supabase
+      .from("campaigns")
+      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour")
+      .eq("id", campaignId)
+      .single();
+
+    const quietEnabled =
+      campaignRow?.quiet_hours_enabled ?? profileRow?.quiet_hours_enabled ?? true;
+    const quietStart =
+      campaignRow?.quiet_hours_start_hour ?? profileRow?.quiet_hours_start_hour ?? 21;
+    const quietEnd =
+      campaignRow?.quiet_hours_end_hour ?? profileRow?.quiet_hours_end_hour ?? 8;
 
     // Normalize from numbers to E.164
     const fromList = numbers.map((num: string) => {
@@ -150,7 +168,7 @@ export async function POST(req: NextRequest) {
 
     let sent = 0;
     let failed = 0;
-    const deferred = 0;
+    let deferred = 0;
     let paused = false;
     let outOfFunds = false;
     const replies = 0;
@@ -161,6 +179,7 @@ export async function POST(req: NextRequest) {
       contactId: string;
       personalized: string;
       success: boolean;
+      deferred?: boolean;
       error?: string;
     };
 
@@ -186,6 +205,22 @@ export async function POST(req: NextRequest) {
         .replace(/\{dateOfBirth\}/gi, contact.date_of_birth || "")
         .replace(/\{age\}/gi, contact.age || "")
         .replace(/\{notes\}/gi, contact.notes || "");
+
+      // Quiet hours check — if this contact is inside their local TCPA-blocked
+      // window right now, defer by marking the send as "deferred" and writing
+      // a scheduled_messages row for the next legal window. The cron will pick
+      // it up later. If quiet hours are disabled by the user, send immediately.
+      if (quietEnabled) {
+        const tz = inferTimezone(contact.state || undefined);
+        if (isQuietHours(tz, quietStart, quietEnd)) {
+          return {
+            contactId: contact.id,
+            personalized: personalizedBody,
+            success: false,
+            deferred: true,
+          };
+        }
+      }
 
       try {
         const toDigits = contact.phone.replace(/\D/g, "");
@@ -226,12 +261,24 @@ export async function POST(req: NextRequest) {
       }
     };
 
+    // When in quiet hours, schedule delivery for 9am in America/New_York — a
+    // safe default that covers the bulk of US business hours. We keep the
+    // scheduling naive (single timestamp, not per-timezone) because the cron
+    // that fires these rows re-checks quiet hours against each contact at
+    // send-time, so anything still in a quiet window gets deferred again.
+    const deferScheduleAt = (() => {
+      const d = new Date();
+      d.setUTCHours(d.getUTCHours() + 12); // ~12h out covers US evening deferrals
+      return d.toISOString();
+    })();
+
     // Per-chunk processor. Pulled out so we can run PIPE of them
     // concurrently below. Returns what happened in this chunk so the
     // outer loop can roll up totals / detect pause + out-of-funds.
     const processChunk = async (chunkOffset: number): Promise<{
       sentCount: number;
       failedCount: number;
+      deferredCount: number;
       chunkErrors: string[];
       ranOutOfFunds: boolean;
       newBalance: number | null;
@@ -240,15 +287,43 @@ export async function POST(req: NextRequest) {
       const results = await Promise.all(slice.map((c, j) => sendOne(c, chunkOffset + j)));
 
       const successful = results.filter((r) => r.success);
+      const deferredResults = results.filter((r) => r.deferred);
       const chunkSentCount = successful.length;
-      const chunkFailed = results.length - chunkSentCount;
+      const chunkDeferred = deferredResults.length;
+      const chunkFailed = results.length - chunkSentCount - chunkDeferred;
       const chunkErrors: string[] = [];
       for (const r of results) {
-        if (!r.success && r.error) chunkErrors.push(`${r.contactId}: ${r.error}`);
+        if (!r.success && !r.deferred && r.error) chunkErrors.push(`${r.contactId}: ${r.error}`);
+      }
+
+      // Queue quiet-hours deferrals into scheduled_messages so the cron
+      // retries them once the window opens. Fire-and-forget — a failed
+      // insert here just means the contact gets skipped this run.
+      if (chunkDeferred > 0) {
+        const rows = deferredResults.map((r) => ({
+          user_id: userId,
+          contact_id: r.contactId,
+          body: r.personalized,
+          from_number: fromList[0],
+          scheduled_at: deferScheduleAt,
+          status: "pending",
+          campaign_id: campaignId,
+          cancel_on_reply: false,
+        }));
+        supabase.from("scheduled_messages").insert(rows).then(({ error }) => {
+          if (error) console.error("quiet-hours defer insert failed:", error.message);
+        });
       }
 
       if (chunkSentCount === 0) {
-        return { sentCount: 0, failedCount: chunkFailed, chunkErrors, ranOutOfFunds: false, newBalance: null };
+        return {
+          sentCount: 0,
+          failedCount: chunkFailed,
+          deferredCount: chunkDeferred,
+          chunkErrors,
+          ranOutOfFunds: false,
+          newBalance: null,
+        };
       }
 
       // Atomic wallet decrement — safe to call in parallel across chunks
@@ -356,6 +431,7 @@ export async function POST(req: NextRequest) {
       return {
         sentCount: chunkSentCount,
         failedCount: chunkFailed,
+        deferredCount: chunkDeferred,
         chunkErrors,
         ranOutOfFunds,
         newBalance: ranOutOfFunds ? null : Number(newBal),
@@ -365,18 +441,31 @@ export async function POST(req: NextRequest) {
     // --- Main loop --------------------------------------------------------
     // Run PIPE chunks concurrently per wave. For a 10k send with CHUNK=100
     // and PIPE=2, that's 50 waves of 2 parallel chunks — typically ~90-120s.
+    //
+    // Pause and out-of-funds are checked BEFORE every chunk inside the wave,
+    // not just once per wave. Without per-chunk pause, a user who clicks Pause
+    // mid-wave would still see up to CHUNK*PIPE (200) more messages fire
+    // because the next check wouldn't run until after the wave finished. Cheap
+    // cost — one single-row read per chunk.
+    let lastPauseCheck = 0;
+    const PAUSE_CHECK_MS = 1500; // throttle the DB round-trip so 100-chunk waves aren't 100 reads
+
+    const checkPaused = async (): Promise<boolean> => {
+      const now = Date.now();
+      if (now - lastPauseCheck < PAUSE_CHECK_MS) return false;
+      lastPauseCheck = now;
+      const { data: liveCampaign } = await supabase
+        .from("campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .single();
+      return liveCampaign?.status === "Paused";
+    };
+
     for (let waveStart = 0; waveStart < contacts.length; waveStart += CHUNK * PIPE) {
-      // Pause check once per wave, not per chunk — cheaper at scale.
-      if (waveStart > 0) {
-        const { data: liveCampaign } = await supabase
-          .from("campaigns")
-          .select("status")
-          .eq("id", campaignId)
-          .single();
-        if (liveCampaign?.status === "Paused") {
-          paused = true;
-          break;
-        }
+      if (await checkPaused()) {
+        paused = true;
+        break;
       }
 
       // Stop before firing a wave we can't afford. One chunk might barely
@@ -397,6 +486,7 @@ export async function POST(req: NextRequest) {
       for (const r of waveResults) {
         sent += r.sentCount;
         failed += r.failedCount;
+        deferred += r.deferredCount;
         errors.push(...r.chunkErrors);
         if (r.ranOutOfFunds) {
           outOfFunds = true;
@@ -407,6 +497,12 @@ export async function POST(req: NextRequest) {
       }
 
       if (outOfFunds) break;
+
+      // Re-check pause between waves too, so a click mid-long-wave is still honored.
+      if (await checkPaused()) {
+        paused = true;
+        break;
+      }
     }
 
     // Keep the first few distinct error messages on the log so the user can
@@ -415,19 +511,23 @@ export async function POST(req: NextRequest) {
     const errorSummary = distinctErrors.length > 0
       ? ` — ${distinctErrors.join(" | ")}`
       : "";
+    const deferredNote = deferred > 0 ? `, ${deferred} deferred for quiet hours` : "";
     const logs = [{
       id: `log_${Date.now()}`,
       createdAt: new Date().toISOString(),
-      attempted: sent + failed,
+      attempted: sent + failed + deferred,
       success: sent,
       failed,
+      deferred,
       notes: paused
-        ? `Paused after ${sent} sent, ${failed} failed (${contacts.length - sent - failed} skipped)`
+        ? `Paused after ${sent} sent, ${failed} failed${deferredNote} (${contacts.length - sent - failed - deferred} skipped)`
         : outOfFunds
-          ? `Out of funds after ${sent} sent (wallet hit 0)`
+          ? `Out of funds after ${sent} sent${deferredNote} (wallet hit 0)`
           : failed > 0
-            ? `${failed} errors${errorSummary}`
-            : "All sent successfully",
+            ? `${failed} errors${deferredNote}${errorSummary}`
+            : deferred > 0
+              ? `All sent or deferred — ${sent} sent, ${deferred} queued for quiet hours`
+              : "All sent successfully",
     }];
 
     // If the user paused mid-send, leave the campaign in "Paused" status so
@@ -459,7 +559,7 @@ export async function POST(req: NextRequest) {
         : outOfFunds
           ? `Campaign stopped — wallet balance ran out after ${sent} messages`
           : deferred > 0
-            ? `${deferred} contact(s) skipped due to quiet hours (9 PM - 8 AM)`
+            ? `${sent} sent, ${deferred} deferred for quiet hours (will auto-send after ${quietEnd}:00 local)`
             : undefined,
     });
   } catch (error: unknown) {

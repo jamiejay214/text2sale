@@ -34,6 +34,11 @@ export type Profile = {
   a2p_registration: A2PRegistration | null;
   compliance_log: ComplianceEventRecord[] | null;
   auto_recharge: { enabled: boolean; threshold: number; amount: number } | null;
+  // Profile-level quiet hours. Enabled by default for TCPA compliance.
+  // Stored on the row directly (not as JSON) so SQL can check them cheaply.
+  quiet_hours_enabled?: boolean;
+  quiet_hours_start_hour?: number; // 0-23, default 21 (9 PM)
+  quiet_hours_end_hour?: number;   // 0-23, default 8 (8 AM)
   visitor_alerts?: boolean;
   business_slug?: string | null;
   business_description?: string | null;
@@ -194,6 +199,12 @@ export type Campaign = {
   steps: CampaignStep[];
   selected_numbers: string[];
   logs: CampaignLog[];
+  // Per-campaign quiet hours override. null/undefined = inherit from the user's
+  // profile-level quiet hours setting. Set these to tailor the send window for
+  // a specific campaign (e.g. a 10am–6pm call-center blast).
+  quiet_hours_enabled?: boolean | null;
+  quiet_hours_start_hour?: number | null;
+  quiet_hours_end_hour?: number | null;
   created_at: string;
 };
 
