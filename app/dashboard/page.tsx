@@ -534,7 +534,10 @@ export default function DashboardPage() {
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
   const [convShowArchived, setConvShowArchived] = useState(false);
-  const [convShowAll, setConvShowAll] = useState(false);
+  // "All" is the default view when the Chats sidebar first mounts. It's a
+  // no-op filter (the archive rule still hides DNC + archived), but we
+  // light up the All chip so the user can see which tab is active.
+  const [convShowAll, setConvShowAll] = useState(true);
   const [convShowUnread, setConvShowUnread] = useState(false);
   const [convShowRecents, setConvShowRecents] = useState(false);
   const [convShowWorking, setConvShowWorking] = useState(false);
@@ -4356,48 +4359,74 @@ export default function DashboardPage() {
                 <div className="flex flex-col gap-3">
                   <h2 className="text-2xl font-bold">Chats</h2>
                   <div className="flex items-center gap-2 flex-wrap">
-                    <button
-                      onClick={() => { setConvShowAll((v) => !v); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); setConvShowWorking(false); setConvSelectMode(false); }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowAll ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                    >
-                      All
-                    </button>
-                    <button
-                      onClick={() => { setConvShowUnread((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowRecents(false); setConvShowWorking(false); }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowUnread ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                    >
-                      Unread
-                    </button>
-                    <button
-                      onClick={() => { setConvShowRecents((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); setConvShowWorking(false); }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowRecents ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                    >
-                      Recents
-                    </button>
-                    <button
-                      onClick={() => { setConvShowWorking((v) => !v); setConvShowAll(false); setConvShowArchived(false); setConvShowUnread(false); setConvShowRecents(false); }}
-                      className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium ${convShowWorking ? "bg-emerald-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                      title="Show only leads you're actively working"
-                    >
-                      Working
-                      {workingLeadConvIds.size > 0 && (
-                        <span className={`rounded-full px-1.5 text-[10px] ${convShowWorking ? "bg-emerald-800 text-emerald-100" : "bg-zinc-800 text-emerald-400"}`}>
-                          {workingLeadConvIds.size}
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                    >
-                      {convSelectMode ? "Cancel" : "Select"}
-                    </button>
-                    <button
-                      onClick={() => { setConvShowArchived((v) => !v); setConvShowAll(false); setConvShowUnread(false); setConvShowRecents(false); setConvShowWorking(false); }}
-                      className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convShowArchived ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
-                    >
-                      {convShowArchived ? "Active" : "Archived"}
-                    </button>
+                    {/* Tabs behave like radio buttons — exactly one is
+                        always active. Clicking the active tab is a no-op
+                        (no accidental toggle-off that made the filter
+                        appear to "not work"). "All" is the default state
+                        that shows every non-archived, non-DNC convo. */}
+                    {(() => {
+                      const selectTab = (tab: "all" | "unread" | "recents" | "working" | "archived") => {
+                        setConvShowAll(tab === "all");
+                        setConvShowUnread(tab === "unread");
+                        setConvShowRecents(tab === "recents");
+                        setConvShowWorking(tab === "working");
+                        setConvShowArchived(tab === "archived");
+                        if (tab !== "all") setConvSelectMode(false);
+                      };
+                      const activeTab =
+                        convShowUnread ? "unread"
+                        : convShowRecents ? "recents"
+                        : convShowWorking ? "working"
+                        : convShowArchived ? "archived"
+                        : "all";
+                      return (
+                        <>
+                          <button
+                            onClick={() => selectTab("all")}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "all" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                          >
+                            All
+                          </button>
+                          <button
+                            onClick={() => selectTab("unread")}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "unread" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            title="Conversations with unopened inbound messages"
+                          >
+                            Unread
+                          </button>
+                          <button
+                            onClick={() => selectTab("recents")}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "recents" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                          >
+                            Recents
+                          </button>
+                          <button
+                            onClick={() => selectTab("working")}
+                            className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "working" ? "bg-emerald-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            title="Show only leads you're actively working"
+                          >
+                            Working
+                            {workingLeadConvIds.size > 0 && (
+                              <span className={`rounded-full px-1.5 text-[10px] ${activeTab === "working" ? "bg-emerald-800 text-emerald-100" : "bg-zinc-800 text-emerald-400"}`}>
+                                {workingLeadConvIds.size}
+                              </span>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                          >
+                            {convSelectMode ? "Cancel" : "Select"}
+                          </button>
+                          <button
+                            onClick={() => selectTab("archived")}
+                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "archived" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                          >
+                            {activeTab === "archived" ? "Active" : "Archived"}
+                          </button>
+                        </>
+                      );
+                    })()}
                   </div>
                 </div>
                 {convSelectMode && selectedConvIds.size > 0 && (
