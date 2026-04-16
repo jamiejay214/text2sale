@@ -175,6 +175,14 @@ type CSVUploadRecord = {
   success: number;
   duplicates: number;
   invalid: number;
+  // Optional extras shown in the history table. Left nullable so older rows
+  // still render cleanly as "N/A".
+  validationUsed?: string | null;
+  charged?: number | null;
+  tcpaViolations?: number;
+  dncComplainers?: number;
+  // If present, the original CSV text we stored so the Download button works.
+  fileContent?: string | null;
 };
 
 type CSVColumnMapping = {
@@ -509,6 +517,10 @@ export default function DashboardPage() {
   const [csvTagInput, setCsvTagInput] = useState("");
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvUploadHistory, setCsvUploadHistory] = useState<CSVUploadRecord[]>([]);
+  const [csvHistorySearch, setCsvHistorySearch] = useState("");
+  // Original CSV file text — stashed at file-select time so we can save it to
+  // Supabase on upload and offer re-download from the history table later.
+  const [csvRawText, setCsvRawText] = useState("");
   const csvUploadRef = useRef<HTMLInputElement>(null);
   const [deletingBulk, setDeletingBulk] = useState(false);
   const [editingCampaignId, setEditingCampaignId] = useState<string | null>(null);
@@ -712,6 +724,33 @@ export default function DashboardPage() {
       try {
         const stored = window.localStorage.getItem(`t2s_archived_convs_${uid}`);
         if (stored) setArchivedConvIds(new Set(JSON.parse(stored)));
+      } catch { /* ignore */ }
+
+      // Load CSV upload history from DB
+      try {
+        const { data: uploadRows } = await supabase
+          .from("csv_uploads")
+          // Explicit column list (no file_content) — keeps the payload small on
+          // initial load. We pull file_content on demand when Download is clicked.
+          .select("id, file_name, uploaded_at, total_rows, success, duplicates, invalid, tcpa_violations, dnc_complainers, validation_used, charged")
+          .eq("user_id", uid)
+          .order("uploaded_at", { ascending: false })
+          .limit(200);
+        if (uploadRows) {
+          setCsvUploadHistory(uploadRows.map((r) => ({
+            id: r.id as string,
+            fileName: r.file_name as string,
+            date: r.uploaded_at as string,
+            totalRows: (r.total_rows as number) || 0,
+            success: (r.success as number) || 0,
+            duplicates: (r.duplicates as number) || 0,
+            invalid: (r.invalid as number) || 0,
+            validationUsed: (r.validation_used as string | null) || null,
+            charged: (r.charged as number | null) ?? null,
+            tcpaViolations: (r.tcpa_violations as number) || 0,
+            dncComplainers: (r.dnc_complainers as number) || 0,
+          })));
+        }
       } catch { /* ignore */ }
 
       const [dbContacts, dbCampaigns, dbConversations, dbTemplates, dbScheduled] = await Promise.all([
@@ -2812,6 +2851,17 @@ export default function DashboardPage() {
   // ── CSV Upload Wizard Handlers ──
   const handleCSVFileSelect = (file: File) => {
     setCsvFileName(file.name);
+    // Read the raw text alongside parsing so we can re-serve it from the
+    // history table. Only keep if it's under ~5MB — beyond that we'd bloat
+    // the DB row and it's rarely worth storing anyway.
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      if (text && text.length <= 5_000_000) setCsvRawText(text);
+      else setCsvRawText("");
+    };
+    reader.onerror = () => setCsvRawText("");
+    reader.readAsText(file);
     Papa.parse<Record<string, string>>(file, {
       header: true,
       skipEmptyLines: true,
@@ -2908,11 +2958,66 @@ export default function DashboardPage() {
       }
     }
 
-    if (deduped.length === 0) {
-      const record: CSVUploadRecord = {
-        id: `upload_${Date.now()}`, fileName: csvFileName, date: new Date().toISOString(),
-        totalRows: csvRawData.length, success: 0, duplicates: dupeCount, invalid: invalidCount,
+    // Persist an upload record to Supabase so the history survives refreshes.
+    // Returns the DB id so the in-memory record lines up with what's stored.
+    const persistUploadRecord = async (args: {
+      success: number;
+      charged: number | null;
+    }): Promise<CSVUploadRecord> => {
+      const payload = {
+        user_id: userId,
+        file_name: csvFileName,
+        uploaded_at: new Date().toISOString(),
+        total_rows: csvRawData.length,
+        success: args.success,
+        duplicates: dupeCount,
+        invalid: invalidCount,
+        tcpa_violations: 0,
+        dnc_complainers: 0,
+        validation_used: null as string | null,
+        charged: args.charged,
+        file_content: csvRawText || null,
       };
+      const { data, error } = await supabase
+        .from("csv_uploads")
+        .insert(payload)
+        .select()
+        .single();
+      if (error || !data) {
+        // Fall back to a local-only record so the UI still reflects the upload.
+        return {
+          id: `upload_${Date.now()}`,
+          fileName: csvFileName,
+          date: payload.uploaded_at,
+          totalRows: csvRawData.length,
+          success: args.success,
+          duplicates: dupeCount,
+          invalid: invalidCount,
+          validationUsed: null,
+          charged: args.charged,
+          tcpaViolations: 0,
+          dncComplainers: 0,
+          fileContent: csvRawText || null,
+        };
+      }
+      return {
+        id: data.id as string,
+        fileName: data.file_name as string,
+        date: data.uploaded_at as string,
+        totalRows: data.total_rows as number,
+        success: data.success as number,
+        duplicates: data.duplicates as number,
+        invalid: data.invalid as number,
+        validationUsed: (data.validation_used as string | null) || null,
+        charged: (data.charged as number | null) ?? null,
+        tcpaViolations: (data.tcpa_violations as number) || 0,
+        dncComplainers: (data.dnc_complainers as number) || 0,
+        fileContent: (data.file_content as string | null) || null,
+      };
+    };
+
+    if (deduped.length === 0) {
+      const record = await persistUploadRecord({ success: 0, charged: null });
       setCsvUploadHistory((prev) => [record, ...prev]);
       setMessage(`❌ No new contacts to import (${dupeCount} duplicates, ${invalidCount} invalid)`);
       window.setTimeout(() => setMessage(""), 3000);
@@ -2933,10 +3038,7 @@ export default function DashboardPage() {
       }
     }
 
-    const record: CSVUploadRecord = {
-      id: `upload_${Date.now()}`, fileName: csvFileName, date: new Date().toISOString(),
-      totalRows: csvRawData.length, success: totalImported, duplicates: dupeCount, invalid: invalidCount,
-    };
+    const record = await persistUploadRecord({ success: totalImported, charged: null });
     setCsvUploadHistory((prev) => [record, ...prev]);
 
     // If a campaign was selected, send it to the imported contacts
@@ -3055,11 +3157,61 @@ export default function DashboardPage() {
   const resetCSVWizard = () => {
     setCsvUploadStep(1);
     setCsvRawData([]);
+    setCsvRawText("");
     setCsvFileName("");
     setCsvColumnMappings([]);
     setCsvCampaignId("");
     setCsvUploadTags([]);
     setCsvTagInput("");
+  };
+
+  // Download handler for the CSV upload history. Pulls file_content on demand
+  // (it's excluded from the initial list-load to keep it fast) and triggers
+  // a browser download. Gracefully degrades when file_content was too big to
+  // persist at upload time.
+  const handleDownloadUpload = async (rec: CSVUploadRecord) => {
+    try {
+      let content = rec.fileContent;
+      if (!content) {
+        const { data } = await supabase
+          .from("csv_uploads")
+          .select("file_content")
+          .eq("id", rec.id)
+          .single();
+        content = (data?.file_content as string | null) || "";
+      }
+      if (!content) {
+        setMessage("⚠️ Original file isn't available for download (was too large to store).");
+        window.setTimeout(() => setMessage(""), 3500);
+        return;
+      }
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = rec.fileName || "upload.csv";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch {
+      setMessage("❌ Could not download file");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
+  // Remove an upload entry from history (keeps imported contacts — this only
+  // clears the audit row in csv_uploads).
+  const handleDeleteUploadRecord = async (rec: CSVUploadRecord) => {
+    const prev = csvUploadHistory;
+    setCsvUploadHistory((curr) => curr.filter((r) => r.id !== rec.id));
+    const { error } = await supabase.from("csv_uploads").delete().eq("id", rec.id);
+    if (error) {
+      // Roll back the optimistic update on failure.
+      setCsvUploadHistory(prev);
+      setMessage("❌ Could not remove record");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
   };
 
   const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -6131,47 +6283,164 @@ export default function DashboardPage() {
             </div>
 
             {/* Upload History */}
-            {csvUploadHistory.length > 0 && (
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
-                <div className="mb-6 flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">Upload History</h2>
-                  <span className="text-sm text-zinc-400">{csvUploadHistory.length} uploads</span>
-                </div>
-                <div className="overflow-hidden rounded-2xl border border-zinc-800">
-                  <table className="w-full text-sm">
-                    <thead className="bg-zinc-800">
-                      <tr>
-                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Date</th>
-                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">File Name</th>
-                        <th className="px-5 py-4 text-right text-xs font-medium uppercase tracking-wide text-zinc-400">Count</th>
-                        <th className="px-5 py-4 text-left text-xs font-medium uppercase tracking-wide text-zinc-400">Status</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-800">
-                      {csvUploadHistory.map((rec) => (
-                        <tr key={rec.id} className="hover:bg-zinc-800/50">
-                          <td className="px-5 py-4 text-zinc-400">{new Date(rec.date).toLocaleString()}</td>
-                          <td className="px-5 py-4">
-                            <div className="flex items-center gap-2">
-                              <span className="text-zinc-500">📄</span>
-                              <span className="font-medium">{rec.fileName}</span>
-                            </div>
-                          </td>
-                          <td className="px-5 py-4 text-right">{rec.totalRows.toLocaleString()}</td>
-                          <td className="px-5 py-4">
-                            <div className="flex flex-wrap gap-3 text-xs">
-                              <span className="text-emerald-400 font-medium">Success: {rec.success}</span>
-                              {rec.duplicates > 0 && <span className="text-red-400 font-medium">Duplicate: {rec.duplicates}</span>}
-                              {rec.invalid > 0 && <span className="text-zinc-400 font-medium">Invalid: {rec.invalid}</span>}
-                            </div>
-                          </td>
+            {csvUploadHistory.length > 0 && (() => {
+              const q = csvHistorySearch.trim().toLowerCase();
+              const filtered = q
+                ? csvUploadHistory.filter((r) => r.fileName.toLowerCase().includes(q))
+                : csvUploadHistory;
+              return (
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 sm:p-8">
+                  {/* Header row with Upload CSV button + quick search */}
+                  <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <button
+                      onClick={() => {
+                        resetCSVWizard();
+                        // The wizard step is already 1 after reset, but scroll the
+                        // file-picker into view so the click feels connected.
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      }}
+                      className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium text-white shadow-sm hover:bg-violet-700"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      Upload CSV
+                    </button>
+
+                    <div className="relative sm:w-80">
+                      <svg className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                      <input
+                        value={csvHistorySearch}
+                        onChange={(e) => setCsvHistorySearch(e.target.value)}
+                        placeholder="Quick search"
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 py-2.5 pl-9 pr-3 text-sm text-zinc-200 placeholder:text-zinc-500 focus:border-violet-500 focus:outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+                    <table className="w-full min-w-[1100px] text-sm">
+                      <thead className="bg-zinc-800/80">
+                        <tr className="text-left text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                          <th className="px-5 py-4">Date</th>
+                          <th className="px-5 py-4">File Name</th>
+                          <th className="px-5 py-4">Validation<br />Used</th>
+                          <th className="px-5 py-4">Charged</th>
+                          <th className="px-5 py-4 text-right">Count</th>
+                          <th className="px-5 py-4">Status</th>
+                          <th className="px-5 py-4 text-right">Action</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-zinc-800">
+                        {filtered.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-5 py-10 text-center text-sm text-zinc-500">
+                              No uploads match &quot;{csvHistorySearch}&quot;.
+                            </td>
+                          </tr>
+                        ) : filtered.map((rec) => {
+                          const d = new Date(rec.date);
+                          const dateStr = d.toLocaleDateString("en-CA"); // YYYY-MM-DD
+                          const timeStr = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+                          return (
+                            <tr key={rec.id} className="hover:bg-zinc-800/40">
+                              <td className="whitespace-nowrap px-5 py-4 text-zinc-300">
+                                <div>{dateStr}</div>
+                                <div className="text-xs text-zinc-500">{timeStr}</div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex items-center gap-2">
+                                  <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                    <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                                    <polyline points="14 2 14 8 20 8" />
+                                  </svg>
+                                  <span className="font-medium text-zinc-100">{rec.fileName}</span>
+                                </div>
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
+                                  {rec.validationUsed || "N/A"}
+                                </span>
+                              </td>
+                              <td className="px-5 py-4">
+                                <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
+                                  {rec.charged == null ? "N/A" : `$${rec.charged.toFixed(2)}`}
+                                </span>
+                              </td>
+                              <td className="whitespace-nowrap px-5 py-4 text-right text-zinc-200">
+                                {rec.totalRows.toLocaleString()}
+                              </td>
+                              <td className="px-5 py-4">
+                                <div className="flex flex-wrap gap-1.5">
+                                  <span className="inline-flex items-center rounded-md bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400 ring-1 ring-emerald-500/30">
+                                    Success: {rec.success.toLocaleString()}
+                                  </span>
+                                  {rec.duplicates > 0 && (
+                                    <span className="inline-flex items-center rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">
+                                      Duplicate: {rec.duplicates.toLocaleString()}
+                                    </span>
+                                  )}
+                                  {rec.invalid > 0 && (
+                                    <span className="inline-flex items-center rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">
+                                      Invalid Number: {rec.invalid.toLocaleString()}
+                                    </span>
+                                  )}
+                                  {rec.tcpaViolations ? (
+                                    <span className="inline-flex items-center rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">
+                                      TCPA: {rec.tcpaViolations.toLocaleString()}
+                                    </span>
+                                  ) : null}
+                                  {rec.dncComplainers ? (
+                                    <span className="inline-flex items-center rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">
+                                      DNC Complainers: {rec.dncComplainers.toLocaleString()}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td className="whitespace-nowrap px-5 py-4 text-right">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    onClick={() => handleDownloadUpload(rec)}
+                                    className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-violet-500 hover:text-white"
+                                  >
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                                      <polyline points="7 10 12 15 17 10" />
+                                      <line x1="12" y1="15" x2="12" y2="3" />
+                                    </svg>
+                                    Download
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteUploadRecord(rec)}
+                                    title="Remove from history"
+                                    className="inline-flex items-center rounded-lg border border-zinc-700 bg-zinc-800 p-1.5 text-zinc-400 hover:border-red-500/60 hover:text-red-400"
+                                  >
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="3 6 5 6 21 6" />
+                                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                                      <path d="M10 11v6M14 11v6M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2" />
+                                    </svg>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div className="mt-3 text-xs text-zinc-500">
+                    {filtered.length.toLocaleString()} of {csvUploadHistory.length.toLocaleString()} upload{csvUploadHistory.length === 1 ? "" : "s"}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
 
