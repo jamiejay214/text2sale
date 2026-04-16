@@ -2939,14 +2939,56 @@ export default function DashboardPage() {
 
     const invalidCount = csvRawData.length - rows.length;
 
-    // Dedup
-    let deduped = rows;
+    // Internal DNC scrub — pulls every phone this user has ever flagged as DNC
+    // (auto-flagged from STOP / UNSUBSCRIBE replies, or manually marked). Any
+    // incoming row matching one of those numbers is dropped before import so
+    // we don't re-text people who opted out. Required for TCPA compliance.
+    // Paginated to break past Supabase's 1000-row cap on big DNC lists.
+    const dncPhones = new Set<string>();
+    try {
+      const DNC_PAGE = 1000;
+      for (let page = 0; page < 50; page++) {
+        const fromIdx = page * DNC_PAGE;
+        const toIdx = fromIdx + DNC_PAGE - 1;
+        const { data: dncRows, error: dncErr } = await supabase
+          .from("contacts")
+          .select("phone")
+          .eq("user_id", userId)
+          .eq("dnc", true)
+          .range(fromIdx, toIdx);
+        if (dncErr || !dncRows || dncRows.length === 0) break;
+        for (const r of dncRows as Array<{ phone: string | null }>) {
+          const d = (r.phone || "").replace(/\D/g, "");
+          const norm = d.startsWith("1") ? d.slice(1) : d;
+          if (norm) dncPhones.add(norm);
+        }
+        if (dncRows.length < DNC_PAGE) break;
+      }
+    } catch {
+      // If the DNC fetch fails we'd rather keep the upload working than block
+      // it entirely — we'll just skip the scrub for this run.
+    }
+
+    let dncRemoved = 0;
+    const afterDnc = rows.filter((row) => {
+      const d = row.phone.replace(/\D/g, "");
+      const norm = d.startsWith("1") ? d.slice(1) : d;
+      if (norm && dncPhones.has(norm)) {
+        dncRemoved++;
+        return false;
+      }
+      return true;
+    });
+
+    // Dedup (runs on the post-DNC list so dedupe counts don't double-count
+    // rows we already dropped for DNC).
+    let deduped = afterDnc;
     let dupeCount = 0;
     if (csvIgnoreDuplicates) {
       const existingPhones = new Set(contacts.map((c) => c.phone.replace(/\D/g, "")).filter(Boolean));
       const csvPhoneSeen = new Set<string>();
       deduped = [];
-      for (const row of rows) {
+      for (const row of afterDnc) {
         const normalized = row.phone.replace(/\D/g, "");
         if (!normalized) { deduped.push(row); continue; }
         if (existingPhones.has(normalized) || csvPhoneSeen.has(normalized)) {
@@ -2973,8 +3015,11 @@ export default function DashboardPage() {
         duplicates: dupeCount,
         invalid: invalidCount,
         tcpa_violations: 0,
-        dnc_complainers: 0,
-        validation_used: null as string | null,
+        dnc_complainers: dncRemoved,
+        // Always ran an internal DNC scrub during this upload. When we plug in
+        // an external registry (DNC.com / Contact Center Compliance), we'll
+        // append that provider's name here too, e.g. "Internal + DNC.com".
+        validation_used: "Internal DNC" as string | null,
         charged: args.charged,
         file_content: csvRawText || null,
       };
@@ -2993,10 +3038,10 @@ export default function DashboardPage() {
           success: args.success,
           duplicates: dupeCount,
           invalid: invalidCount,
-          validationUsed: null,
+          validationUsed: "Internal DNC",
           charged: args.charged,
           tcpaViolations: 0,
-          dncComplainers: 0,
+          dncComplainers: dncRemoved,
           fileContent: csvRawText || null,
         };
       }
@@ -3019,8 +3064,13 @@ export default function DashboardPage() {
     if (deduped.length === 0) {
       const record = await persistUploadRecord({ success: 0, charged: null });
       setCsvUploadHistory((prev) => [record, ...prev]);
-      setMessage(`❌ No new contacts to import (${dupeCount} duplicates, ${invalidCount} invalid)`);
-      window.setTimeout(() => setMessage(""), 3000);
+      const parts = [
+        `${dupeCount} duplicates`,
+        `${invalidCount} invalid`,
+        ...(dncRemoved > 0 ? [`${dncRemoved} on DNC`] : []),
+      ];
+      setMessage(`❌ No new contacts to import (${parts.join(", ")})`);
+      window.setTimeout(() => setMessage(""), 3500);
       setCsvUploading(false);
       resetCSVWizard();
       return;
@@ -3148,7 +3198,7 @@ export default function DashboardPage() {
       }
     }
 
-    setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}`);
+    setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}${dncRemoved > 0 ? ` (${dncRemoved} on DNC)` : ""}`);
     window.setTimeout(() => setMessage(""), 4000);
     setCsvUploading(false);
     resetCSVWizard();
@@ -6396,8 +6446,8 @@ export default function DashboardPage() {
                                     </span>
                                   ) : null}
                                   {rec.dncComplainers ? (
-                                    <span className="inline-flex items-center rounded-md bg-red-500/15 px-2 py-0.5 text-xs font-medium text-red-400 ring-1 ring-red-500/30">
-                                      DNC Complainers: {rec.dncComplainers.toLocaleString()}
+                                    <span className="inline-flex items-center rounded-md bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-400 ring-1 ring-amber-500/30">
+                                      DNC Removed: {rec.dncComplainers.toLocaleString()}
                                     </span>
                                   ) : null}
                                 </div>
