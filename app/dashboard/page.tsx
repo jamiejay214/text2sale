@@ -4567,7 +4567,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === "campaigns" && (
-          <div className="grid gap-8 lg:grid-cols-[1fr_1fr]">
+          <div className="grid gap-8 lg:grid-cols-[1.4fr_0.6fr]">
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
               <h2 className="text-3xl font-bold">Create Campaign</h2>
 
