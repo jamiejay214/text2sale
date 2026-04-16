@@ -616,12 +616,14 @@ export default function DashboardPage() {
   const [scheduleTime, setScheduleTime] = useState("");
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
-  // "Add to Workflow" — puts the current contact on a multi-step drip that
-  // auto-stops the moment they reply (see cancel_on_reply in incoming-sms).
+  // "Add to Workflow" — puts the current contact (or a bulk selection of
+  // conversations) on a multi-step drip that auto-stops the moment they
+  // reply (see cancel_on_reply in incoming-sms).
   const [showAddToWorkflow, setShowAddToWorkflow] = useState(false);
   const [workflowCampaignId, setWorkflowCampaignId] = useState("");
   const [workflowUseCurrentNumber, setWorkflowUseCurrentNumber] = useState(true);
   const [workflowSaving, setWorkflowSaving] = useState(false);
+  const [workflowBulkMode, setWorkflowBulkMode] = useState(false);
 
   // Quick replies (stored in profile as JSONB)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([
@@ -1707,26 +1709,39 @@ export default function DashboardPage() {
     if (ok) setScheduledMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "cancelled" as const } : m));
   };
 
-  // Add the current conversation's contact to a workflow (campaign) — every
-  // step of the campaign is written to scheduled_messages with cancel_on_reply
-  // so the drip halts the instant the lead texts back.
+  // Add one contact or a bulk selection of conversations to a workflow
+  // (campaign). Every step is written to scheduled_messages with
+  // cancel_on_reply so the drip halts the instant the lead texts back.
   const handleAddToWorkflow = async () => {
-    if (!userId || !selectedConversation || !workflowCampaignId) return;
+    if (!userId || !workflowCampaignId) return;
     const campaign = campaigns.find((c) => c.id === workflowCampaignId);
-    const contact = contacts.find((c) => c.id === selectedConversation.contactId);
-    if (!campaign || !contact) {
-      setMessage("❌ Campaign or contact not found");
+    if (!campaign) {
+      setMessage("❌ Campaign not found");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-    // Resolve the outbound number. "Use current number" keeps the thread on
-    // whichever of your 10DLC lines the contact already talks to.
-    const fromNumber = workflowUseCurrentNumber
-      ? (selectedConversation.fromNumber || convFromNumber || campaign.selectedNumbers?.[0] || currentUser?.ownedNumbers?.[0]?.number || "")
-      : (campaign.selectedNumbers?.[0] || currentUser?.ownedNumbers?.[0]?.number || "");
-    if (!fromNumber) {
-      setMessage("❌ No from number available. Buy a number first.");
-      window.setTimeout(() => setMessage(""), 3000);
+
+    // Figure out which conversations/contacts we're enrolling.
+    // - Bulk mode: every conversation in selectedConvIds (from the sidebar)
+    // - Single mode: just the open conversation
+    type Target = { conv: ConversationRecord; contact: ContactRecord };
+    const targets: Target[] = [];
+    if (workflowBulkMode) {
+      for (const convId of selectedConvIds) {
+        const conv = conversations.find((c) => c.id === convId);
+        if (!conv) continue;
+        const contact = contacts.find((c) => c.id === conv.contactId);
+        if (!contact) continue;
+        targets.push({ conv, contact });
+      }
+    } else if (selectedConversation) {
+      const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+      if (contact) targets.push({ conv: selectedConversation, contact });
+    }
+
+    if (targets.length === 0) {
+      setMessage("❌ No contacts selected");
+      window.setTimeout(() => setMessage(""), 2500);
       return;
     }
 
@@ -1734,25 +1749,25 @@ export default function DashboardPage() {
       ? campaign.steps
       : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
 
-    const tokenMap: Record<string, string> = {
-      "{firstName}": contact.firstName || "",
-      "{lastName}": contact.lastName || "",
-      "{phone}": contact.phone || "",
-      "{email}": contact.email || "",
-      "{city}": contact.city || "",
-      "{state}": contact.state || "",
-      "{address}": contact.address || "",
-      "{zip}": contact.zip || "",
-      "{leadSource}": contact.leadSource || "",
-      "{quote}": contact.quote || "",
-      "{policyId}": contact.policyId || "",
-      "{timeline}": contact.timeline || "",
-      "{householdSize}": contact.householdSize || "",
-      "{dateOfBirth}": contact.dateOfBirth || "",
-      "{age}": contact.age || "",
-      "{notes}": contact.notes || "",
-    };
-    const personalize = (text: string) => {
+    const personalizeFor = (text: string, contact: ContactRecord) => {
+      const tokenMap: Record<string, string> = {
+        "{firstName}": contact.firstName || "",
+        "{lastName}": contact.lastName || "",
+        "{phone}": contact.phone || "",
+        "{email}": contact.email || "",
+        "{city}": contact.city || "",
+        "{state}": contact.state || "",
+        "{address}": contact.address || "",
+        "{zip}": contact.zip || "",
+        "{leadSource}": contact.leadSource || "",
+        "{quote}": contact.quote || "",
+        "{policyId}": contact.policyId || "",
+        "{timeline}": contact.timeline || "",
+        "{householdSize}": contact.householdSize || "",
+        "{dateOfBirth}": contact.dateOfBirth || "",
+        "{age}": contact.age || "",
+        "{notes}": contact.notes || "",
+      };
       let out = text;
       for (const [tag, val] of Object.entries(tokenMap)) {
         out = out.split(tag).join(val);
@@ -1760,50 +1775,99 @@ export default function DashboardPage() {
       return out;
     };
 
-    setWorkflowSaving(true);
-    try {
+    const fallbackFrom = campaign.selectedNumbers?.[0] || currentUser?.ownedNumbers?.[0]?.number || "";
+    const rowsToInsert: Array<Record<string, unknown>> = [];
+    const skippedNoFromNumber: string[] = [];
+
+    for (const { conv, contact } of targets) {
+      // "Use current number" keeps the thread on whichever 10DLC line the
+      // contact already talks to. Falls back to the campaign default if
+      // that conversation doesn't have one pinned yet.
+      const fromNumber = workflowUseCurrentNumber
+        ? (conv.fromNumber || fallbackFrom)
+        : fallbackFrom;
+      if (!fromNumber) {
+        skippedNoFromNumber.push(`${contact.firstName} ${contact.lastName}`.trim() || contact.phone);
+        continue;
+      }
       let cumulativeDelay = 0;
-      const rows = steps.map((step) => {
+      for (const step of steps) {
         cumulativeDelay += Math.max(0, Number(step.delayMinutes) || 0);
         const scheduledAt = new Date(Date.now() + cumulativeDelay * 60_000).toISOString();
-        return {
+        rowsToInsert.push({
           user_id: userId,
           contact_id: contact.id,
-          body: personalize(step.message || ""),
+          body: personalizeFor(step.message || "", contact),
           from_number: fromNumber,
           scheduled_at: scheduledAt,
-          status: "pending" as const,
+          status: "pending",
           campaign_id: workflowCampaignId,
           cancel_on_reply: true,
-        };
-      });
+        });
+      }
+    }
 
-      const { data, error } = await supabase
-        .from("scheduled_messages")
-        .insert(rows)
-        .select();
+    if (rowsToInsert.length === 0) {
+      setMessage("❌ No from number available. Buy a number first.");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
 
-      if (error) {
-        setMessage(`❌ ${error.message}`);
-        window.setTimeout(() => setMessage(""), 3500);
-        setWorkflowSaving(false);
-        return;
+    setWorkflowSaving(true);
+    try {
+      // Chunk inserts so a 1000-contact bulk enrollment doesn't overshoot
+      // Supabase's single-statement size.
+      const INSERT_CHUNK = 500;
+      const allInserted: ScheduledMessage[] = [];
+      for (let i = 0; i < rowsToInsert.length; i += INSERT_CHUNK) {
+        const slice = rowsToInsert.slice(i, i + INSERT_CHUNK);
+        const { data, error } = await supabase
+          .from("scheduled_messages")
+          .insert(slice)
+          .select();
+        if (error) {
+          setMessage(`❌ ${error.message}`);
+          window.setTimeout(() => setMessage(""), 3500);
+          setWorkflowSaving(false);
+          return;
+        }
+        if (data) allInserted.push(...(data as ScheduledMessage[]));
       }
 
-      // Tag the contact with this campaign so it shows up in campaign reporting.
-      if (campaign.name) {
-        await dbUpdateContact(contact.id, { campaign: campaign.name });
-        setContacts((prev) => prev.map((c) => c.id === contact.id ? { ...c, campaign: campaign.name } : c));
+      // Tag each enrolled contact with the campaign name for reporting.
+      if (campaign.name && targets.length > 0) {
+        const contactIds = targets.map((t) => t.contact.id);
+        await supabase
+          .from("contacts")
+          .update({ campaign: campaign.name })
+          .in("id", contactIds);
+        const idSet = new Set(contactIds);
+        setContacts((prev) => prev.map((c) => idSet.has(c.id) ? { ...c, campaign: campaign.name } : c));
       }
 
-      if (data) {
-        setScheduledMessages((prev) => [...prev, ...(data as ScheduledMessage[])]);
+      if (allInserted.length > 0) {
+        setScheduledMessages((prev) => [...prev, ...allInserted]);
       }
-      setMessage(`✅ Added to "${campaign.name}" — ${rows.length} step${rows.length > 1 ? "s" : ""} queued. Will auto-stop when they reply.`);
-      window.setTimeout(() => setMessage(""), 4000);
+
+      const enrolledCount = targets.length - skippedNoFromNumber.length;
+      const skippedNote = skippedNoFromNumber.length > 0
+        ? ` (${skippedNoFromNumber.length} skipped — no from number)`
+        : "";
+      setMessage(
+        workflowBulkMode
+          ? `✅ Added ${enrolledCount} contact${enrolledCount === 1 ? "" : "s"} to "${campaign.name}" — ${steps.length}-step drip queued${skippedNote}. Auto-stops per contact when they reply.`
+          : `✅ Added to "${campaign.name}" — ${steps.length} step${steps.length > 1 ? "s" : ""} queued. Will auto-stop when they reply.`
+      );
+      window.setTimeout(() => setMessage(""), 4500);
+
       setShowAddToWorkflow(false);
       setWorkflowCampaignId("");
       setWorkflowUseCurrentNumber(true);
+      if (workflowBulkMode) {
+        setSelectedConvIds(new Set());
+        setConvSelectMode(false);
+        setWorkflowBulkMode(false);
+      }
     } finally {
       setWorkflowSaving(false);
     }
@@ -4050,31 +4114,45 @@ export default function DashboardPage() {
                   </div>
                 </div>
                 {convSelectMode && selectedConvIds.size > 0 && (
-                  <div className="mt-3 flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        setArchivedConvIds((prev) => {
-                          const next = new Set(prev);
-                          for (const id of selectedConvIds) {
-                            if (convShowArchived) next.delete(id); else next.add(id);
-                          }
-                          return next;
-                        });
-                        setSelectedConvIds(new Set());
-                        setConvSelectMode(false);
-                      }}
-                      className="flex-1 rounded-xl bg-violet-600 px-3 py-2 text-xs font-medium hover:bg-violet-700"
-                    >
-                      {convShowArchived ? `Unarchive ${selectedConvIds.size}` : `Archive ${selectedConvIds.size}`}
-                    </button>
+                  <div className="mt-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          setWorkflowBulkMode(true);
+                          setWorkflowCampaignId("");
+                          setWorkflowUseCurrentNumber(true);
+                          setShowAddToWorkflow(true);
+                        }}
+                        className="flex-1 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-2 text-xs font-medium hover:from-violet-500 hover:to-fuchsia-500"
+                        title="Add selected contacts to a workflow — stops for each when they reply"
+                      >
+                        Workflow ({selectedConvIds.size})
+                      </button>
+                      <button
+                        onClick={() => {
+                          setArchivedConvIds((prev) => {
+                            const next = new Set(prev);
+                            for (const id of selectedConvIds) {
+                              if (convShowArchived) next.delete(id); else next.add(id);
+                            }
+                            return next;
+                          });
+                          setSelectedConvIds(new Set());
+                          setConvSelectMode(false);
+                        }}
+                        className="flex-1 rounded-xl border border-zinc-700 px-3 py-2 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+                      >
+                        {convShowArchived ? `Unarchive ${selectedConvIds.size}` : `Archive ${selectedConvIds.size}`}
+                      </button>
+                    </div>
                     <button
                       onClick={() => {
                         // Select all visible
                         setSelectedConvIds(new Set(filteredConversations.map((c) => c.id)));
                       }}
-                      className="rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:text-white"
+                      className="w-full rounded-xl border border-zinc-700 px-3 py-2 text-xs text-zinc-400 hover:text-white"
                     >
-                      All
+                      Select All ({filteredConversations.length})
                     </button>
                   </div>
                 )}
@@ -9248,9 +9326,16 @@ export default function DashboardPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden">
             <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
-              <h3 className="text-xl font-bold">Add to Workflow</h3>
+              <div>
+                <h3 className="text-xl font-bold">Add to Workflow</h3>
+                {workflowBulkMode && selectedConvIds.size > 0 && (
+                  <p className="mt-0.5 text-xs text-violet-300">
+                    {selectedConvIds.size} contact{selectedConvIds.size === 1 ? "" : "s"} selected
+                  </p>
+                )}
+              </div>
               <button
-                onClick={() => setShowAddToWorkflow(false)}
+                onClick={() => { setShowAddToWorkflow(false); setWorkflowBulkMode(false); }}
                 className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
                 aria-label="Close"
               >
@@ -9309,12 +9394,14 @@ export default function DashboardPage() {
               </p>
 
               <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-xs text-violet-200">
-                The drip stops automatically the moment this lead texts you back.
+                {workflowBulkMode
+                  ? "The drip stops automatically for each contact the moment they text you back."
+                  : "The drip stops automatically the moment this lead texts you back."}
               </div>
             </div>
             <div className="flex justify-end gap-3 border-t border-zinc-800 bg-zinc-950/60 px-6 py-4">
               <button
-                onClick={() => setShowAddToWorkflow(false)}
+                onClick={() => { setShowAddToWorkflow(false); setWorkflowBulkMode(false); }}
                 className="rounded-2xl border border-zinc-700 px-5 py-2.5 text-sm hover:bg-zinc-800"
               >
                 Cancel
@@ -9324,7 +9411,11 @@ export default function DashboardPage() {
                 disabled={!workflowCampaignId || workflowSaving}
                 className="rounded-2xl bg-violet-600 px-5 py-2.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
               >
-                {workflowSaving ? "Saving..." : "Save"}
+                {workflowSaving
+                  ? "Saving..."
+                  : workflowBulkMode
+                    ? `Save (${selectedConvIds.size})`
+                    : "Save"}
               </button>
             </div>
           </div>
