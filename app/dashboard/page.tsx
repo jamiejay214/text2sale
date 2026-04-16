@@ -543,6 +543,8 @@ export default function DashboardPage() {
   const [composerText, setComposerText] = useState("");
   const [convFromNumber, setConvFromNumber] = useState("");
   const [contactSearch, setContactSearch] = useState("");
+  const [contactPage, setContactPage] = useState(0);
+  const CONTACTS_PER_PAGE = 100;
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [newTagInput, setNewTagInput] = useState("");
   const [showTagManager, setShowTagManager] = useState(false);
@@ -1189,6 +1191,21 @@ export default function DashboardPage() {
       return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q) || tags.includes(q);
     });
   }, [contacts, contactSearch, tagFilter, dncFilter, lastContactedFilter, conversations]);
+
+  // Pagination for the Contacts tab — 100 per page.
+  // Reset to page 0 whenever the filtered set changes so the user doesn't
+  // land on an empty page after changing a filter.
+  const contactPageCount = Math.max(1, Math.ceil(filteredContacts.length / CONTACTS_PER_PAGE));
+  useEffect(() => {
+    if (contactPage >= contactPageCount) setContactPage(0);
+  }, [contactPageCount, contactPage]);
+  useEffect(() => {
+    setContactPage(0);
+  }, [contactSearch, tagFilter, dncFilter, lastContactedFilter]);
+  const pagedContacts = useMemo(() => {
+    const start = contactPage * CONTACTS_PER_PAGE;
+    return filteredContacts.slice(start, start + CONTACTS_PER_PAGE);
+  }, [filteredContacts, contactPage]);
 
   const filteredCampaigns = useMemo(() => {
     const q = campaignSearch.trim().toLowerCase();
@@ -2758,9 +2775,102 @@ export default function DashboardPage() {
     for (const id of ids) {
       await dbUpdateContact(id, { campaign: campaignName });
     }
+
+    // If the target is a multi-step workflow, actually enroll the contacts
+    // by scheduling their drip steps (not just tagging the campaign field).
+    // This lets users put existing contacts onto a workflow without having
+    // to re-upload them via CSV.
+    const campaign = campaignName
+      ? campaigns.find((c) => c.name === campaignName)
+      : null;
+    const steps = campaign?.steps && campaign.steps.length > 0
+      ? campaign.steps
+      : (campaign?.message ? [{ id: "1", message: campaign.message, delayMinutes: 0 }] : []);
+
+    let enrolledCount = 0;
+    let skippedCount = 0;
+    if (campaign && steps.length > 0 && userId) {
+      const fallbackFrom = campaign.selectedNumbers?.[0]
+        || currentUser?.ownedNumbers?.[0]?.number
+        || "";
+
+      const personalizeFor = (text: string, contact: ContactRecord) => {
+        const tokenMap: Record<string, string> = {
+          "{firstName}": contact.firstName || "",
+          "{lastName}": contact.lastName || "",
+          "{phone}": contact.phone || "",
+          "{email}": contact.email || "",
+          "{city}": contact.city || "",
+          "{state}": contact.state || "",
+          "{address}": contact.address || "",
+          "{zip}": contact.zip || "",
+          "{leadSource}": contact.leadSource || "",
+          "{quote}": contact.quote || "",
+          "{policyId}": contact.policyId || "",
+          "{timeline}": contact.timeline || "",
+          "{householdSize}": contact.householdSize || "",
+          "{dateOfBirth}": contact.dateOfBirth || "",
+          "{age}": contact.age || "",
+          "{notes}": contact.notes || "",
+        };
+        let out = text;
+        for (const [tag, val] of Object.entries(tokenMap)) {
+          out = out.split(tag).join(val);
+        }
+        return out;
+      };
+
+      const rowsToInsert: Array<Record<string, unknown>> = [];
+      for (const cid of ids) {
+        const contact = contacts.find((c) => c.id === cid);
+        if (!contact || contact.dnc) { skippedCount++; continue; }
+        const conv = conversations.find((cv) => cv.contactId === cid);
+        const fromNumber = conv?.fromNumber || fallbackFrom;
+        if (!fromNumber) { skippedCount++; continue; }
+        let cumulativeDelay = 0;
+        for (const step of steps) {
+          cumulativeDelay += Math.max(0, Number(step.delayMinutes) || 0);
+          const scheduledAt = new Date(Date.now() + cumulativeDelay * 60_000).toISOString();
+          rowsToInsert.push({
+            user_id: userId,
+            contact_id: contact.id,
+            body: personalizeFor(step.message || "", contact),
+            from_number: fromNumber,
+            scheduled_at: scheduledAt,
+            status: "pending",
+            campaign_id: campaign.id,
+            cancel_on_reply: true,
+          });
+        }
+        enrolledCount++;
+      }
+
+      if (rowsToInsert.length > 0) {
+        const INSERT_CHUNK = 500;
+        const allInserted: ScheduledMessage[] = [];
+        for (let i = 0; i < rowsToInsert.length; i += INSERT_CHUNK) {
+          const slice = rowsToInsert.slice(i, i + INSERT_CHUNK);
+          const { data, error } = await supabase
+            .from("scheduled_messages")
+            .insert(slice)
+            .select();
+          if (error) break;
+          if (data) allInserted.push(...(data as ScheduledMessage[]));
+        }
+        if (allInserted.length > 0) {
+          setScheduledMessages((prev) => [...prev, ...allInserted]);
+        }
+      }
+    }
+
     setSelectedContactIds(new Set());
-    setMessage(`✅ Assigned ${ids.length} contact${ids.length !== 1 ? "s" : ""} to ${campaignName || "no campaign"}`);
-    window.setTimeout(() => setMessage(""), 3000);
+    if (campaign && steps.length > 0) {
+      const skippedNote = skippedCount > 0 ? ` (${skippedCount} skipped — DNC or no number)` : "";
+      setMessage(`✅ Enrolled ${enrolledCount} contact${enrolledCount !== 1 ? "s" : ""} in "${campaign.name}" — ${steps.length}-step drip queued${skippedNote}. Stops per contact when they reply.`);
+    } else {
+      setMessage(`✅ Assigned ${ids.length} contact${ids.length !== 1 ? "s" : ""} to ${campaignName || "no campaign"}`);
+    }
+    window.setTimeout(() => setMessage(""), 4500);
   };
 
   const handleDeleteCampaign = async (id: string) => {
@@ -2965,6 +3075,18 @@ export default function DashboardPage() {
     if (!userId) return;
     const file = e.target.files?.[0];
     if (!file) return;
+    const uploadedFileName = file.name;
+
+    // Keep the raw text around so we can persist it on the audit row (and
+    // re-download it later from the Upload CSV history). Skip the storage
+    // copy for files >5MB — not worth bloating the DB row.
+    const rawReader = new FileReader();
+    let rawText: string | null = null;
+    rawReader.onload = () => {
+      const t = typeof rawReader.result === "string" ? rawReader.result : "";
+      if (t && t.length <= 5_000_000) rawText = t;
+    };
+    rawReader.readAsText(file);
 
     Papa.parse<Record<string, string>>(file, {
       header: true,
@@ -2975,6 +3097,8 @@ export default function DashboardPage() {
           window.setTimeout(() => setMessage(""), 2500);
           return;
         }
+
+        const totalRows = results.data.length;
 
         const rows = results.data
           .map((row) => ({
@@ -2995,6 +3119,8 @@ export default function DashboardPage() {
           }))
           .filter((c) => c.first_name || c.phone);
 
+        const invalidCount = totalRows - rows.length;
+
         // Deduplicate: check against existing contacts by phone number
         const existingPhones = new Set(
           contacts.map((c) => c.phone.replace(/\D/g, "")).filter(Boolean)
@@ -3014,7 +3140,61 @@ export default function DashboardPage() {
           deduped.push(row);
         }
 
+        // Persist an audit row to csv_uploads so this upload shows up in the
+        // Upload CSV history tab. We do this whether or not any contacts
+        // actually land — the user still wants to see the attempt.
+        const recordUpload = async (successCount: number) => {
+          const payload = {
+            user_id: userId,
+            file_name: uploadedFileName,
+            uploaded_at: new Date().toISOString(),
+            total_rows: totalRows,
+            success: successCount,
+            duplicates: dupeCount,
+            invalid: invalidCount,
+            tcpa_violations: 0,
+            dnc_complainers: 0,
+            validation_used: "Internal DNC" as string | null,
+            charged: null as number | null,
+            file_content: rawText,
+          };
+          const { data: inserted } = await supabase
+            .from("csv_uploads")
+            .insert(payload)
+            .select()
+            .single();
+          const rec: CSVUploadRecord = inserted
+            ? {
+                id: inserted.id as string,
+                fileName: inserted.file_name as string,
+                date: inserted.uploaded_at as string,
+                totalRows: inserted.total_rows as number,
+                success: inserted.success as number,
+                duplicates: inserted.duplicates as number,
+                invalid: inserted.invalid as number,
+                validationUsed: (inserted.validation_used as string | null) || null,
+                charged: (inserted.charged as number | null) ?? null,
+                tcpaViolations: (inserted.tcpa_violations as number) || 0,
+                dncComplainers: (inserted.dnc_complainers as number) || 0,
+              }
+            : {
+                id: `upload_${Date.now()}`,
+                fileName: uploadedFileName,
+                date: payload.uploaded_at,
+                totalRows,
+                success: successCount,
+                duplicates: dupeCount,
+                invalid: invalidCount,
+                validationUsed: "Internal DNC",
+                charged: null,
+                tcpaViolations: 0,
+                dncComplainers: 0,
+              };
+          setCsvUploadHistory((prev) => [rec, ...prev]);
+        };
+
         if (deduped.length === 0) {
+          await recordUpload(0);
           setMessage(`❌ All ${dupeCount} contacts already exist (duplicate phone numbers)`);
           window.setTimeout(() => setMessage(""), 3000);
           return;
@@ -3023,6 +3203,7 @@ export default function DashboardPage() {
         // Batch insert
         const { data, error } = await supabase.from("contacts").insert(deduped).select();
         if (error || !data) {
+          await recordUpload(0);
           setMessage("❌ Failed to import contacts");
           window.setTimeout(() => setMessage(""), 2500);
           return;
@@ -3030,6 +3211,7 @@ export default function DashboardPage() {
 
         const imported = (data as Contact[]).map(contactToRecord);
         setContacts((prev) => [...imported, ...prev]);
+        await recordUpload(imported.length);
         const dupeMsg = dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : "";
         setMessage(`✅ Imported ${imported.length} contacts${dupeMsg}`);
         window.setTimeout(() => setMessage(""), 3000);
@@ -5489,7 +5671,10 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
                           <span className="rounded-full bg-zinc-900 px-3 py-1 text-xs text-zinc-300">
-                            {campaign.audience} contacts
+                            {Math.max(
+                              campaign.audience || 0,
+                              contacts.filter((c) => !c.dnc && c.campaign === campaign.name).length
+                            )} contacts
                           </span>
                           <button
                             onClick={() => handleEditCampaign(campaign.id)}
@@ -5923,7 +6108,7 @@ export default function DashboardPage() {
               </div>
 
               <div className="divide-y divide-zinc-800">
-                {filteredContacts.map((contact) => (
+                {pagedContacts.map((contact) => (
                   <div
                     key={contact.id}
                     className="grid grid-cols-[32px_1fr_1fr_1fr_1fr_minmax(100px,1.2fr)_90px_80px_60px] items-center px-5 py-4 text-sm text-zinc-200 hover:bg-zinc-800/50"
@@ -6026,6 +6211,55 @@ export default function DashboardPage() {
                   </div>
                 )}
               </div>
+
+              {/* Pagination — only shown when there's more than one page */}
+              {filteredContacts.length > CONTACTS_PER_PAGE && (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t border-zinc-800 bg-zinc-900/60 px-5 py-3 text-xs text-zinc-400">
+                  <div>
+                    Showing{" "}
+                    <span className="font-medium text-zinc-200">
+                      {contactPage * CONTACTS_PER_PAGE + 1}
+                      –
+                      {Math.min((contactPage + 1) * CONTACTS_PER_PAGE, filteredContacts.length)}
+                    </span>{" "}
+                    of{" "}
+                    <span className="font-medium text-zinc-200">{filteredContacts.length}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setContactPage(0)}
+                      disabled={contactPage === 0}
+                      className="rounded-lg border border-zinc-700 px-2 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      « First
+                    </button>
+                    <button
+                      onClick={() => setContactPage((p) => Math.max(0, p - 1))}
+                      disabled={contactPage === 0}
+                      className="rounded-lg border border-zinc-700 px-3 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      ← Previous
+                    </button>
+                    <span className="px-2 text-zinc-300">
+                      Page {contactPage + 1} of {contactPageCount}
+                    </span>
+                    <button
+                      onClick={() => setContactPage((p) => Math.min(contactPageCount - 1, p + 1))}
+                      disabled={contactPage >= contactPageCount - 1}
+                      className="rounded-lg border border-zinc-700 px-3 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Next →
+                    </button>
+                    <button
+                      onClick={() => setContactPage(contactPageCount - 1)}
+                      disabled={contactPage >= contactPageCount - 1}
+                      className="rounded-lg border border-zinc-700 px-2 py-1 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Last »
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -6581,7 +6815,16 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* Upload History */}
+            {/* Upload History — empty placeholder so the user knows where
+                past uploads will appear once they happen. */}
+            {csvUploadHistory.length === 0 && (
+              <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/40 p-8 text-center">
+                <div className="mb-2 text-sm font-medium text-zinc-300">Upload history</div>
+                <p className="text-xs text-zinc-500">
+                  Your past CSV uploads and their success / duplicate / invalid counts will appear here.
+                </p>
+              </div>
+            )}
             {csvUploadHistory.length > 0 && (() => {
               const q = csvHistorySearch.trim().toLowerCase();
               const filtered = q

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 const apiKey = process.env.TELNYX_API_KEY!;
+const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
@@ -42,7 +43,9 @@ export async function POST(req: NextRequest) {
   }
 }
 
-// GET - Process due scheduled messages
+// GET - Cron entrypoint. Fires due scheduled messages. Called every minute
+// from vercel.json. Debits the wallet per message (same atomic RPC as
+// send-campaign) so follow-up drips stay honest with the live balance.
 export async function GET() {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -61,32 +64,76 @@ export async function GET() {
       return NextResponse.json({ success: true, processed: 0 });
     }
 
+    // Cache each user's message cost once per run — it almost never changes
+    // mid-minute and this saves a profile read per pending message.
+    const costCache = new Map<string, number>();
+    const getMessageCost = async (userId: string): Promise<number> => {
+      if (costCache.has(userId)) return costCache.get(userId)!;
+      const { data } = await supabase
+        .from("profiles")
+        .select("plan")
+        .eq("id", userId)
+        .single();
+      const plan = (data?.plan as Record<string, unknown> | null) || null;
+      const cost = Number((plan?.messageCost as number) ?? 0.012);
+      costCache.set(userId, cost);
+      return cost;
+    };
+
     let sent = 0;
     let failed = 0;
+    let skippedNoFunds = 0;
 
     for (const msg of pendingMessages) {
       try {
         const { data: contact } = await supabase
-          .from("contacts").select("id, phone, state").eq("id", msg.contact_id).single();
+          .from("contacts").select("id, phone, dnc").eq("id", msg.contact_id).single();
 
         if (!contact || !contact.phone) throw new Error("Contact not found");
+
+        // Respect DNC — if the contact has been marked DNC since scheduling,
+        // cancel the step instead of sending.
+        if (contact.dnc) {
+          await supabase.from("scheduled_messages").update({ status: "cancelled" }).eq("id", msg.id);
+          continue;
+        }
 
         const toNumber = normalizePhone(contact.phone);
         const fromNumber = normalizePhone(msg.from_number);
 
-        // Send via Telnyx
+        // Debit the wallet atomically BEFORE we actually send so we never
+        // over-deliver. If the user's balance is too low, park the message
+        // in 'failed' with a clear reason.
+        const cost = await getMessageCost(msg.user_id);
+        const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
+          p_user_id: msg.user_id,
+          p_amount: Number(cost.toFixed(4)),
+        });
+        if (decErr || newBal === null) {
+          skippedNoFunds++;
+          await supabase
+            .from("scheduled_messages")
+            .update({ status: "failed" })
+            .eq("id", msg.id);
+          continue;
+        }
+
+        // Send via Telnyx (include messaging_profile_id for 10DLC).
+        const telnyxPayload: Record<string, string> = {
+          from: fromNumber,
+          to: toNumber,
+          text: msg.body,
+          type: "SMS",
+        };
+        if (messagingProfileId) telnyxPayload.messaging_profile_id = messagingProfileId;
+
         const res = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${apiKey}`,
           },
-          body: JSON.stringify({
-            from: fromNumber,
-            to: toNumber,
-            text: msg.body,
-            type: "SMS",
-          }),
+          body: JSON.stringify(telnyxPayload),
         });
         const data = await res.json();
 
@@ -96,22 +143,62 @@ export async function GET() {
 
         await supabase.from("scheduled_messages").update({ status: "sent" }).eq("id", msg.id);
 
-        // Create/update conversation
+        // Create/update conversation, keeping from_number pinned so inbound
+        // replies land on the right 10DLC line.
         const { data: existingConv } = await supabase
-          .from("conversations").select("id")
-          .eq("contact_id", msg.contact_id).eq("user_id", msg.user_id).single();
+          .from("conversations").select("id, from_number")
+          .eq("contact_id", msg.contact_id).eq("user_id", msg.user_id).maybeSingle();
 
         if (!existingConv) {
           const { data: newConv } = await supabase
             .from("conversations")
-            .insert({ user_id: msg.user_id, contact_id: msg.contact_id, preview: msg.body.slice(0, 100), unread: 0, last_message_at: new Date().toISOString() })
+            .insert({
+              user_id: msg.user_id,
+              contact_id: msg.contact_id,
+              preview: msg.body.slice(0, 100),
+              unread: 0,
+              last_message_at: new Date().toISOString(),
+              from_number: msg.from_number,
+            })
             .select().single();
           if (newConv) {
-            await supabase.from("messages").insert({ conversation_id: newConv.id, direction: "outbound", body: msg.body, status: "sent" });
+            await supabase.from("messages").insert({
+              conversation_id: newConv.id,
+              direction: "outbound",
+              body: msg.body,
+              status: "sent",
+              from_number: msg.from_number,
+            });
           }
         } else {
-          await supabase.from("conversations").update({ preview: msg.body.slice(0, 100), last_message_at: new Date().toISOString() }).eq("id", existingConv.id);
-          await supabase.from("messages").insert({ conversation_id: existingConv.id, direction: "outbound", body: msg.body, status: "sent" });
+          const update: Record<string, unknown> = {
+            preview: msg.body.slice(0, 100),
+            last_message_at: new Date().toISOString(),
+          };
+          if (!existingConv.from_number) update.from_number = msg.from_number;
+          await supabase.from("conversations").update(update).eq("id", existingConv.id);
+          await supabase.from("messages").insert({
+            conversation_id: existingConv.id,
+            direction: "outbound",
+            body: msg.body,
+            status: "sent",
+            from_number: msg.from_number,
+          });
+        }
+
+        // Tick the campaign's `sent` counter if this step came from a workflow.
+        if (msg.campaign_id) {
+          const { data: camp } = await supabase
+            .from("campaigns")
+            .select("sent")
+            .eq("id", msg.campaign_id)
+            .single();
+          if (camp) {
+            await supabase
+              .from("campaigns")
+              .update({ sent: (camp.sent || 0) + 1 })
+              .eq("id", msg.campaign_id);
+          }
         }
 
         sent++;
@@ -122,7 +209,13 @@ export async function GET() {
       }
     }
 
-    return NextResponse.json({ success: true, processed: pendingMessages.length, sent, failed });
+    return NextResponse.json({
+      success: true,
+      processed: pendingMessages.length,
+      sent,
+      failed,
+      skippedNoFunds,
+    });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Process scheduled messages error:", errMsg);
