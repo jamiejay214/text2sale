@@ -120,12 +120,12 @@ export default function HomePage() {
           <div className="flex justify-center">
             <Logo size="xl" />
           </div>
-          <div className="mt-4 text-sm uppercase tracking-[0.2em] text-violet-300">SMS Marketing CRM</div>
+          <div className="mt-4 text-sm uppercase tracking-[0.2em] text-violet-300">AI-Powered SMS Marketing CRM</div>
           <p className="mx-auto mt-4 max-w-2xl text-lg leading-8 text-zinc-400">
-            The all-in-one SMS marketing platform for businesses. Import your contacts, create personalized campaigns, and reach your customers instantly with compliant text messaging.
+            The all-in-one AI-powered SMS marketing platform for businesses. Upload your contacts, let AI handle conversations that sound like a real person, and close deals on autopilot with compliant text messaging.
           </p>
 
-          <div className="mx-auto mt-10 grid max-w-3xl gap-5 md:grid-cols-3">
+          <div className="mx-auto mt-10 grid max-w-4xl gap-5 sm:grid-cols-2 md:grid-cols-4">
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
               <div className="text-2xl font-bold text-violet-400">CSV</div>
               <div className="mt-1 text-sm text-zinc-400">Import Leads</div>
@@ -141,6 +141,48 @@ export default function HomePage() {
               <div className="mt-1 text-sm text-zinc-400">Conversations</div>
               <p className="mt-2 text-xs text-zinc-500">Manage replies and follow-ups</p>
             </div>
+            <div className="rounded-2xl border border-violet-700/50 bg-violet-950/30 p-6">
+              <div className="text-2xl font-bold text-emerald-400">AI</div>
+              <div className="mt-1 text-sm text-zinc-400">Auto-Replies</div>
+              <p className="mt-2 text-xs text-zinc-500">AI replies that sound like a real person</p>
+            </div>
+          </div>
+
+          {/* AI Features */}
+          <div className="mx-auto mt-10 max-w-3xl">
+            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">Built-In AI Agent</div>
+            <h3 className="mt-2 text-xl font-bold text-white">Set It and Forget It</h3>
+            <p className="mx-auto mt-2 max-w-xl text-sm text-zinc-400">Upload your contacts, turn on AI, and let it do the rest. Our AI handles conversations, books appointments, and closes deals like a top producer.</p>
+            <div className="mt-6 grid gap-4 sm:grid-cols-2 text-left">
+              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
+                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
+                <div>
+                  <div className="text-sm font-medium text-white">Replies Like a Real Person</div>
+                  <p className="mt-1 text-xs text-zinc-500">Natural, human-sounding AI auto-replies that keep leads engaged around the clock.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
+                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
+                <div>
+                  <div className="text-sm font-medium text-white">AI Appointment Booking</div>
+                  <p className="mt-1 text-xs text-zinc-500">AI qualifies leads and books appointments directly through the conversation.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
+                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
+                <div>
+                  <div className="text-sm font-medium text-white">Industry-Trained AI</div>
+                  <p className="mt-1 text-xs text-zinc-500">Pre-trained for health insurance, real estate, life insurance, and more.</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
+                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
+                <div>
+                  <div className="text-sm font-medium text-white">Handles Objections &amp; Closes</div>
+                  <p className="mt-1 text-xs text-zinc-500">AI overcomes objections and closes like a top producer -- so you don&apos;t have to.</p>
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mx-auto mt-10 max-w-2xl rounded-3xl border border-zinc-700 bg-zinc-800/60 p-6 backdrop-blur text-left">
@@ -155,6 +197,8 @@ export default function HomePage() {
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Quiet hours compliance</li>
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
               <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
+              <li className="flex items-center gap-2"><span className="text-violet-400">&#10003;</span> AI auto-replies</li>
+              <li className="flex items-center gap-2"><span className="text-violet-400">&#10003;</span> AI appointment booking</li>
             </ul>
             <div className="mt-4 rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-center text-sm text-emerald-300">
               💰 <span className="font-semibold">Bulk Discount:</span> Save 10% when you add $100+ to your wallet

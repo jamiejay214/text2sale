@@ -46,6 +46,7 @@ export type Profile = {
   industry?: string;
   available_hours?: Record<string, unknown> | null;
   appointment_reminders?: Record<string, unknown> | null;
+  google_calendar_tokens?: Record<string, unknown> | null;
   created_at: string;
 };
 

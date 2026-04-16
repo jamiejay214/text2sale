@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
+import { createCalendarEvent } from "@/lib/google-calendar";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -296,6 +297,33 @@ When the customer wants to schedule/book/meet/talk/call:
             time: input.time,
             title: input.title || "Appointment",
           };
+
+          // Fire-and-forget: push to Google Calendar
+          createCalendarEvent(userId, {
+            date: input.date,
+            time: input.time,
+            title: input.title || "Appointment",
+            contactName: `${contact?.first_name || "Unknown"} ${contact?.last_name || ""}`.trim(),
+            contactPhone: contact?.phone || "",
+            duration: hours.slotDuration || 30,
+          })
+            .then((googleEventId) => {
+              if (googleEventId) {
+                supabase
+                  .from("appointments")
+                  .update({ google_event_id: googleEventId })
+                  .eq("user_id", userId)
+                  .eq("date", input.date)
+                  .eq("time", input.time)
+                  .eq("status", "confirmed")
+                  .then(({ error }) => {
+                    if (error) console.error("Failed to save google_event_id:", error);
+                  });
+              }
+            })
+            .catch((err) => {
+              console.error("Google Calendar sync failed (non-blocking):", err);
+            });
         }
       }
 
