@@ -916,11 +916,33 @@ export default function DashboardPage() {
         window.history.replaceState({}, "", "/dashboard");
       }
 
+      // Handle Google Calendar connect failure — previously this was silent
+      // (user clicked Connect, got bounced back to a blank dashboard with
+      // ?gcal=error in the URL but no UI). Now we surface the reason.
+      if (params.get("gcal") === "error") {
+        const reason = params.get("reason") || "unknown";
+        const reasonMap: Record<string, string> = {
+          not_configured: "Google Calendar isn't configured on the server yet. Contact support.",
+          auth_missing: "Please sign in again and try connecting Google Calendar.",
+          auth_invalid: "Your session expired. Sign in again and try connecting.",
+          auth_failed: "Authentication with Google failed. Try connecting again.",
+          token_exchange: "Google rejected the authorization — try connecting again.",
+          save_failed: "Couldn't save your Google tokens. Try again or contact support.",
+          missing_params: "Google Calendar connect was cancelled.",
+          invalid_state: "Security check failed — try connecting again.",
+          access_denied: "You denied Google Calendar access.",
+          unknown: "Google Calendar connect failed. Try again.",
+        };
+        setMessage(`\u274C ${reasonMap[reason] || reasonMap.unknown}`);
+        window.setTimeout(() => setMessage(""), 6000);
+        window.history.replaceState({}, "", "/dashboard");
+      }
+
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
       const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","appointments","upload","templates","settings","learn"];
-      const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page"];
+      const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
       }

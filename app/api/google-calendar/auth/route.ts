@@ -11,20 +11,23 @@ const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "";
 const REDIRECT_URI = `${APP_URL}/api/google-calendar/callback`;
 const SCOPES = "https://www.googleapis.com/auth/calendar.events";
 
+// Redirect back to the dashboard with a friendly error reason instead of
+// returning raw JSON. Raw JSON on a blank page looks like the button is
+// broken; a redirect lets the dashboard surface a readable message.
+function errorRedirect(reason: string): NextResponse {
+  const base = APP_URL || "/dashboard";
+  return NextResponse.redirect(
+    `${base}/dashboard?tab=settings&subtab=ai&gcal=error&reason=${encodeURIComponent(reason)}`
+  );
+}
+
 export async function GET(req: NextRequest) {
   try {
-    // Fail loudly (but clearly) if server env vars aren't set — this used to
-    // bounce the user out to Google with client_id="" which gave a useless
-    // error screen.
+    // If server env vars aren't set we can't even start the OAuth flow.
+    // Bounce back to the dashboard with a clear reason instead of a JSON
+    // error page so the user sees a real message.
     if (!GOOGLE_CLIENT_ID || !APP_URL) {
-      return NextResponse.json(
-        {
-          error: "Google Calendar is not configured",
-          detail:
-            "GOOGLE_CLIENT_ID and NEXT_PUBLIC_APP_URL must be set in the server environment.",
-        },
-        { status: 500 }
-      );
+      return errorRedirect("not_configured");
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
@@ -37,10 +40,7 @@ export async function GET(req: NextRequest) {
       req.nextUrl.searchParams.get("token");
 
     if (!token) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
+      return errorRedirect("auth_missing");
     }
 
     const {
@@ -49,10 +49,7 @@ export async function GET(req: NextRequest) {
     } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
-      return NextResponse.json(
-        { error: "Invalid authentication" },
-        { status: 401 }
-      );
+      return errorRedirect("auth_invalid");
     }
 
     // Build Google OAuth URL
@@ -75,9 +72,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.redirect(googleAuthUrl);
   } catch (err) {
     console.error("[google-calendar/auth] Error:", err);
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
+    return errorRedirect("unknown");
   }
 }
