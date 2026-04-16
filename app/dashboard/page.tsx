@@ -226,7 +226,19 @@ type TeamMemberDetail = {
   campaigns: CampaignRecord[];
   conversations: ConversationRecord[];
 };
-type NewCampaignForm = { name: string; steps: CampaignStep[]; selectedNumbers: string[] };
+// Paginated CSV-history loader — start small, let the user opt in to more.
+const CSV_HISTORY_PAGE_SIZE = 20;
+
+type NewCampaignForm = {
+  name: string;
+  steps: CampaignStep[];
+  selectedNumbers: string[];
+  // Per-campaign quiet hours override. "inherit" uses the profile default; "on"
+  // and "off" override it. The hour fields only apply when mode === "on".
+  quietHoursMode?: "inherit" | "on" | "off";
+  quietHoursStartHour?: number;
+  quietHoursEndHour?: number;
+};
 type AvailableNumber = { raw: string; display: string; locality: string; region: string };
 
 // Convert DB rows to camelCase adapter types
@@ -504,6 +516,9 @@ export default function DashboardPage() {
     name: "",
     steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
     selectedNumbers: [],
+    quietHoursMode: "inherit",
+    quietHoursStartHour: 21,
+    quietHoursEndHour: 8,
   });
   const [selectedContactIds, setSelectedContactIds] = useState<Set<string>>(new Set());
   const [csvCampaignId, setCsvCampaignId] = useState<string>("");
@@ -518,6 +533,8 @@ export default function DashboardPage() {
   const [csvUploading, setCsvUploading] = useState(false);
   const [csvUploadHistory, setCsvUploadHistory] = useState<CSVUploadRecord[]>([]);
   const [csvHistorySearch, setCsvHistorySearch] = useState("");
+  const [csvHistoryHasMore, setCsvHistoryHasMore] = useState(false);
+  const [csvHistoryLoadingMore, setCsvHistoryLoadingMore] = useState(false);
   // Original CSV file text — stashed at file-select time so we can save it to
   // Supabase on upload and offer re-download from the history table later.
   const [csvRawText, setCsvRawText] = useState("");
@@ -595,6 +612,13 @@ export default function DashboardPage() {
   const [optOutNewKeyword, setOptOutNewKeyword] = useState("");
   const [optInNewKeyword, setOptInNewKeyword] = useState("");
   const [savingOptOut, setSavingOptOut] = useState(false);
+
+  // Quiet hours (TCPA). Default on to keep everyone out of trouble; user can
+  // disable explicitly with an "I accept the risk" style acknowledgment.
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(true);
+  const [quietHoursStartHour, setQuietHoursStartHour] = useState(21); // 9 PM
+  const [quietHoursEndHour, setQuietHoursEndHour] = useState(8);       // 8 AM
+  const [savingQuietHours, setSavingQuietHours] = useState(false);
 
   // Team state
   const [teamMembers, setTeamMembers] = useState<AccountRecord[]>([]);
@@ -738,6 +762,11 @@ export default function DashboardPage() {
         setAutoRechargeThreshold(String(profile.auto_recharge.threshold));
         setAutoRechargeAmount(String(profile.auto_recharge.amount));
       }
+      // Quiet hours — default ON if the profile hasn't set them yet, so brand
+      // new users start TCPA-compliant.
+      setQuietHoursEnabled(profile.quiet_hours_enabled ?? true);
+      setQuietHoursStartHour(profile.quiet_hours_start_hour ?? 21);
+      setQuietHoursEndHour(profile.quiet_hours_end_hour ?? 8);
 
       // Load archived conversation IDs from localStorage
       try {
@@ -751,7 +780,9 @@ export default function DashboardPage() {
         if (stored) setWorkingLeadConvIds(new Set(JSON.parse(stored)));
       } catch { /* ignore */ }
 
-      // Load CSV upload history from DB
+      // Load CSV upload history from DB — first page only. Power users with
+      // hundreds of uploads were eating dashboard load time on every mount
+      // pulling all 200 rows. Load 20 eagerly, expose "Load more" in the UI.
       try {
         const { data: uploadRows } = await supabase
           .from("csv_uploads")
@@ -760,9 +791,11 @@ export default function DashboardPage() {
           .select("id, file_name, uploaded_at, total_rows, success, duplicates, invalid, tcpa_violations, dnc_complainers, validation_used, charged")
           .eq("user_id", uid)
           .order("uploaded_at", { ascending: false })
-          .limit(200);
+          .limit(CSV_HISTORY_PAGE_SIZE + 1); // +1 to detect hasMore
         if (uploadRows) {
-          setCsvUploadHistory(uploadRows.map((r) => ({
+          const hasMore = uploadRows.length > CSV_HISTORY_PAGE_SIZE;
+          const page = hasMore ? uploadRows.slice(0, CSV_HISTORY_PAGE_SIZE) : uploadRows;
+          setCsvUploadHistory(page.map((r) => ({
             id: r.id as string,
             fileName: r.file_name as string,
             date: r.uploaded_at as string,
@@ -775,6 +808,7 @@ export default function DashboardPage() {
             tcpaViolations: (r.tcpa_violations as number) || 0,
             dncComplainers: (r.dnc_complainers as number) || 0,
           })));
+          setCsvHistoryHasMore(hasMore);
         }
       } catch { /* ignore */ }
 
@@ -1564,6 +1598,68 @@ export default function DashboardPage() {
     setSavingOptOut(false);
   };
 
+  // Paginated loader for CSV upload history. Uses the last-loaded row's
+  // created_at as the cursor so we don't need a row count or OFFSET.
+  const handleLoadMoreCsvHistory = async () => {
+    if (!userId || csvHistoryLoadingMore) return;
+    const oldest = csvUploadHistory[csvUploadHistory.length - 1];
+    if (!oldest) return;
+    setCsvHistoryLoadingMore(true);
+    try {
+      const { data: rows } = await supabase
+        .from("csv_uploads")
+        .select("id, file_name, uploaded_at, total_rows, success, duplicates, invalid, tcpa_violations, dnc_complainers, validation_used, charged")
+        .eq("user_id", userId)
+        .lt("uploaded_at", oldest.date)
+        .order("uploaded_at", { ascending: false })
+        .limit(CSV_HISTORY_PAGE_SIZE + 1);
+      if (rows) {
+        const hasMore = rows.length > CSV_HISTORY_PAGE_SIZE;
+        const page = hasMore ? rows.slice(0, CSV_HISTORY_PAGE_SIZE) : rows;
+        setCsvUploadHistory((prev) => [
+          ...prev,
+          ...page.map((r) => ({
+            id: r.id as string,
+            fileName: r.file_name as string,
+            date: r.uploaded_at as string,
+            totalRows: (r.total_rows as number) || 0,
+            success: (r.success as number) || 0,
+            duplicates: (r.duplicates as number) || 0,
+            invalid: (r.invalid as number) || 0,
+            validationUsed: (r.validation_used as string | null) || null,
+            charged: (r.charged as number | null) ?? null,
+            tcpaViolations: (r.tcpa_violations as number) || 0,
+            dncComplainers: (r.dnc_complainers as number) || 0,
+          })),
+        ]);
+        setCsvHistoryHasMore(hasMore);
+      }
+    } catch {
+      /* ignore */
+    }
+    setCsvHistoryLoadingMore(false);
+  };
+
+  const handleSaveQuietHours = async () => {
+    if (!userId) return;
+    setSavingQuietHours(true);
+    try {
+      await updateProfile(userId, {
+        quiet_hours_enabled: quietHoursEnabled,
+        quiet_hours_start_hour: quietHoursStartHour,
+        quiet_hours_end_hour: quietHoursEndHour,
+      });
+      setMessage(quietHoursEnabled
+        ? "✅ Quiet hours saved"
+        : "⚠️ Quiet hours OFF — you are responsible for TCPA compliance");
+      window.setTimeout(() => setMessage(""), 3500);
+    } catch {
+      setMessage("❌ Failed to save quiet hours");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+    setSavingQuietHours(false);
+  };
+
   // ── Team handlers ──
   const handleJoinTeam = async () => {
     if (!userId || !teamJoinCode.trim()) return;
@@ -2262,12 +2358,22 @@ export default function DashboardPage() {
       return;
     }
 
+    // Map the UI's tri-state override to nullable DB columns. "inherit" sends
+    // null on all three so the backend falls back to the profile setting.
+    const qhMode = newCampaignForm.quietHoursMode || "inherit";
+    const qhEnabled = qhMode === "inherit" ? null : qhMode === "on";
+    const qhStart = qhMode === "on" ? (newCampaignForm.quietHoursStartHour ?? 21) : null;
+    const qhEnd = qhMode === "on" ? (newCampaignForm.quietHoursEndHour ?? 8) : null;
+
     const result = await dbInsertCampaign({
       user_id: userId, name: newCampaignForm.name.trim(),
       audience: 0, sent: 0, replies: 0, failed: 0, status: "Draft",
       message: newCampaignForm.steps[0]?.message.trim() || "",
       steps: newCampaignForm.steps,
       selected_numbers: newCampaignForm.selectedNumbers,
+      quiet_hours_enabled: qhEnabled,
+      quiet_hours_start_hour: qhStart,
+      quiet_hours_end_hour: qhEnd,
       logs: [],
     });
 
@@ -2276,6 +2382,9 @@ export default function DashboardPage() {
       setNewCampaignForm({
         name: "", selectedNumbers: [],
         steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
+        quietHoursMode: "inherit",
+        quietHoursStartHour: 21,
+        quietHoursEndHour: 8,
       });
       setActiveStepIndex(0);
       setMessage("✅ Campaign saved — upload a CSV to assign contacts, then send");
@@ -2500,11 +2609,17 @@ export default function DashboardPage() {
 
     setComposerText("");
 
-    // Send via Telnyx
+    // Send via Telnyx — include the current Supabase session so the API
+    // can verify the caller and their ownership of the `from` number.
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session?.access_token || "";
       const res = await fetch("/api/send-sms", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
       });
 
@@ -5736,6 +5851,82 @@ export default function DashboardPage() {
                   )}
                 </div>
 
+                {/* Per-campaign quiet hours override. Defaults to inherit so
+                    users don't need to think about it unless they need to. */}
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
+                  <div className="flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-base font-semibold text-zinc-200">Quiet Hours</div>
+                      <div className="mt-1 text-sm text-zinc-500">
+                        Control the send window for this campaign. Inherit uses your Settings default.
+                      </div>
+                    </div>
+                    <select
+                      value={newCampaignForm.quietHoursMode || "inherit"}
+                      onChange={(e) =>
+                        setNewCampaignForm((prev) => ({
+                          ...prev,
+                          quietHoursMode: e.target.value as "inherit" | "on" | "off",
+                        }))
+                      }
+                      className="shrink-0 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm"
+                    >
+                      <option value="inherit">Use profile default</option>
+                      <option value="on">Custom (on)</option>
+                      <option value="off">Off for this campaign</option>
+                    </select>
+                  </div>
+
+                  {newCampaignForm.quietHoursMode === "on" && (
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="mb-1 block text-xs text-zinc-400">Blocked from</label>
+                        <select
+                          value={newCampaignForm.quietHoursStartHour ?? 21}
+                          onChange={(e) =>
+                            setNewCampaignForm((prev) => ({
+                              ...prev,
+                              quietHoursStartHour: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                        >
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <option key={h} value={h}>
+                              {h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="mb-1 block text-xs text-zinc-400">Blocked until</label>
+                        <select
+                          value={newCampaignForm.quietHoursEndHour ?? 8}
+                          onChange={(e) =>
+                            setNewCampaignForm((prev) => ({
+                              ...prev,
+                              quietHoursEndHour: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm"
+                        >
+                          {Array.from({ length: 24 }, (_, h) => (
+                            <option key={h} value={h}>
+                              {h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {newCampaignForm.quietHoursMode === "off" && (
+                    <div className="mt-4 rounded-xl border border-red-900/50 bg-red-950/30 p-3 text-xs text-red-200">
+                      Quiet hours are OFF for this campaign. You&apos;re responsible for TCPA compliance.
+                    </div>
+                  )}
+                </div>
+
                 <button
                   onClick={handleCreateCampaign}
                   className="w-full rounded-2xl bg-violet-600 py-4 text-lg font-semibold hover:bg-violet-700"
@@ -7289,8 +7480,20 @@ export default function DashboardPage() {
                     </table>
                   </div>
 
-                  <div className="mt-3 text-xs text-zinc-500">
-                    {filtered.length.toLocaleString()} of {csvUploadHistory.length.toLocaleString()} upload{csvUploadHistory.length === 1 ? "" : "s"}
+                  <div className="mt-3 flex items-center justify-between text-xs text-zinc-500">
+                    <span>
+                      {filtered.length.toLocaleString()} of {csvUploadHistory.length.toLocaleString()} upload{csvUploadHistory.length === 1 ? "" : "s"}
+                      {csvHistoryHasMore ? " loaded" : ""}
+                    </span>
+                    {csvHistoryHasMore && !q && (
+                      <button
+                        onClick={handleLoadMoreCsvHistory}
+                        disabled={csvHistoryLoadingMore}
+                        className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:border-violet-500 hover:text-white disabled:opacity-50"
+                      >
+                        {csvHistoryLoadingMore ? "Loading..." : "Load more"}
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -8216,6 +8419,84 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* Quiet Hours — TCPA */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold">Quiet Hours</h2>
+                    <p className="mt-2 text-sm text-zinc-400">
+                      Block outbound messages during a contact&apos;s local nighttime window
+                      (based on their state). TCPA recommends 8 AM – 9 PM local time.
+                      Campaigns will auto-defer blocked contacts to the next open window.
+                    </p>
+                  </div>
+                  <label className="inline-flex shrink-0 cursor-pointer items-center gap-3">
+                    <span className="text-sm text-zinc-300">
+                      {quietHoursEnabled ? "On" : "Off"}
+                    </span>
+                    <input
+                      type="checkbox"
+                      checked={quietHoursEnabled}
+                      onChange={(e) => setQuietHoursEnabled(e.target.checked)}
+                      className="peer sr-only"
+                    />
+                    <span className="relative h-7 w-12 rounded-full bg-zinc-700 after:absolute after:left-0.5 after:top-0.5 after:h-6 after:w-6 after:rounded-full after:bg-zinc-300 after:transition peer-checked:bg-violet-600 peer-checked:after:translate-x-5 peer-checked:after:bg-white"></span>
+                  </label>
+                </div>
+
+                {quietHoursEnabled ? (
+                  <div className="mt-5 grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">
+                        Blocked from (evening start)
+                      </label>
+                      <select
+                        value={quietHoursStartHour}
+                        onChange={(e) => setQuietHoursStartHour(Number(e.target.value))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                      >
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={h} value={h}>
+                            {h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-zinc-300">
+                        Blocked until (morning end)
+                      </label>
+                      <select
+                        value={quietHoursEndHour}
+                        onChange={(e) => setQuietHoursEndHour(Number(e.target.value))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm"
+                      >
+                        {Array.from({ length: 24 }, (_, h) => (
+                          <option key={h} value={h}>
+                            {h === 0 ? "12 AM" : h < 12 ? `${h} AM` : h === 12 ? "12 PM" : `${h - 12} PM`}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-5 rounded-2xl border border-red-900/50 bg-red-950/30 p-4 text-sm text-red-200">
+                    <strong>⚠️ Quiet hours are disabled.</strong> You are responsible for
+                    TCPA compliance, including avoiding calls/texts to consumers before
+                    8 AM or after 9 PM in their local time. Violations can trigger fines
+                    up to $1,500 per message.
+                  </div>
+                )}
+
+                <button
+                  onClick={handleSaveQuietHours}
+                  disabled={savingQuietHours}
+                  className="mt-5 w-full rounded-2xl bg-violet-600 py-3 text-sm font-semibold hover:bg-violet-700 disabled:opacity-50"
+                >
+                  {savingQuietHours ? "Saving..." : "Save Quiet Hours"}
+                </button>
+              </div>
+
               {/* TCPA Compliance Note */}
               <div className="rounded-3xl border border-yellow-800/40 bg-yellow-950/20 p-6">
                 <h3 className="text-lg font-bold text-yellow-300">TCPA Compliance</h3>
@@ -8225,6 +8506,7 @@ export default function DashboardPage() {
                   <li>• You must send a one-time confirmation after opting out</li>
                   <li>• Do not send any further messages to opted-out contacts</li>
                   <li>• Keep records of all opt-out requests for compliance</li>
+                  <li>• Do not message consumers before 8 AM or after 9 PM in their local time</li>
                 </ul>
               </div>
 
