@@ -4618,15 +4618,31 @@ export default function DashboardPage() {
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center justify-between gap-2">
                             <div className="flex min-w-0 items-center gap-1.5">
-                              {workingLeadConvIds.has(conversation.id) && (
-                                <span
-                                  className="text-emerald-400"
-                                  title="Pinned as Working Lead"
-                                  aria-label="Working Lead"
-                                >
-                                  ★
-                                </span>
-                              )}
+                              {/* Clickable pin toggle — tap the star to pin
+                                  or unpin right from the sidebar, no need
+                                  to open the conversation. stopPropagation
+                                  prevents the row click from also firing. */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWorkingLeadConvIds((prev) => {
+                                    const next = new Set(prev);
+                                    if (next.has(conversation.id)) next.delete(conversation.id);
+                                    else next.add(conversation.id);
+                                    return next;
+                                  });
+                                }}
+                                className={`text-sm transition ${
+                                  workingLeadConvIds.has(conversation.id)
+                                    ? "text-emerald-400 hover:text-emerald-300"
+                                    : "text-zinc-600 hover:text-emerald-400"
+                                }`}
+                                title={workingLeadConvIds.has(conversation.id) ? "Pinned as Working Lead — click to unpin" : "Pin as Working Lead"}
+                                aria-label="Toggle Working Lead"
+                              >
+                                {workingLeadConvIds.has(conversation.id) ? "★" : "☆"}
+                              </button>
                               <div className="truncate font-semibold text-white">
                                 {contact
                                   ? `${contact.firstName} ${contact.lastName}`
