@@ -8407,7 +8407,24 @@ export default function DashboardPage() {
                     ) : (
                       <button
                         className="rounded-xl border border-zinc-600 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-800 shadow-sm transition hover:bg-zinc-100"
-                        onClick={() => { window.location.href = "/api/google-calendar/auth"; }}
+                        onClick={async () => {
+                          // Supabase keeps the session in localStorage, so a
+                          // plain navigation won't carry it. Pull the access
+                          // token here and hand it to the OAuth-init route.
+                          try {
+                            const { data } = await supabase.auth.getSession();
+                            const token = data.session?.access_token;
+                            if (!token) {
+                              setMessage("❌ You need to sign in again before connecting Google Calendar.");
+                              window.setTimeout(() => setMessage(""), 3500);
+                              return;
+                            }
+                            window.location.href = `/api/google-calendar/auth?token=${encodeURIComponent(token)}`;
+                          } catch {
+                            setMessage("❌ Could not start Google Calendar connect");
+                            window.setTimeout(() => setMessage(""), 3000);
+                          }
+                        }}
                       >
                         <span className="flex items-center gap-2">
                           <svg className="h-5 w-5" viewBox="0 0 24 24">
