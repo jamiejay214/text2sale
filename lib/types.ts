@@ -43,6 +43,7 @@ export type Profile = {
   ai_auto_reply?: boolean;
   ai_plan?: boolean;
   free_ai_plan?: boolean;
+  agent_plan?: boolean;
   industry?: string;
   available_hours?: Record<string, unknown> | null;
   appointment_reminders?: Record<string, unknown> | null;
@@ -216,6 +217,7 @@ export type Conversation = {
   created_at: string;
   from_number?: string;
   ai_enabled?: boolean;
+  agent_enabled?: boolean;
 };
 
 export type Message = {

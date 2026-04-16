@@ -60,6 +60,7 @@ type AccountRecord = {
   aiPlan?: boolean;
   aiAutoReply?: boolean;
   aiInstructions?: string;
+  agentPlan?: boolean;
   industry?: string;
   googleCalendarConnected?: boolean;
   availableHours?: {
@@ -128,6 +129,7 @@ type ConversationRecord = {
   starred?: boolean;
   fromNumber?: string;
   aiEnabled?: boolean;
+  agentEnabled?: boolean;
   messages: ConversationMessage[];
 };
 
@@ -240,6 +242,7 @@ function profileToAccount(p: Profile): AccountRecord {
     tagLibrary: p.tag_library || [],
     aiPlan: p.ai_plan || false,
     aiAutoReply: p.ai_auto_reply || false,
+    agentPlan: p.agent_plan || false,
     aiInstructions: p.ai_instructions || "",
     industry: p.industry || "",
     availableHours: (p.available_hours as AccountRecord["availableHours"]) || undefined,
@@ -278,12 +281,14 @@ function messageToRecord(m: Message): ConversationMessage {
   };
 }
 
-function convToRecord(c: Conversation & { ai_enabled?: boolean }, msgs: ConversationMessage[]): ConversationRecord {
+function convToRecord(c: Conversation & { ai_enabled?: boolean; agent_enabled?: boolean }, msgs: ConversationMessage[]): ConversationRecord {
   return {
     id: c.id, contactId: c.contact_id, preview: c.preview,
     unread: c.unread, lastMessageAt: c.last_message_at,
     starred: c.starred, fromNumber: c.from_number,
-    aiEnabled: c.ai_enabled || false, messages: msgs,
+    aiEnabled: c.ai_enabled || false,
+    agentEnabled: c.agent_enabled || false,
+    messages: msgs,
   };
 }
 
@@ -4015,6 +4020,32 @@ export default function DashboardPage() {
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
                           </svg>
                           Full AI
+                        </button>
+                      )}
+                      {/* Agent toggle — proactive follow-ups for this conversation */}
+                      {currentUser.agentPlan && (
+                        <button
+                          onClick={async () => {
+                            if (!selectedConversation) return;
+                            const next = !selectedConversation.agentEnabled;
+                            setConversations((prev) =>
+                              prev.map((c) => c.id === selectedConversation.id ? { ...c, agentEnabled: next } : c)
+                            );
+                            await dbUpdateConversation(selectedConversation.id, { agent_enabled: next });
+                            setMessage(next ? "Agent ON — will follow up automatically" : "Agent OFF");
+                            window.setTimeout(() => setMessage(""), 2500);
+                          }}
+                          className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                            selectedConversation?.agentEnabled
+                              ? "bg-amber-600/20 text-amber-400 ring-1 ring-amber-500/50"
+                              : "border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                          }`}
+                          title={selectedConversation?.agentEnabled ? "Agent is ON — will auto follow-up if lead goes silent" : "Turn on Agent — it'll follow up automatically when the lead goes quiet"}
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.59 14.37a6 6 0 01-5.84 7.38v-4.8m5.84-2.58a14.98 14.98 0 006.16-12.12A14.98 14.98 0 009.631 8.41m5.96 5.96a14.926 14.926 0 01-5.841 2.58m-.119-8.54a6 6 0 00-7.381 5.84h4.8m2.581-5.84a14.927 14.927 0 00-2.58 5.84m2.699 2.7c-.103.021-.207.041-.311.06a15.09 15.09 0 01-2.448-2.448 14.9 14.9 0 01.06-.312m-2.24 2.39a4.493 4.493 0 00-1.757 4.306 4.493 4.493 0 004.306-1.758M16.5 9a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z" />
+                          </svg>
+                          Agent
                         </button>
                       )}
                       <button
