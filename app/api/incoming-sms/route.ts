@@ -48,25 +48,37 @@ export async function POST(req: NextRequest) {
     const toNormalized = toDigitsRaw.startsWith("1") ? toDigitsRaw.slice(1) : toDigitsRaw;
     const toFormattedIn = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
 
-    // Step 1: Identify which user owns the receiving number.
-    // Do this FIRST so we can route the message even when the sender isn't a saved contact.
+    // Step 1: Identify which user owns the receiving number — indexed lookup
+    // on the denormalized owned_phone_numbers table. Previously we pulled
+    // every profile and did an O(n) scan in JS, which gets slower as users
+    // grow; this is a single index hit (~5ms).
     let owningUserId: string | null = null;
-    const { data: owners } = await supabase
-      .from("profiles")
-      .select("id, owned_numbers")
-      .not("owned_numbers", "is", null);
-
-    if (owners) {
-      for (const p of owners) {
-        const nums = (p.owned_numbers as Array<{ number?: string }> | null) || [];
-        const match = nums.some((n) => {
-          const d = (n.number || "").replace(/\D/g, "");
-          const norm = d.startsWith("1") ? d.slice(1) : d;
-          return norm && norm === toNormalized;
-        });
-        if (match) {
-          owningUserId = p.id;
-          break;
+    const { data: ownership } = await supabase
+      .from("owned_phone_numbers")
+      .select("user_id")
+      .eq("digits", toNormalized)
+      .maybeSingle();
+    if (ownership?.user_id) {
+      owningUserId = ownership.user_id as string;
+    } else {
+      // Fallback — older accounts might have numbers only on profiles.owned_numbers.
+      // This keeps routing working while the backfill catches up.
+      const { data: owners } = await supabase
+        .from("profiles")
+        .select("id, owned_numbers")
+        .not("owned_numbers", "is", null);
+      if (owners) {
+        for (const p of owners) {
+          const nums = (p.owned_numbers as Array<{ number?: string }> | null) || [];
+          const match = nums.some((n) => {
+            const d = (n.number || "").replace(/\D/g, "");
+            const norm = d.startsWith("1") ? d.slice(1) : d;
+            return norm && norm === toNormalized;
+          });
+          if (match) {
+            owningUserId = p.id;
+            break;
+          }
         }
       }
     }
