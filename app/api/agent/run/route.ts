@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
+import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 
 // Proactive follow-up agent. Runs every hour (Vercel Cron).
 // For accounts with agent_plan=true and conversations with agent_enabled=true,
@@ -219,6 +220,10 @@ export async function GET(req: NextRequest) {
         // Last message must be inbound (lead spoke last) — don't follow up if we already did
         const lastMsg = msgs[0];
         if (lastMsg.direction !== "inbound") continue;
+
+        // If the lead's last message was a decline ("N", "No", "Not interested",
+        // etc.) don't chase them — would look pushy and hurt the user's reputation.
+        if (shouldAiSkipReply(lastMsg.body)) continue;
 
         const history = msgs
           .reverse()

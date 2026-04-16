@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -274,6 +275,14 @@ export async function POST(req: NextRequest) {
 
         const globalAi = aiProfile?.ai_plan && aiProfile?.ai_auto_reply;
         const perConvAi = aiProfile?.ai_plan && convData?.ai_enabled;
+
+        // Skip AI if the lead clearly doesn't want to engage ("N", "No",
+        // "Not interested", "Remove me", etc.). We don't mark them DNC for
+        // this — that only happens on formal opt-out keywords handled above.
+        // This just keeps the AI from looking tone-deaf.
+        if (shouldAiSkipReply(body)) {
+          return NextResponse.json({ status: "ok", aiSkipped: "decline_response" });
+        }
 
         if (aiProfile?.ai_plan && (globalAi || perConvAi)) {
           const balance = Number(aiProfile.wallet_balance) || 0;
