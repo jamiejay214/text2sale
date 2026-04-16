@@ -94,6 +94,25 @@ export async function POST(req: NextRequest) {
     const digits = numberToBuy.replace(/\D/g, "").slice(1); // remove + and country code
     const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 
+    // Register the number in owned_phone_numbers so inbound SMS routing
+    // (and anything else that needs a fast "who owns this?" lookup) finds it
+    // immediately, without scanning every user's profile.
+    if (userId) {
+      try {
+        const admin = createClient(supabaseUrl, serviceKey);
+        await admin
+          .from("owned_phone_numbers")
+          .upsert(
+            { user_id: userId, digits, formatted: display },
+            { onConflict: "digits" }
+          );
+      } catch (err) {
+        // Non-fatal — the fallback path in the webhook still works until
+        // the record catches up.
+        console.error("[buy-number] owned_phone_numbers upsert failed:", err);
+      }
+    }
+
     // Auto-assign the new number to the user's 10DLC campaign, if they have an approved one.
     let assignment: { assigned: boolean; error?: string; campaignId?: string } = { assigned: false };
     if (userId) {

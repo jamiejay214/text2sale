@@ -1028,10 +1028,35 @@ export default function DashboardPage() {
     convMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [selectedConversationId, selectedConvMsgCount]);
 
-  // Poll wallet balance every 5 seconds so the user sees deposits / campaign
-  // charges reflected without refreshing. Lightweight single-column query.
+  // Keep the wallet balance live. Two feeds, belt-and-suspenders:
+  //   1) Realtime postgres_changes — fires on every UPDATE to this user's
+  //      profiles row, so the ticker moves as send-campaign debits each
+  //      chunk (usually within ~100ms of the server write).
+  //   2) A 2s polling fallback — covers users whose network / Supabase
+  //      realtime is flaky, and catches auth.users/Stripe side-writes too.
   useEffect(() => {
     if (!userId) return;
+
+    const channel = supabase
+      .channel(`wallet-${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "profiles",
+          filter: `id=eq.${userId}`,
+        },
+        (payload) => {
+          const fresh = Number((payload.new as { wallet_balance?: number })?.wallet_balance) || 0;
+          setCurrentUser((prev) => {
+            if (!prev || prev.walletBalance === fresh) return prev;
+            return { ...prev, walletBalance: fresh };
+          });
+        }
+      )
+      .subscribe();
+
     const interval = window.setInterval(async () => {
       const { data } = await supabase
         .from("profiles")
@@ -1045,8 +1070,11 @@ export default function DashboardPage() {
           return { ...prev, walletBalance: fresh };
         });
       }
-    }, 5000);
-    return () => window.clearInterval(interval);
+    }, 2000);
+    return () => {
+      window.clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
   }, [userId]);
 
   const handleSendChatMessage = async () => {
@@ -2614,16 +2642,10 @@ export default function DashboardPage() {
 
     setLaunchingCampaignId(campaignId);
 
-    const chargeEntry: UsageHistoryItem = {
-      id: `charge_${Date.now()}`, type: "charge", amount: cost,
-      description: `Campaign "${campaign.name}" — ${totalMessages} messages (${steps.length} step${steps.length > 1 ? "s" : ""})`,
-      createdAt: new Date().toISOString(), status: "succeeded",
-    };
+    // NOTE: wallet charge moved to the server — send-campaign debits the
+    // balance atomically as each chunk sends, so the dashboard ticks the
+    // wallet down live and we never overcharge if the send halts early.
 
-    await persistProfile({
-      wallet_balance: Number((walletBalance - cost).toFixed(2)),
-      usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
-    });
     await dbUpdateCampaign(campaignId, { status: "Sending", audience });
     setCampaigns((prev) => prev.map((c) =>
       c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
@@ -3076,16 +3098,40 @@ export default function DashboardPage() {
       return;
     }
 
-    // Batch insert in chunks of 500
+    // Batch insert in parallel chunks. Previously this was sequential
+    // chunks of 500 — a 10k CSV sat on 20 round trips (~4-6 s). Now we fire
+    // batches in waves of PARALLELISM at a time, each of BATCH_SIZE rows,
+    // so 10k rows collapses to ~4 round-trips' worth of wall time.
+    const BATCH_SIZE = 1000;
+    const PARALLELISM = 4;
+    const batches: typeof deduped[] = [];
+    for (let i = 0; i < deduped.length; i += BATCH_SIZE) {
+      batches.push(deduped.slice(i, i + BATCH_SIZE));
+    }
+
+    const importedAll: ContactRecord[] = [];
     let totalImported = 0;
-    for (let i = 0; i < deduped.length; i += 500) {
-      const chunk = deduped.slice(i, i + 500);
-      const { data, error } = await supabase.from("contacts").insert(chunk).select();
-      if (!error && data) {
-        const imported = (data as Contact[]).map(contactToRecord);
-        setContacts((prev) => [...imported, ...prev]);
-        totalImported += imported.length;
+    for (let w = 0; w < batches.length; w += PARALLELISM) {
+      const wave = batches.slice(w, w + PARALLELISM);
+      const results = await Promise.all(
+        wave.map((chunk) => supabase.from("contacts").insert(chunk).select())
+      );
+      for (const { data, error } of results) {
+        if (!error && data) {
+          const imported = (data as Contact[]).map(contactToRecord);
+          importedAll.push(...imported);
+          totalImported += imported.length;
+        }
       }
+      // Show progress mid-upload for larger files so the wizard doesn't
+      // look frozen on a 10k import.
+      if (deduped.length > 2000) {
+        setMessage(`📥 Imported ${totalImported.toLocaleString()} of ${deduped.length.toLocaleString()}...`);
+      }
+    }
+    // Single state update at the end — one React re-render instead of N.
+    if (importedAll.length > 0) {
+      setContacts((prev) => [...importedAll, ...prev]);
     }
 
     const record = await persistUploadRecord({ success: totalImported, charged: null });
@@ -3124,16 +3170,10 @@ export default function DashboardPage() {
           return;
         }
 
-        // Charge wallet
-        const chargeEntry: UsageHistoryItem = {
-          id: `charge_${Date.now()}`, type: "charge", amount: cost,
-          description: `Campaign "${campaign.name}" — ${totalMessages} messages (${steps.length} step${steps.length > 1 ? "s" : ""})`,
-          createdAt: new Date().toISOString(), status: "succeeded",
-        };
-        await persistProfile({
-          wallet_balance: Number((walletBalance - cost).toFixed(2)),
-          usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
-        });
+        // NOTE: We no longer charge the wallet up front. send-campaign now
+        // decrements the balance atomically as each chunk of messages is
+        // actually sent, so the user sees their balance tick down live and
+        // doesn't get double-charged for sends that never went through.
 
         await dbUpdateCampaign(csvCampaignId, { status: "Sending", audience: totalImported });
         setCampaigns((prev) => prev.map((c) =>
@@ -3185,8 +3225,14 @@ export default function DashboardPage() {
           ));
           await dbUpdateCampaign(csvCampaignId, { status: "Completed", sent: totalSent, failed: totalFailed, audience: totalImported });
           setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
-          // Check auto-recharge after campaign send
-          checkAutoRecharge(Number((walletBalance - cost).toFixed(2)));
+          // Re-read the latest wallet (send-campaign has been debiting it
+          // chunk by chunk) and trigger auto-recharge if it's below threshold.
+          const { data: fresh } = await supabase
+            .from("profiles")
+            .select("wallet_balance")
+            .eq("id", userId)
+            .single();
+          if (fresh) checkAutoRecharge(Number(fresh.wallet_balance) || 0);
         } catch {
           setMessage("❌ Could not connect to SMS service");
         }
