@@ -127,6 +127,7 @@ type ConversationRecord = {
   lastMessageAt: string;
   starred?: boolean;
   fromNumber?: string;
+  aiEnabled?: boolean;
   messages: ConversationMessage[];
 };
 
@@ -277,11 +278,12 @@ function messageToRecord(m: Message): ConversationMessage {
   };
 }
 
-function convToRecord(c: Conversation, msgs: ConversationMessage[]): ConversationRecord {
+function convToRecord(c: Conversation & { ai_enabled?: boolean }, msgs: ConversationMessage[]): ConversationRecord {
   return {
     id: c.id, contactId: c.contact_id, preview: c.preview,
     unread: c.unread, lastMessageAt: c.last_message_at,
-    starred: c.starred, fromNumber: c.from_number, messages: msgs,
+    starred: c.starred, fromNumber: c.from_number,
+    aiEnabled: c.ai_enabled || false, messages: msgs,
   };
 }
 
@@ -3966,27 +3968,53 @@ export default function DashboardPage() {
                           </div>
                         );
                       })()}
-                      {/* AI Auto-Reply toggle — only visible when user has AI plan */}
+                      {/* Per-conversation AI toggle — auto-reply only in THIS conversation */}
+                      {currentUser.aiPlan && (
+                        <button
+                          onClick={async () => {
+                            if (!selectedConversation) return;
+                            const next = !selectedConversation.aiEnabled;
+                            setConversations((prev) =>
+                              prev.map((c) => c.id === selectedConversation.id ? { ...c, aiEnabled: next } : c)
+                            );
+                            await dbUpdateConversation(selectedConversation.id, { ai_enabled: next });
+                            setMessage(next ? "AI ON for this conversation" : "AI OFF for this conversation");
+                            window.setTimeout(() => setMessage(""), 2000);
+                          }}
+                          className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
+                            selectedConversation?.aiEnabled
+                              ? "bg-violet-600/20 text-violet-400 ring-1 ring-violet-500/50"
+                              : "border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
+                          }`}
+                          title={selectedConversation?.aiEnabled ? "AI is ON for this chat — click to turn off" : "Turn on AI for this chat only"}
+                        >
+                          <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H8.25m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0H12m4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm0 0h-.375M21 12c0 4.556-4.03 8.25-9 8.25a9.764 9.764 0 01-2.555-.337A5.972 5.972 0 015.41 20.97a5.969 5.969 0 01-.474-.065 4.48 4.48 0 00.978-2.025c.09-.457-.133-.901-.467-1.226C3.93 16.178 3 14.189 3 12c0-4.556 4.03-8.25 9-8.25s9 3.694 9 8.25z" />
+                          </svg>
+                          AI
+                        </button>
+                      )}
+                      {/* Full AI toggle — auto-reply to ALL conversations */}
                       {currentUser.aiPlan && (
                         <button
                           onClick={async () => {
                             const next = !currentUser.aiAutoReply;
                             await persistProfile({ ai_auto_reply: next });
                             setCurrentUser((prev) => prev ? { ...prev, aiAutoReply: next } : prev);
-                            setMessage(next ? "AI auto-reply ON" : "AI auto-reply OFF");
-                            window.setTimeout(() => setMessage(""), 2000);
+                            setMessage(next ? "Full AI ON — replying to all conversations" : "Full AI OFF");
+                            window.setTimeout(() => setMessage(""), 2500);
                           }}
                           className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
                             currentUser.aiAutoReply
                               ? "bg-cyan-600/20 text-cyan-400 ring-1 ring-cyan-500/50"
                               : "border border-zinc-700 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800"
                           }`}
-                          title={currentUser.aiAutoReply ? "AI auto-reply is ON — click to turn off" : "Turn on AI auto-reply"}
+                          title={currentUser.aiAutoReply ? "Full AI is ON for ALL chats — click to turn off" : "Turn on Full AI for all conversations"}
                         >
                           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.455 2.456L21.75 6l-1.036.259a3.375 3.375 0 00-2.455 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
                           </svg>
-                          AI {currentUser.aiAutoReply ? "ON" : "OFF"}
+                          Full AI
                         </button>
                       )}
                       <button
