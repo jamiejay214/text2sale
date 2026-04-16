@@ -3,7 +3,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
     // Get the user's profile to find their Stripe customer ID
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, wallet_balance, usage_history, auto_recharge")
+      .select("stripe_customer_id, auto_recharge")
       .eq("id", userId)
       .single();
 
@@ -72,55 +72,85 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "No card on file. Add a payment method first." }, { status: 400 });
     }
 
-    // Create a payment intent and confirm it immediately
-    const paymentIntent = await stripe.paymentIntents.create({
-      amount: Math.round(amount * 100), // cents
-      currency: "usd",
-      customer: profile.stripe_customer_id,
-      payment_method: paymentMethodId,
-      off_session: true,
-      confirm: true,
-      description: `Text2Sale Auto Recharge — $${amount.toFixed(2)}`,
-      metadata: {
-        userId,
-        type: "auto_recharge",
-        amount: amount.toString(),
+    // Create + confirm a PaymentIntent with a Stripe-side idempotency key.
+    // If this route runs twice (client retry, transient network error) Stripe
+    // will return the original PI instead of charging the card a second time.
+    // We also cache an idempotency key per minute so two rapid retries don't
+    // produce separate PIs either. If a truly new recharge is needed, the
+    // minute bucket advances and the key changes.
+    const stripeIdemKey = `auto_recharge_${userId}_${Math.floor(Date.now() / 60000)}_${Math.round(amount * 100)}`;
+    const paymentIntent = await stripe.paymentIntents.create(
+      {
+        amount: Math.round(amount * 100), // cents
+        currency: "usd",
+        customer: profile.stripe_customer_id,
+        payment_method: paymentMethodId,
+        off_session: true,
+        confirm: true,
+        description: `Text2Sale Auto Recharge — $${amount.toFixed(2)}`,
+        metadata: {
+          userId,
+          type: "auto_recharge",
+          amount: amount.toString(),
+        },
       },
-    });
+      { idempotencyKey: stripeIdemKey }
+    );
 
     if (paymentIntent.status !== "succeeded") {
       return NextResponse.json({ success: false, error: "Payment was not successful. Status: " + paymentIntent.status }, { status: 400 });
     }
 
-    // Update the wallet balance
-    const currentBalance = profile.wallet_balance || 0;
-    const newBalance = Number((currentBalance + amount).toFixed(2));
+    // Atomic credit via RPC. The PaymentIntent id is the idempotency token —
+    // if Stripe retries a webhook or we accidentally call this twice for the
+    // same PI, the RPC returns the existing balance instead of double-crediting.
+    const { data: newBalance, error: creditErr } = await supabase.rpc("credit_wallet", {
+      p_user_id: userId,
+      p_amount: Number(amount.toFixed(2)),
+      p_idempotency_key: paymentIntent.id,
+      p_description: `Auto recharge — $${amount.toFixed(2)}`,
+    });
 
-    // Add to usage history
-    const usageHistory = profile.usage_history || [];
-    const newEntry = {
-      id: `auto_recharge_${Date.now()}`,
-      type: "topup",
-      amount,
-      description: `Auto recharge — $${amount.toFixed(2)}`,
-      createdAt: new Date().toISOString(),
-      status: "succeeded",
-    };
-
-    const { error: updateError } = await supabase
-      .from("profiles")
-      .update({
-        wallet_balance: newBalance,
-        usage_history: [...usageHistory, newEntry],
-      })
-      .eq("id", userId);
-
-    if (updateError) {
-      console.error("Failed to update balance after auto recharge:", updateError.message);
-      return NextResponse.json({ success: false, error: "Payment succeeded but failed to update balance. Contact support." }, { status: 500 });
+    if (creditErr || newBalance === null) {
+      console.error("credit_wallet failed after auto-recharge:", creditErr?.message);
+      // Payment succeeded at Stripe. Don't 500 — surface enough detail that
+      // support can reconcile using the PI id.
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Payment succeeded but balance update failed. Contact support with PI: " + paymentIntent.id,
+          paymentIntentId: paymentIntent.id,
+        },
+        { status: 500 }
+      );
     }
 
-    return NextResponse.json({ success: true, newBalance, charged: amount });
+    // Best-effort usage_history append for UI history. Not atomic with the
+    // credit, but the credit is the authoritative record; this is just cosmetic.
+    try {
+      const { data: currentProfile } = await supabase
+        .from("profiles")
+        .select("usage_history")
+        .eq("id", userId)
+        .single();
+      const usageHistory = (currentProfile?.usage_history as Array<Record<string, unknown>>) || [];
+      const newEntry = {
+        id: `auto_recharge_${paymentIntent.id}`,
+        type: "topup",
+        amount,
+        description: `Auto recharge — $${amount.toFixed(2)}`,
+        createdAt: new Date().toISOString(),
+        status: "succeeded",
+      };
+      await supabase
+        .from("profiles")
+        .update({ usage_history: [...usageHistory, newEntry] })
+        .eq("id", userId);
+    } catch (historyErr) {
+      console.warn("usage_history append failed (non-fatal):", historyErr);
+    }
+
+    return NextResponse.json({ success: true, newBalance: Number(newBalance), charged: amount });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Auto recharge error:", errMsg);

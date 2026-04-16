@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function normalizePhone(phone: string): string {
   const digits = phone.replace(/\D/g, "");
@@ -43,6 +44,15 @@ export async function POST(req: NextRequest) {
   }
 }
 
+// Cron jobs can occasionally run twice (Vercel retries, slow previous run,
+// deployments) so this route MUST be idempotent. We atomically "claim" a
+// batch of due messages via a SECURITY DEFINER RPC that uses FOR UPDATE
+// SKIP LOCKED, setting processing_at. Any other invocation running at the
+// same time gets a disjoint set of rows. Stuck leases older than 5 minutes
+// are auto-reclaimed on the next run.
+export const maxDuration = 60;
+const CLAIM_BATCH = 200;
+
 // GET - Cron entrypoint. Fires due scheduled messages. Called every minute
 // from vercel.json. Debits the wallet per message (same atomic RPC as
 // send-campaign) so follow-up drips stay honest with the live balance.
@@ -50,11 +60,10 @@ export async function GET() {
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    const { data: pendingMessages, error: fetchErr } = await supabase
-      .from("scheduled_messages")
-      .select("*")
-      .eq("status", "pending")
-      .lte("scheduled_at", new Date().toISOString());
+    const { data: pendingMessages, error: fetchErr } = await supabase.rpc(
+      "claim_scheduled_messages",
+      { p_limit: CLAIM_BATCH }
+    );
 
     if (fetchErr) {
       return NextResponse.json({ success: false, error: fetchErr.message }, { status: 500 });
@@ -84,10 +93,32 @@ export async function GET() {
     let failed = 0;
     let skippedNoFunds = 0;
 
+    // Cache quiet hours per user so we don't re-read profiles for each msg.
+    type QhCfg = { enabled: boolean; start: number; end: number };
+    const qhCache = new Map<string, QhCfg>();
+    const getQh = async (userId: string): Promise<QhCfg> => {
+      const cached = qhCache.get(userId);
+      if (cached) return cached;
+      const { data } = await supabase
+        .from("profiles")
+        .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour")
+        .eq("id", userId)
+        .single();
+      const cfg: QhCfg = {
+        enabled: data?.quiet_hours_enabled ?? true,
+        start: data?.quiet_hours_start_hour ?? 21,
+        end: data?.quiet_hours_end_hour ?? 8,
+      };
+      qhCache.set(userId, cfg);
+      return cfg;
+    };
+
+    let deferred = 0;
+
     for (const msg of pendingMessages) {
       try {
         const { data: contact } = await supabase
-          .from("contacts").select("id, phone, dnc").eq("id", msg.contact_id).single();
+          .from("contacts").select("id, phone, dnc, state").eq("id", msg.contact_id).single();
 
         if (!contact || !contact.phone) throw new Error("Contact not found");
 
@@ -96,6 +127,25 @@ export async function GET() {
         if (contact.dnc) {
           await supabase.from("scheduled_messages").update({ status: "cancelled" }).eq("id", msg.id);
           continue;
+        }
+
+        // Respect quiet hours. If the contact's local time is inside the
+        // user's blocked window, release the lease (processing_at=null) and
+        // bump scheduled_at forward 30 minutes so the next cron retries. We
+        // don't indefinitely defer — the window check will let it through
+        // once the local time clears.
+        const qh = await getQh(msg.user_id);
+        if (qh.enabled) {
+          const tz = inferTimezone(contact.state || undefined);
+          if (isQuietHours(tz, qh.start, qh.end)) {
+            const retryAt = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+            await supabase
+              .from("scheduled_messages")
+              .update({ processing_at: null, scheduled_at: retryAt })
+              .eq("id", msg.id);
+            deferred++;
+            continue;
+          }
         }
 
         const toNumber = normalizePhone(contact.phone);
@@ -214,6 +264,7 @@ export async function GET() {
       processed: pendingMessages.length,
       sent,
       failed,
+      deferred,
       skippedNoFunds,
     });
   } catch (error: unknown) {
