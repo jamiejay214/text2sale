@@ -44,13 +44,26 @@ export async function updateProfile(
 // ============================================================
 
 export async function fetchContacts(userId: string): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  return data as Contact[];
+  // Supabase caps queries at 1000 rows by default. Paginate to fetch all.
+  const PAGE_SIZE = 1000;
+  let all: Contact[] = [];
+  let page = 0;
+  for (;;) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("contacts")
+      .select("*")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .range(from, to);
+    if (error || !data) break;
+    all = all.concat(data as Contact[]);
+    if (data.length < PAGE_SIZE) break;
+    page++;
+    if (page > 50) break; // safety: cap at 50k contacts
+  }
+  return all;
 }
 
 export async function insertContact(
@@ -144,13 +157,26 @@ export async function deleteCampaign(campaignId: string): Promise<boolean> {
 // ============================================================
 
 export async function fetchConversations(userId: string): Promise<Conversation[]> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("user_id", userId)
-    .order("last_message_at", { ascending: false });
-  if (error || !data) return [];
-  return data as Conversation[];
+  // Supabase caps queries at 1000 rows by default. Paginate to fetch all.
+  const PAGE_SIZE = 1000;
+  let all: Conversation[] = [];
+  let page = 0;
+  for (;;) {
+    const from = page * PAGE_SIZE;
+    const to = from + PAGE_SIZE - 1;
+    const { data, error } = await supabase
+      .from("conversations")
+      .select("*")
+      .eq("user_id", userId)
+      .order("last_message_at", { ascending: false })
+      .range(from, to);
+    if (error || !data) break;
+    all = all.concat(data as Conversation[]);
+    if (data.length < PAGE_SIZE) break;
+    page++;
+    if (page > 50) break; // safety cap
+  }
+  return all;
 }
 
 export async function fetchMessages(conversationId: string): Promise<Message[]> {
@@ -238,13 +264,7 @@ export async function fetchTeamMembers(managerId: string): Promise<Profile[]> {
 }
 
 export async function fetchTeamMemberContacts(memberId: string): Promise<Contact[]> {
-  const { data, error } = await supabase
-    .from("contacts")
-    .select("*")
-    .eq("user_id", memberId)
-    .order("created_at", { ascending: false });
-  if (error || !data) return [];
-  return data as Contact[];
+  return fetchContacts(memberId);
 }
 
 export async function fetchTeamMemberCampaigns(memberId: string): Promise<Campaign[]> {
@@ -258,13 +278,7 @@ export async function fetchTeamMemberCampaigns(memberId: string): Promise<Campai
 }
 
 export async function fetchTeamMemberConversations(memberId: string): Promise<Conversation[]> {
-  const { data, error } = await supabase
-    .from("conversations")
-    .select("*")
-    .eq("user_id", memberId)
-    .order("last_message_at", { ascending: false });
-  if (error || !data) return [];
-  return data as Conversation[];
+  return fetchConversations(memberId);
 }
 
 export async function joinTeamByCode(userId: string, code: string): Promise<{ success: boolean; managerName?: string; error?: string }> {
