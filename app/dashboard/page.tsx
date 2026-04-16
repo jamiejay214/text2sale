@@ -616,6 +616,13 @@ export default function DashboardPage() {
   const [scheduleTime, setScheduleTime] = useState("");
   const [showScheduleModal, setShowScheduleModal] = useState(false);
 
+  // "Add to Workflow" — puts the current contact on a multi-step drip that
+  // auto-stops the moment they reply (see cancel_on_reply in incoming-sms).
+  const [showAddToWorkflow, setShowAddToWorkflow] = useState(false);
+  const [workflowCampaignId, setWorkflowCampaignId] = useState("");
+  const [workflowUseCurrentNumber, setWorkflowUseCurrentNumber] = useState(true);
+  const [workflowSaving, setWorkflowSaving] = useState(false);
+
   // Quick replies (stored in profile as JSONB)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([
     { id: "qr1", label: "Thanks", body: "Thank you for your message! I'll get back to you shortly." },
@@ -1698,6 +1705,108 @@ export default function DashboardPage() {
   const handleCancelScheduled = async (id: string) => {
     const ok = await cancelScheduledMessage(id);
     if (ok) setScheduledMessages((prev) => prev.map((m) => m.id === id ? { ...m, status: "cancelled" as const } : m));
+  };
+
+  // Add the current conversation's contact to a workflow (campaign) — every
+  // step of the campaign is written to scheduled_messages with cancel_on_reply
+  // so the drip halts the instant the lead texts back.
+  const handleAddToWorkflow = async () => {
+    if (!userId || !selectedConversation || !workflowCampaignId) return;
+    const campaign = campaigns.find((c) => c.id === workflowCampaignId);
+    const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+    if (!campaign || !contact) {
+      setMessage("❌ Campaign or contact not found");
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    // Resolve the outbound number. "Use current number" keeps the thread on
+    // whichever of your 10DLC lines the contact already talks to.
+    const fromNumber = workflowUseCurrentNumber
+      ? (selectedConversation.fromNumber || convFromNumber || campaign.selectedNumbers?.[0] || currentUser?.ownedNumbers?.[0]?.number || "")
+      : (campaign.selectedNumbers?.[0] || currentUser?.ownedNumbers?.[0]?.number || "");
+    if (!fromNumber) {
+      setMessage("❌ No from number available. Buy a number first.");
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
+
+    const steps = (campaign.steps && campaign.steps.length > 0)
+      ? campaign.steps
+      : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
+
+    const tokenMap: Record<string, string> = {
+      "{firstName}": contact.firstName || "",
+      "{lastName}": contact.lastName || "",
+      "{phone}": contact.phone || "",
+      "{email}": contact.email || "",
+      "{city}": contact.city || "",
+      "{state}": contact.state || "",
+      "{address}": contact.address || "",
+      "{zip}": contact.zip || "",
+      "{leadSource}": contact.leadSource || "",
+      "{quote}": contact.quote || "",
+      "{policyId}": contact.policyId || "",
+      "{timeline}": contact.timeline || "",
+      "{householdSize}": contact.householdSize || "",
+      "{dateOfBirth}": contact.dateOfBirth || "",
+      "{age}": contact.age || "",
+      "{notes}": contact.notes || "",
+    };
+    const personalize = (text: string) => {
+      let out = text;
+      for (const [tag, val] of Object.entries(tokenMap)) {
+        out = out.split(tag).join(val);
+      }
+      return out;
+    };
+
+    setWorkflowSaving(true);
+    try {
+      let cumulativeDelay = 0;
+      const rows = steps.map((step) => {
+        cumulativeDelay += Math.max(0, Number(step.delayMinutes) || 0);
+        const scheduledAt = new Date(Date.now() + cumulativeDelay * 60_000).toISOString();
+        return {
+          user_id: userId,
+          contact_id: contact.id,
+          body: personalize(step.message || ""),
+          from_number: fromNumber,
+          scheduled_at: scheduledAt,
+          status: "pending" as const,
+          campaign_id: workflowCampaignId,
+          cancel_on_reply: true,
+        };
+      });
+
+      const { data, error } = await supabase
+        .from("scheduled_messages")
+        .insert(rows)
+        .select();
+
+      if (error) {
+        setMessage(`❌ ${error.message}`);
+        window.setTimeout(() => setMessage(""), 3500);
+        setWorkflowSaving(false);
+        return;
+      }
+
+      // Tag the contact with this campaign so it shows up in campaign reporting.
+      if (campaign.name) {
+        await dbUpdateContact(contact.id, { campaign: campaign.name });
+        setContacts((prev) => prev.map((c) => c.id === contact.id ? { ...c, campaign: campaign.name } : c));
+      }
+
+      if (data) {
+        setScheduledMessages((prev) => [...prev, ...(data as ScheduledMessage[])]);
+      }
+      setMessage(`✅ Added to "${campaign.name}" — ${rows.length} step${rows.length > 1 ? "s" : ""} queued. Will auto-stop when they reply.`);
+      window.setTimeout(() => setMessage(""), 4000);
+      setShowAddToWorkflow(false);
+      setWorkflowCampaignId("");
+      setWorkflowUseCurrentNumber(true);
+    } finally {
+      setWorkflowSaving(false);
+    }
   };
 
   // ── Quick reply handlers ──
@@ -4296,6 +4405,22 @@ export default function DashboardPage() {
                           Agent
                         </button>
                       )}
+                      {/* Add to Workflow — drop this contact into a drip that
+                          auto-stops the second they reply. */}
+                      <button
+                        onClick={() => {
+                          setWorkflowCampaignId("");
+                          setWorkflowUseCurrentNumber(true);
+                          setShowAddToWorkflow(true);
+                        }}
+                        className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 hover:border-violet-500 hover:text-violet-300"
+                        title="Add this contact to a workflow drip. Stops the moment they reply."
+                      >
+                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 12L3.269 3.125A59.769 59.769 0 0121.485 12 59.768 59.768 0 013.27 20.875L5.999 12zm0 0h7.5" />
+                        </svg>
+                        Workflow
+                      </button>
                       <button
                         onClick={() => {
                           if (selectedConversation) {
@@ -9118,6 +9243,94 @@ export default function DashboardPage() {
       </div>
 
       {/* ── Schedule Message Modal ── */}
+      {/* ── Add to Workflow Modal ── */}
+      {showAddToWorkflow && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl overflow-hidden">
+            <div className="flex items-center justify-between border-b border-zinc-800 px-6 py-4">
+              <h3 className="text-xl font-bold">Add to Workflow</h3>
+              <button
+                onClick={() => setShowAddToWorkflow(false)}
+                className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm text-zinc-400">Select an active workflow</label>
+                <select
+                  value={workflowCampaignId}
+                  onChange={(e) => setWorkflowCampaignId(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none"
+                >
+                  <option value="">Choose a workflow...</option>
+                  {campaigns.map((c) => {
+                    const stepCount = (c.steps && c.steps.length > 0) ? c.steps.length : 1;
+                    return (
+                      <option key={c.id} value={c.id}>
+                        {c.name} — {stepCount} step{stepCount === 1 ? "" : "s"}
+                      </option>
+                    );
+                  })}
+                </select>
+                {campaigns.length === 0 && (
+                  <p className="mt-2 text-xs text-zinc-500">
+                    You don&apos;t have any campaigns yet. Create one in the Campaigns tab first.
+                  </p>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setWorkflowUseCurrentNumber((v) => !v)}
+                className="flex items-center gap-3 text-sm"
+              >
+                <span
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition ${
+                    workflowUseCurrentNumber ? "bg-emerald-500" : "bg-zinc-700"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-5 w-5 transform rounded-full bg-white transition ${
+                      workflowUseCurrentNumber ? "translate-x-5" : "translate-x-1"
+                    }`}
+                  />
+                </span>
+                <span className="text-zinc-200">Use current number</span>
+              </button>
+              <p className="-mt-3 text-xs text-zinc-500">
+                {workflowUseCurrentNumber
+                  ? "Follow-ups go out from the same number this conversation is already on."
+                  : "Follow-ups use the workflow's default from number."}
+              </p>
+
+              <div className="rounded-xl border border-violet-500/30 bg-violet-500/10 px-4 py-3 text-xs text-violet-200">
+                The drip stops automatically the moment this lead texts you back.
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 border-t border-zinc-800 bg-zinc-950/60 px-6 py-4">
+              <button
+                onClick={() => setShowAddToWorkflow(false)}
+                className="rounded-2xl border border-zinc-700 px-5 py-2.5 text-sm hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleAddToWorkflow}
+                disabled={!workflowCampaignId || workflowSaving}
+                className="rounded-2xl bg-violet-600 px-5 py-2.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+              >
+                {workflowSaving ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showScheduleModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
           <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">

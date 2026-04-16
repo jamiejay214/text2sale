@@ -243,6 +243,16 @@ export async function POST(req: NextRequest) {
         status: "received",
       });
 
+      // Stop any "ghost-chase" workflows this contact is in — they responded,
+      // so the drip should halt. Only cancels steps that opted into
+      // cancel_on_reply (manual user-scheduled messages stay put).
+      await supabase
+        .from("scheduled_messages")
+        .update({ status: "cancelled" })
+        .eq("contact_id", contact.id)
+        .eq("status", "pending")
+        .eq("cancel_on_reply", true);
+
       // Update campaign reply count
       const { data: campaignContact } = await supabase
         .from("contacts")
