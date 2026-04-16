@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
+import { sanitizeForSms } from "@/lib/sms-text";
 
 // Proactive follow-up agent. Runs every hour (Vercel Cron).
 // For accounts with agent_plan=true and conversations with agent_enabled=true,
@@ -121,7 +122,7 @@ async function generateFollowUp(
   const data = await res.json();
   const text = data?.content?.[0]?.text;
   if (!text || typeof text !== "string") return null;
-  return text.trim();
+  return sanitizeForSms(text.trim());
 }
 
 export async function GET(req: NextRequest) {

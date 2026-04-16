@@ -6,6 +6,7 @@ import Papa from "papaparse";
 import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
+import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 import {
   fetchProfile, updateProfile,
   fetchContacts as dbFetchContacts, insertContact as dbInsertContact,
@@ -5408,8 +5409,14 @@ export default function DashboardPage() {
                     )}
 
                     {composerText.length > 0 && (() => {
-                      const len = composerText.length;
-                      const hasUnicode = /[^\x00-\x7F]/.test(composerText);
+                      // Preview uses the SANITIZED body — same transform the
+                      // server runs before hitting Telnyx — so the segment /
+                      // cost counters match what the user actually pays. A
+                      // single curly apostrophe would otherwise force UCS-2
+                      // (70 char/seg) and silently 2-3× the bill.
+                      const effective = sanitizeForSms(composerText);
+                      const len = effective.length;
+                      const hasUnicode = hasNonGsmChars(effective);
                       const segLimit = hasUnicode ? 70 : 160;
                       const segments = Math.max(1, Math.ceil(len / segLimit));
                       const remaining = segments * segLimit - len;
@@ -5966,10 +5973,13 @@ export default function DashboardPage() {
                       />
 
                       {(() => {
-                        const msg = newCampaignForm.steps[activeStepIndex].message;
+                        // Same server-side sanitizer so the campaign builder
+                        // preview matches what Telnyx actually bills per seg.
+                        const rawMsg = newCampaignForm.steps[activeStepIndex].message;
+                        if (rawMsg.length === 0) return null;
+                        const msg = sanitizeForSms(rawMsg);
                         const len = msg.length;
-                        if (len === 0) return null;
-                        const hasUnicode = /[^\x00-\x7F]/.test(msg);
+                        const hasUnicode = hasNonGsmChars(msg);
                         const segLimit = hasUnicode ? 70 : 160;
                         const segments = Math.max(1, Math.ceil(len / segLimit));
                         const remaining = segments * segLimit - len;

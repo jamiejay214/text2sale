@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
+import { sanitizeForSms } from "@/lib/sms-text";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -168,11 +169,17 @@ export async function GET() {
           continue;
         }
 
+        // Sanitize typographic characters (smart quotes, em-dash, ellipsis)
+        // before Telnyx sees the body. A single curly apostrophe forces
+        // UCS-2 encoding (70 chars/seg instead of 160) and silently doubles
+        // the bill on any drip that was drafted in macOS/iOS.
+        const sanitizedBody = sanitizeForSms(msg.body);
+
         // Send via Telnyx (include messaging_profile_id for 10DLC).
         const telnyxPayload: Record<string, string> = {
           from: fromNumber,
           to: toNumber,
-          text: msg.body,
+          text: sanitizedBody,
           type: "SMS",
         };
         if (messagingProfileId) telnyxPayload.messaging_profile_id = messagingProfileId;
@@ -205,7 +212,7 @@ export async function GET() {
             .insert({
               user_id: msg.user_id,
               contact_id: msg.contact_id,
-              preview: msg.body.slice(0, 100),
+              preview: sanitizedBody.slice(0, 100),
               unread: 0,
               last_message_at: new Date().toISOString(),
               from_number: msg.from_number,
@@ -215,7 +222,7 @@ export async function GET() {
             await supabase.from("messages").insert({
               conversation_id: newConv.id,
               direction: "outbound",
-              body: msg.body,
+              body: sanitizedBody,
               status: "sent",
               from_number: msg.from_number,
             });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
+import { sanitizeForSms } from "@/lib/sms-text";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -116,12 +117,19 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Sanitize smart quotes / em-dashes / ellipsis back to ASCII equivalents
+    // BEFORE Telnyx sees the text. A single curly apostrophe forces the
+    // whole SMS into UCS-2 (70 chars/segment instead of 160) and silently
+    // 2-3× the bill. macOS, iOS keyboards, and LLM-generated replies all
+    // introduce these substitutions by default — this normalizes them.
+    const sanitizedBody = sanitizeForSms(body);
+
     // Build Telnyx payload — include messaging_profile_id when available
     // so messages route through the correct 10DLC campaign.
     const telnyxPayload: Record<string, string> = {
       from: fromE164,
       to: toE164,
-      text: body,
+      text: sanitizedBody,
       type: "SMS",
     };
     if (messagingProfileId) {

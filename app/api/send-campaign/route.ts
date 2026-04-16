@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
+import { sanitizeForSms } from "@/lib/sms-text";
 
 // Give the route the full Pro-plan budget so a 10k send doesn't hit the
 // default 60s cap mid-run. At CHUNK=100 with PIPE=2, 10k takes roughly
@@ -188,23 +189,29 @@ export async function POST(req: NextRequest) {
       idx: number
     ): Promise<ChunkResult> => {
       const fromNumber = fromList[idx % fromList.length];
-      const personalizedBody = messageTemplate
-        .replace(/\{firstName\}/gi, contact.first_name || "")
-        .replace(/\{lastName\}/gi, contact.last_name || "")
-        .replace(/\{phone\}/gi, contact.phone || "")
-        .replace(/\{email\}/gi, contact.email || "")
-        .replace(/\{city\}/gi, contact.city || "")
-        .replace(/\{state\}/gi, contact.state || "")
-        .replace(/\{address\}/gi, contact.address || "")
-        .replace(/\{zip\}/gi, contact.zip || "")
-        .replace(/\{leadSource\}/gi, contact.lead_source || "")
-        .replace(/\{quote\}/gi, contact.quote || "")
-        .replace(/\{policyId\}/gi, contact.policy_id || "")
-        .replace(/\{timeline\}/gi, contact.timeline || "")
-        .replace(/\{householdSize\}/gi, contact.household_size || "")
-        .replace(/\{dateOfBirth\}/gi, contact.date_of_birth || "")
-        .replace(/\{age\}/gi, contact.age || "")
-        .replace(/\{notes\}/gi, contact.notes || "");
+      // Sanitize smart quotes / em-dash / ellipsis AFTER template substitution
+      // so typographic characters from contact fields also get normalized. A
+      // single curly apostrophe forces UCS-2 (70 chars/segment), often
+      // doubling segment count on a 10k blast.
+      const personalizedBody = sanitizeForSms(
+        messageTemplate
+          .replace(/\{firstName\}/gi, contact.first_name || "")
+          .replace(/\{lastName\}/gi, contact.last_name || "")
+          .replace(/\{phone\}/gi, contact.phone || "")
+          .replace(/\{email\}/gi, contact.email || "")
+          .replace(/\{city\}/gi, contact.city || "")
+          .replace(/\{state\}/gi, contact.state || "")
+          .replace(/\{address\}/gi, contact.address || "")
+          .replace(/\{zip\}/gi, contact.zip || "")
+          .replace(/\{leadSource\}/gi, contact.lead_source || "")
+          .replace(/\{quote\}/gi, contact.quote || "")
+          .replace(/\{policyId\}/gi, contact.policy_id || "")
+          .replace(/\{timeline\}/gi, contact.timeline || "")
+          .replace(/\{householdSize\}/gi, contact.household_size || "")
+          .replace(/\{dateOfBirth\}/gi, contact.date_of_birth || "")
+          .replace(/\{age\}/gi, contact.age || "")
+          .replace(/\{notes\}/gi, contact.notes || "")
+      );
 
       // Quiet hours check — if this contact is inside their local TCPA-blocked
       // window right now, defer by marking the send as "deferred" and writing
