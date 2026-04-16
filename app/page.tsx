@@ -232,7 +232,12 @@ export default function HomePage() {
             >
               <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-600 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white">Most Popular</div>
               <div className="text-center">
-                <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Text2Sale + AI</div>
+                <div className="flex items-center justify-center gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Text2Sale + AI</div>
+                  <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400 ring-1 ring-amber-500/40">
+                    Beta
+                  </span>
+                </div>
                 <div className="mt-2 text-3xl font-bold text-cyan-400">$59.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
                 <div className="mt-1 text-zinc-400">$0.012 per SMS + $0.025 per AI reply</div>
               </div>
