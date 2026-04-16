@@ -3886,7 +3886,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="flex h-[85vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
+            <div className="flex h-[90vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
               {selectedConversation ? (
                 <>
                   <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
@@ -4157,16 +4157,16 @@ export default function DashboardPage() {
                       );
                     })()}
 
-                    <div className="rounded-3xl border border-zinc-800 bg-zinc-950/70 p-3">
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
                       <textarea
                         value={composerText}
                         onChange={(e) => setComposerText(e.target.value)}
                         onKeyDown={handleComposerKeyDown}
                         placeholder="Insert text here ... (Enter to send, Shift+Enter for newline)"
-                        className="h-36 w-full resize-none bg-transparent px-2 py-2 text-white outline-none placeholder:text-zinc-500"
+                        className="h-16 w-full resize-none bg-transparent px-2 py-1.5 text-white outline-none placeholder:text-zinc-500"
                       />
 
-                      <div className="mt-3 flex items-center justify-between">
+                      <div className="mt-2 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <button onClick={() => { setShowTemplates((v) => !v); setShowQuickReplies(false); }}
                             className="rounded-xl border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800">
