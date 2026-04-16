@@ -254,6 +254,10 @@ export type ScheduledMessage = {
   scheduled_at: string;
   status: "pending" | "sent" | "failed" | "cancelled";
   created_at: string;
+  // Set by workflow enrollment paths. When present, this message is part of
+  // a multi-step drip and should cancel automatically if the lead replies.
+  campaign_id?: string | null;
+  cancel_on_reply?: boolean | null;
 };
 
 export type QuickReply = {
