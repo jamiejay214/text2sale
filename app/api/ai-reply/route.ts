@@ -241,7 +241,7 @@ ${conversationHistory}`;
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
+        model: "claude-3-5-sonnet-20241022",
         max_tokens: 500,
         system: systemPrompt,
         tools: tools.length > 0 ? tools : undefined,
@@ -257,9 +257,10 @@ ${conversationHistory}`;
     const aiData = await aiRes.json();
 
     if (!aiRes.ok) {
-      console.error("Claude API error:", aiData);
+      console.error("Claude API error:", JSON.stringify(aiData));
+      const detail = aiData?.error?.message || "AI failed to generate a reply.";
       return NextResponse.json(
-        { error: "AI failed to generate a reply. Please try again." },
+        { error: `AI error: ${detail}` },
         { status: 502 }
       );
     }
@@ -319,7 +320,7 @@ ${conversationHistory}`;
             "anthropic-version": "2023-06-01",
           },
           body: JSON.stringify({
-            model: "claude-sonnet-4-20250514",
+            model: "claude-3-5-sonnet-20241022",
             max_tokens: 300,
             system: systemPrompt,
             messages: [
