@@ -8475,8 +8475,8 @@ export default function DashboardPage() {
                 steps: [
                   {
                     title: "Understanding Costs",
-                    description: "Subscription: $35/month for platform access. Messages: $0.012 per SMS sent. Phone numbers: $1.50/month each. All message costs are deducted from your wallet balance automatically.",
-                    tip: "At $0.012 per message, $20 gets you about 1,666 messages. $100 (with 10% discount) gets you about 8,333 messages!",
+                    description: "Standard Plan: $39.99/month. AI Plan: $59.99/month (includes all AI features). SMS messages: $0.012 each. AI-generated replies: $0.025 each. Phone numbers: $1.50/month each. All costs are deducted from your wallet balance automatically.",
+                    tip: "At $0.012 per SMS, $20 gets you about 1,666 messages. AI replies cost $0.025 each — still cheaper than most competitors!",
                   },
                   {
                     title: "Auto Recharge",
@@ -8491,8 +8491,101 @@ export default function DashboardPage() {
                 ],
               },
               {
+                id: "ai-features",
+                title: "8. AI Auto-Reply & Full AI Mode",
+                icon: "🤖",
+                steps: [
+                  {
+                    title: "Activate the AI Plan",
+                    description: "Go to Settings > 🤖 AI and click 'Activate AI Plan'. You'll be asked to select your industry (Health Insurance, Life Insurance, Real Estate, etc.). The AI is trained as a top producer in your industry — it knows how to handle objections, rebuttals, and close deals using proven sales frameworks like SPIN Selling and the Sandler Method.",
+                    tip: "The AI plan costs $59.99/month. Each AI-generated reply costs $0.025 from your wallet (regular SMS is $0.012).",
+                  },
+                  {
+                    title: "Per-Conversation AI (AI Button)",
+                    description: "In any conversation, click the violet 'AI' button in the header. This turns on AI auto-reply for JUST that one conversation. The AI will automatically respond to incoming messages in that thread only. Great for handling individual leads while you manually manage others.",
+                    tip: "Use this when you upload a CSV and want the AI to handle replies from specific contacts while you focus on warm leads.",
+                  },
+                  {
+                    title: "Full AI Mode (Full AI Button)",
+                    description: "Click the cyan 'Full AI' button in the conversation header to turn on auto-reply for ALL conversations. Every incoming message across every conversation will get an AI response. This is the 'set it and forget it' mode.",
+                    tip: "Full AI mode is perfect for after-hours coverage or when you're running large campaigns and want every reply handled instantly.",
+                  },
+                  {
+                    title: "AI Reply Button (Manual)",
+                    description: "Even with auto-reply off, you can click the 'AI Reply' button in the composer area to generate a one-time AI suggested reply. Review it, edit if needed, then send. Great for getting help crafting the perfect response.",
+                    tip: "The AI reads the full conversation history and your contact's info to craft personalized, context-aware replies.",
+                  },
+                  {
+                    title: "Custom AI Instructions",
+                    description: "Go to Settings > 🤖 AI > AI Instructions to customize how the AI responds. Tell it your name, what you sell, your style, and any specific rules. Example: 'Always try to book a phone call. Be friendly but professional. My hours are Mon-Fri 9am-6pm.'",
+                    tip: "The more context you give the AI, the better it performs. Include your unique selling points, common objections you face, and your preferred closing style.",
+                  },
+                  {
+                    title: "Change Your Industry",
+                    description: "In Settings > 🤖 AI, use the 'Your Industry' dropdown to change your industry at any time. The AI instantly adapts its knowledge, objection handling, and selling tactics to match your new industry.",
+                    tip: "Each industry has specialized knowledge — health insurance AI knows about ACA plans, enrollment periods, and subsidies; real estate AI knows about listings, open houses, and mortgage pre-approval.",
+                  },
+                ],
+              },
+              {
+                id: "appointments",
+                title: "9. Appointments & Calendar",
+                icon: "📅",
+                steps: [
+                  {
+                    title: "AI Appointment Booking",
+                    description: "When AI is enabled and a customer asks to schedule a call or meeting, the AI automatically checks your available hours and books an appointment. It confirms the date and time with the customer via text.",
+                    tip: "Set your available hours in Settings > 🤖 AI > Available Hours. Toggle each day on/off and set your start/end times.",
+                  },
+                  {
+                    title: "View & Manage Appointments",
+                    description: "Go to the Appointments tab to see all your upcoming, past, and cancelled appointments. You can mark appointments as Completed, No Show, or Cancel them.",
+                    tip: "Appointments booked by AI are automatically set to 'confirmed' status. You'll see the contact name, date, time, and title.",
+                  },
+                  {
+                    title: "Google Calendar Integration",
+                    description: "Connect your Google Calendar in Settings > 🤖 AI > Google Calendar Integration. Once connected, every appointment booked by the AI (or manually) automatically appears on your Google Calendar.",
+                    tip: "You'll need a Google account. Click 'Connect Google Calendar', authorize access, and you're done. Disconnect anytime.",
+                  },
+                  {
+                    title: "Appointment Reminders",
+                    description: "Text2Sale automatically sends a reminder text to the customer 24 hours before their appointment. The reminder includes their name, appointment time, and a customizable message.",
+                    tip: "Reminders cost $0.012 each (regular SMS rate) and are charged from your wallet. They help reduce no-shows significantly.",
+                  },
+                ],
+              },
+              {
+                id: "tags",
+                title: "10. Tags & Organization",
+                icon: "🏷️",
+                steps: [
+                  {
+                    title: "Create Tags",
+                    description: "Go to the Contacts tab and click the '🏷️ Manage Tags' section. Create tags like 'Sold', 'Appointment', 'Follow-Up', 'Hot Lead', etc. Pick a color for each tag to make them visually distinct.",
+                    tip: "Tags help you organize and filter contacts. Use consistent naming — 'Hot Lead' is better than 'hot', 'Hot!', 'HOT LEAD' etc.",
+                  },
+                  {
+                    title: "Tag Contacts",
+                    description: "On each contact's row, click the '+' button to add tags. You can also bulk-tag contacts by selecting multiple and using the bulk actions dropdown. Tags appear as colored chips on each contact.",
+                    tip: "Combine tags with search to quickly find contacts — e.g., search by tag 'Hot Lead' to see all your hottest prospects.",
+                  },
+                ],
+              },
+              {
+                id: "suggestions",
+                title: "11. Feature Suggestions",
+                icon: "💡",
+                steps: [
+                  {
+                    title: "Submit Ideas",
+                    description: "Go to Settings > 💡 Suggestions to submit feature ideas, improvement requests, or bug reports. Pick a category, describe your idea, and submit. Our team reads every suggestion.",
+                    tip: "The more detail you provide, the better we can understand and build what you need. Popular requests get prioritized!",
+                  },
+                ],
+              },
+              {
                 id: "compliance",
-                title: "8. Compliance & Best Practices",
+                title: "12. Compliance & Best Practices",
                 icon: "✅",
                 steps: [
                   {
