@@ -172,8 +172,48 @@ export async function createCalendarEvent(
 
   if (!res.ok) {
     const errText = await res.text();
-    console.error("[google-calendar] Create event failed:", errText);
-    throw new Error(`Failed to create Google Calendar event: ${res.status}`);
+    console.error("[google-calendar] Create event failed:", res.status, errText);
+    // Parse Google's error envelope so the real reason ("Calendar API
+    // has not been enabled", "insufficient scope", etc.) bubbles up to
+    // the UI instead of a useless status code.
+    let googleMessage = "";
+    let googleReason = "";
+    try {
+      const parsed = JSON.parse(errText) as {
+        error?: {
+          message?: string;
+          errors?: Array<{ reason?: string; message?: string }>;
+        };
+      };
+      googleMessage = parsed?.error?.message || "";
+      googleReason = parsed?.error?.errors?.[0]?.reason || "";
+    } catch {
+      // non-JSON response — keep defaults
+    }
+
+    // Map the two most common 403 cases to human-readable guidance.
+    if (res.status === 403) {
+      if (
+        /api has not been used|has not been enabled|accessNotConfigured/i.test(
+          googleMessage + googleReason
+        )
+      ) {
+        throw new Error(
+          "Google Calendar API is not enabled on your Google Cloud project. Open https://console.cloud.google.com/apis/library/calendar-json.googleapis.com, click Enable, wait ~1 minute, then try again."
+        );
+      }
+      if (/insufficient.*scope|insufficientPermissions/i.test(googleMessage + googleReason)) {
+        throw new Error(
+          "Google Calendar scope wasn't granted. Disconnect and reconnect Google Calendar in Settings, and approve calendar access on the consent screen."
+        );
+      }
+    }
+
+    throw new Error(
+      googleMessage
+        ? `Google Calendar error (${res.status}): ${googleMessage}`
+        : `Failed to create Google Calendar event: ${res.status}`
+    );
   }
 
   const created = await res.json();
