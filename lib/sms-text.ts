@@ -62,3 +62,79 @@ export function sanitizeForSms(body: string): string {
 export function hasNonGsmChars(body: string): boolean {
   return /[^\x00-\x7F]/.test(body);
 }
+
+// ------------------------------------------------------------
+// Chain-of-thought / reasoning-leak defense
+// ------------------------------------------------------------
+// Even with a strict system prompt, LLMs sometimes emit planning or
+// narration prose as their text block ("Looking at the conversation,
+// Charles just confirmed Ok. Before I send another message, I need to
+// actually book that appointment..."). If that slips into Telnyx, the
+// customer sees the AI talking to itself, which is a trust-destroying
+// failure mode. This function catches the common leak patterns and
+// returns a clean SMS — or an empty string if the entire reply was
+// meta-commentary and there's nothing salvageable.
+
+// Phrases that almost always mean "the model is narrating, not texting".
+// We scan the start of the string (case-insensitive) and strip up to the
+// next sentence boundary when we find one.
+const REASONING_PREFIXES = [
+  /^looking at (the|this) (conversation|thread|chat|history|message)[^.!?]*[.!?]\s*/i,
+  /^based on (the|this) (conversation|thread|chat|history|message)[^.!?]*[.!?]\s*/i,
+  /^(ok|okay|alright|so|well),?\s*(looking at|based on|given)[^.!?]*[.!?]\s*/i,
+  /^(before i|first,? i|i('|\s)ll need to|i need to|let me|i('|\s)m going to|i will)[^.!?]*[.!?]\s*/i,
+  /^(here('|\s)s (what|my|the)|i('|\s)ll (send|reply|respond|text))[^.!?]*[.!?]\s*/i,
+  /^(my (response|reply|message|plan|approach) (is|will be|should be))[^.!?]*[.!?:]\s*/i,
+  /^(i should|i would|i'd)[^.!?]*[.!?]\s*/i,
+];
+
+// Lines that are purely meta-commentary and can be dropped entirely.
+const META_LINE = /^(thinking:|plan:|reasoning:|note:|step \d+:)/i;
+
+// Trailing "Let me book the appointment first:" style hand-off phrases.
+const TRAILING_HANDOFF = /\b(let me|i('|\s)ll|i will|i'm going to|i am going to)\s+(book|schedule|send|reply|respond|text|message|draft|write|check|look|verify|confirm)[^.!?]*:\s*$/i;
+
+/**
+ * Strip chain-of-thought / planning prose from a model-generated SMS.
+ * Safe to call on any string. Returns the cleaned body.
+ */
+export function stripReasoningLeaks(body: string): string {
+  if (!body) return body;
+  let out = body.trim();
+
+  // Drop whole lines that are obviously meta.
+  out = out
+    .split(/\r?\n/)
+    .filter((line) => !META_LINE.test(line.trim()))
+    .join("\n")
+    .trim();
+
+  // Peel off reasoning prefixes iteratively — the model sometimes
+  // chains two ("Looking at the conversation, Charles confirmed. Before
+  // I send another message, I need to book..."). Cap at 3 passes so we
+  // never loop forever.
+  for (let i = 0; i < 3; i++) {
+    let matched = false;
+    for (const rx of REASONING_PREFIXES) {
+      if (rx.test(out)) {
+        out = out.replace(rx, "").trim();
+        matched = true;
+        break;
+      }
+    }
+    if (!matched) break;
+  }
+
+  // Drop a trailing "Let me book the appointment first:" style hand-off.
+  out = out.replace(TRAILING_HANDOFF, "").trim();
+
+  return out;
+}
+
+/**
+ * Convenience: sanitize + strip reasoning in one pass. Use this on
+ * anything coming out of an LLM before it hits Telnyx or the composer.
+ */
+export function cleanAiSms(body: string): string {
+  return stripReasoningLeaks(sanitizeForSms(body || "")).trim();
+}

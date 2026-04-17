@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent } from "@/lib/google-calendar";
-import { sanitizeForSms } from "@/lib/sms-text";
+import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -329,9 +329,14 @@ When the customer wants to schedule/book/meet/talk/call:
       }
 
       // Get the text reply — Claude may have included it alongside the tool call,
-      // or we need a follow-up call with the tool result
-      if (textBlock?.text) {
-        aiReply = sanitizeForSms(textBlock.text.trim());
+      // or we need a follow-up call with the tool result. When Claude books
+      // an appointment it sometimes narrates the action ("Let me book the
+      // appointment first:") instead of writing the confirmation text; if
+      // the tool-call sibling text block is empty or pure reasoning we fall
+      // through to a follow-up call with the tool result.
+      const cleanedSibling = textBlock?.text ? cleanAiSms(textBlock.text) : "";
+      if (cleanedSibling) {
+        aiReply = cleanedSibling;
       } else {
         // Follow-up call with tool result
         const followUp = await fetch("https://api.anthropic.com/v1/messages", {
@@ -372,10 +377,18 @@ When the customer wants to schedule/book/meet/talk/call:
 
         const followUpData = await followUp.json();
         const followUpText = followUpData.content?.find((c: { type: string }) => c.type === "text");
-        aiReply = sanitizeForSms(followUpText?.text?.trim() || `You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`);
+        const cleanedFollowUp = cleanAiSms(followUpText?.text || "");
+        aiReply = cleanedFollowUp || sanitizeForSms(`You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`);
       }
     } else if (textBlock?.text) {
-      aiReply = sanitizeForSms(textBlock.text.trim());
+      const cleaned = cleanAiSms(textBlock.text);
+      if (!cleaned) {
+        return NextResponse.json(
+          { error: "AI failed to generate a reply. Please try again." },
+          { status: 502 }
+        );
+      }
+      aiReply = cleaned;
     } else {
       return NextResponse.json(
         { error: "AI failed to generate a reply. Please try again." },
