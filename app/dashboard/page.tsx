@@ -693,6 +693,7 @@ export default function DashboardPage() {
   const [integrationAutoSms, setIntegrationAutoSms] = useState(false);
   const [integrationSaving, setIntegrationSaving] = useState(false);
   const [copiedIntegrationId, setCopiedIntegrationId] = useState<string | null>(null);
+  const [leadNotification, setLeadNotification] = useState<string | null>(null);
 
   // Response-time SLA stats — computed server-side via the first_reply_stats
   // RPC so it stays accurate regardless of how many messages are loaded
@@ -1379,6 +1380,41 @@ export default function DashboardPage() {
       return name.includes(q) || c.phone.includes(q) || (c.email || "").toLowerCase().includes(q) || (c.campaign || "").toLowerCase().includes(q) || tags.includes(q);
     });
   }, [contacts, contactSearch, tagFilter, dncFilter, lastContactedFilter, conversations]);
+
+  // ── Realtime "New Lead" notification ─────────────────────────────────────
+  // Subscribe to INSERT events on the contacts table. When a new contact
+  // lands (e.g. pushed by an integration webhook), show a toast at the
+  // bottom-left so the rep knows to act immediately.
+  useEffect(() => {
+    if (!userId) return;
+
+    const channel = supabase
+      .channel("new-lead-notifications")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "contacts",
+          filter: `user_id=eq.${userId}`,
+        },
+        (payload) => {
+          const contact = payload.new as { first_name?: string; last_name?: string; phone?: string };
+          const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.phone || "Unknown";
+          setLeadNotification(`🔔 New lead — ${name}`);
+          // Add to local contacts list so it appears immediately without a refresh
+          setContacts((prev) => {
+            if (prev.some((c) => c.id === (payload.new as { id: string }).id)) return prev;
+            return [payload.new as typeof prev[0], ...prev];
+          });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [userId]);
 
   // Pagination for the Contacts tab — 100 per page.
   // Reset to page 0 whenever the filtered set changes so the user doesn't
@@ -11638,7 +11674,7 @@ export default function DashboardPage() {
         // z-[60] so the toast floats above modal overlays (which live at z-50).
         // Previously z-40 meant errors fired from inside a modal were hidden
         // behind the overlay and the action looked like it did nothing.
-        <div className={`fixed bottom-8 left-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium z-[60] ${
+        <div className={`fixed bottom-8 left-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium z-[60] transition-all ${
           message.startsWith("❌")
             ? "bg-red-950 text-red-200 ring-1 ring-red-800"
             : message.startsWith("🌙")
@@ -11648,6 +11684,32 @@ export default function DashboardPage() {
           {message}
         </div>
       )}
+
+      {/* ── New Lead Notification ── */}
+      {leadNotification && (() => {
+        // Auto-dismiss after 6 seconds
+        window.setTimeout(() => setLeadNotification(null), 6000);
+        return (
+          <div
+            className="fixed bottom-8 left-8 z-[60] flex items-center gap-3 rounded-2xl bg-violet-900 px-5 py-4 shadow-2xl ring-1 ring-violet-500/50 cursor-pointer"
+            onClick={() => { setActiveTab("contacts"); setLeadNotification(null); }}
+          >
+            <span className="text-xl">🔔</span>
+            <div>
+              <p className="text-sm font-semibold text-white">{leadNotification}</p>
+              <p className="text-xs text-violet-300 mt-0.5">Click to view in Contacts</p>
+            </div>
+            <button
+              onClick={(e) => { e.stopPropagation(); setLeadNotification(null); }}
+              className="ml-2 text-violet-400 hover:text-white"
+            >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        );
+      })()}
 
       {/* ── Support Chat Widget ── */}
       {!impersonating && (
