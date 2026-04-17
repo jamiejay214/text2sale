@@ -136,7 +136,7 @@ type ConversationRecord = {
 };
 
 type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
-type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai" | "suggestions";
+type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai" | "suggestions" | "integrations";
 
 // Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
 // is unreliable (carrier-dependent), so we treat a successful API ack ("sent")
@@ -674,6 +674,26 @@ export default function DashboardPage() {
   // Render errors inside the modal instead.
   const [followUpError, setFollowUpError] = useState("");
 
+  // ── Integrations tab state ────────────────────────────────────────────────
+  type Integration = {
+    id: string;
+    name: string;
+    token: string;
+    campaign_id: string | null;
+    auto_sms: boolean;
+    created_at: string;
+    campaigns?: { name: string } | null;
+  };
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
+  const [integrationsLoaded, setIntegrationsLoaded] = useState(false);
+  const [showIntegrationModal, setShowIntegrationModal] = useState(false);
+  const [editingIntegration, setEditingIntegration] = useState<Integration | null>(null);
+  const [integrationName, setIntegrationName] = useState("");
+  const [integrationCampaignId, setIntegrationCampaignId] = useState("");
+  const [integrationAutoSms, setIntegrationAutoSms] = useState(false);
+  const [integrationSaving, setIntegrationSaving] = useState(false);
+  const [copiedIntegrationId, setCopiedIntegrationId] = useState<string | null>(null);
+
   // Response-time SLA stats — computed server-side via the first_reply_stats
   // RPC so it stays accurate regardless of how many messages are loaded
   // client-side. Refreshed every 30s while the dashboard is open.
@@ -949,7 +969,7 @@ export default function DashboardPage() {
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
       const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","appointments","upload","templates","settings","learn"];
-      const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai"];
+      const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai","integrations"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
       }
@@ -7960,6 +7980,7 @@ export default function DashboardPage() {
                 { id: "biz-page", label: "🌐 Biz Page" },
                 { id: "ai", label: "🤖 AI" },
                 { id: "suggestions", label: "💡 Suggestions" },
+                { id: "integrations", label: "🔗 Integrations" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
                 <button
                   key={sub.id}
@@ -10117,6 +10138,194 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* ═══════════════ INTEGRATIONS ═══════════════ */}
+        {settingsSubTab === "integrations" && (
+          <div className="space-y-6">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Integrations</h2>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Connect your lead sources. Copy the Integration Link into OnlySales, ISalesCRM, VanillaSoft, or any webhook-compatible CRM.
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  // Lazy-load integrations on first open
+                  if (!integrationsLoaded) {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const token = session?.access_token;
+                    if (token) {
+                      const res = await fetch("/api/integrations", {
+                        headers: { Authorization: `Bearer ${token}` },
+                      });
+                      if (res.ok) {
+                        const json = await res.json();
+                        setIntegrations(json.integrations || []);
+                      }
+                      setIntegrationsLoaded(true);
+                    }
+                  }
+                  setEditingIntegration(null);
+                  setIntegrationName("");
+                  setIntegrationCampaignId("");
+                  setIntegrationAutoSms(false);
+                  setShowIntegrationModal(true);
+                }}
+                className="flex items-center gap-2 rounded-2xl bg-violet-600 px-5 py-2.5 text-sm font-semibold hover:bg-violet-700"
+              >
+                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+                </svg>
+                Create new integration
+              </button>
+            </div>
+
+            {/* Load integrations when tab is opened */}
+            {!integrationsLoaded && (() => {
+              supabase.auth.getSession().then(({ data: { session } }) => {
+                const token = session?.access_token;
+                if (token) {
+                  fetch("/api/integrations", {
+                    headers: { Authorization: `Bearer ${token}` },
+                  }).then(r => r.json()).then(json => {
+                    setIntegrations(json.integrations || []);
+                    setIntegrationsLoaded(true);
+                  }).catch(() => setIntegrationsLoaded(true));
+                }
+              });
+              return null;
+            })()}
+
+            {/* Grid of integration cards */}
+            {integrationsLoaded && integrations.length === 0 ? (
+              <div className="rounded-3xl border border-dashed border-zinc-700 bg-zinc-900/40 p-12 text-center">
+                <div className="text-4xl mb-3">🔗</div>
+                <p className="text-zinc-300 font-medium">No integrations yet</p>
+                <p className="mt-1 text-sm text-zinc-500">Click &quot;Create new integration&quot; to generate your first webhook link.</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {integrations.map((intg) => {
+                  const webhookUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}/api/integrations/inbound/${intg.token}`;
+                  const campaignName = intg.campaigns?.name || (intg.campaign_id ? "Campaign" : "None");
+                  return (
+                    <div key={intg.id} className="rounded-2xl border border-zinc-700 bg-zinc-900 p-5 flex flex-col gap-4">
+                      {/* Card header */}
+                      <div className="flex items-start justify-between gap-2">
+                        <h3 className="font-semibold text-white leading-snug">{intg.name}</h3>
+                        <div className="flex gap-1 shrink-0">
+                          {/* Edit */}
+                          <button
+                            onClick={() => {
+                              setEditingIntegration(intg);
+                              setIntegrationName(intg.name);
+                              setIntegrationCampaignId(intg.campaign_id || "");
+                              setIntegrationAutoSms(intg.auto_sms);
+                              setShowIntegrationModal(true);
+                            }}
+                            className="rounded-lg border border-zinc-600 p-1.5 text-zinc-400 hover:border-violet-500 hover:text-violet-400"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m16.862 4.487 1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125" />
+                            </svg>
+                          </button>
+                          {/* Delete */}
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Delete "${intg.name}"? This will break any CRM sending leads to this link.`)) return;
+                              const { data: { session } } = await supabase.auth.getSession();
+                              const token = session?.access_token;
+                              if (!token) return;
+                              const res = await fetch(`/api/integrations/${intg.id}`, {
+                                method: "DELETE",
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              if (res.ok) {
+                                setIntegrations(prev => prev.filter(i => i.id !== intg.id));
+                              }
+                            }}
+                            className="rounded-lg border border-zinc-600 p-1.5 text-zinc-400 hover:border-red-500 hover:text-red-400"
+                          >
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+                            </svg>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Meta row */}
+                      <div className="flex gap-4 text-xs text-zinc-400">
+                        <div className="flex items-center gap-1">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244" />
+                          </svg>
+                          Workflow: <span className="text-zinc-300">{campaignName}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12h16.5m-16.5 3.75h16.5M3.75 19.5h16.5M5.625 4.5h12.75a1.875 1.875 0 0 1 0 3.75H5.625a1.875 1.875 0 0 1 0-3.75Z" />
+                          </svg>
+                          Type: <span className="text-zinc-300">Workflow</span>
+                        </div>
+                      </div>
+
+                      {/* Integration link */}
+                      <div>
+                        <p className="mb-1.5 text-xs font-medium text-zinc-500 uppercase tracking-wide">Integration Link</p>
+                        <div className="flex items-center gap-2 rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2">
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(webhookUrl).then(() => {
+                                setCopiedIntegrationId(intg.id);
+                                window.setTimeout(() => setCopiedIntegrationId(null), 2000);
+                              });
+                            }}
+                            className="shrink-0 text-zinc-400 hover:text-white"
+                            title="Copy link"
+                          >
+                            {copiedIntegrationId === intg.id ? (
+                              <svg className="h-4 w-4 text-emerald-400" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+                              </svg>
+                            ) : (
+                              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.666 3.888A2.25 2.25 0 0 0 13.5 2.25h-3c-1.03 0-1.9.693-2.166 1.638m7.332 0c.055.194.084.4.084.612v0a.75.75 0 0 1-.75.75H9a.75.75 0 0 1-.75-.75v0c0-.212.03-.418.084-.612m7.332 0c.646.049 1.288.11 1.927.184 1.1.128 1.907 1.077 1.907 2.185V19.5a2.25 2.25 0 0 1-2.25 2.25H6.75A2.25 2.25 0 0 1 4.5 19.5V6.257c0-1.108.806-2.057 1.907-2.185a48.208 48.208 0 0 1 1.927-.184" />
+                              </svg>
+                            )}
+                          </button>
+                          <span className="truncate text-xs text-zinc-300 font-mono">{webhookUrl}</span>
+                        </div>
+                      </div>
+
+                      {/* Auto SMS badge */}
+                      {intg.auto_sms && (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-400">
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 0 1 .865-.501 48.172 48.172 0 0 0 3.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0 0 12 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018Z" />
+                          </svg>
+                          Auto-SMS on lead receipt
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* How to use callout */}
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 text-sm text-zinc-400">
+              <div className="font-medium text-zinc-300 mb-2">How to connect a CRM</div>
+              <ol className="space-y-1.5 list-decimal list-inside">
+                <li>Click <span className="text-white">Create new integration</span> above and give it a name (e.g. "OnlySales — Health leads")</li>
+                <li>Copy the <span className="text-white">Integration Link</span> from the card</li>
+                <li>In your CRM (OnlySales, ISalesCRM, VanillaSoft, etc.) open <span className="text-white">Integrations → Add Integration</span> and paste the link as the webhook URL</li>
+                <li>Send a test lead — it will appear instantly in your Contacts</li>
+              </ol>
+            </div>
+          </div>
+        )}
+
         {/* ═══════════════ LEARN / TUTORIAL ═══════════════ */}
         {activeTab === "learn" && (
           <div className="space-y-6">
@@ -10639,6 +10848,135 @@ export default function DashboardPage() {
                 className="rounded-2xl bg-emerald-600 px-5 py-3 text-sm font-medium hover:bg-emerald-700 disabled:opacity-50"
               >
                 {followUpSubmitting ? "Scheduling…" : "Add to Calendar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Integration Create / Edit Modal ── */}
+      {showIntegrationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
+          <div className="w-full max-w-md rounded-3xl border border-zinc-700 bg-zinc-900 p-6 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="text-xl font-bold">
+                {editingIntegration ? "Edit Integration" : "Add Integration"}
+              </h3>
+              <button onClick={() => setShowIntegrationModal(false)} className="text-zinc-400 hover:text-white">
+                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* Name */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-zinc-300">Name</label>
+                <input
+                  type="text"
+                  value={integrationName}
+                  onChange={(e) => setIntegrationName(e.target.value)}
+                  placeholder="e.g. OnlySales — Health leads"
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none"
+                />
+              </div>
+
+              {/* Workflow / Campaign */}
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-zinc-300">
+                  Select Workflow <span className="text-zinc-500 font-normal">(optional — auto-enroll leads)</span>
+                </label>
+                <select
+                  value={integrationCampaignId}
+                  onChange={(e) => setIntegrationCampaignId(e.target.value)}
+                  className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none"
+                >
+                  <option value="">None</option>
+                  {campaigns.map((c) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Auto SMS toggle */}
+              <div className="flex items-center justify-between rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Auto-SMS on lead receipt</p>
+                  <p className="text-xs text-zinc-500 mt-0.5">Immediately send an intro text when a lead comes in</p>
+                </div>
+                <button
+                  onClick={() => setIntegrationAutoSms(prev => !prev)}
+                  className={`relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors ${integrationAutoSms ? "bg-violet-600" : "bg-zinc-600"}`}
+                >
+                  <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${integrationAutoSms ? "translate-x-5" : "translate-x-0"}`} />
+                </button>
+              </div>
+            </div>
+
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                onClick={() => setShowIntegrationModal(false)}
+                className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                disabled={!integrationName.trim() || integrationSaving}
+                onClick={async () => {
+                  setIntegrationSaving(true);
+                  try {
+                    const { data: { session } } = await supabase.auth.getSession();
+                    const token = session?.access_token;
+                    if (!token) return;
+
+                    const payload = {
+                      name: integrationName.trim(),
+                      campaign_id: integrationCampaignId || null,
+                      auto_sms: integrationAutoSms,
+                    };
+
+                    if (editingIntegration) {
+                      // Update
+                      const res = await fetch(`/api/integrations/${editingIntegration.id}`, {
+                        method: "PUT",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify(payload),
+                      });
+                      if (res.ok) {
+                        const json = await res.json();
+                        setIntegrations(prev => prev.map(i => i.id === editingIntegration.id ? { ...i, ...json.integration } : i));
+                        setShowIntegrationModal(false);
+                      }
+                    } else {
+                      // Create
+                      const res = await fetch("/api/integrations", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+                        body: JSON.stringify(payload),
+                      });
+                      if (res.ok) {
+                        const json = await res.json();
+                        // Re-fetch to get campaign name joined
+                        const listRes = await fetch("/api/integrations", {
+                          headers: { Authorization: `Bearer ${token}` },
+                        });
+                        if (listRes.ok) {
+                          const listJson = await listRes.json();
+                          setIntegrations(listJson.integrations || []);
+                        } else {
+                          setIntegrations(prev => [json.integration, ...prev]);
+                        }
+                        setShowIntegrationModal(false);
+                      }
+                    }
+                  } finally {
+                    setIntegrationSaving(false);
+                  }
+                }}
+                className="rounded-2xl bg-violet-600 px-5 py-3 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
+              >
+                {integrationSaving ? "Saving…" : editingIntegration ? "Save changes" : "Add Integration"}
               </button>
             </div>
           </div>
