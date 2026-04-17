@@ -473,6 +473,10 @@ export async function POST(req: NextRequest) {
               .update({
                 preview: previewByConvId.get(cid) || "",
                 last_message_at: new Date().toISOString(),
+                // Sending a campaign message means the last message is now
+                // outbound — clear the unread badge so the rep's inbox only
+                // highlights conversations that still need attention.
+                unread: 0,
               })
               .eq("id", cid)
           )

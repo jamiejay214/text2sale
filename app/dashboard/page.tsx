@@ -1056,7 +1056,7 @@ export default function DashboardPage() {
               messages: [...next[idx].messages, msgRecord],
             };
             // Re-sort so the freshly-active conversation jumps to the top of the list.
-            next.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+            next.sort((a, b) => { const ta = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0; const tb = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0; return (isNaN(tb) ? 0 : tb) - (isNaN(ta) ? 0 : ta); });
             return next;
           });
 
@@ -1460,18 +1460,21 @@ export default function DashboardPage() {
   }, [currentUser]);
 
   const conversationsWithContacts = useMemo(() => {
+    // Safe timestamp helper — null/undefined/invalid dates become 0 (epoch)
+    // so they sort to the bottom instead of producing NaN which breaks the
+    // comparator and leaves conversations in random order.
+    const ts = (d: string | null | undefined): number => {
+      if (!d) return 0;
+      const n = new Date(d).getTime();
+      return isNaN(n) ? 0 : n;
+    };
+
     return conversations
       .map((conversation) => {
         const contact = contacts.find((item) => item.id === conversation.contactId) || null;
-        return {
-          ...conversation,
-          contact,
-        };
+        return { ...conversation, contact };
       })
-      .sort(
-        (a, b) =>
-          new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
-      );
+      .sort((a, b) => ts(b.lastMessageAt) - ts(a.lastMessageAt));
   }, [conversations, contacts]);
 
   // Persist archived conversation IDs
@@ -1522,8 +1525,18 @@ export default function DashboardPage() {
 
     // Recents filter — conversations the contact has actually replied in
     // (has at least one inbound message). Filters out one-way blasts.
+    // Re-sort by the most recent inbound message so the hottest leads
+    // (people who texted most recently) float to the top.
     if (convShowRecents) {
-      list = list.filter((c) => c.messages.some((m) => m.direction === "inbound"));
+      const lastInboundTs = (c: typeof list[0]): number => {
+        const inbound = c.messages.filter((m) => m.direction === "inbound");
+        if (inbound.length === 0) return 0;
+        const t = new Date(inbound[inbound.length - 1].createdAt).getTime();
+        return isNaN(t) ? 0 : t;
+      };
+      list = list
+        .filter((c) => c.messages.some((m) => m.direction === "inbound"))
+        .sort((a, b) => lastInboundTs(b) - lastInboundTs(a));
     }
 
     // Working-lead filter — just the conversations the user has actively
@@ -2840,6 +2853,9 @@ export default function DashboardPage() {
       setConversations((prev) => {
         const updated = prev.map((c) => c.id !== selectedConversation.id ? c : {
           ...c, preview: body, lastMessageAt: now,
+          // Sending a reply clears the unread badge — the last message is
+          // now outbound so there's nothing new waiting for the agent.
+          unread: 0,
           fromNumber: c.fromNumber || fromNumber,
           // Manual send clears the "AI skipped" chip — if the user is
           // engaging directly, the decline filter shouldn't keep warning.
@@ -2849,7 +2865,7 @@ export default function DashboardPage() {
         // Re-sort so the freshly-active conversation stays at the top.
         return updated.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
       });
-      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now, ai_skipped_reason: null };
+      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now, unread: 0, ai_skipped_reason: null };
       if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
       await dbUpdateConversation(selectedConversation.id, convUpdate);
     }
