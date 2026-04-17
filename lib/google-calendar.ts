@@ -21,6 +21,33 @@ export interface AppointmentInput {
   contactName: string;
   contactPhone: string;
   duration: number;   // minutes, defaults to 30
+  // IANA zone name, e.g. "America/New_York". This is the timezone the
+  // user chose the wall-clock time in. Google renders start/end in the
+  // viewer's local zone, so getting this right is what prevents a
+  // 9:30 AM EDT pick from showing up at 5:30 AM (UTC-interpreted).
+  timeZone: string;
+}
+
+/**
+ * Adds `minutes` to a wall-clock date/time string and returns a new
+ * "YYYY-MM-DDTHH:MM:SS" string. We do the arithmetic in UTC so the
+ * components we read back are exactly the wall-clock values we want
+ * (no DST surprises for < 24h spans).
+ */
+function addMinutesToWallClock(
+  dateStr: string,
+  timeStr: string,
+  minutes: number
+): string {
+  const [y, mo, d] = dateStr.split("-").map(Number);
+  const [h, mi, s = 0] = timeStr.split(":").map(Number);
+  const dt = new Date(Date.UTC(y, mo - 1, d, h, mi, s));
+  dt.setUTCMinutes(dt.getUTCMinutes() + minutes);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}` +
+    `T${pad(dt.getUTCHours())}:${pad(dt.getUTCMinutes())}:${pad(dt.getUTCSeconds())}`
+  );
 }
 
 /**
@@ -126,32 +153,33 @@ export async function createCalendarEvent(
     profile.google_calendar_tokens as GoogleTokens
   );
 
-  // Build start/end datetimes
+  // Build start/end datetimes as wall-clock strings in the user's zone.
+  // Google accepts an RFC3339-like dateTime without an offset when
+  // paired with a timeZone field — it interprets the time as local to
+  // that zone. That's what we want: the rep/customer chose "9:30 AM
+  // in America/New_York," not "9:30 UTC."
   const duration = appointment.duration || 30;
-  // Normalize time to HH:MM:SS
   const timeParts = appointment.time.split(":");
   const normalizedTime =
     timeParts.length === 2
       ? `${timeParts[0]}:${timeParts[1]}:00`
       : appointment.time;
 
-  const startDateTime = `${appointment.date}T${normalizedTime}`;
+  const timeZone = appointment.timeZone || "America/New_York";
 
-  // Calculate end time
-  const startDate = new Date(startDateTime);
-  const endDate = new Date(startDate.getTime() + duration * 60 * 1000);
-  const endDateTime = endDate.toISOString();
+  const startLocal = `${appointment.date}T${normalizedTime}`;
+  const endLocal = addMinutesToWallClock(appointment.date, normalizedTime, duration);
 
   const event = {
     summary: appointment.title,
     description: `Contact: ${appointment.contactName}\nPhone: ${appointment.contactPhone}\n\nBooked via Textalot`,
     start: {
-      dateTime: new Date(startDateTime).toISOString(),
-      timeZone: "UTC",
+      dateTime: startLocal,
+      timeZone,
     },
     end: {
-      dateTime: endDateTime,
-      timeZone: "UTC",
+      dateTime: endLocal,
+      timeZone,
     },
     reminders: {
       useDefault: false,

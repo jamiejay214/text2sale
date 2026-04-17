@@ -10605,6 +10605,11 @@ export default function DashboardPage() {
                         time: followUpTime,
                         title: followUpTitle.trim() || undefined,
                         duration: 30,
+                        // Send the browser's IANA zone so Google writes
+                        // the event at the wall-clock time the rep
+                        // picked. Without this the server treated it
+                        // as UTC and EDT picks landed 4 hours early.
+                        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
                       }),
                     });
                     const data = await res.json().catch(() => ({}));

@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { contactId, date, time, title, duration } = await req.json();
+    const { contactId, date, time, title, duration, timeZone } = await req.json();
 
     if (!date || !time) {
       return NextResponse.json(
@@ -45,6 +45,14 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Fall back to Eastern if the client didn't send a zone — previously
+    // we treated everything as UTC, which put a 9:30 AM pick onto the
+    // calendar at 5:30 AM EDT. An explicit fallback is safer than UTC.
+    const resolvedTimeZone =
+      typeof timeZone === "string" && timeZone.length > 0
+        ? timeZone
+        : "America/New_York";
 
     // Resolve contact for the event title/description. The contact is
     // optional — a rep can schedule a follow-up for a conversation where the
@@ -82,6 +90,7 @@ export async function POST(req: NextRequest) {
         contactName,
         contactPhone,
         duration: Number(duration) || 30,
+        timeZone: resolvedTimeZone,
       });
 
       return NextResponse.json({ success: true, eventId });

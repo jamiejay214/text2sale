@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent } from "@/lib/google-calendar";
+import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -299,7 +300,11 @@ When the customer wants to schedule/book/meet/talk/call:
             title: input.title || "Appointment",
           };
 
-          // Fire-and-forget: push to Google Calendar
+          // Fire-and-forget: push to Google Calendar. The appointment
+          // time is whatever the customer agreed to in conversation —
+          // which is implicitly in their local zone. Use the contact's
+          // state to resolve an IANA zone; fall back to Eastern so we
+          // never accidentally send a UTC-interpreted time.
           createCalendarEvent(userId, {
             date: input.date,
             time: input.time,
@@ -307,6 +312,7 @@ When the customer wants to schedule/book/meet/talk/call:
             contactName: `${contact?.first_name || "Unknown"} ${contact?.last_name || ""}`.trim(),
             contactPhone: contact?.phone || "",
             duration: hours.slotDuration || 30,
+            timeZone: inferTimezone(contact?.state) || "America/New_York",
           })
             .then((googleEventId) => {
               if (googleEventId) {
