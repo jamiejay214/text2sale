@@ -1399,12 +1399,25 @@ export default function DashboardPage() {
           filter: `user_id=eq.${userId}`,
         },
         (payload) => {
-          const contact = payload.new as { first_name?: string; last_name?: string; phone?: string };
+          const contact = payload.new as {
+            id: string;
+            first_name?: string;
+            last_name?: string;
+            phone?: string;
+            lead_source?: string;
+          };
+
+          // Only notify for leads that arrived via an integration webhook.
+          // CSV imports, manual adds, and other direct inserts do NOT have
+          // lead_source set to "Integration" so they are silently ignored.
+          const src = (contact.lead_source || "").toLowerCase();
+          if (!src.includes("integration")) return;
+
           const name = [contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.phone || "Unknown";
           setLeadNotification(`🔔 New lead — ${name}`);
           // Add to local contacts list so it appears immediately without a refresh
           setContacts((prev) => {
-            if (prev.some((c) => c.id === (payload.new as { id: string }).id)) return prev;
+            if (prev.some((c) => c.id === contact.id)) return prev;
             return [payload.new as typeof prev[0], ...prev];
           });
         }
