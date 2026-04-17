@@ -48,7 +48,7 @@ type CampaignContact = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumbers, messageTemplate, campaignName } = await req.json();
+    const { campaignId, userId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1 } = await req.json();
 
     const numbers: string[] = Array.isArray(fromNumbers)
       ? fromNumbers
@@ -66,36 +66,60 @@ export async function POST(req: NextRequest) {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ── Idempotency guard ────────────────────────────────────────────────────
-    // Atomically flip the campaign status from Draft/Scheduled → Sending.
-    // If another request already flipped it (double-click, CSV auto-fire +
-    // manual launch, page refresh mid-send), the UPDATE matches 0 rows and
-    // we return immediately instead of blasting every contact a second time.
-    // "Paused" is also allowed through so a paused campaign can be resumed.
-    const { data: lockResult, error: lockError } = await supabase
-      .from("campaigns")
-      .update({ status: "Sending" })
-      .eq("id", campaignId)
-      .eq("user_id", userId)
-      .in("status", ["Draft", "Scheduled", "Paused"])
-      .select("id")
-      .single();
+    // For the FIRST step (stepIndex 0): atomically flip Draft/Scheduled/Paused
+    // → Sending. If another request already flipped it (double-click, CSV
+    // auto-fire + manual launch, page refresh mid-send), the UPDATE matches 0
+    // rows and we return 409 immediately instead of blasting every contact a
+    // second time.
+    //
+    // For subsequent steps (stepIndex > 0): the campaign is already "Sending"
+    // (first step flipped it). Just verify that status so we don't allow a
+    // duplicate first-step call to sneak through as a "step 2" re-send.
+    if (stepIndex === 0) {
+      const { data: lockResult, error: lockError } = await supabase
+        .from("campaigns")
+        .update({ status: "Sending" })
+        .eq("id", campaignId)
+        .eq("user_id", userId)
+        .in("status", ["Draft", "Scheduled", "Paused"])
+        .select("id")
+        .single();
 
-    if (lockError || !lockResult) {
-      // Campaign is already Sending or Completed — reject the duplicate.
+      if (lockError || !lockResult) {
+        // Campaign is already Sending or Completed — reject the duplicate.
+        const { data: current } = await supabase
+          .from("campaigns")
+          .select("status")
+          .eq("id", campaignId)
+          .single();
+        const currentStatus = (current as { status?: string } | null)?.status ?? "unknown";
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Campaign is already ${currentStatus}. Refresh the page to see the current status.`,
+            alreadySending: true,
+          },
+          { status: 409 }
+        );
+      }
+    } else {
+      // Steps 2+ require the campaign to already be "Sending".
       const { data: current } = await supabase
         .from("campaigns")
         .select("status")
         .eq("id", campaignId)
+        .eq("user_id", userId)
         .single();
-      const currentStatus = (current as { status?: string } | null)?.status ?? "unknown";
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Campaign is already ${currentStatus}. Refresh the page to see the current status.`,
-          alreadySending: true,
-        },
-        { status: 409 }
-      );
+      if (!current || current.status !== "Sending") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot send step ${stepIndex + 1}: campaign is not in Sending state.`,
+            alreadySending: true,
+          },
+          { status: 409 }
+        );
+      }
     }
 
     // --- Load contacts (paginated past Supabase's 1000-row cap) ------------
@@ -585,10 +609,15 @@ export async function POST(req: NextRequest) {
 
     // If the user paused mid-send, leave the campaign in "Paused" status so
     // they can resume/relaunch. Out-of-funds halts the campaign too.
+    // For multi-step campaigns, only finalize to Completed on the LAST step —
+    // earlier steps leave the campaign as "Sending" so subsequent steps can
+    // pass the idempotency guard.
+    const isLastStep = stepIndex >= totalSteps - 1;
+    const finalStatus = paused || outOfFunds ? "Paused" : isLastStep ? "Completed" : "Sending";
     await supabase
       .from("campaigns")
       .update({
-        status: paused || outOfFunds ? "Paused" : "Completed",
+        status: finalStatus,
         audience: contacts.length,
         sent,
         failed,

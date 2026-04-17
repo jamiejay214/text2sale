@@ -3334,14 +3334,17 @@ export default function DashboardPage() {
     // balance atomically as each chunk sends, so the dashboard ticks the
     // wallet down live and we never overcharge if the send halts early.
 
-    await dbUpdateCampaign(campaignId, { status: "Sending", audience });
+    // Optimistic UI only — do NOT write "Sending" to the DB here.
+    // The server atomically flips Draft/Scheduled/Paused → Sending as its
+    // idempotency guard. If we pre-set the DB status the guard will always
+    // see "Sending" and reject every launch with a 409.
     setCampaigns((prev) => prev.map((c) =>
       c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
     ));
 
     setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
 
-    // Send each step via Vonage API
+    // Send each step via send-campaign API
     try {
       let totalSent = 0;
       let totalFailed = 0;
@@ -3378,6 +3381,8 @@ export default function DashboardPage() {
             fromNumbers,
             messageTemplate: step.message,
             campaignName: hasCampaignContacts ? campaign.name : undefined,
+            stepIndex: stepIdx,
+            totalSteps: steps.length,
           }),
         });
 
@@ -3983,7 +3988,10 @@ export default function DashboardPage() {
         // actually sent, so the user sees their balance tick down live and
         // doesn't get double-charged for sends that never went through.
 
-        await dbUpdateCampaign(csvCampaignId, { status: "Sending", audience: totalImported });
+        // Optimistic UI only — do NOT pre-set "Sending" in the DB.
+        // The server atomically flips Draft → Sending as its idempotency guard.
+        // Pre-writing Sending here breaks the guard and causes every launch to
+        // return 409 without sending anything.
         setCampaigns((prev) => prev.map((c) =>
           c.id === csvCampaignId ? { ...c, status: "Sending" as const, audience: totalImported } : c
         ));
@@ -4012,6 +4020,8 @@ export default function DashboardPage() {
                 fromNumbers,
                 messageTemplate: step.message,
                 campaignName: campaign.name,
+                stepIndex: stepIdx,
+                totalSteps: steps.length,
               }),
             });
 
