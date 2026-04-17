@@ -65,6 +65,39 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── Idempotency guard ────────────────────────────────────────────────────
+    // Atomically flip the campaign status from Draft/Scheduled → Sending.
+    // If another request already flipped it (double-click, CSV auto-fire +
+    // manual launch, page refresh mid-send), the UPDATE matches 0 rows and
+    // we return immediately instead of blasting every contact a second time.
+    // "Paused" is also allowed through so a paused campaign can be resumed.
+    const { data: lockResult, error: lockError } = await supabase
+      .from("campaigns")
+      .update({ status: "Sending" })
+      .eq("id", campaignId)
+      .eq("user_id", userId)
+      .in("status", ["Draft", "Scheduled", "Paused"])
+      .select("id")
+      .single();
+
+    if (lockError || !lockResult) {
+      // Campaign is already Sending or Completed — reject the duplicate.
+      const { data: current } = await supabase
+        .from("campaigns")
+        .select("status")
+        .eq("id", campaignId)
+        .single();
+      const currentStatus = (current as { status?: string } | null)?.status ?? "unknown";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Campaign is already ${currentStatus}. Refresh the page to see the current status.`,
+          alreadySending: true,
+        },
+        { status: 409 }
+      );
+    }
+
     // --- Load contacts (paginated past Supabase's 1000-row cap) ------------
     const PAGE_SIZE = 1000;
     let contacts: CampaignContact[] = [];

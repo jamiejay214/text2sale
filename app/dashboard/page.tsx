@@ -3281,8 +3281,18 @@ export default function DashboardPage() {
 
   const handleLaunchCampaign = async (campaignId: string) => {
     if (!requireSubscription()) return;
+    // Prevent double-fire: if this campaign is already in-flight (button
+    // clicked twice, CSV auto-launch + manual launch, etc.) bail immediately.
+    // The server-side idempotency guard is the real safety net, but stopping
+    // here avoids a confusing 409 error reaching the user.
+    if (launchingCampaignId === campaignId) return;
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign || !currentUser || !userId) return;
+    if (campaign.status === "Sending" || campaign.status === "Completed") {
+      setMessage(`❌ Campaign is already ${campaign.status.toLowerCase()}`);
+      window.setTimeout(() => setMessage(""), 3000);
+      return;
+    }
 
     const ownedNumbers = currentUser.ownedNumbers || [];
     if (ownedNumbers.length === 0) {
