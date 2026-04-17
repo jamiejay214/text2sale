@@ -9818,17 +9818,34 @@ export default function DashboardPage() {
                           className="rounded-xl border border-red-700/50 bg-red-900/20 px-4 py-2 text-sm font-medium text-red-400 transition hover:bg-red-900/40"
                           onClick={async () => {
                             try {
-                              const res = await fetch("/api/google-calendar/disconnect", { method: "POST" });
+                              // The disconnect endpoint authenticates with a
+                              // Bearer token — without it, Supabase auth.getUser
+                              // fails and the route returns 401. Previously
+                              // this fetch had no Authorization header, which
+                              // is why Disconnect always said "failed".
+                              const { data: { session } } = await supabase.auth.getSession();
+                              const token = session?.access_token;
+                              if (!token) {
+                                setMessage("❌ Please sign in again to disconnect.");
+                                window.setTimeout(() => setMessage(""), 3000);
+                                return;
+                              }
+                              const res = await fetch("/api/google-calendar/disconnect", {
+                                method: "POST",
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
                               if (res.ok) {
                                 setCurrentUser((prev) => prev ? { ...prev, googleCalendarConnected: false } as typeof prev : prev);
-                                setMessage("Google Calendar disconnected.");
+                                setMessage("✅ Google Calendar disconnected.");
                                 window.setTimeout(() => setMessage(""), 3000);
                               } else {
-                                setMessage("Failed to disconnect Google Calendar.");
-                                window.setTimeout(() => setMessage(""), 3000);
+                                const data = await res.json().catch(() => ({}));
+                                setMessage(`❌ ${data?.error || `Failed to disconnect (HTTP ${res.status}).`}`);
+                                window.setTimeout(() => setMessage(""), 4000);
                               }
-                            } catch {
-                              setMessage("Failed to disconnect Google Calendar.");
+                            } catch (err) {
+                              const m = err instanceof Error ? err.message : "Failed to disconnect Google Calendar.";
+                              setMessage(`❌ ${m}`);
                               window.setTimeout(() => setMessage(""), 3000);
                             }
                           }}
