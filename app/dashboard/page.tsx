@@ -668,6 +668,11 @@ export default function DashboardPage() {
   const [followUpTime, setFollowUpTime] = useState("10:00");
   const [followUpTitle, setFollowUpTitle] = useState("");
   const [followUpSubmitting, setFollowUpSubmitting] = useState(false);
+  // Inline error shown in the follow-up modal. The global toast lives at
+  // z-40 and the modal overlay is z-50, so a toast fired from here is
+  // hidden behind the overlay — the user sees the button "do nothing".
+  // Render errors inside the modal instead.
+  const [followUpError, setFollowUpError] = useState("");
 
   // Response-time SLA stats — computed server-side via the first_reply_stats
   // RPC so it stays accurate regardless of how many messages are loaded
@@ -5309,6 +5314,7 @@ export default function DashboardPage() {
                             setFollowUpDate(`${yyyy}-${mm}-${dd}`);
                             setFollowUpTime("10:00");
                             setFollowUpTitle("");
+                            setFollowUpError("");
                             setShowFollowUpModal(true);
                           }}
                           className="flex items-center gap-1.5 rounded-xl border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800 hover:border-emerald-500 hover:text-emerald-300"
@@ -10542,9 +10548,17 @@ export default function DashboardPage() {
                 />
               </div>
             </div>
+            {followUpError && (
+              <div className="mt-4 rounded-xl border border-red-800 bg-red-950/60 px-4 py-3 text-sm text-red-200">
+                {followUpError}
+              </div>
+            )}
             <div className="mt-5 flex justify-end gap-3">
               <button
-                onClick={() => setShowFollowUpModal(false)}
+                onClick={() => {
+                  setShowFollowUpModal(false);
+                  setFollowUpError("");
+                }}
                 className="rounded-2xl border border-zinc-700 px-5 py-3 text-sm hover:bg-zinc-800"
               >
                 Cancel
@@ -10554,12 +10568,12 @@ export default function DashboardPage() {
                 onClick={async () => {
                   if (!selectedConversation || !followUpDate || !followUpTime) return;
                   setFollowUpSubmitting(true);
+                  setFollowUpError("");
                   try {
                     const { data: { session } } = await supabase.auth.getSession();
                     const token = session?.access_token;
                     if (!token) {
-                      setMessage("❌ Please sign in again to schedule.");
-                      window.setTimeout(() => setMessage(""), 3000);
+                      setFollowUpError("Please sign in again to schedule.");
                       return;
                     }
                     const res = await fetch("/api/google-calendar/create-event", {
@@ -10576,23 +10590,26 @@ export default function DashboardPage() {
                         duration: 30,
                       }),
                     });
-                    const data = await res.json();
+                    const data = await res.json().catch(() => ({}));
                     if (!res.ok || !data.success) {
                       if (data?.code === "not_connected") {
-                        setMessage("❌ Connect Google Calendar in Settings first.");
+                        setFollowUpError(
+                          "Google Calendar isn't connected yet. Open Settings → AI & Automation and click Connect Google Calendar."
+                        );
                       } else {
-                        setMessage(`❌ ${data?.error || "Failed to schedule follow-up"}`);
+                        setFollowUpError(
+                          data?.error || `Failed to schedule follow-up (HTTP ${res.status}).`
+                        );
                       }
-                      window.setTimeout(() => setMessage(""), 4000);
                       return;
                     }
                     setShowFollowUpModal(false);
+                    setFollowUpError("");
                     setMessage("✅ Follow-up added to your Google Calendar");
                     window.setTimeout(() => setMessage(""), 3000);
                   } catch (err) {
                     const m = err instanceof Error ? err.message : "Failed to schedule";
-                    setMessage(`❌ ${m}`);
-                    window.setTimeout(() => setMessage(""), 3000);
+                    setFollowUpError(m);
                   } finally {
                     setFollowUpSubmitting(false);
                   }
@@ -11230,7 +11247,10 @@ export default function DashboardPage() {
       )}
 
       {message && (
-        <div className={`fixed bottom-8 left-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium z-40 ${
+        // z-[60] so the toast floats above modal overlays (which live at z-50).
+        // Previously z-40 meant errors fired from inside a modal were hidden
+        // behind the overlay and the action looked like it did nothing.
+        <div className={`fixed bottom-8 left-8 rounded-2xl px-6 py-4 shadow-2xl text-sm font-medium z-[60] ${
           message.startsWith("❌")
             ? "bg-red-950 text-red-200 ring-1 ring-red-800"
             : message.startsWith("🌙")
