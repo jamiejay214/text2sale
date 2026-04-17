@@ -229,6 +229,7 @@ export type Conversation = {
   from_number?: string;
   ai_enabled?: boolean;
   agent_enabled?: boolean;
+  ai_skipped_reason?: string | null;
 };
 
 export type Message = {

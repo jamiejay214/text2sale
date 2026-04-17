@@ -131,6 +131,7 @@ type ConversationRecord = {
   fromNumber?: string;
   aiEnabled?: boolean;
   agentEnabled?: boolean;
+  aiSkippedReason?: string | null;
   messages: ConversationMessage[];
 };
 
@@ -302,13 +303,14 @@ function messageToRecord(m: Message): ConversationMessage {
   };
 }
 
-function convToRecord(c: Conversation & { ai_enabled?: boolean; agent_enabled?: boolean }, msgs: ConversationMessage[]): ConversationRecord {
+function convToRecord(c: Conversation & { ai_enabled?: boolean; agent_enabled?: boolean; ai_skipped_reason?: string | null }, msgs: ConversationMessage[]): ConversationRecord {
   return {
     id: c.id, contactId: c.contact_id, preview: c.preview,
     unread: c.unread, lastMessageAt: c.last_message_at,
     starred: c.starred, fromNumber: c.from_number,
     aiEnabled: c.ai_enabled || false,
     agentEnabled: c.agent_enabled || false,
+    aiSkippedReason: c.ai_skipped_reason || null,
     messages: msgs,
   };
 }
@@ -2765,12 +2767,15 @@ export default function DashboardPage() {
         const updated = prev.map((c) => c.id !== selectedConversation.id ? c : {
           ...c, preview: body, lastMessageAt: now,
           fromNumber: c.fromNumber || fromNumber,
+          // Manual send clears the "AI skipped" chip — if the user is
+          // engaging directly, the decline filter shouldn't keep warning.
+          aiSkippedReason: null,
           messages: [...c.messages, newMsg],
         });
         // Re-sort so the freshly-active conversation stays at the top.
         return updated.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
       });
-      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now };
+      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now, ai_skipped_reason: null };
       if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
       await dbUpdateConversation(selectedConversation.id, convUpdate);
     }
@@ -5149,11 +5154,48 @@ export default function DashboardPage() {
                             if (!selectedConversation) return;
                             const next = !selectedConversation.aiEnabled;
                             setConversations((prev) =>
-                              prev.map((c) => c.id === selectedConversation.id ? { ...c, aiEnabled: next } : c)
+                              prev.map((c) => c.id === selectedConversation.id ? { ...c, aiEnabled: next, aiSkippedReason: next ? null : c.aiSkippedReason } : c)
                             );
-                            await dbUpdateConversation(selectedConversation.id, { ai_enabled: next });
+                            await dbUpdateConversation(selectedConversation.id, {
+                              ai_enabled: next,
+                              // Clear any stale "skipped" flag when re-enabling — user is
+                              // explicitly saying "take the wheel here".
+                              ...(next ? { ai_skipped_reason: null } : {}),
+                            });
                             setMessage(next ? "AI ON for this conversation" : "AI OFF for this conversation");
                             window.setTimeout(() => setMessage(""), 2000);
+
+                            // If toggling ON and the lead's message is the last thing in
+                            // the thread, fire an immediate AI reply — otherwise the user
+                            // has to wait for the next inbound to see anything happen.
+                            if (next && currentUser?.id) {
+                              const msgs = selectedConversation.messages || [];
+                              const lastMsg = msgs[msgs.length - 1];
+                              if (lastMsg && lastMsg.direction === "inbound") {
+                                try {
+                                  const res = await fetch("/api/ai-reply", {
+                                    method: "POST",
+                                    headers: { "Content-Type": "application/json" },
+                                    body: JSON.stringify({
+                                      userId: currentUser.id,
+                                      conversationId: selectedConversation.id,
+                                      contactId: selectedConversation.contactId,
+                                      sendReply: true,
+                                    }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (res.ok && data?.success !== false) {
+                                    setMessage("AI replying…");
+                                    window.setTimeout(() => setMessage(""), 2500);
+                                  } else if (data?.error) {
+                                    setMessage(`AI error: ${data.error}`);
+                                    window.setTimeout(() => setMessage(""), 4000);
+                                  }
+                                } catch {
+                                  // Non-fatal — the AI will still fire on the next inbound.
+                                }
+                              }
+                            }
                           }}
                           className={`flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition ${
                             selectedConversation?.aiEnabled
@@ -5167,6 +5209,23 @@ export default function DashboardPage() {
                           </svg>
                           AI
                         </button>
+                      )}
+                      {/* "AI skipped" chip — tells the user the AI made a
+                          deliberate choice not to reply (e.g. the lead said
+                          "NO" to the first outreach). Otherwise the AI toggle
+                          being ON but silent looks like the AI is broken.
+                          Clears automatically when the lead sends a new
+                          message or the toggle is re-enabled. */}
+                      {currentUser.aiPlan && selectedConversation?.aiSkippedReason === "decline_response" && (
+                        <div
+                          className="flex items-center gap-1.5 rounded-xl border border-amber-500/40 bg-amber-600/10 px-3 py-2 text-xs font-medium text-amber-300"
+                          title="AI skipped this reply because the lead sounded like a hard no. Click the AI button to force a reply anyway."
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
+                          </svg>
+                          AI skipped — looks like a decline
+                        </div>
                       )}
                       {/* Full AI toggle — auto-reply to ALL conversations */}
                       {currentUser.aiPlan && (

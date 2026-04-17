@@ -349,8 +349,22 @@ export async function POST(req: NextRequest) {
 
         const isFirstInbound = (inboundCount ?? 0) <= 1;
         if (isFirstInbound && shouldAiSkipReply(body)) {
+          // Flag the conversation so the dashboard can show a "AI skipped —
+          // looks like a decline" chip. Otherwise the UI gives no signal
+          // that the AI made a deliberate choice not to reply.
+          await supabase
+            .from("conversations")
+            .update({ ai_skipped_reason: "decline_response" })
+            .eq("id", conversation.id);
           return NextResponse.json({ status: "ok", aiSkipped: "decline_response" });
         }
+
+        // Fresh inbound from an engaged lead — clear any stale skip flag so
+        // it doesn't linger past the point it was relevant.
+        await supabase
+          .from("conversations")
+          .update({ ai_skipped_reason: null })
+          .eq("id", conversation.id);
 
         if (aiProfile?.ai_plan && (globalAi || perConvAi)) {
           const balance = Number(aiProfile.wallet_balance) || 0;
