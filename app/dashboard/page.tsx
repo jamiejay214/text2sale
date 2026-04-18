@@ -539,6 +539,12 @@ export default function DashboardPage() {
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("billing");
   const [message, setMessage] = useState("");
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // Pipeline UI state — stage assignments live in localStorage, this version
+  // counter forces re-render when we mutate them without touching React state
+  // for each contact. Search/filter narrows the board without reloading.
+  const [pipelineVersion, setPipelineVersion] = useState(0);
+  const [pipelineSearch, setPipelineSearch] = useState("");
+  const [pipelineFilter, setPipelineFilter] = useState<"all" | "unread" | "today">("all");
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
@@ -6758,6 +6764,9 @@ export default function DashboardPage() {
           // Build a stage map from localStorage. Any contact not explicitly
           // staged falls into "new" by default so the board is never empty.
           const STAGE_STORAGE_KEY = "text2sale_pipeline_stages_v1";
+          // pipelineVersion is read so React re-computes this IIFE when it
+          // changes after a drag/drop or stage menu pick.
+          void pipelineVersion;
           const stageMap: Record<string, PipelineStage> = (() => {
             if (typeof window === "undefined") return {};
             try {
@@ -6769,10 +6778,7 @@ export default function DashboardPage() {
           const setStage = (contactId: string, stage: PipelineStage) => {
             const next = { ...stageMap, [contactId]: stage };
             try { window.localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(next)); } catch {}
-            // Force a re-render by bumping a state we already have
-            setActiveTab("pipeline");
-            // Trigger re-render via toast
-            window.setTimeout(() => setActiveTab("pipeline"), 0);
+            setPipelineVersion((v) => v + 1);
           };
 
           // Only show contacts the user has actually worked — skip DNC and
@@ -6789,47 +6795,152 @@ export default function DashboardPage() {
             return false;
           });
 
-          // Group contacts by stage.
+          // Apply search + quick filter before grouping so every lane sees
+          // the same subset. Search hits first/last name, phone, city, state.
+          const q = pipelineSearch.trim().toLowerCase();
+          const now = Date.now();
+          const ONE_DAY = 24 * 60 * 60 * 1000;
+          const filteredContacts = qualifyingContacts.filter((c) => {
+            if (q) {
+              const hay = `${c.firstName || ""} ${c.lastName || ""} ${c.phone || ""} ${c.city || ""} ${c.state || ""}`.toLowerCase();
+              if (!hay.includes(q)) return false;
+            }
+            if (pipelineFilter === "unread") {
+              const convo = convosByContact.get(c.id);
+              if (!convo?.unread || convo.unread <= 0) return false;
+            }
+            if (pipelineFilter === "today") {
+              const convo = convosByContact.get(c.id);
+              const last = convo?.lastMessageAt ? new Date(convo.lastMessageAt).getTime() : 0;
+              if (!last || now - last > ONE_DAY) return false;
+            }
+            return true;
+          });
+
+          // Group contacts by stage, sort newest-activity first inside each lane.
           const byStage: Record<PipelineStage, typeof contacts> = {
             new: [], working: [], hot: [], quoted: [], won: [], lost: [],
           };
-          qualifyingContacts.forEach((c) => {
+          filteredContacts.forEach((c) => {
             const stage = stageMap[c.id] || "new";
             byStage[stage].push(c);
           });
+          (Object.keys(byStage) as PipelineStage[]).forEach((k) => {
+            byStage[k].sort((a, b) => {
+              const ta = convosByContact.get(a.id)?.lastMessageAt
+                ? new Date(convosByContact.get(a.id)!.lastMessageAt).getTime()
+                : 0;
+              const tb = convosByContact.get(b.id)?.lastMessageAt
+                ? new Date(convosByContact.get(b.id)!.lastMessageAt).getTime()
+                : 0;
+              return tb - ta;
+            });
+          });
 
           const totalLeads = qualifyingContacts.length;
-          const won = byStage.won.length;
-          const closeRate = totalLeads > 0 ? Math.round((won / totalLeads) * 100) : 0;
+          const wonCount = byStage.won.length;
+          const hotCount = byStage.hot.length + byStage.working.length + byStage.quoted.length;
+          const closeRate = totalLeads > 0 ? Math.round((byStage.won.length / totalLeads) * 100) : 0;
+          // Unread across all pipeline leads
+          const unreadLeads = qualifyingContacts.reduce((acc, c) => {
+            const convo = convosByContact.get(c.id);
+            return acc + (convo?.unread && convo.unread > 0 ? 1 : 0);
+          }, 0);
+
+          const relTime = (iso?: string) => {
+            if (!iso) return "";
+            const diff = now - new Date(iso).getTime();
+            if (diff < 60_000) return "just now";
+            if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m`;
+            if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h`;
+            return `${Math.floor(diff / 86_400_000)}d`;
+          };
+
+          const initials = (c: ContactRecord) => {
+            const a = (c.firstName || "").trim()[0] || "";
+            const b = (c.lastName || "").trim()[0] || "";
+            return (a + b || (c.phone || "?").slice(-2)).toUpperCase();
+          };
+
+          // Deterministic avatar gradient per contact (6 palettes).
+          const avatarGradient = (c: ContactRecord) => {
+            const palettes = [
+              "from-violet-500 to-fuchsia-500",
+              "from-sky-500 to-cyan-500",
+              "from-amber-500 to-orange-500",
+              "from-emerald-500 to-green-500",
+              "from-rose-500 to-pink-500",
+              "from-indigo-500 to-purple-500",
+            ];
+            let sum = 0;
+            for (let i = 0; i < c.id.length; i++) sum = (sum * 31 + c.id.charCodeAt(i)) >>> 0;
+            return palettes[sum % palettes.length];
+          };
 
           return (
-            <div className="space-y-6">
-              {/* Header */}
-              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+            <div className="flex h-[calc(100vh-8rem)] flex-col">
+              {/* Header + metrics bar */}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold">Pipeline</h1>
+                  <h1 className="bg-gradient-to-r from-white via-violet-200 to-fuchsia-200 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
+                    Pipeline
+                  </h1>
                   <p className="mt-1 text-sm text-zinc-400">
-                    Drag leads between stages to track where every conversation stands. Click a card to jump into the thread.
+                    Drag leads across stages. Each lane scrolls on its own — the board never grows off the page.
                   </p>
                 </div>
-                <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3 text-xs md:grid-cols-3">
-                  <div className="text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">In pipeline</div>
-                    <div className="mt-1 text-lg font-bold text-white tabular-nums">{totalLeads}</div>
+                <div className="grid grid-cols-4 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-2">
+                  <div className="rounded-xl bg-zinc-950/80 px-3 py-2">
+                    <div className="text-[9px] uppercase tracking-wider text-zinc-500">Leads</div>
+                    <div className="mt-0.5 text-lg font-bold text-white tabular-nums">{totalLeads}</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Won</div>
-                    <div className="mt-1 text-lg font-bold text-emerald-300 tabular-nums">{won}</div>
+                  <div className="rounded-xl bg-zinc-950/80 px-3 py-2">
+                    <div className="text-[9px] uppercase tracking-wider text-zinc-500">In play</div>
+                    <div className="mt-0.5 text-lg font-bold text-amber-300 tabular-nums">{hotCount}</div>
                   </div>
-                  <div className="text-center">
-                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Close rate</div>
-                    <div className="mt-1 text-lg font-bold text-violet-300 tabular-nums">{closeRate}%</div>
+                  <div className="rounded-xl bg-zinc-950/80 px-3 py-2">
+                    <div className="text-[9px] uppercase tracking-wider text-zinc-500">Won</div>
+                    <div className="mt-0.5 text-lg font-bold text-emerald-300 tabular-nums">{wonCount}</div>
+                  </div>
+                  <div className="rounded-xl bg-zinc-950/80 px-3 py-2">
+                    <div className="text-[9px] uppercase tracking-wider text-zinc-500">Close rate</div>
+                    <div className="mt-0.5 text-lg font-bold text-violet-300 tabular-nums">{closeRate}%</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Search + quick filters */}
+              <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                <div className="relative flex-1 md:max-w-md">
+                  <svg className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input
+                    value={pipelineSearch}
+                    onChange={(e) => setPipelineSearch(e.target.value)}
+                    placeholder="Search name, phone, city…"
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950/60 py-2 pl-9 pr-3 text-sm text-white placeholder:text-zinc-600 focus:border-violet-500 focus:outline-none"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">
+                    {(["all", "unread", "today"] as const).map((f) => (
+                      <button
+                        key={f}
+                        onClick={() => setPipelineFilter(f)}
+                        className={`relative rounded-lg px-3 py-1.5 text-xs font-semibold capitalize transition ${
+                          pipelineFilter === f
+                            ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow"
+                            : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                      >
+                        {f === "unread" ? `Unread${unreadLeads > 0 ? ` · ${unreadLeads}` : ""}` : f}
+                      </button>
+                    ))}
                   </div>
                 </div>
               </div>
 
               {totalLeads === 0 ? (
-                <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/50 p-16 text-center">
+                <div className="mt-6 rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/50 p-16 text-center">
                   <div className="text-5xl">🗂️</div>
                   <p className="mt-4 text-lg font-semibold text-white">No leads in pipeline yet</p>
                   <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
@@ -6851,98 +6962,174 @@ export default function DashboardPage() {
                   </div>
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
-                  {PIPELINE_STAGES.map((stage) => {
-                    const laneContacts = byStage[stage.id];
-                    return (
-                      <div
-                        key={stage.id}
-                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("ring-2","ring-violet-500/60"); }}
-                        onDragLeave={(e) => { e.currentTarget.classList.remove("ring-2","ring-violet-500/60"); }}
-                        onDrop={(e) => {
-                          e.preventDefault();
-                          e.currentTarget.classList.remove("ring-2","ring-violet-500/60");
-                          const contactId = e.dataTransfer.getData("text/plain");
-                          if (contactId) setStage(contactId, stage.id);
-                        }}
-                        className="flex min-h-[220px] flex-col rounded-3xl border border-zinc-800 bg-zinc-950/60 p-3 transition"
-                      >
-                        {/* Lane header with gradient accent bar */}
-                        <div className={`h-1 rounded-full bg-gradient-to-r ${stage.accent}`} />
-                        <div className="mt-3 flex items-center justify-between px-1">
-                          <div>
-                            <div className="text-sm font-bold text-white">{stage.label}</div>
-                            <div className="text-[10px] text-zinc-500">{stage.desc}</div>
-                          </div>
-                          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-zinc-300">
-                            {laneContacts.length}
-                          </span>
-                        </div>
-
-                        <div className="mt-3 space-y-2 overflow-y-auto pr-1">
-                          {laneContacts.length === 0 && (
-                            <div className="rounded-xl border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
-                              Drop leads here
-                            </div>
-                          )}
-                          {laneContacts.map((c) => {
-                            const convo = convosByContact.get(c.id);
-                            return (
-                              <div
-                                key={c.id}
-                                draggable
-                                onDragStart={(e) => { e.dataTransfer.setData("text/plain", c.id); }}
-                                className="group cursor-grab rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 transition hover:border-violet-500/50 active:cursor-grabbing"
-                              >
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <div className="truncate text-sm font-semibold text-white">
-                                      {c.firstName} {c.lastName || ""}
-                                    </div>
-                                    <div className="text-[11px] text-zinc-500 tabular-nums">{c.phone}</div>
-                                    {c.state && (
-                                      <div className="mt-0.5 text-[10px] text-zinc-600">
-                                        {c.city ? `${c.city}, ` : ""}{c.state}
-                                      </div>
-                                    )}
-                                  </div>
-                                  {convo?.unread && convo.unread > 0 ? (
-                                    <span className="shrink-0 rounded-full bg-violet-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
-                                      {convo.unread}
-                                    </span>
-                                  ) : null}
-                                </div>
-
-                                <div className="mt-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
-                                  {convo && (
-                                    <button
-                                      onClick={() => {
-                                        handleSelectConversation(convo.id);
-                                        setActiveTab("conversations");
-                                      }}
-                                      className="flex-1 rounded-lg bg-violet-600/80 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600"
-                                    >
-                                      Open
-                                    </button>
-                                  )}
-                                  <select
-                                    value={stage.id}
-                                    onClick={(e) => e.stopPropagation()}
-                                    onChange={(e) => setStage(c.id, e.target.value as PipelineStage)}
-                                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-[10px] text-zinc-300"
-                                  >
-                                    {PIPELINE_STAGES.map((s) => (
-                                      <option key={s.id} value={s.id}>{s.label}</option>
-                                    ))}
-                                  </select>
-                                </div>
+                // Horizontal scrolling Trello-style board. Lanes are fixed
+                // width (w-80) and full height of the container. Each lane's
+                // card list has its own overflow-y-auto so the overall page
+                // never grows — no endless vertical scroll. The outer
+                // container hides overflow-y so the layout is height-locked.
+                <div className="mt-4 flex-1 overflow-hidden">
+                  <div className="flex h-full gap-4 overflow-x-auto pb-2">
+                    {PIPELINE_STAGES.map((stage) => {
+                      const laneContacts = byStage[stage.id];
+                      const laneUnread = laneContacts.reduce((acc, c) => {
+                        const convo = convosByContact.get(c.id);
+                        return acc + (convo?.unread && convo.unread > 0 ? 1 : 0);
+                      }, 0);
+                      return (
+                        <div
+                          key={stage.id}
+                          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("ring-2","ring-violet-500/60"); }}
+                          onDragLeave={(e) => { e.currentTarget.classList.remove("ring-2","ring-violet-500/60"); }}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            e.currentTarget.classList.remove("ring-2","ring-violet-500/60");
+                            const contactId = e.dataTransfer.getData("text/plain");
+                            if (contactId) setStage(contactId, stage.id);
+                          }}
+                          className="flex h-full w-80 shrink-0 flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-950/40 backdrop-blur-sm transition"
+                        >
+                          {/* Lane header */}
+                          <div className="shrink-0 border-b border-zinc-800/80 px-4 pt-3 pb-3">
+                            <div className={`h-1 w-10 rounded-full bg-gradient-to-r ${stage.accent}`} />
+                            <div className="mt-2 flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <div className="text-sm font-bold text-white">{stage.label}</div>
+                                <span className={`rounded-full bg-gradient-to-r ${stage.accent} px-2 py-0.5 text-[10px] font-bold tabular-nums text-white shadow-sm`}>
+                                  {laneContacts.length}
+                                </span>
                               </div>
-                            );
-                          })}
+                              {laneUnread > 0 && (
+                                <span className="flex items-center gap-1 rounded-full bg-violet-500/20 px-2 py-0.5 text-[10px] font-semibold text-violet-200 ring-1 ring-violet-500/40">
+                                  <span className="relative flex h-1.5 w-1.5">
+                                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-75" />
+                                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-400" />
+                                  </span>
+                                  {laneUnread} new
+                                </span>
+                              )}
+                            </div>
+                            <div className="mt-1 text-[10px] text-zinc-500">{stage.desc}</div>
+                          </div>
+
+                          {/* Scrollable card list — THIS is what keeps the
+                              board from growing off the page. Lane is flex-1
+                              so it fills the outer fixed height, then the
+                              inner list gets its own vertical scroll. */}
+                          <div className="flex-1 space-y-2 overflow-y-auto p-3">
+                            {laneContacts.length === 0 && (
+                              <div className="rounded-2xl border border-dashed border-zinc-800 bg-zinc-900/30 p-6 text-center text-[11px] text-zinc-600">
+                                Drop leads here
+                              </div>
+                            )}
+                            {laneContacts.map((c) => {
+                              const convo = convosByContact.get(c.id);
+                              const grad = avatarGradient(c);
+                              const unread = convo?.unread && convo.unread > 0;
+                              return (
+                                <div
+                                  key={c.id}
+                                  draggable
+                                  onDragStart={(e) => { e.dataTransfer.setData("text/plain", c.id); }}
+                                  onDoubleClick={() => {
+                                    if (convo) {
+                                      handleSelectConversation(convo.id);
+                                      setActiveTab("conversations");
+                                    }
+                                  }}
+                                  className={`group relative cursor-grab overflow-hidden rounded-2xl border bg-gradient-to-b from-zinc-900/90 to-zinc-900/60 p-3 transition hover:-translate-y-0.5 hover:border-violet-500/50 hover:shadow-lg hover:shadow-violet-500/10 active:cursor-grabbing ${
+                                    unread ? "border-violet-500/40 ring-1 ring-violet-500/20" : "border-zinc-800"
+                                  }`}
+                                >
+                                  {/* Unread accent stripe */}
+                                  {unread && (
+                                    <span className="absolute left-0 top-0 h-full w-0.5 bg-gradient-to-b from-violet-500 to-fuchsia-500" />
+                                  )}
+
+                                  <div className="flex items-start gap-2.5">
+                                    {/* Avatar */}
+                                    <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${grad} text-[11px] font-bold text-white shadow-inner`}>
+                                      {initials(c)}
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0 flex-1">
+                                          <div className="truncate text-sm font-semibold text-white">
+                                            {c.firstName} {c.lastName || ""}
+                                          </div>
+                                          <div className="truncate text-[11px] text-zinc-500 tabular-nums">{c.phone}</div>
+                                        </div>
+                                        {unread ? (
+                                          <span className="shrink-0 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500 px-1.5 py-0.5 text-[9px] font-bold text-white shadow">
+                                            {convo!.unread}
+                                          </span>
+                                        ) : convo?.lastMessageAt ? (
+                                          <span className="shrink-0 text-[10px] text-zinc-500 tabular-nums">
+                                            {relTime(convo.lastMessageAt)}
+                                          </span>
+                                        ) : null}
+                                      </div>
+
+                                      {/* Last message preview */}
+                                      {convo?.preview && (
+                                        <div className="mt-1.5 line-clamp-2 text-[11px] leading-snug text-zinc-400">
+                                          {convo.preview}
+                                        </div>
+                                      )}
+
+                                      {/* Meta chips */}
+                                      <div className="mt-2 flex flex-wrap items-center gap-1">
+                                        {c.state && (
+                                          <span className="rounded-md bg-zinc-800/80 px-1.5 py-0.5 text-[9px] font-medium text-zinc-400">
+                                            {c.city ? `${c.city}, ` : ""}{c.state}
+                                          </span>
+                                        )}
+                                        {c.leadSource && (
+                                          <span className="rounded-md bg-sky-500/10 px-1.5 py-0.5 text-[9px] font-medium text-sky-300 ring-1 ring-sky-500/30">
+                                            {c.leadSource}
+                                          </span>
+                                        )}
+                                        {c.quote && (
+                                          <span className="rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-medium text-emerald-300 ring-1 ring-emerald-500/30">
+                                            ${c.quote}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  {/* Quick actions revealed on hover */}
+                                  <div className="mt-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                    {convo && (
+                                      <button
+                                        onClick={() => {
+                                          handleSelectConversation(convo.id);
+                                          setActiveTab("conversations");
+                                        }}
+                                        className="flex-1 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-2 py-1.5 text-[10px] font-semibold text-white shadow hover:from-violet-500 hover:to-fuchsia-500"
+                                      >
+                                        Open chat
+                                      </button>
+                                    )}
+                                    <select
+                                      value={stage.id}
+                                      onClick={(e) => e.stopPropagation()}
+                                      onChange={(e) => setStage(c.id, e.target.value as PipelineStage)}
+                                      className="rounded-lg border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-[10px] text-zinc-300 hover:border-violet-500/50"
+                                    >
+                                      {PIPELINE_STAGES.map((s) => (
+                                        <option key={s.id} value={s.id}>{s.label}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
               )}
             </div>

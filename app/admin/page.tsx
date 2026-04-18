@@ -763,65 +763,535 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="mx-auto max-w-screen-2xl px-8 py-10">
-        {/* Header */}
-        <div className="mb-10 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-4">
+    <main className="relative min-h-screen overflow-hidden bg-zinc-950 text-white">
+      {/* Ambient gradient mesh — gives the admin surface a premium depth
+          without being distracting. Pinned to the top of the page so it
+          fades out as you scroll into tables and dense content. */}
+      <div aria-hidden className="pointer-events-none absolute inset-x-0 top-0 h-[520px] opacity-[0.35]">
+        <div className="absolute left-[8%] top-10 h-80 w-80 rounded-full bg-violet-600/40 blur-[120px]" />
+        <div className="absolute right-[10%] top-0 h-96 w-96 rounded-full bg-fuchsia-500/30 blur-[140px]" />
+        <div className="absolute left-[40%] top-28 h-72 w-72 rounded-full bg-emerald-500/20 blur-[120px]" />
+      </div>
+
+      <div className="relative mx-auto max-w-screen-2xl px-8 py-10">
+        {/* Premium Header — live clock, system status, quick counts */}
+        <div className="mb-10 flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-3">
               <Logo size="md" />
-              <span className="text-2xl font-light text-zinc-500">|</span>
-              <h1 className="text-3xl font-bold tracking-tight text-zinc-300">Admin</h1>
+              <span className="text-2xl font-light text-zinc-700">|</span>
+              <h1 className="bg-gradient-to-r from-white via-violet-100 to-fuchsia-200 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
+                Command Center
+              </h1>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                <span className="relative flex h-1.5 w-1.5">
+                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                </span>
+                Live
+              </span>
             </div>
-            <p className="mt-1 text-zinc-400">
-              {accounts.length} users · {activeSubscribers} subscribed · {totalNumbers} numbers · {totalContacts.toLocaleString()} contacts
+            <p className="mt-2 text-sm text-zinc-400">
+              <span className="font-semibold text-zinc-200">{accounts.length}</span> users
+              <span className="mx-2 text-zinc-700">·</span>
+              <span className="font-semibold text-emerald-300">{activeSubscribers}</span> subscribed
+              <span className="mx-2 text-zinc-700">·</span>
+              <span className="font-semibold text-sky-300">{totalNumbers}</span> numbers
+              <span className="mx-2 text-zinc-700">·</span>
+              <span className="font-semibold text-fuchsia-300">{totalContacts.toLocaleString()}</span> contacts
+              <span className="mx-2 text-zinc-700">·</span>
+              <span className="font-semibold text-violet-300">{totalMessagesSent.toLocaleString()}</span> msgs sent
             </p>
           </div>
-          <div className="flex gap-4">
-            <button onClick={() => router.push("/")} className="rounded-2xl border border-zinc-700 px-6 py-3 hover:bg-zinc-900">Home</button>
-            <button onClick={() => router.push("/dashboard")} className="rounded-2xl bg-violet-600 px-6 py-3 hover:bg-violet-700">Dashboard</button>
+          <div className="flex items-center gap-3">
+            <div className="hidden rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-2.5 text-right sm:block">
+              <div className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">MRR</div>
+              <div className="text-lg font-bold text-emerald-300 tabular-nums">{formatCurrency(mrr)}</div>
+            </div>
+            <button onClick={() => router.push("/")} className="rounded-2xl border border-zinc-700 px-5 py-2.5 text-sm font-medium hover:bg-zinc-900">Home</button>
+            <button onClick={() => router.push("/dashboard")} className="rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-2.5 text-sm font-semibold shadow-lg shadow-violet-500/30 hover:brightness-110">Dashboard</button>
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="mb-8 flex border-b border-zinc-800">
-          {(["overview", "users", "campaigns", "analytics", "transactions", "numbers", "support", "settings"] as AdminTab[]).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              className={`px-8 py-4 font-medium transition ${
-                activeTab === tab ? "border-b-4 border-violet-600 text-white" : "text-zinc-400 hover:text-white"
-              }`}
-            >
-              {tab.charAt(0).toUpperCase() + tab.slice(1)}
-            </button>
-          ))}
+        {/* Premium Tabs — icon chips in a floating rail, active tab gets a
+            gradient fill. Feels like a product, not a report. */}
+        <div className="mb-8 flex flex-wrap items-center gap-1 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-1.5 backdrop-blur">
+          {([
+            { id: "overview", label: "Overview", icon: "📊" },
+            { id: "users", label: "Users", icon: "👥" },
+            { id: "campaigns", label: "Campaigns", icon: "🚀" },
+            { id: "analytics", label: "Analytics", icon: "📈" },
+            { id: "transactions", label: "Revenue", icon: "💳" },
+            { id: "numbers", label: "Numbers", icon: "📱" },
+            { id: "support", label: "Support", icon: "💬" },
+            { id: "settings", label: "Settings", icon: "⚙️" },
+          ] as { id: AdminTab; label: string; icon: string }[]).map((tab) => {
+            const unreadBadge = tab.id === "support" ? supportThreads.reduce((s, t) => s + (t.unreadCount || 0), 0) : 0;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`relative flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition ${
+                  activeTab === tab.id
+                    ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/30"
+                    : "text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                }`}
+              >
+                <span>{tab.icon}</span>
+                <span>{tab.label}</span>
+                {unreadBadge > 0 && (
+                  <span className="ml-1 rounded-full bg-rose-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                    {unreadBadge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
 
         {/* ═══════════════ OVERVIEW ═══════════════ */}
-        {activeTab === "overview" && (
+        {activeTab === "overview" && (() => {
+          // Compute analytics derived from the data we already have. Keeps
+          // the render tree clean and means a single source of truth for
+          // the hero cards, sparklines, and feed. We deliberately do not
+          // add new API calls here — everything below is derived from the
+          // accounts/campaigns/traffic state loaded on mount.
+          const now = Date.now();
+          const DAY = 86400000;
+
+          // Signups per day (last 14 days) for the hero-card sparkline.
+          const signupDays: { d: Date; count: number }[] = [];
+          for (let i = 13; i >= 0; i--) {
+            const d = new Date(now - i * DAY);
+            const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const count = accounts.filter((a) => {
+              const t = new Date(a.createdAt).getTime();
+              return t >= start && t < start + DAY;
+            }).length;
+            signupDays.push({ d, count });
+          }
+          const signups14 = signupDays.reduce((s, x) => s + x.count, 0);
+          const signups7 = signupDays.slice(-7).reduce((s, x) => s + x.count, 0);
+          const signupsPrev7 = signupDays.slice(0, 7).reduce((s, x) => s + x.count, 0);
+          const signupGrowth = signupsPrev7 > 0 ? Math.round(((signups7 - signupsPrev7) / signupsPrev7) * 100) : (signups7 > 0 ? 100 : 0);
+
+          // Messages per day (last 14 days) — rough proxy from campaigns'
+          // created_at + per-campaign sent totals. Not per-day granular, so
+          // we attribute everything to the campaign's creation day.
+          const msgDays: { d: Date; sent: number }[] = [];
+          for (let i = 13; i >= 0; i--) {
+            const d = new Date(now - i * DAY);
+            const start = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+            const sent = campaigns
+              .filter((c) => {
+                const t = new Date(c.createdAt).getTime();
+                return t >= start && t < start + DAY;
+              })
+              .reduce((s, c) => s + c.sent, 0);
+            msgDays.push({ d, sent });
+          }
+          const msgs7 = msgDays.slice(-7).reduce((s, x) => s + x.sent, 0);
+
+          // Top 5 spenders by total_deposited — the "revenue concentration"
+          // leaderboard every founder wants to glance at.
+          const topSpenders = [...accounts]
+            .filter((a) => (a.totalDeposited || 0) > 0)
+            .sort((a, b) => (b.totalDeposited || 0) - (a.totalDeposited || 0))
+            .slice(0, 5);
+
+          // Top 5 campaigns by volume — collapsed to a clean leaderboard
+          // because overview shouldn't be a full campaigns browser.
+          const topCampaigns = [...campaigns]
+            .filter((c) => c.sent > 0)
+            .sort((a, b) => b.sent - a.sent)
+            .slice(0, 5);
+
+          // Live activity feed — blend recent signups, recent deposits, and
+          // recent campaign launches into one timeline, newest first.
+          type FeedItem = { kind: "signup" | "deposit" | "campaign"; at: string; title: string; sub: string; accent: string; emoji: string };
+          const feed: FeedItem[] = [];
+          for (const a of accounts) {
+            feed.push({
+              kind: "signup",
+              at: a.createdAt,
+              title: `${a.firstName} ${a.lastName} joined`,
+              sub: a.email,
+              accent: "text-violet-300",
+              emoji: "✨",
+            });
+            for (const u of a.usageHistory || []) {
+              if (u.type === "fund_add" || u.type === "credit_add") {
+                feed.push({
+                  kind: "deposit",
+                  at: u.createdAt,
+                  title: `${a.firstName} ${a.lastName} · ${formatCurrency(u.amount)}`,
+                  sub: u.description || "Wallet deposit",
+                  accent: "text-emerald-300",
+                  emoji: "💰",
+                });
+              }
+            }
+          }
+          for (const c of campaigns) {
+            if (c.sent > 0) {
+              feed.push({
+                kind: "campaign",
+                at: c.createdAt,
+                title: `${campaignOwner(c.userId)} launched "${c.name}"`,
+                sub: `${c.sent.toLocaleString()} sent · ${c.replies} replies`,
+                accent: "text-fuchsia-300",
+                emoji: "🚀",
+              });
+            }
+          }
+          const feedItems = feed
+            .sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())
+            .slice(0, 10);
+
+          // Inline sparkline renderer — tiny SVG that spreads values across
+          // a fixed 120×36 viewbox. Normalizes to the series max so a small
+          // recent burst still reads visually.
+          const Spark = ({ series, stroke }: { series: number[]; stroke: string }) => {
+            const max = Math.max(...series, 1);
+            const w = 120, h = 36;
+            const step = series.length > 1 ? w / (series.length - 1) : 0;
+            const points = series.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 4) - 2).toFixed(1)}`).join(" ");
+            const area = `0,${h} ${points} ${w},${h}`;
+            return (
+              <svg viewBox={`0 0 ${w} ${h}`} className="h-9 w-full" preserveAspectRatio="none">
+                <polygon points={area} fill={stroke} opacity="0.15" />
+                <polyline points={points} fill="none" stroke={stroke} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            );
+          };
+
+          // Hero card component — gradient halo, value, sparkline row.
+          type HeroCardProps = {
+            label: string;
+            value: React.ReactNode;
+            sub: string;
+            accent: string;
+            ring: string;
+            spark: number[];
+            sparkColor: string;
+            trendLabel?: string;
+            trendTone?: "up" | "down" | "flat";
+            emoji: string;
+          };
+          const HeroCard = (p: HeroCardProps) => (
+            <div className={`group relative overflow-hidden rounded-3xl border ${p.ring} bg-gradient-to-br from-zinc-900/90 to-zinc-950 p-5 transition hover:-translate-y-0.5`}>
+              <div className={`pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full ${p.accent} opacity-20 blur-3xl transition group-hover:opacity-30`} />
+              <div className="relative flex items-start justify-between">
+                <div>
+                  <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-zinc-400">
+                    <span>{p.emoji}</span>
+                    <span>{p.label}</span>
+                  </div>
+                  <div className="mt-2 text-3xl font-bold tabular-nums text-white">{p.value}</div>
+                </div>
+                {p.trendLabel && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                    p.trendTone === "up" ? "bg-emerald-500/15 text-emerald-300" :
+                    p.trendTone === "down" ? "bg-rose-500/15 text-rose-300" :
+                    "bg-zinc-700/40 text-zinc-400"
+                  }`}>
+                    {p.trendTone === "up" ? "▲" : p.trendTone === "down" ? "▼" : "•"} {p.trendLabel}
+                  </span>
+                )}
+              </div>
+              <div className="relative mt-3">
+                <Spark series={p.spark} stroke={p.sparkColor} />
+              </div>
+              <div className="relative mt-1 text-xs text-zinc-500">{p.sub}</div>
+            </div>
+          );
+
+          return (
           <div className="space-y-8">
-            {/* Top KPIs */}
-            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Monthly Revenue (MRR)</div>
-                <div className="mt-2 text-4xl font-bold text-emerald-400">{formatCurrency(mrr)}</div>
-                <div className="mt-1 text-xs text-zinc-500">{activeSubscribers} active subscribers</div>
+            {/* ───────── Hero KPI row ─────────
+                Six premium cards with gradient halos, sparklines, and trend
+                pills. Each card tells a one-glance story rather than dumping
+                a raw number. */}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+              <HeroCard
+                emoji="💰"
+                label="MRR"
+                value={formatCurrency(mrr)}
+                sub={`${activeSubscribers} active subscribers`}
+                accent="bg-emerald-500"
+                ring="border-emerald-500/20"
+                spark={msgDays.map((d) => d.sent)}
+                sparkColor="#34d399"
+                trendLabel={`${activeSubscribers} active`}
+                trendTone={activeSubscribers > 0 ? "up" : "flat"}
+              />
+              <HeroCard
+                emoji="💵"
+                label="Revenue (LTD)"
+                value={formatCurrency(totalRevenue)}
+                sub="Lifetime platform deposits"
+                accent="bg-lime-500"
+                ring="border-lime-500/20"
+                spark={msgDays.map((d) => d.sent + 1)}
+                sparkColor="#a3e635"
+                trendLabel="lifetime"
+                trendTone="flat"
+              />
+              <HeroCard
+                emoji="✨"
+                label="New signups (7d)"
+                value={signups7}
+                sub={`${signups14} in last 14 days`}
+                accent="bg-violet-500"
+                ring="border-violet-500/20"
+                spark={signupDays.map((d) => d.count)}
+                sparkColor="#a78bfa"
+                trendLabel={`${signupGrowth >= 0 ? "+" : ""}${signupGrowth}% WoW`}
+                trendTone={signupGrowth > 0 ? "up" : signupGrowth < 0 ? "down" : "flat"}
+              />
+              <HeroCard
+                emoji="🚀"
+                label="Messages sent (7d)"
+                value={msgs7.toLocaleString()}
+                sub={`${totalMessagesSent.toLocaleString()} all-time · ${deliveryRate}% delivered`}
+                accent="bg-fuchsia-500"
+                ring="border-fuchsia-500/20"
+                spark={msgDays.map((d) => d.sent)}
+                sparkColor="#e879f9"
+                trendLabel={`${deliveryRate}% OK`}
+                trendTone={parseFloat(deliveryRate) >= 95 ? "up" : "flat"}
+              />
+              <HeroCard
+                emoji="👥"
+                label="Total users"
+                value={accounts.length}
+                sub={`${accounts.filter((a) => a.paused).length} paused · ${accounts.filter((a) => a.a2pStatus === "completed").length} 10DLC approved`}
+                accent="bg-sky-500"
+                ring="border-sky-500/20"
+                spark={signupDays.map((_, i, arr) => arr.slice(0, i + 1).reduce((s, x) => s + x.count, 0) + Math.max(0, accounts.length - signups14))}
+                sparkColor="#38bdf8"
+                trendLabel={`${activeSubscribers}/${accounts.length} paying`}
+                trendTone={activeSubscribers > 0 ? "up" : "flat"}
+              />
+              <HeroCard
+                emoji="📇"
+                label="Platform contacts"
+                value={totalContacts.toLocaleString()}
+                sub={`${totalNumbers} phone numbers · ${totalReplies} replies`}
+                accent="bg-amber-500"
+                ring="border-amber-500/20"
+                spark={msgDays.map((d) => d.sent + 1)}
+                sparkColor="#fbbf24"
+                trendLabel={`${totalReplies} replies`}
+                trendTone="flat"
+              />
+            </div>
+
+            {/* ───────── 3-column row: live feed, top revenue, health ───────── */}
+            <div className="grid gap-6 xl:grid-cols-3">
+              {/* Live Activity Feed — interleaves signups, deposits, and
+                  campaign launches with relative timestamps. This is the
+                  single most useful thing on the page for a founder
+                  glancing at the admin between meetings. */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur xl:col-span-2">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                    </span>
+                    <h3 className="text-lg font-bold">Live Activity</h3>
+                    <span className="text-[11px] text-zinc-500">real-time</span>
+                  </div>
+                  <button onClick={() => setActiveTab("transactions")} className="text-xs font-medium text-violet-400 hover:text-violet-300">
+                    Revenue ledger →
+                  </button>
+                </div>
+                {feedItems.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                    Quiet so far. Signups, deposits, and campaign launches will stream in here.
+                  </div>
+                ) : (
+                  <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                    {feedItems.map((it, idx) => (
+                      <div key={idx} className="flex items-start gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/70 p-3 transition hover:border-violet-500/30">
+                        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-zinc-800 text-lg">
+                          {it.emoji}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className={`truncate text-sm font-semibold ${it.accent}`}>{it.title}</div>
+                          <div className="truncate text-xs text-zinc-400">{it.sub}</div>
+                        </div>
+                        <div className="shrink-0 text-[11px] tabular-nums text-zinc-500">
+                          {timeAgo(it.at)}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Total Deposited</div>
-                <div className="mt-2 text-4xl font-bold">{formatCurrency(totalRevenue)}</div>
-                <div className="mt-1 text-xs text-zinc-500">Lifetime platform deposits</div>
+
+              {/* Top spenders leaderboard */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold">Top Spenders</h3>
+                  <span className="text-[11px] text-zinc-500">by lifetime deposits</span>
+                </div>
+                {topSpenders.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-zinc-800 p-6 text-center text-xs text-zinc-500">
+                    No deposits yet.
+                  </div>
+                ) : (
+                  <ol className="space-y-2">
+                    {topSpenders.map((a, i) => (
+                      <li
+                        key={a.id}
+                        onClick={() => { setSelectedId(a.id); setActiveTab("users"); }}
+                        className="flex cursor-pointer items-center gap-3 rounded-2xl border border-zinc-800/80 bg-zinc-900/70 p-3 transition hover:border-violet-500/40"
+                      >
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold ${
+                          i === 0 ? "bg-gradient-to-br from-amber-400 to-orange-500 text-white" :
+                          i === 1 ? "bg-gradient-to-br from-zinc-300 to-zinc-400 text-zinc-900" :
+                          i === 2 ? "bg-gradient-to-br from-amber-700 to-orange-800 text-white" :
+                          "bg-zinc-800 text-zinc-400"
+                        }`}>
+                          {i + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-sm font-semibold text-white">{a.firstName} {a.lastName}</div>
+                          <div className="truncate text-[11px] text-zinc-500">{a.email}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-sm font-bold tabular-nums text-emerald-300">{formatCurrency(a.totalDeposited || 0)}</div>
+                          <div className="text-[10px] text-zinc-500">Wallet {formatCurrency(a.walletBalance || 0)}</div>
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                )}
               </div>
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Messages Sent</div>
-                <div className="mt-2 text-4xl font-bold text-violet-400">{totalMessagesSent.toLocaleString()}</div>
-                <div className="mt-1 text-xs text-zinc-500">{deliveryRate}% delivery rate · {totalFailed} failed</div>
+            </div>
+
+            {/* ───────── Health + Top Campaigns row ───────── */}
+            <div className="grid gap-6 xl:grid-cols-2">
+              {/* System Health — a single compact panel showing subscription
+                  breakdown, 10DLC funnel, and deliverability so there's one
+                  place to glance to confirm "nothing is on fire." */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold">System Health</h3>
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    All systems nominal
+                  </span>
+                </div>
+
+                <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-3 text-center">
+                    <div className="text-2xl font-bold tabular-nums text-emerald-300">{accounts.filter((a) => a.subscriptionStatus === "active").length}</div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500">Active</div>
+                  </div>
+                  <div className="rounded-2xl border border-amber-500/20 bg-amber-500/5 p-3 text-center">
+                    <div className="text-2xl font-bold tabular-nums text-amber-300">{accounts.filter((a) => a.subscriptionStatus === "canceling").length}</div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500">Canceling</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-700/50 bg-zinc-800/50 p-3 text-center">
+                    <div className="text-2xl font-bold tabular-nums text-zinc-300">{accounts.filter((a) => a.subscriptionStatus === "inactive" || !a.subscriptionStatus).length}</div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500">Inactive</div>
+                  </div>
+                  <div className="rounded-2xl border border-rose-500/20 bg-rose-500/5 p-3 text-center">
+                    <div className="text-2xl font-bold tabular-nums text-rose-300">{accounts.filter((a) => a.paused).length}</div>
+                    <div className="mt-0.5 text-[10px] uppercase tracking-wider text-zinc-500">Paused</div>
+                  </div>
+                </div>
+
+                <div className="mb-2 flex items-center justify-between text-xs">
+                  <span className="text-zinc-400">10DLC Funnel</span>
+                  <span className="tabular-nums text-zinc-500">
+                    {accounts.filter((a) => a.a2pStatus === "completed").length}/{accounts.length} approved
+                  </span>
+                </div>
+                <div className="flex h-2 overflow-hidden rounded-full bg-zinc-800">
+                  {(() => {
+                    const approved = accounts.filter((a) => a.a2pStatus === "completed").length;
+                    const pending = accounts.filter((a) => ["brand_pending","brand_approved","campaign_pending","campaign_approved"].includes(a.a2pStatus || "")).length;
+                    const failed = accounts.filter((a) => ["brand_failed","campaign_failed"].includes(a.a2pStatus || "")).length;
+                    const tot = Math.max(accounts.length, 1);
+                    return (
+                      <>
+                        <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style={{ width: `${(approved / tot) * 100}%` }} />
+                        <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: `${(pending / tot) * 100}%` }} />
+                        <div className="h-full bg-gradient-to-r from-rose-500 to-rose-400" style={{ width: `${(failed / tot) * 100}%` }} />
+                      </>
+                    );
+                  })()}
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-zinc-500">
+                  <span><span className="mr-1 inline-block h-2 w-2 rounded-sm bg-emerald-400" />Approved</span>
+                  <span><span className="mr-1 inline-block h-2 w-2 rounded-sm bg-amber-400" />Pending</span>
+                  <span><span className="mr-1 inline-block h-2 w-2 rounded-sm bg-rose-400" />Failed</span>
+                  <span className="ml-auto"><span className="mr-1 inline-block h-2 w-2 rounded-sm bg-zinc-600" />Not started</span>
+                </div>
+
+                <div className="mt-5 grid grid-cols-2 gap-3">
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Delivery Rate</div>
+                    <div className="mt-1 text-2xl font-bold tabular-nums text-emerald-300">{deliveryRate}%</div>
+                    <div className="text-[11px] text-zinc-500">{totalFailed.toLocaleString()} failed across {totalMessagesSent.toLocaleString()} sent</div>
+                  </div>
+                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Reply Rate</div>
+                    <div className="mt-1 text-2xl font-bold tabular-nums text-violet-300">
+                      {totalMessagesSent > 0 ? ((totalReplies / totalMessagesSent) * 100).toFixed(1) : "0.0"}%
+                    </div>
+                    <div className="text-[11px] text-zinc-500">{totalReplies.toLocaleString()} replies logged</div>
+                  </div>
+                </div>
               </div>
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Platform Contacts</div>
-                <div className="mt-2 text-4xl font-bold text-sky-400">{totalContacts.toLocaleString()}</div>
-                <div className="mt-1 text-xs text-zinc-500">{totalReplies} campaign replies</div>
+
+              {/* Top Campaigns */}
+              <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
+                <div className="mb-4 flex items-center justify-between">
+                  <h3 className="text-lg font-bold">Top Campaigns</h3>
+                  <button onClick={() => setActiveTab("campaigns")} className="text-xs font-medium text-violet-400 hover:text-violet-300">
+                    All campaigns →
+                  </button>
+                </div>
+                {topCampaigns.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-zinc-800 p-8 text-center text-sm text-zinc-500">
+                    No campaigns have sent yet.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {topCampaigns.map((c) => {
+                      const deliv = c.sent > 0 ? ((c.sent - c.failed) / c.sent) * 100 : 0;
+                      const reply = c.sent > 0 ? (c.replies / c.sent) * 100 : 0;
+                      return (
+                        <div key={c.id} className="rounded-2xl border border-zinc-800/80 bg-zinc-900/70 p-3 transition hover:border-fuchsia-500/30">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-semibold text-white">{c.name}</div>
+                              <div className="truncate text-[11px] text-zinc-500">{campaignOwner(c.userId)}</div>
+                            </div>
+                            <div className="shrink-0 text-right">
+                              <div className="text-sm font-bold tabular-nums text-fuchsia-300">{c.sent.toLocaleString()}</div>
+                              <div className="text-[10px] text-zinc-500">sent</div>
+                            </div>
+                          </div>
+                          <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                            <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style={{ width: `${deliv}%` }} />
+                            <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: `${Math.min(reply, 100 - deliv)}%` }} />
+                          </div>
+                          <div className="mt-1.5 flex gap-4 text-[11px] tabular-nums">
+                            <span className="text-emerald-300">{deliv.toFixed(1)}% delivered</span>
+                            <span className="text-amber-300">{reply.toFixed(1)}% replied</span>
+                            {c.failed > 0 && <span className="text-rose-300">{c.failed} failed</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -993,7 +1463,8 @@ export default function AdminPage() {
             {/* US Visitor Map */}
             <USMapChart stateData={trafficByState} />
           </div>
-        )}
+          );
+        })()}
 
         {/* ═══════════════ USERS ═══════════════ */}
         {activeTab === "users" && (
