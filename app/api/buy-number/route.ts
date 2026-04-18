@@ -150,18 +150,20 @@ export async function POST(req: NextRequest) {
       });
       const searchData = await searchRes.json();
 
+      // HD voice isn't a server-side filter on Telnyx — we enable it via
+      // PATCH right after purchase. Here we only need sms + voice.
       type ApiFeature = string | { name?: string };
       type ApiNumber = { phone_number: string; features?: ApiFeature[] };
       const candidates = ((searchData?.data as ApiNumber[] | undefined) || []).filter((n) => {
         const feats = (n.features || []).map((f: ApiFeature) =>
           (typeof f === "string" ? f : f?.name || "").toLowerCase()
         );
-        return feats.includes("sms") && feats.includes("voice") && feats.includes("hd_voice");
+        return feats.includes("sms") && feats.includes("voice");
       });
 
       if (candidates.length === 0) {
         return NextResponse.json(
-          { success: false, error: "No SMS + voice + HD voice numbers available. Try a different area code." },
+          { success: false, error: "No SMS + voice numbers available. Try a different area code." },
           { status: 404 }
         );
       }

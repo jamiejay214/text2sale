@@ -68,20 +68,22 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Secondary client-side filter — verify SMS, voice, AND HD voice are all
-    // present on the Telnyx features array. Telnyx sometimes returns numbers
-    // lacking voice even when the query asked for it, and hd_voice can't be
-    // filtered server-side, so this is our last line of defense.
-    const fullyCapable = (data.data as TelnyxNumber[]).filter((n) => {
+    // Secondary client-side filter — verify SMS + voice are present on the
+    // features array. Telnyx sometimes returns numbers lacking voice even
+    // when the query asked for it, so this is our last line of defense.
+    //
+    // NOTE: Telnyx does NOT expose HD voice as a feature in the
+    // available_phone_numbers response. HD voice is really a codec /
+    // connection capability that we force-enable via PATCH on the number
+    // the moment it's purchased (see buy-number route). So every number
+    // we sell ships with HD voice enabled — we just can't pre-verify it
+    // from the search results.
+    const callAndTextable = (data.data as TelnyxNumber[]).filter((n) => {
       const feats = featureNames(n);
-      return (
-        feats.includes("sms") &&
-        feats.includes("voice") &&
-        feats.includes("hd_voice")
-      );
+      return feats.includes("sms") && feats.includes("voice");
     });
 
-    const numbers = fullyCapable.slice(0, 10).map((n) => {
+    const numbers = callAndTextable.slice(0, 10).map((n) => {
       const raw = n.phone_number;
       const digits = raw.replace(/\D/g, "").slice(1);
       return {
@@ -89,6 +91,7 @@ export async function POST(req: NextRequest) {
         display: `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`,
         locality: n.locality || "",
         region: n.administrative_area || "",
+        // We auto-enable hd_voice on purchase, so advertise it here.
         features: ["sms", "voice", "hd_voice"],
       };
     });
@@ -98,7 +101,7 @@ export async function POST(req: NextRequest) {
         success: true,
         numbers: [],
         message:
-          "No SMS + voice + HD voice numbers available for that area code. Try another area code.",
+          "No SMS + voice numbers available for that area code. Try another area code.",
       });
     }
 
