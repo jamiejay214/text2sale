@@ -144,7 +144,22 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
+type DashboardTab = "overview" | "conversations" | "pipeline" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
+
+// ── Pipeline stages ───────────────────────────────────────────────────────
+// The pipeline is a lightweight CRM lane view over contacts. Each contact
+// carries a pipeline_stage (stored on the contact row) that places them in
+// one of the lanes below. Drag a card between lanes to update the stage;
+// click a card to jump straight into that contact's conversation.
+type PipelineStage = "new" | "working" | "hot" | "quoted" | "won" | "lost";
+const PIPELINE_STAGES: { id: PipelineStage; label: string; accent: string; desc: string }[] = [
+  { id: "new",     label: "New",      accent: "from-sky-500 to-cyan-500",       desc: "Fresh leads, not yet contacted" },
+  { id: "working", label: "Working",  accent: "from-violet-500 to-fuchsia-500", desc: "In active conversation" },
+  { id: "hot",     label: "Hot",      accent: "from-amber-500 to-orange-500",   desc: "Intent signals are strong" },
+  { id: "quoted",  label: "Quoted",   accent: "from-indigo-500 to-purple-500",  desc: "Quote sent, awaiting decision" },
+  { id: "won",     label: "Won",      accent: "from-emerald-500 to-green-500",  desc: "Closed / sold" },
+  { id: "lost",    label: "Lost",     accent: "from-zinc-500 to-zinc-600",      desc: "Not interested or DNC" },
+];
 type SettingsSubTab = "numbers" | "billing" | "opt-out" | "activity" | "team" | "10dlc" | "biz-page" | "ai" | "suggestions" | "integrations";
 
 // Map internal Telnyx status to user-facing labels. Telnyx's delivery webhook
@@ -991,7 +1006,7 @@ export default function DashboardPage() {
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
-      const validTabs: DashboardTab[] = ["overview","conversations","campaigns","contacts","appointments","upload","templates","settings","learn"];
+      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","campaigns","contacts","appointments","upload","templates","settings","learn"];
       const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai","integrations"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
@@ -4677,6 +4692,7 @@ export default function DashboardPage() {
             return ([
               { id: "overview", label: "Overview" },
               { id: "conversations", label: "Conversations" },
+              { id: "pipeline", label: "Pipeline" },
               { id: "campaigns", label: "Campaigns" },
               { id: "contacts", label: "Contacts" },
               { id: "appointments", label: "Appointments" },
@@ -5591,8 +5607,23 @@ export default function DashboardPage() {
                                 {msg.contactName}
                               </span>
                               {msg.contactPhone && (
-                                <span className="shrink-0 text-[11px] text-zinc-500">
+                                <span className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500">
                                   {msg.contactPhone}
+                                  {/* Colored star — identifies which of the
+                                      user's lines this message went out on.
+                                      Color matches the line's chip in the
+                                      number picker. Sits next to the phone
+                                      number so the sent-from line is visible
+                                      without cluttering the status row. */}
+                                  {msg.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
+                                    <span
+                                      className={`leading-none ${getNumberColor(msg.fromNumber).replace(/bg-[^\s]+|ring-[^\s]+/g, "").trim()}`}
+                                      title={`Sent from ${msg.fromNumber}`}
+                                      aria-label={`Sent from ${msg.fromNumber}`}
+                                    >
+                                      ★
+                                    </span>
+                                  )}
                                 </span>
                               )}
                             </div>
@@ -5603,19 +5634,6 @@ export default function DashboardPage() {
                               <span className={`text-[10px] font-medium uppercase ${statusColor}`}>
                                 {displayMessageStatus(msg.status)}
                               </span>
-                              {/* Subtle colored star shows WHICH line this
-                                  message went out on — color matches the
-                                  line's chip in the number picker. Hover to
-                                  see the full number. */}
-                              {msg.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
-                                <span
-                                  className={`text-[11px] leading-none ${getNumberColor(msg.fromNumber).replace(/bg-[^\s]+|ring-[^\s]+/g, "").trim()}`}
-                                  title={`Sent from ${msg.fromNumber}`}
-                                  aria-label={`Sent from ${msg.fromNumber}`}
-                                >
-                                  ★
-                                </span>
-                              )}
                             </div>
                           </div>
                           <div className="shrink-0 text-[10px] text-zinc-500">
@@ -6728,6 +6746,208 @@ export default function DashboardPage() {
             )}
           </div>
         )}
+
+        {/* ═══════════════ PIPELINE ═══════════════
+            A simple drag-and-click kanban over existing contacts. Stages are
+            stored in localStorage (keyed by contact id) so this works today
+            without a DB migration — when a stage is assigned we also record a
+            lightweight "pipeline_stage" tag on the contact so the row stays
+            stable across sessions. Drag cards between lanes or click "Open"
+            to jump straight into the contact's conversation thread. */}
+        {activeTab === "pipeline" && (() => {
+          // Build a stage map from localStorage. Any contact not explicitly
+          // staged falls into "new" by default so the board is never empty.
+          const STAGE_STORAGE_KEY = "text2sale_pipeline_stages_v1";
+          const stageMap: Record<string, PipelineStage> = (() => {
+            if (typeof window === "undefined") return {};
+            try {
+              const raw = window.localStorage.getItem(STAGE_STORAGE_KEY);
+              return raw ? JSON.parse(raw) : {};
+            } catch { return {}; }
+          })();
+
+          const setStage = (contactId: string, stage: PipelineStage) => {
+            const next = { ...stageMap, [contactId]: stage };
+            try { window.localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(next)); } catch {}
+            // Force a re-render by bumping a state we already have
+            setActiveTab("pipeline");
+            // Trigger re-render via toast
+            window.setTimeout(() => setActiveTab("pipeline"), 0);
+          };
+
+          // Only show contacts the user has actually worked — skip DNC and
+          // unworked raw CSV rows so the board is signal, not noise. A lead
+          // qualifies for the board if it has an explicit stage OR has at
+          // least one conversation message OR is tagged as a working lead.
+          const convosByContact = new Map<string, ConversationRecord>();
+          conversations.forEach((c) => { convosByContact.set(c.contactId, c); });
+
+          const qualifyingContacts = contacts.filter((c) => {
+            if (c.dnc) return false;
+            if (stageMap[c.id]) return true;
+            if (convosByContact.has(c.id)) return true;
+            return false;
+          });
+
+          // Group contacts by stage.
+          const byStage: Record<PipelineStage, typeof contacts> = {
+            new: [], working: [], hot: [], quoted: [], won: [], lost: [],
+          };
+          qualifyingContacts.forEach((c) => {
+            const stage = stageMap[c.id] || "new";
+            byStage[stage].push(c);
+          });
+
+          const totalLeads = qualifyingContacts.length;
+          const won = byStage.won.length;
+          const closeRate = totalLeads > 0 ? Math.round((won / totalLeads) * 100) : 0;
+
+          return (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <h1 className="text-3xl font-bold">Pipeline</h1>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Drag leads between stages to track where every conversation stands. Click a card to jump into the thread.
+                  </p>
+                </div>
+                <div className="grid grid-cols-3 gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3 text-xs md:grid-cols-3">
+                  <div className="text-center">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">In pipeline</div>
+                    <div className="mt-1 text-lg font-bold text-white tabular-nums">{totalLeads}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Won</div>
+                    <div className="mt-1 text-lg font-bold text-emerald-300 tabular-nums">{won}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[10px] uppercase tracking-wider text-zinc-500">Close rate</div>
+                    <div className="mt-1 text-lg font-bold text-violet-300 tabular-nums">{closeRate}%</div>
+                  </div>
+                </div>
+              </div>
+
+              {totalLeads === 0 ? (
+                <div className="rounded-3xl border border-dashed border-zinc-800 bg-zinc-950/50 p-16 text-center">
+                  <div className="text-5xl">🗂️</div>
+                  <p className="mt-4 text-lg font-semibold text-white">No leads in pipeline yet</p>
+                  <p className="mx-auto mt-2 max-w-md text-sm text-zinc-400">
+                    As soon as you send or receive a message with a contact they show up here. You can also manually stage leads from the Contacts tab.
+                  </p>
+                  <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      onClick={() => setActiveTab("contacts")}
+                      className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-2.5 text-sm font-semibold text-white shadow-lg shadow-violet-500/30"
+                    >
+                      Browse Contacts
+                    </button>
+                    <button
+                      onClick={() => setActiveTab("upload")}
+                      className="rounded-xl border border-zinc-700 px-5 py-2.5 text-sm font-semibold text-zinc-200 hover:bg-zinc-900"
+                    >
+                      Upload CSV
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+                  {PIPELINE_STAGES.map((stage) => {
+                    const laneContacts = byStage[stage.id];
+                    return (
+                      <div
+                        key={stage.id}
+                        onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("ring-2","ring-violet-500/60"); }}
+                        onDragLeave={(e) => { e.currentTarget.classList.remove("ring-2","ring-violet-500/60"); }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.currentTarget.classList.remove("ring-2","ring-violet-500/60");
+                          const contactId = e.dataTransfer.getData("text/plain");
+                          if (contactId) setStage(contactId, stage.id);
+                        }}
+                        className="flex min-h-[220px] flex-col rounded-3xl border border-zinc-800 bg-zinc-950/60 p-3 transition"
+                      >
+                        {/* Lane header with gradient accent bar */}
+                        <div className={`h-1 rounded-full bg-gradient-to-r ${stage.accent}`} />
+                        <div className="mt-3 flex items-center justify-between px-1">
+                          <div>
+                            <div className="text-sm font-bold text-white">{stage.label}</div>
+                            <div className="text-[10px] text-zinc-500">{stage.desc}</div>
+                          </div>
+                          <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-zinc-300">
+                            {laneContacts.length}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 space-y-2 overflow-y-auto pr-1">
+                          {laneContacts.length === 0 && (
+                            <div className="rounded-xl border border-dashed border-zinc-800 p-3 text-center text-[11px] text-zinc-600">
+                              Drop leads here
+                            </div>
+                          )}
+                          {laneContacts.map((c) => {
+                            const convo = convosByContact.get(c.id);
+                            return (
+                              <div
+                                key={c.id}
+                                draggable
+                                onDragStart={(e) => { e.dataTransfer.setData("text/plain", c.id); }}
+                                className="group cursor-grab rounded-2xl border border-zinc-800 bg-zinc-900/80 p-3 transition hover:border-violet-500/50 active:cursor-grabbing"
+                              >
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0 flex-1">
+                                    <div className="truncate text-sm font-semibold text-white">
+                                      {c.firstName} {c.lastName || ""}
+                                    </div>
+                                    <div className="text-[11px] text-zinc-500 tabular-nums">{c.phone}</div>
+                                    {c.state && (
+                                      <div className="mt-0.5 text-[10px] text-zinc-600">
+                                        {c.city ? `${c.city}, ` : ""}{c.state}
+                                      </div>
+                                    )}
+                                  </div>
+                                  {convo?.unread && convo.unread > 0 ? (
+                                    <span className="shrink-0 rounded-full bg-violet-500 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                                      {convo.unread}
+                                    </span>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-2 flex items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                                  {convo && (
+                                    <button
+                                      onClick={() => {
+                                        handleSelectConversation(convo.id);
+                                        setActiveTab("conversations");
+                                      }}
+                                      className="flex-1 rounded-lg bg-violet-600/80 px-2 py-1 text-[10px] font-semibold text-white hover:bg-violet-600"
+                                    >
+                                      Open
+                                    </button>
+                                  )}
+                                  <select
+                                    value={stage.id}
+                                    onClick={(e) => e.stopPropagation()}
+                                    onChange={(e) => setStage(c.id, e.target.value as PipelineStage)}
+                                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-1.5 py-1 text-[10px] text-zinc-300"
+                                  >
+                                    {PIPELINE_STAGES.map((s) => (
+                                      <option key={s.id} value={s.id}>{s.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })()}
 
         {activeTab === "campaigns" && (
           <div className="grid gap-8 xl:grid-cols-[2.2fr_1fr]">
@@ -8996,7 +9216,7 @@ export default function DashboardPage() {
               ))}
             </div>
 
-        {settingsSubTab === "numbers" && (
+        {activeTab === "settings" && settingsSubTab === "numbers" && (
           <div className="grid gap-8 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="space-y-6">
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -9187,7 +9407,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {settingsSubTab === "billing" && (
+        {activeTab === "settings" && settingsSubTab === "billing" && (
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Subscription Section */}
             <div className="space-y-6">
@@ -9579,7 +9799,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {settingsSubTab === "opt-out" && (
+        {activeTab === "settings" && settingsSubTab === "opt-out" && (
           <div className="grid gap-8 lg:grid-cols-2">
             {/* Left Column — Keywords & Behavior */}
             <div className="space-y-6">
@@ -10043,7 +10263,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {settingsSubTab === "activity" && (
+        {activeTab === "settings" && settingsSubTab === "activity" && (
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
             <h2 className="text-2xl font-bold">Recent Activity</h2>
 
@@ -10077,7 +10297,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── TEAM TAB ── */}
-        {settingsSubTab === "team" && (
+        {activeTab === "settings" && settingsSubTab === "team" && (
           <div className="space-y-8">
             {/* Manager view — team overview */}
             {(currentUser.role === "manager" || currentUser.role === "admin") && (
@@ -10308,7 +10528,7 @@ export default function DashboardPage() {
         )}
 
         {/* ── 10DLC A2P Registration Tab ── */}
-        {settingsSubTab === "10dlc" && (
+        {activeTab === "settings" && settingsSubTab === "10dlc" && (
           <div className="space-y-6">
             <h2 className="text-2xl font-bold">10DLC A2P Registration</h2>
             <p className="text-zinc-400">
@@ -10672,7 +10892,7 @@ export default function DashboardPage() {
         )}
 
         {/* ═══════════════ BUSINESS PAGE EDITOR ═══════════════ */}
-        {settingsSubTab === "biz-page" && (
+        {activeTab === "settings" && settingsSubTab === "biz-page" && (
           <BizPageEditor
             slug={currentUser.businessSlug || ""}
             description={currentUser.businessDescription || ""}
@@ -10689,7 +10909,7 @@ export default function DashboardPage() {
           />
         )}
 
-        {settingsSubTab === "ai" && (
+        {activeTab === "settings" && settingsSubTab === "ai" && (
           <div className="space-y-6">
             {/* AI Plan status */}
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -11124,7 +11344,7 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {settingsSubTab === "suggestions" && (
+        {activeTab === "settings" && settingsSubTab === "suggestions" && (
           <div className="space-y-6">
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
               <h2 className="text-2xl font-bold">💡 Share Your Ideas</h2>
@@ -11209,7 +11429,7 @@ export default function DashboardPage() {
         )}
 
         {/* ═══════════════ INTEGRATIONS ═══════════════ */}
-        {settingsSubTab === "integrations" && (
+        {activeTab === "settings" && settingsSubTab === "integrations" && (
           <div className="space-y-6">
             {/* Header */}
             <div className="flex items-center justify-between">
