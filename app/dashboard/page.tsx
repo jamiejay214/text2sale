@@ -9,6 +9,7 @@ import Toasts from "@/components/Toasts";
 import Sparkline from "@/components/Sparkline";
 import TempBadge from "@/components/TempBadge";
 import SmartReplies from "@/components/SmartReplies";
+import CallHud, { type CallHudState } from "@/components/CallHud";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -144,7 +145,7 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
-type DashboardTab = "overview" | "conversations" | "pipeline" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
+type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 
 // ── Pipeline stages ───────────────────────────────────────────────────────
 // The pipeline is a lightweight CRM lane view over contacts. Each contact
@@ -545,6 +546,30 @@ export default function DashboardPage() {
   const [pipelineVersion, setPipelineVersion] = useState(0);
   const [pipelineSearch, setPipelineSearch] = useState("");
   const [pipelineFilter, setPipelineFilter] = useState<"all" | "unread" | "today">("all");
+
+  // ── Voice calling ─────────────────────────────────────────────────────
+  // Active call HUD (floating widget, one at a time). The full call
+  // history lives on the Calls tab; this `activeCall` is only the
+  // in-flight one we're currently animating.
+  const [activeCall, setActiveCall] = useState<CallHudState | null>(null);
+  type CallRecord = {
+    id: string;
+    userId: string;
+    contactId: string | null;
+    direction: "inbound" | "outbound";
+    fromNumber: string;
+    toNumber: string;
+    status: CallHudState["status"];
+    durationSec: number;
+    costCharged: number;
+    startedAt: string;
+    answeredAt?: string | null;
+    endedAt?: string | null;
+    recordingUrl?: string | null;
+    outcome?: string | null;
+    notes?: string | null;
+  };
+  const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
@@ -1790,6 +1815,137 @@ export default function DashboardPage() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [userId, settingsSubTab, refreshDeliverability]);
+
+  // ─── Voice calling — load history + subscribe to realtime call events ──
+  // Whenever the status on a calls row changes we update the HUD so the
+  // rep sees ringing → answered → hangup without polling. History loads
+  // in one shot on mount so the Calls tab is instant to open.
+  const rowToCall = useCallback((r: Record<string, unknown>): CallRecord => ({
+    id: r.id as string,
+    userId: r.user_id as string,
+    contactId: (r.contact_id as string | null) ?? null,
+    direction: r.direction as "inbound" | "outbound",
+    fromNumber: r.from_number as string,
+    toNumber: r.to_number as string,
+    status: r.status as CallHudState["status"],
+    durationSec: Number(r.duration_seconds || 0),
+    costCharged: Number(r.cost_charged || 0),
+    startedAt: r.started_at as string,
+    answeredAt: (r.answered_at as string | null) ?? null,
+    endedAt: (r.ended_at as string | null) ?? null,
+    recordingUrl: (r.recording_url as string | null) ?? null,
+    outcome: (r.outcome as string | null) ?? null,
+    notes: (r.notes as string | null) ?? null,
+  }), []);
+
+  useEffect(() => {
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase
+        .from("calls")
+        .select("*")
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false })
+        .limit(300);
+      if (!cancelled && data) {
+        setCallHistory(data.map(rowToCall));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [userId, rowToCall]);
+
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`calls_${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "calls", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const row = (payload.new || payload.old) as Record<string, unknown> | null;
+          if (!row) return;
+          const rec = rowToCall(row);
+
+          setCallHistory((prev) => {
+            const idx = prev.findIndex((c) => c.id === rec.id);
+            if (payload.eventType === "DELETE") return prev.filter((c) => c.id !== rec.id);
+            if (idx === -1) return [rec, ...prev];
+            const next = prev.slice();
+            next[idx] = rec;
+            return next;
+          });
+
+          // If this is the call currently in the HUD, mirror status.
+          setActiveCall((prev) => {
+            if (!prev || prev.callId !== rec.id) return prev;
+            return {
+              ...prev,
+              status: rec.status,
+              durationSec: rec.durationSec,
+              answeredAt: rec.answeredAt ? new Date(rec.answeredAt).getTime() : prev.answeredAt,
+            };
+          });
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, rowToCall]);
+
+  // Start an outbound call from anywhere in the dashboard. Picks a
+  // from-number sensibly (active conversation's line > first owned line).
+  const startCall = useCallback(async (opts: { to: string; contactId?: string | null; contactName?: string; fromNumber?: string }) => {
+    const fromGuess =
+      opts.fromNumber ||
+      currentUser?.ownedNumbers?.[0]?.number ||
+      "";
+    if (!fromGuess) {
+      setMessage("Add a phone number in Settings → Numbers before calling.");
+      window.setTimeout(() => setMessage(""), 3500);
+      return;
+    }
+    if (!opts.to) return;
+
+    setActiveCall({
+      callId: "pending",
+      contactName: opts.contactName || "Contact",
+      contactPhone: opts.to,
+      fromNumber: fromGuess,
+      status: "initiating",
+      startedAt: Date.now(),
+    });
+
+    try {
+      const res = await authFetch("/api/initiate-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: opts.to, from: fromGuess, contactId: opts.contactId || null }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setActiveCall((prev) => prev ? { ...prev, status: "failed", error: data.error || "Call failed" } : prev);
+        return;
+      }
+      setActiveCall((prev) => prev ? { ...prev, callId: data.callId, status: "ringing" } : prev);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Could not start call";
+      setActiveCall((prev) => prev ? { ...prev, status: "failed", error: msg } : prev);
+    }
+  }, [currentUser]);
+
+  const hangupCall = useCallback(async (callId: string) => {
+    if (!callId || callId === "pending") {
+      setActiveCall(null);
+      return;
+    }
+    try {
+      await authFetch("/api/hangup-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ callId }),
+      });
+    } catch { /* swallow — webhook will finalize the row either way */ }
+  }, []);
 
   // ─── ⌘K / Ctrl+K — global command palette trigger ─────────────────
   // Investor-grade CRMs (Linear, Attio, Superhuman) all have this. It
@@ -4699,6 +4855,7 @@ export default function DashboardPage() {
               { id: "overview", label: "Overview" },
               { id: "conversations", label: "Conversations" },
               { id: "pipeline", label: "Pipeline" },
+              { id: "calls", label: "📞 Calls" },
               { id: "campaigns", label: "Campaigns" },
               { id: "contacts", label: "Contacts" },
               { id: "appointments", label: "Appointments" },
@@ -5801,6 +5958,21 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                           <span>{selectedContact?.phone || "No contact linked"}</span>
+                          {selectedContact?.phone && !selectedContact?.dnc && (
+                            <button
+                              onClick={() => startCall({
+                                to: selectedContact.phone,
+                                contactId: selectedContact.id,
+                                contactName: `${selectedContact.firstName} ${selectedContact.lastName || ""}`.trim(),
+                                fromNumber: selectedConversation?.fromNumber,
+                              })}
+                              title="Call this contact — we ring your phone first"
+                              className="inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-300 transition hover:bg-emerald-500/20"
+                            >
+                              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                              Call
+                            </button>
+                          )}
                           {selectedContact?.state && (
                             <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] font-medium text-zinc-400" title={`Based on state: ${selectedContact.state}`}>
                               {(() => {
@@ -7108,9 +7280,23 @@ export default function DashboardPage() {
                                         }}
                                         className="flex-1 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-2 py-1.5 text-[10px] font-semibold text-white shadow hover:from-violet-500 hover:to-fuchsia-500"
                                       >
-                                        Open chat
+                                        💬 Chat
                                       </button>
                                     )}
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        startCall({
+                                          to: c.phone,
+                                          contactId: c.id,
+                                          contactName: `${c.firstName} ${c.lastName || ""}`.trim(),
+                                        });
+                                      }}
+                                      title="Call this lead"
+                                      className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 px-2 py-1.5 text-[10px] font-semibold text-white shadow hover:brightness-110"
+                                    >
+                                      📞
+                                    </button>
                                     <select
                                       value={stage.id}
                                       onClick={(e) => e.stopPropagation()}
@@ -7132,6 +7318,195 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+            </div>
+          );
+        })()}
+
+        {/* ═══════════════ CALLS ═══════════════
+            Full-page call management: a dial pad on the right for
+            one-off outbound calls, and a live history on the left that
+            streams in via the realtime subscription above. Every row
+            links back to its contact so you can jump straight to the
+            thread. Metrics up top pull from `callHistory` so they're
+            always current — no manual refresh. */}
+        {activeTab === "calls" && (() => {
+          const now = Date.now();
+          const DAY = 24 * 60 * 60 * 1000;
+          const callsToday = callHistory.filter(
+            (c) => new Date(c.startedAt).getTime() > now - DAY
+          );
+          const connectedToday = callsToday.filter((c) => c.status === "completed" || c.status === "answered").length;
+          const totalMinutes = callHistory.reduce((s, c) => s + (c.durationSec || 0), 0) / 60;
+          const totalSpend = callHistory.reduce((s, c) => s + (c.costCharged || 0), 0);
+          const connectRate = callsToday.length
+            ? Math.round((connectedToday / callsToday.length) * 100)
+            : 0;
+
+          const fmtDur = (sec: number) => {
+            if (!sec) return "—";
+            const m = Math.floor(sec / 60);
+            const s = sec % 60;
+            return `${m}:${String(s).padStart(2, "0")}`;
+          };
+          const fmtAgo = (iso: string) => {
+            const diff = now - new Date(iso).getTime();
+            if (diff < 60_000) return "just now";
+            if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+            if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+            return `${Math.floor(diff / 86_400_000)}d ago`;
+          };
+
+          const statusChip = (s: CallRecord["status"]) => {
+            const map: Record<CallRecord["status"], { label: string; cls: string }> = {
+              initiating: { label: "Starting", cls: "bg-sky-500/10 text-sky-300 ring-sky-500/30" },
+              ringing: { label: "Ringing", cls: "bg-violet-500/10 text-violet-300 ring-violet-500/30" },
+              answered: { label: "Live", cls: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30" },
+              completed: { label: "Completed", cls: "bg-emerald-500/10 text-emerald-300 ring-emerald-500/30" },
+              "no-answer": { label: "No answer", cls: "bg-amber-500/10 text-amber-300 ring-amber-500/30" },
+              busy: { label: "Busy", cls: "bg-amber-500/10 text-amber-300 ring-amber-500/30" },
+              voicemail: { label: "Voicemail", cls: "bg-indigo-500/10 text-indigo-300 ring-indigo-500/30" },
+              failed: { label: "Failed", cls: "bg-red-500/10 text-red-300 ring-red-500/30" },
+              canceled: { label: "Canceled", cls: "bg-zinc-500/10 text-zinc-400 ring-zinc-500/30" },
+            };
+            const v = map[s];
+            return (
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${v.cls}`}>
+                {v.label}
+              </span>
+            );
+          };
+
+          return (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <h1 className="bg-gradient-to-r from-white via-violet-200 to-fuchsia-200 bg-clip-text text-3xl font-bold tracking-tight text-transparent">
+                    Calls
+                  </h1>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Dial any contact with one click. We ring your phone, then bridge the lead. Every call logs with duration, cost, and recording.
+                  </p>
+                </div>
+              </div>
+
+              {/* Metrics */}
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                {[
+                  { label: "Calls today", value: callsToday.length, accent: "from-violet-500 to-fuchsia-500" },
+                  { label: "Connected today", value: `${connectedToday} · ${connectRate}%`, accent: "from-emerald-500 to-green-500" },
+                  { label: "Total minutes", value: totalMinutes.toFixed(1), accent: "from-sky-500 to-cyan-500" },
+                  { label: "Call spend", value: `$${totalSpend.toFixed(2)}`, accent: "from-amber-500 to-orange-500" },
+                ].map((m) => (
+                  <div key={m.label} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4">
+                    <div className={`h-0.5 w-8 rounded-full bg-gradient-to-r ${m.accent}`} />
+                    <div className="mt-2 text-[10px] uppercase tracking-wider text-zinc-500">
+                      {m.label}
+                    </div>
+                    <div className="mt-1 text-2xl font-bold text-white tabular-nums">
+                      {m.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Dialer + history */}
+              <div className="grid gap-6 xl:grid-cols-[360px_minmax(0,1fr)]">
+                {/* Quick dial pad */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                    <span className="h-1 w-6 rounded-full bg-gradient-to-r from-violet-500 to-fuchsia-500" />
+                    Quick dial
+                  </div>
+                  <QuickDialer
+                    onDial={(num) => startCall({ to: num, contactName: "Direct dial" })}
+                    ownedNumbers={currentUser?.ownedNumbers || []}
+                  />
+                  <p className="mt-3 text-[11px] text-zinc-500">
+                    Outbound is billed at $0.03/min. You pay $0.01/min on inbound. Per-minute billing with a 1-minute floor.
+                  </p>
+                </div>
+
+                {/* History */}
+                <div className="rounded-3xl border border-zinc-800 bg-zinc-900">
+                  <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-3">
+                    <div className="text-sm font-bold text-white">Call history</div>
+                    <div className="text-[11px] text-zinc-500">{callHistory.length} total</div>
+                  </div>
+                  {callHistory.length === 0 ? (
+                    <div className="p-10 text-center text-sm text-zinc-500">
+                      No calls yet. Click a contact's phone number to start dialing.
+                    </div>
+                  ) : (
+                    <div className="max-h-[60vh] overflow-y-auto">
+                      {callHistory.map((c) => {
+                        const contact = contacts.find((x) => x.id === c.contactId);
+                        const displayName = contact
+                          ? `${contact.firstName} ${contact.lastName || ""}`.trim()
+                          : c.direction === "inbound"
+                          ? "Unknown caller"
+                          : "Manual dial";
+                        const directionIcon = c.direction === "inbound" ? "↙" : "↗";
+                        return (
+                          <div
+                            key={c.id}
+                            className="group flex items-center gap-3 border-b border-zinc-800/80 px-5 py-3 last:border-b-0 hover:bg-zinc-800/40"
+                          >
+                            <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-sm font-bold ${
+                              c.direction === "inbound"
+                                ? "bg-emerald-500/10 text-emerald-300"
+                                : "bg-violet-500/10 text-violet-300"
+                            }`}>
+                              {directionIcon}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <div className="truncate text-sm font-semibold text-white">
+                                  {displayName}
+                                </div>
+                                {statusChip(c.status)}
+                              </div>
+                              <div className="truncate text-[11px] text-zinc-500 tabular-nums">
+                                {c.direction === "outbound" ? c.toNumber : c.fromNumber} · {fmtAgo(c.startedAt)}
+                              </div>
+                            </div>
+                            <div className="hidden text-right md:block">
+                              <div className="text-sm font-mono tabular-nums text-zinc-300">
+                                {fmtDur(c.durationSec)}
+                              </div>
+                              <div className="text-[11px] text-zinc-500 tabular-nums">
+                                ${c.costCharged.toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="flex shrink-0 items-center gap-1 opacity-0 transition group-hover:opacity-100">
+                              {c.recordingUrl && (
+                                <a
+                                  href={c.recordingUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="rounded-lg border border-zinc-700 px-2 py-1 text-[10px] font-semibold text-zinc-300 hover:bg-zinc-800"
+                                >
+                                  ▶ Recording
+                                </a>
+                              )}
+                              <button
+                                onClick={() => startCall({
+                                  to: c.direction === "outbound" ? c.toNumber : c.fromNumber,
+                                  contactId: c.contactId,
+                                  contactName: displayName,
+                                })}
+                                className="rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-2 py-1 text-[10px] font-semibold text-white hover:brightness-110"
+                              >
+                                Call back
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           );
         })()}
@@ -9457,12 +9832,15 @@ export default function DashboardPage() {
                 <div className="mt-2 text-xs text-zinc-500">
                   Wallet: {formatCurrency(currentUser.walletBalance || 0)} · $1.50 per number + $1.00/mo each
                 </div>
+                <div className="mt-1 text-[11px] text-emerald-400">
+                  ✓ Every number supports SMS <span className="text-zinc-500">+</span> voice calling out of the box.
+                </div>
               </div>
 
               {availableNumbers.length > 0 && (
                 <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                   <h3 className="text-lg font-bold">Available Numbers</h3>
-                  <p className="mt-1 text-xs text-zinc-400">{availableNumbers.length} numbers found — click to buy</p>
+                  <p className="mt-1 text-xs text-zinc-400">{availableNumbers.length} numbers found — all call + text ready · click to buy</p>
 
                   <div className="mt-4 space-y-2 max-h-[400px] overflow-y-auto">
                     {availableNumbers.map((num) => (
@@ -9479,6 +9857,10 @@ export default function DashboardPage() {
                               {[num.locality, num.region].filter(Boolean).join(", ")}
                             </div>
                           )}
+                          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
+                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5">💬 SMS</span>
+                            <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5">📞 Voice</span>
+                          </div>
                         </div>
                         <div className="text-sm font-medium text-violet-400">
                           {buyingNumber === num.raw ? "Buying..." : "$1.50"}
@@ -13367,7 +13749,89 @@ export default function DashboardPage() {
 
       {/* Toast notifications — replaces the legacy bottom banner */}
       <Toasts message={message} />
+
+      {/* Floating Call HUD (always-on-top when a call is live) */}
+      <CallHud
+        call={activeCall}
+        onHangup={hangupCall}
+        onClose={() => setActiveCall(null)}
+      />
     </main>
+  );
+}
+
+// ═══════════════════════ QUICK DIALER ═══════════════════════
+// Phone-pad widget used inside the Calls tab. Lets a rep type or paste
+// any number and fire an outbound call through the same startCall path
+// the other UI surfaces use.
+function QuickDialer({
+  onDial,
+  ownedNumbers,
+}: {
+  onDial: (phone: string) => void;
+  ownedNumbers: { number: string }[];
+}) {
+  const [digits, setDigits] = useState("");
+  const keypad = ["1","2","3","4","5","6","7","8","9","*","0","#"];
+  const tap = (k: string) => setDigits((d) => (d + k).slice(0, 20));
+  const backspace = () => setDigits((d) => d.slice(0, -1));
+  const formatted = (() => {
+    const d = digits.replace(/\D/g, "");
+    if (d.length <= 3) return d;
+    if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+    if (d.length <= 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+    return `+${d.slice(0, d.length - 10)} (${d.slice(-10, -7)}) ${d.slice(-7, -4)}-${d.slice(-4)}`;
+  })();
+
+  const canDial = digits.replace(/\D/g, "").length >= 10;
+
+  return (
+    <div className="mt-4 space-y-4">
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-center">
+        <div className="h-7 text-xl font-mono font-bold tracking-wide text-white tabular-nums">
+          {formatted || <span className="text-zinc-700">(___) ___-____</span>}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2">
+        {keypad.map((k) => (
+          <button
+            key={k}
+            onClick={() => tap(k)}
+            className="rounded-2xl border border-zinc-800 bg-zinc-950/40 py-3 text-xl font-semibold text-white transition hover:border-violet-500/50 hover:bg-zinc-800/60 active:scale-95"
+          >
+            {k}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-2">
+        <button
+          onClick={backspace}
+          className="rounded-xl border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800/60"
+          aria-label="Backspace"
+        >
+          ⌫
+        </button>
+        <button
+          disabled={!canDial}
+          onClick={() => { onDial(digits); setDigits(""); }}
+          className={`flex-1 rounded-2xl px-4 py-3 text-sm font-bold text-white transition ${
+            canDial
+              ? "bg-gradient-to-r from-emerald-500 to-green-600 shadow-lg shadow-emerald-500/30 hover:brightness-110"
+              : "bg-zinc-800 text-zinc-500"
+          }`}
+        >
+          📞 Call {canDial ? formatted : ""}
+        </button>
+      </div>
+
+      {ownedNumbers.length > 0 && (
+        <div className="text-[11px] text-zinc-500">
+          Calls will show from <span className="font-mono text-zinc-300">{ownedNumbers[0].number}</span>
+        </div>
+      )}
+    </div>
   );
 }
 
