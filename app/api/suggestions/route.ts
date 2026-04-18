@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireAdmin } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header for admin GET
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -38,20 +41,12 @@ export async function POST(req: NextRequest) {
 // Admin GET — fetch all suggestions
 export async function GET(req: NextRequest) {
   try {
-    const userId = req.nextUrl.searchParams.get("userId");
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+    const notAdmin = await requireAdmin(auth.user);
+    if (notAdmin) return notAdmin;
 
-    // Check if requester is admin
-    if (userId) {
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", userId)
-        .single();
-      if (profile?.role !== "admin") {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 403 });
-      }
-    }
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
     const { data } = await supabase
       .from("suggestions")

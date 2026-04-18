@@ -4,6 +4,9 @@ import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -92,13 +95,30 @@ async function getAvailableSlots(
 
 export async function POST(req: NextRequest) {
   try {
-    const { userId, conversationId, contactId, sendReply } = await req.json();
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
 
-    if (!userId || !conversationId) {
+    const { userId: bodyUserId, conversationId, contactId, sendReply } = await req.json();
+
+    if (!bodyUserId || !conversationId) {
       return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
     }
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+    const userId = auth.user.id;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify conversation belongs to caller — otherwise a tenant could drain
+    // another tenant's wallet by triggering AI replies on their conversations.
+    const { data: conv } = await supabase
+      .from("conversations")
+      .select("user_id")
+      .eq("id", conversationId)
+      .single();
+    if (!conv || conv.user_id !== userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const [profileRes, messagesRes, contactRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", userId).single(),

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
+import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,7 +13,18 @@ const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 // Telnyx sends inbound SMS as POST webhook
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
+    // Verify Telnyx signature before trusting any payload field. Without this,
+    // anyone can POST to /api/incoming-sms and spoof inbound messages (creating
+    // conversations, triggering AI replies that debit the target's wallet).
+    const rawBody = await req.text();
+    const sig = req.headers.get("telnyx-signature-ed25519") || "";
+    const sigTs = req.headers.get("telnyx-timestamp") || "";
+    const verified = await verifyTelnyxSignature(rawBody, sig, sigTs);
+    if (!verified && !allowUnverifiedInDev("incoming-sms")) {
+      console.warn("[incoming-sms] signature verification failed");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+    const payload = JSON.parse(rawBody);
     const event = payload.data;
 
     if (!event) {

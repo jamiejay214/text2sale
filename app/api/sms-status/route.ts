@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,7 +9,15 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 // Telnyx sends delivery receipts as POST webhooks
 export async function POST(req: NextRequest) {
   try {
-    const payload = await req.json();
+    const rawBody = await req.text();
+    const sig = req.headers.get("telnyx-signature-ed25519") || "";
+    const sigTs = req.headers.get("telnyx-timestamp") || "";
+    const verified = await verifyTelnyxSignature(rawBody, sig, sigTs);
+    if (!verified && !allowUnverifiedInDev("sms-status")) {
+      console.warn("[sms-status] signature verification failed");
+      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+    }
+    const payload = JSON.parse(rawBody);
     const event = payload.data;
 
     if (!event || event.event_type !== "message.finalized") {

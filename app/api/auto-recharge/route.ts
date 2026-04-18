@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -16,13 +19,21 @@ function getStripe() {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+
     const stripe = getStripe();
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { userId, amount } = await req.json();
+    const { userId: bodyUserId, amount } = await req.json();
 
-    if (!userId || !amount || amount < 20) {
+    if (!bodyUserId || !amount || amount < 20) {
       return NextResponse.json({ success: false, error: "Invalid request. Minimum $20." }, { status: 400 });
     }
+
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+
+    const userId = auth.user.id;
 
     // Get the user's profile to find their Stripe customer ID
     const { data: profile, error: profileError } = await supabase

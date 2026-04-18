@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms } from "@/lib/sms-text";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 // Give the route the full Pro-plan budget so a 10k send doesn't hit the
 // default 60s cap mid-run. At CHUNK=100 with PIPE=2, 10k takes roughly
@@ -48,7 +51,14 @@ type CampaignContact = {
 
 export async function POST(req: NextRequest) {
   try {
-    const { campaignId, userId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1 } = await req.json();
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+
+    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1 } = await req.json();
+
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+    const userId = auth.user.id;
 
     const numbers: string[] = Array.isArray(fromNumbers)
       ? fromNumbers
@@ -56,7 +66,7 @@ export async function POST(req: NextRequest) {
         ? [fromNumbers]
         : [];
 
-    if (!campaignId || !userId || numbers.length === 0 || !messageTemplate) {
+    if (!campaignId || numbers.length === 0 || !messageTemplate) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
         { status: 400 }
@@ -64,6 +74,30 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify each fromNumber is owned by this user. Blocks a malicious caller
+    // from blasting SMS from another tenant's 10DLC number (which would bill
+    // that tenant's wallet via the ownership lookup in send logic and poison
+    // their sender reputation).
+    {
+      const normDigits = numbers.map((n) => {
+        const d = n.replace(/\D/g, "");
+        return d.startsWith("1") ? d.slice(1) : d;
+      });
+      const { data: owned } = await supabase
+        .from("owned_phone_numbers")
+        .select("digits")
+        .eq("user_id", userId)
+        .in("digits", normDigits);
+      const ownedSet = new Set((owned || []).map((r) => r.digits));
+      const unauthorized = normDigits.filter((d) => !ownedSet.has(d));
+      if (unauthorized.length > 0) {
+        return NextResponse.json(
+          { success: false, error: "Forbidden: one or more fromNumbers are not owned by this user" },
+          { status: 403 }
+        );
+      }
+    }
 
     // ── Idempotency guard ────────────────────────────────────────────────────
     // For the FIRST step (stepIndex 0): atomically flip Draft/Scheduled/Paused

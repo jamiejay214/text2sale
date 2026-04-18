@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms } from "@/lib/sms-text";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header for POST
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -16,11 +19,17 @@ function normalizePhone(phone: string): string {
 // POST - Schedule a message (save to DB for later sending)
 export async function POST(req: NextRequest) {
   try {
-    const { userId, contactId, body, fromNumber, scheduledAt } = await req.json();
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
 
-    if (!userId || !contactId || !body || !fromNumber || !scheduledAt) {
+    const { userId: bodyUserId, contactId, body, fromNumber, scheduledAt } = await req.json();
+
+    if (!bodyUserId || !contactId || !body || !fromNumber || !scheduledAt) {
       return NextResponse.json({ success: false, error: "Missing required fields" }, { status: 400 });
     }
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+    const userId = auth.user.id;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 

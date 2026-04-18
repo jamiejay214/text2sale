@@ -1,11 +1,19 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireAdmin } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header (admin only)
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-export async function POST() {
+export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+    const notAdmin = await requireAdmin(auth.user);
+    if (notAdmin) return notAdmin;
+
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // Test if columns exist by trying a select

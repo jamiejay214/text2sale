@@ -36,6 +36,30 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
+    // ── Webhook idempotency ────────────────────────────────────────────────
+    // Stripe retries failed webhooks for up to 3 days. Without this guard a
+    // retry could double-credit the wallet, re-pay a referral bonus, or
+    // re-charge the monthly number fee. We insert the event.id into a
+    // dedupe table; a unique-violation means we already processed it.
+    try {
+      const { error: dedupeErr } = await supabase
+        .from("stripe_events")
+        .insert({ id: event.id, event_type: event.type });
+      if (dedupeErr) {
+        // Postgres code 23505 = unique_violation. Everything else is fatal.
+        const code = (dedupeErr as { code?: string }).code;
+        if (code === "23505") {
+          console.log(`[stripe-webhook] duplicate event ${event.id} (${event.type}), skipping`);
+          return NextResponse.json({ received: true, duplicate: true });
+        }
+        console.error("[stripe-webhook] dedupe insert failed:", dedupeErr);
+        // Fail open — better to double-process than silently drop, but this
+        // should only happen if the migration hasn't been applied.
+      }
+    } catch (e) {
+      console.error("[stripe-webhook] dedupe check threw:", e);
+    }
+
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
       const userId = session.metadata?.userId;

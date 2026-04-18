@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
@@ -37,7 +40,13 @@ async function assignNumberToCampaign(e164: string, campaignId: string) {
 
 export async function POST(req: NextRequest) {
   try {
-    const { phoneNumber, areaCode, userId } = await req.json();
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+
+    const { phoneNumber, areaCode, userId: bodyUserId } = await req.json();
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+    const userId = auth.user.id;
 
     let numberToBuy: string;
 

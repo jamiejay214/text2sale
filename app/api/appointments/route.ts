@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,6 +18,8 @@ type AvailableHours = {
 };
 
 // GET — list appointments or get available slots
+// Note: the "available-slots" action is used by public booking pages, so it
+// does NOT require auth. The "list" action does.
 export async function GET(req: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const userId = req.nextUrl.searchParams.get("userId");
@@ -23,7 +28,7 @@ export async function GET(req: NextRequest) {
   if (!userId) return NextResponse.json({ error: "Missing userId" }, { status: 400 });
 
   if (action === "available-slots") {
-    // Return open slots for the next N days
+    // Public endpoint — returns open slots for a booking page.
     const { data: profile } = await supabase
       .from("profiles")
       .select("available_hours")
@@ -39,7 +44,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ slots: [], message: "Scheduling is disabled" });
     }
 
-    // Fetch existing appointments to avoid double-booking
     const today = new Date();
     const maxDate = new Date(today);
     maxDate.setDate(maxDate.getDate() + hours.maxDaysOut);
@@ -88,11 +92,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ slots: openSlots, timezone: hours.timezone });
   }
 
-  // Default: list appointments
+  // list requires auth — the owner only.
+  const auth = await authenticate(req);
+  if (!auth.ok) return auth.response;
+  const forbid = requireSameUser(auth.user.id, userId);
+  if (forbid) return forbid;
+
   const { data, error } = await supabase
     .from("appointments")
     .select("*, contacts(first_name, last_name, phone)")
-    .eq("user_id", userId)
+    .eq("user_id", auth.user.id)
     .order("date", { ascending: true })
     .order("time", { ascending: true });
 
@@ -100,7 +109,10 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ appointments: data });
 }
 
-// POST — create appointment
+// POST — create appointment. Public booking page calls this; we still force
+// the insert to attach to the URL's owner id so a malicious caller can't
+// create appointments on someone else's calendar for spam. If the caller is
+// authenticated we require them to match the userId in the body.
 export async function POST(req: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const body = await req.json();
@@ -108,6 +120,16 @@ export async function POST(req: NextRequest) {
 
   if (!userId || !date || !time) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+  }
+
+  // If Authorization header present, require it to match. Public booking
+  // (no header) is allowed so prospects can book without an account.
+  const hasAuth = !!req.headers.get("authorization");
+  if (hasAuth) {
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+    const forbid = requireSameUser(auth.user.id, userId);
+    if (forbid) return forbid;
   }
 
   // Check for conflicts
@@ -143,13 +165,26 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ appointment: apt });
 }
 
-// PATCH — update appointment status
+// PATCH — update appointment status (owner only)
 export async function PATCH(req: NextRequest) {
+  const auth = await authenticate(req);
+  if (!auth.ok) return auth.response;
+
   const supabase = createClient(supabaseUrl, supabaseKey);
   const body = await req.json();
   const { id, status, notes } = body;
 
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  // Verify the appointment belongs to the caller
+  const { data: existing } = await supabase
+    .from("appointments")
+    .select("user_id")
+    .eq("id", id)
+    .single();
+  if (!existing || existing.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const updates: Record<string, unknown> = {};
   if (status) updates.status = status;
@@ -166,11 +201,23 @@ export async function PATCH(req: NextRequest) {
   return NextResponse.json({ appointment: data });
 }
 
-// DELETE — remove appointment
+// DELETE — remove appointment (owner only)
 export async function DELETE(req: NextRequest) {
+  const auth = await authenticate(req);
+  if (!auth.ok) return auth.response;
+
   const supabase = createClient(supabaseUrl, supabaseKey);
   const id = req.nextUrl.searchParams.get("id");
   if (!id) return NextResponse.json({ error: "Missing id" }, { status: 400 });
+
+  const { data: existing } = await supabase
+    .from("appointments")
+    .select("user_id")
+    .eq("id", id)
+    .single();
+  if (!existing || existing.user_id !== auth.user.id) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
 
   const { error } = await supabase.from("appointments").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

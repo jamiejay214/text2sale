@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -15,13 +18,19 @@ const MAX_BYTES = 10 * 1024 * 1024; // 10MB
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+
     const form = await req.formData();
-    const userId = form.get("userId");
+    const bodyUserId = form.get("userId");
     const file = form.get("file");
 
-    if (typeof userId !== "string" || !userId) {
+    if (typeof bodyUserId !== "string" || !bodyUserId) {
       return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
     }
+    const forbid = requireSameUser(auth.user.id, bodyUserId);
+    if (forbid) return forbid;
+    const userId = auth.user.id;
     if (!(file instanceof File)) {
       return NextResponse.json({ success: false, error: "Missing file" }, { status: 400 });
     }

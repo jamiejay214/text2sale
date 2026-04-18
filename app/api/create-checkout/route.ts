@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) {
@@ -12,6 +15,9 @@ function getStripe() {
 
 export async function POST(req: NextRequest) {
   try {
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+
     const stripe = getStripe();
     const { amount, userId, userEmail } = await req.json();
 
@@ -21,6 +27,9 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    const forbid = requireSameUser(auth.user.id, userId);
+    if (forbid) return forbid;
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com";
 
@@ -44,7 +53,7 @@ export async function POST(req: NextRequest) {
       success_url: `${appUrl}/dashboard?payment=success&amount=${amount}`,
       cancel_url: `${appUrl}/dashboard?payment=cancelled`,
       metadata: {
-        userId,
+        userId: auth.user.id,
         amount: amount.toString(),
         type: "wallet_topup",
       },

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireSameUser } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -8,14 +11,17 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 // The caller must be an authenticated admin OR the owner of the certificate.
 export async function POST(req: NextRequest) {
   try {
-    const { userId, requestingUserId } = (await req.json()) as {
-      userId?: string;
-      requestingUserId?: string;
-    };
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
 
-    if (!userId || !requestingUserId) {
+    const { userId } = (await req.json()) as {
+      userId?: string;
+    };
+    const requestingUserId = auth.user.id;
+
+    if (!userId) {
       return NextResponse.json(
-        { success: false, error: "Missing userId or requestingUserId" },
+        { success: false, error: "Missing userId" },
         { status: 400 }
       );
     }

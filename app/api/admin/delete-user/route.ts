@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { authenticate, requireAdmin } from "@/lib/auth-guard";
+
+// CLIENT UPDATE NEEDED: dashboard must send Authorization header instead of accessToken in body
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export async function POST(req: NextRequest) {
   try {
@@ -14,45 +16,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { targetUserId, accessToken } = await req.json();
+    const auth = await authenticate(req);
+    if (!auth.ok) return auth.response;
+    const notAdmin = await requireAdmin(auth.user);
+    if (notAdmin) return notAdmin;
 
-    if (!targetUserId || !accessToken) {
+    const { targetUserId } = await req.json();
+    const callerId = auth.user.id;
+
+    if (!targetUserId) {
       return NextResponse.json(
-        { success: false, error: "Missing targetUserId or accessToken." },
+        { success: false, error: "Missing targetUserId." },
         { status: 400 }
       );
     }
 
-    // Identify the caller using their JWT
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: `Bearer ${accessToken}` } },
-    });
-    const { data: userData, error: userErr } = await callerClient.auth.getUser();
-    if (userErr || !userData?.user) {
-      return NextResponse.json(
-        { success: false, error: "Invalid session." },
-        { status: 401 }
-      );
-    }
-
-    const callerId = userData.user.id;
-
     // Service-role client for privileged operations
     const admin = createClient(supabaseUrl, serviceRoleKey);
-
-    // Verify the caller is an admin
-    const { data: callerProfile } = await admin
-      .from("profiles")
-      .select("role")
-      .eq("id", callerId)
-      .single();
-
-    if (callerProfile?.role !== "admin") {
-      return NextResponse.json(
-        { success: false, error: "Forbidden." },
-        { status: 403 }
-      );
-    }
 
     // Prevent admins from deleting themselves or other admins
     if (callerId === targetUserId) {

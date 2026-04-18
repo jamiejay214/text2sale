@@ -6,6 +6,7 @@ import Papa from "papaparse";
 import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
+import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 import {
   fetchProfile, updateProfile,
@@ -1640,7 +1641,7 @@ export default function DashboardPage() {
     if (!userId) return;
     setMessage("Opening billing portal...");
     try {
-      const res = await fetch("/api/create-portal", {
+      const res = await authFetch("/api/create-portal", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -1666,7 +1667,7 @@ export default function DashboardPage() {
     if (newBalance >= settings.threshold) return;
 
     try {
-      const res = await fetch("/api/auto-recharge", {
+      const res = await authFetch("/api/auto-recharge", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, amount: settings.amount }),
@@ -1707,7 +1708,7 @@ export default function DashboardPage() {
     setMessage("Redirecting to payment...");
 
     try {
-      const res = await fetch("/api/create-checkout", {
+      const res = await authFetch("/api/create-checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1737,7 +1738,7 @@ export default function DashboardPage() {
     setMessage("Redirecting to subscription checkout...");
 
     try {
-      const res = await fetch("/api/create-subscription", {
+      const res = await authFetch("/api/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, userEmail: currentUser.email }),
@@ -1764,7 +1765,7 @@ export default function DashboardPage() {
     setMessage("Cancelling subscription...");
 
     try {
-      const res = await fetch("/api/cancel-subscription", {
+      const res = await authFetch("/api/cancel-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -2359,7 +2360,7 @@ export default function DashboardPage() {
     if (!currentUser) return;
     setA2pLoading(true);
     try {
-      const res = await fetch("/api/register-10dlc", {
+      const res = await authFetch("/api/register-10dlc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2399,7 +2400,7 @@ export default function DashboardPage() {
     if (!currentUser) return;
     setA2pLoading(true);
     try {
-      const res = await fetch("/api/register-10dlc", {
+      const res = await authFetch("/api/register-10dlc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
@@ -2420,7 +2421,7 @@ export default function DashboardPage() {
     if (!currentUser) return;
     setA2pLoading(true);
     try {
-      const res = await fetch("/api/register-10dlc", {
+      const res = await authFetch("/api/register-10dlc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
@@ -2443,7 +2444,7 @@ export default function DashboardPage() {
   const handleA2pCheckCampaign = async () => {
     for (let i = 0; i < 20; i++) {
       await new Promise((r) => setTimeout(r, 10000));
-      const res = await fetch("/api/register-10dlc", {
+      const res = await authFetch("/api/register-10dlc", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser!.id, action: "check_campaign" }),
@@ -2709,7 +2710,7 @@ export default function DashboardPage() {
     setBuyingNumber(phoneNumber);
 
     try {
-      const res = await fetch("/api/buy-number", {
+      const res = await authFetch("/api/buy-number", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phoneNumber, userId }),
@@ -2965,7 +2966,7 @@ export default function DashboardPage() {
     setAiSuggestedReply("");
     try {
       const conv = conversations.find((c) => c.id === selectedConversationId);
-      const res = await fetch("/api/ai-reply", {
+      const res = await authFetch("/api/ai-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -2994,7 +2995,7 @@ export default function DashboardPage() {
     setAiLoading(true);
     try {
       const conv = conversations.find((c) => c.id === selectedConversationId);
-      const res = await fetch("/api/ai-reply", {
+      const res = await authFetch("/api/ai-reply", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -3388,7 +3389,7 @@ export default function DashboardPage() {
 
         setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length}...`);
 
-        const res = await fetch("/api/send-campaign", {
+        const res = await authFetch("/api/send-campaign", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -4027,7 +4028,7 @@ export default function DashboardPage() {
 
             setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length} to ${totalImported} contacts...`);
 
-            const res = await fetch("/api/send-campaign", {
+            const res = await authFetch("/api/send-campaign", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -5283,7 +5284,7 @@ export default function DashboardPage() {
                               const lastMsg = msgs[msgs.length - 1];
                               if (lastMsg && lastMsg.direction === "inbound") {
                                 try {
-                                  const res = await fetch("/api/ai-reply", {
+                                  const res = await authFetch("/api/ai-reply", {
                                     method: "POST",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({
@@ -7318,7 +7319,7 @@ export default function DashboardPage() {
                         return;
                       }
                       try {
-                        const res = await fetch("/api/appointments", {
+                        const res = await authFetch("/api/appointments", {
                           method: "POST",
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({
@@ -7426,7 +7427,7 @@ export default function DashboardPage() {
                             <>
                               <button
                                 onClick={async () => {
-                                  await fetch("/api/appointments", {
+                                  await authFetch("/api/appointments", {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ id: apt.id, status: "completed" }),
@@ -7443,7 +7444,7 @@ export default function DashboardPage() {
                               </button>
                               <button
                                 onClick={async () => {
-                                  await fetch("/api/appointments", {
+                                  await authFetch("/api/appointments", {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ id: apt.id, status: "no_show" }),
@@ -7461,7 +7462,7 @@ export default function DashboardPage() {
                               <button
                                 onClick={async () => {
                                   if (!window.confirm("Cancel this appointment?")) return;
-                                  await fetch("/api/appointments", {
+                                  await authFetch("/api/appointments", {
                                     method: "PATCH",
                                     headers: { "Content-Type": "application/json" },
                                     body: JSON.stringify({ id: apt.id, status: "cancelled" }),
@@ -12018,7 +12019,7 @@ function EinCertificateUpload({
       const fd = new FormData();
       fd.append("userId", userId);
       fd.append("file", file);
-      const res = await fetch("/api/upload-ein-certificate", { method: "POST", body: fd });
+      const res = await authFetch("/api/upload-ein-certificate", { method: "POST", body: fd });
       const json = await res.json();
       if (!res.ok || !json.success) {
         setError(json.error || "Upload failed.");
@@ -12036,7 +12037,7 @@ function EinCertificateUpload({
   const handleDownload = async () => {
     if (!userId) return;
     try {
-      const res = await fetch("/api/ein-certificate-url", {
+      const res = await authFetch("/api/ein-certificate-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId, requestingUserId: userId }),
