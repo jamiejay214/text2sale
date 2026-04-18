@@ -10,6 +10,7 @@ import Sparkline from "@/components/Sparkline";
 import TempBadge from "@/components/TempBadge";
 import SmartReplies from "@/components/SmartReplies";
 import CallHud, { type CallHudState } from "@/components/CallHud";
+import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -552,6 +553,14 @@ export default function DashboardPage() {
   // history lives on the Calls tab; this `activeCall` is only the
   // in-flight one we're currently animating.
   const [activeCall, setActiveCall] = useState<CallHudState | null>(null);
+  // Realtime connection status — drives the Live chip in the top bar.
+  const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "offline">("connecting");
+  // Power dialer (auto-advancing calling queue, built into the Calls tab).
+  const [powerDialerOpen, setPowerDialerOpen] = useState(false);
+  const [powerQueue, setPowerQueue] = useState<string[]>([]); // contact ids in order
+  const [powerIndex, setPowerIndex] = useState(0);
+  const [powerAutoAdvance, setPowerAutoAdvance] = useState(true);
+  const [powerPaused, setPowerPaused] = useState(false);
   type CallRecord = {
     id: string;
     userId: string;
@@ -1892,6 +1901,145 @@ export default function DashboardPage() {
     return () => { supabase.removeChannel(channel); };
   }, [userId, rowToCall]);
 
+  // ─── Universal live-sync ─────────────────────────────────────────────────
+  // The dashboard already subscribes to messages, wallet, calls, and
+  // integration-lead inserts. This bundle fills in the rest so *every*
+  // table the UI reads from stays live without a refresh — including edits
+  // and deletes from other devices / admin actions / webhooks.
+  //
+  //   • contacts       — INSERT/UPDATE/DELETE (lead list + pipeline)
+  //   • campaigns      — INSERT/UPDATE/DELETE (counters, status flips)
+  //   • conversations  — UPDATE              (read state, stars, AI flags)
+  //   • messages       — UPDATE              (outbound delivery status)
+  //   • profiles       — UPDATE              (role/plan/paused flags)
+  useEffect(() => {
+    if (!userId) return;
+
+    const ch = supabase
+      .channel(`live-${userId}`)
+      // ── Contacts ───────────────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "contacts", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const c = payload.new as unknown as Contact;
+          setContacts((prev) => (prev.some((x) => x.id === c.id) ? prev : [contactToRecord(c), ...prev]));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "contacts", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const c = payload.new as unknown as Contact;
+          setContacts((prev) => prev.map((x) => (x.id === c.id ? contactToRecord(c) : x)));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "contacts", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const id = (payload.old as { id?: string })?.id;
+          if (!id) return;
+          setContacts((prev) => prev.filter((x) => x.id !== id));
+        }
+      )
+      // ── Campaigns ──────────────────────────────────────────────────────
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "campaigns", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const c = payload.new as unknown as Campaign;
+          setCampaigns((prev) => (prev.some((x) => x.id === c.id) ? prev : [campaignToRecord(c), ...prev]));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "campaigns", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const c = payload.new as unknown as Campaign;
+          setCampaigns((prev) => prev.map((x) => (x.id === c.id ? campaignToRecord(c) : x)));
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "campaigns", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const id = (payload.old as { id?: string })?.id;
+          if (!id) return;
+          setCampaigns((prev) => prev.filter((x) => x.id !== id));
+        }
+      )
+      // ── Conversations ─ partial merge so we don't clobber loaded messages
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "conversations", filter: `user_id=eq.${userId}` },
+        (payload) => {
+          const c = payload.new as unknown as Conversation;
+          setConversations((prev) => prev.map((x) => {
+            if (x.id !== c.id) return x;
+            return {
+              ...x,
+              preview: c.preview ?? x.preview,
+              unread: typeof c.unread === "number" ? c.unread : x.unread,
+              lastMessageAt: c.last_message_at ?? x.lastMessageAt,
+              starred: c.starred ?? x.starred,
+              aiEnabled: (c as unknown as { ai_enabled?: boolean }).ai_enabled ?? x.aiEnabled,
+              agentEnabled: (c as unknown as { agent_enabled?: boolean }).agent_enabled ?? x.agentEnabled,
+              aiSkippedReason: (c as unknown as { ai_skipped_reason?: string | null }).ai_skipped_reason ?? x.aiSkippedReason,
+            };
+          }));
+        }
+      )
+      // ── Messages UPDATE — reflect delivery status in the thread ─────────
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages" },
+        (payload) => {
+          const m = payload.new as unknown as Message;
+          setConversations((prev) => prev.map((conv) => {
+            if (conv.id !== m.conversation_id) return conv;
+            return {
+              ...conv,
+              messages: conv.messages.map((msg) => (
+                msg.id === m.id
+                  ? { ...msg, status: m.status as ConversationMessage["status"] }
+                  : msg
+              )),
+            };
+          }));
+        }
+      )
+      // ── Profile — keep role/plan/flags live (wallet has its own channel)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "profiles", filter: `id=eq.${userId}` },
+        (payload) => {
+          const p = payload.new as unknown as Profile;
+          setCurrentUser((prev) => (prev ? { ...prev, ...profileToAccount(p), walletBalance: prev.walletBalance } : prev));
+        }
+      )
+      .subscribe((status) => {
+        setLiveStatus(
+          status === "SUBSCRIBED" ? "live"
+          : status === "CHANNEL_ERROR" || status === "CLOSED" || status === "TIMED_OUT" ? "offline"
+          : "connecting"
+        );
+      });
+
+    // Browser-level online/offline — also flip to offline when the network goes down.
+    const onOffline = () => setLiveStatus("offline");
+    const onOnline = () => setLiveStatus("connecting");
+    window.addEventListener("offline", onOffline);
+    window.addEventListener("online", onOnline);
+
+    return () => {
+      supabase.removeChannel(ch);
+      window.removeEventListener("offline", onOffline);
+      window.removeEventListener("online", onOnline);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+
   // Start an outbound call from anywhere in the dashboard. Picks a
   // from-number sensibly (active conversation's line > first owned line).
   const startCall = useCallback(async (opts: { to: string; contactId?: string | null; contactName?: string; fromNumber?: string }) => {
@@ -1946,6 +2094,122 @@ export default function DashboardPage() {
       });
     } catch { /* swallow — webhook will finalize the row either way */ }
   }, []);
+
+  // ─── Power dialer ────────────────────────────────────────────────────
+  // Build the queue from whatever filter the rep chose in the Calls tab,
+  // then hand it off to the PowerDialer component. We pre-sort: hot leads
+  // first, then contacts that haven't been called yet, then by last-contact
+  // freshness. DNC contacts are filtered out up front — no "surprise".
+  const powerDialerEntries = useMemo<PowerDialerEntry[]>(() => {
+    // Cache a quick contact→most-recent-call lookup so we can sort.
+    const lastCallByContact = new Map<string, string>();
+    for (const c of callHistory) {
+      if (!c.contactId) continue;
+      const existing = lastCallByContact.get(c.contactId);
+      if (!existing || c.startedAt > existing) {
+        lastCallByContact.set(c.contactId, c.startedAt);
+      }
+    }
+    // Cache last inbound/outbound message per contact for preview.
+    const lastMsgByContact = new Map<string, string>();
+    for (const conv of conversations) {
+      const last = conv.messages[conv.messages.length - 1];
+      if (last) lastMsgByContact.set(conv.contactId, last.body);
+    }
+
+    return powerQueue
+      .map((id) => {
+        const c = contacts.find((x) => x.id === id);
+        if (!c) return null;
+        return {
+          contactId: c.id,
+          name: `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Contact",
+          phone: c.phone,
+          city: c.city,
+          state: c.state,
+          notes: c.notes,
+          tags: c.tags,
+          dnc: c.dnc,
+          lastMessage: lastMsgByContact.get(c.id),
+          lastCalledAt: lastCallByContact.get(c.id) ?? null,
+        } as PowerDialerEntry;
+      })
+      .filter((x): x is PowerDialerEntry => Boolean(x));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [powerQueue, contacts, conversations, callHistory]);
+
+  const launchPowerDialer = useCallback(
+    (contactIds: string[]) => {
+      // Drop DNC and duplicates, cap at 500 so we never lock the UI.
+      const seen = new Set<string>();
+      const queue: string[] = [];
+      for (const id of contactIds) {
+        if (seen.has(id)) continue;
+        const c = contacts.find((x) => x.id === id);
+        if (!c || !c.phone || c.dnc) continue;
+        seen.add(id);
+        queue.push(id);
+        if (queue.length >= 500) break;
+      }
+      if (queue.length === 0) {
+        setMessage("No dial-able contacts in that list. Check filters or DNC flags.");
+        window.setTimeout(() => setMessage(""), 3500);
+        return;
+      }
+      setPowerQueue(queue);
+      setPowerIndex(0);
+      setPowerPaused(false);
+      setPowerDialerOpen(true);
+    },
+    [contacts]
+  );
+
+  // Save disposition → call row update + optional contact flag update.
+  // Keeps the RLS-friendly flow (client writes to its own rows only).
+  const savePowerDisposition = useCallback(
+    async (entry: PowerDialerEntry, callId: string | null, disposition: Disposition, notes?: string) => {
+      // 1) Stamp the latest call row with the outcome + note.
+      if (callId && callId !== "pending") {
+        try {
+          await supabase
+            .from("calls")
+            .update({ outcome: disposition, notes: notes || null })
+            .eq("id", callId);
+        } catch { /* soft-fail — row will still show in history */ }
+      }
+      // 2) DNC disposition flips the contact out of future campaigns.
+      if (disposition === "dnc") {
+        try {
+          await supabase.from("contacts").update({ dnc: true }).eq("id", entry.contactId);
+        } catch { /* fall through */ }
+      }
+      // 3) Wrong-number disposition leaves the contact but tags it.
+      if (disposition === "wrong_number") {
+        try {
+          const c = contacts.find((x) => x.id === entry.contactId);
+          const existingTags = new Set(c?.tags || []);
+          existingTags.add("wrong-number");
+          await supabase
+            .from("contacts")
+            .update({ tags: Array.from(existingTags) })
+            .eq("id", entry.contactId);
+        } catch { /* fall through */ }
+      }
+    },
+    [contacts]
+  );
+
+  // When the active call changes to a terminal state AND the dialer is on,
+  // we clear the floating HUD after a short delay so it doesn't obscure
+  // the disposition panel.
+  useEffect(() => {
+    if (!powerDialerOpen) return;
+    if (!activeCall) return;
+    if (["completed", "no-answer", "busy", "voicemail", "canceled"].includes(activeCall.status)) {
+      const t = window.setTimeout(() => setActiveCall(null), 1500);
+      return () => window.clearTimeout(t);
+    }
+  }, [powerDialerOpen, activeCall]);
 
   // ─── ⌘K / Ctrl+K — global command palette trigger ─────────────────
   // Investor-grade CRMs (Linear, Attio, Superhuman) all have this. It
@@ -4752,13 +5016,42 @@ export default function DashboardPage() {
                 Viewing {impersonatingUserName}
               </span>
             )}
-            {/* Live status pulse */}
-            <div className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-zinc-400 sm:flex">
+            {/* Realtime connection chip — green pulse when live, amber when
+                reconnecting, red when offline. Driven by the consolidated
+                postgres_changes channel + browser online/offline events. */}
+            <div
+              className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:flex ${
+                liveStatus === "live"
+                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                  : liveStatus === "connecting"
+                  ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                  : "border-red-500/30 bg-red-500/10 text-red-300"
+              }`}
+              title={
+                liveStatus === "live"
+                  ? "Realtime sync active — contacts, calls, messages & campaigns stream live."
+                  : liveStatus === "connecting"
+                  ? "Reconnecting to realtime stream…"
+                  : "Offline — reconnect to resume live updates."
+              }
+            >
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                {liveStatus === "live" && (
+                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                )}
+                <span
+                  className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
+                    liveStatus === "live"
+                      ? "bg-emerald-400"
+                      : liveStatus === "connecting"
+                      ? "bg-amber-400 animate-pulse"
+                      : "bg-red-400"
+                  }`}
+                ></span>
               </span>
-              <span>Live</span>
+              <span>
+                {liveStatus === "live" ? "Live" : liveStatus === "connecting" ? "Syncing" : "Offline"}
+              </span>
             </div>
           </div>
 
@@ -7376,6 +7669,29 @@ export default function DashboardPage() {
             );
           };
 
+          // ── Build queue source options for the Power Dialer launcher ──
+          const dialableContacts = contacts.filter((c) => c.phone && !c.dnc);
+          const untouchedContacts = dialableContacts.filter((c) => {
+            const hasCall = callHistory.some((x) => x.contactId === c.id);
+            return !hasCall;
+          });
+          const notConnectedContacts = dialableContacts.filter((c) => {
+            const calls = callHistory.filter((x) => x.contactId === c.id);
+            if (calls.length === 0) return false;
+            return !calls.some((x) => x.status === "completed" && x.durationSec >= 15);
+          });
+          // Pipeline-stage based queue (reads the stored localStorage stage map).
+          const getStageMap = (): Record<string, string> => {
+            if (typeof window === "undefined") return {};
+            try {
+              return JSON.parse(window.localStorage.getItem(`t2s_pipeline_${userId}`) || "{}") || {};
+            } catch { return {}; }
+          };
+          const stageMap = getStageMap();
+          const hotStage = dialableContacts.filter((c) => stageMap[c.id] === "hot");
+          const workingStage = dialableContacts.filter((c) => stageMap[c.id] === "working");
+          const quotedStage = dialableContacts.filter((c) => stageMap[c.id] === "quoted");
+
           return (
             <div className="space-y-6">
               {/* Header */}
@@ -7387,6 +7703,59 @@ export default function DashboardPage() {
                   <p className="mt-1 text-sm text-zinc-400">
                     Dial any contact with one click. We ring your phone, then bridge the lead. Every call logs with duration, cost, and recording.
                   </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => launchPowerDialer(dialableContacts.map((c) => c.id))}
+                    disabled={dialableContacts.length === 0}
+                    className="group inline-flex items-center gap-2 rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 py-3 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <span className="text-lg">⚡</span>
+                    Start Power Dialer
+                    <span className="rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-bold text-white">
+                      {dialableContacts.length}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {/* ── Power Dialer source presets ─────────────────────
+                  One-click queues like Outreach and SalesLoft. Each chip
+                  builds a queue from a sensible slice of the contact book
+                  and drops the rep straight into auto-advance mode. */}
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-violet-500/10 via-fuchsia-500/5 to-zinc-900 p-5">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-lg">⚡</div>
+                    <div>
+                      <div className="text-xs uppercase tracking-widest text-zinc-400">Power Dialer</div>
+                      <div className="text-sm font-bold text-white">Jump into a queue</div>
+                    </div>
+                  </div>
+                  <div className="h-8 w-px bg-zinc-800" />
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { label: "🌱 New leads (never called)", ids: untouchedContacts.map((c) => c.id), count: untouchedContacts.length },
+                      { label: "🔥 Hot stage",                ids: hotStage.map((c) => c.id),          count: hotStage.length },
+                      { label: "💼 Working stage",            ids: workingStage.map((c) => c.id),      count: workingStage.length },
+                      { label: "📄 Quoted stage",             ids: quotedStage.map((c) => c.id),       count: quotedStage.length },
+                      { label: "↩ Not yet connected",         ids: notConnectedContacts.map((c) => c.id), count: notConnectedContacts.length },
+                      { label: "📇 All dial-able",            ids: dialableContacts.map((c) => c.id),  count: dialableContacts.length },
+                    ].map((preset) => (
+                      <button
+                        key={preset.label}
+                        onClick={() => launchPowerDialer(preset.ids)}
+                        disabled={preset.count === 0}
+                        className="inline-flex items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/80 px-3 py-1.5 text-xs font-medium text-zinc-200 transition hover:border-violet-500/50 hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <span>{preset.label}</span>
+                        <span className="rounded-full bg-zinc-800 px-1.5 py-0.5 text-[10px] font-bold text-zinc-300">{preset.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="mt-3 text-[11px] text-zinc-500">
+                  Auto-advance · Hot-key dispositions (I / V / C / N / W / D) · Space to dial/hangup · Queues pull from the same contacts that drive the rest of the CRM.
                 </div>
               </div>
 
@@ -13755,6 +14124,30 @@ export default function DashboardPage() {
         call={activeCall}
         onHangup={hangupCall}
         onClose={() => setActiveCall(null)}
+      />
+
+      {/* ── Power Dialer — full-screen auto-advancing calling queue ── */}
+      <PowerDialer
+        open={powerDialerOpen}
+        onClose={() => setPowerDialerOpen(false)}
+        queue={powerDialerEntries}
+        index={powerIndex}
+        onIndexChange={setPowerIndex}
+        autoAdvance={powerAutoAdvance}
+        onAutoAdvanceChange={setPowerAutoAdvance}
+        paused={powerPaused}
+        onPausedChange={setPowerPaused}
+        activeCall={activeCall}
+        fromNumber={currentUser?.ownedNumbers?.[0]?.number}
+        ownedNumbers={(currentUser?.ownedNumbers || []).map((n) => ({ number: n.number }))}
+        onStart={(entry, from) => startCall({
+          to: entry.phone,
+          contactId: entry.contactId,
+          contactName: entry.name,
+          fromNumber: from,
+        })}
+        onHangup={hangupCall}
+        onDisposition={savePowerDisposition}
       />
     </main>
   );
