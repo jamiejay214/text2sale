@@ -454,7 +454,7 @@ export default function HomePage() {
                 <span className="text-5xl font-black text-white">$39.99</span>
                 <span className="text-sm text-zinc-400">/month</span>
               </div>
-              <div className="mt-1 text-sm text-zinc-400">+ $0.012 per text · $0.03/min outbound calls</div>
+              <div className="mt-1 text-sm text-zinc-400">+ $0.012 per text · $0.045/min outbound · $0.025/min inbound</div>
 
               <ul className="mt-6 space-y-2.5 text-sm text-zinc-300">
                 {[
@@ -501,7 +501,7 @@ export default function HomePage() {
                   <span className="text-5xl font-black text-white">$59.99</span>
                   <span className="text-sm text-zinc-400">/month</span>
                 </div>
-                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply · $0.03/min outbound calls</div>
+                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply · $0.045/min outbound · $0.025/min inbound</div>
 
                 <ul className="mt-6 space-y-2.5 text-sm text-zinc-200">
                   {[
@@ -515,7 +515,7 @@ export default function HomePage() {
                     "SPIN selling & objection handling",
                     "Lead temperature + smart send windows",
                     "Click-to-call + call recordings",
-                    "Inbound calls to your cell — $0.01/min",
+                    "Inbound calls — $0.025/min",
                   ].map((x) => (
                     <li key={x} className="flex items-center gap-2">
                       <span className="text-cyan-400">✓</span> {x}

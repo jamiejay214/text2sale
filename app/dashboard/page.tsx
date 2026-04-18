@@ -7850,7 +7850,7 @@ export default function DashboardPage() {
                     ownedNumbers={currentUser?.ownedNumbers || []}
                   />
                   <p className="mt-3 text-[11px] text-zinc-500">
-                    Outbound is billed at $0.03/min. You pay $0.01/min on inbound. Per-minute billing with a 1-minute floor.
+                    Outbound is billed at $0.045/min. You pay $0.025/min on inbound. Per-minute billing with a 1-minute floor.
                   </p>
                 </div>
 

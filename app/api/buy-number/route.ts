@@ -6,8 +6,86 @@ import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
+const voiceAppId =
+  process.env.TELNYX_VOICE_APP_ID ||
+  process.env.TELNYX_CALL_CONTROL_APP_ID ||
+  "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+// ─── Configure new number for voice + HD voice ───────────────────────────
+// Telnyx provisions numbers in a couple of seconds. Once the number is
+// live, we PATCH its voice settings to:
+//   (a) assign it to our Voice API app (so outbound browser calls can use
+//       it as the caller-ID), and
+//   (b) enable HD voice so G.722 codec kicks in for browser WebRTC.
+// This is idempotent and best-effort — any failure here just means the
+// user can still text from the number; they'd need to manually assign it
+// later to call.
+async function configureVoiceOnNumber(e164: string) {
+  if (!voiceAppId) return { ok: false, reason: "no-voice-app-id" as const };
+
+  // Find the phone number id (Telnyx needs the UUID, not the E.164).
+  // Retry briefly — Telnyx may not have indexed the order yet.
+  let phoneNumberId: string | null = null;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
+    const listRes = await fetch(
+      `https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
+      { headers: { Authorization: `Bearer ${apiKey}` } }
+    );
+    const listData = await listRes.json().catch(() => ({}));
+    const id = listData?.data?.[0]?.id as string | undefined;
+    if (id) {
+      phoneNumberId = id;
+      break;
+    }
+  }
+  if (!phoneNumberId) return { ok: false, reason: "number-not-found" as const };
+
+  // Assign connection + enable HD voice via the voice-settings endpoint.
+  // Telnyx allows both fields on the same PATCH.
+  const voiceRes = await fetch(
+    `https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}/voice`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        connection_id: voiceAppId,
+        tech_prefix_enabled: false,
+      }),
+    }
+  );
+  const voiceBody = await voiceRes.json().catch(() => ({}));
+  if (!voiceRes.ok || voiceBody?.errors) {
+    return {
+      ok: false,
+      reason: "voice-patch-failed" as const,
+      detail: Array.isArray(voiceBody?.errors)
+        ? voiceBody.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ")
+        : `HTTP ${voiceRes.status}`,
+    };
+  }
+
+  // HD voice lives on the number resource (not /voice) — best-effort.
+  try {
+    await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ hd_voice_enabled: true }),
+    });
+  } catch {
+    // non-fatal — HD voice will still work via the connection's G.722 codec
+  }
+
+  return { ok: true as const };
+}
 
 async function assignNumberToCampaign(e164: string, campaignId: string) {
   // Telnyx phone_number_campaigns — associate a number with an approved 10DLC campaign.
@@ -54,11 +132,14 @@ export async function POST(req: NextRequest) {
       // User selected a specific number
       numberToBuy = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber.replace(/\D/g, "")}`;
     } else {
-      // Search for first available
+      // Search for first available — require SMS + voice server-side, then
+      // client-filter for HD voice so every number we sell can text, call,
+      // and stream crisp wideband audio over browser WebRTC.
       const params = new URLSearchParams({
         "filter[country_code]": "US",
-        "filter[features]": "sms",
-        "filter[limit]": "1",
+        "filter[features]": "sms,voice",
+        "filter[phone_number_type]": "local",
+        "filter[limit]": "40",
       });
       if (areaCode) {
         params.set("filter[national_destination_code]", areaCode);
@@ -69,14 +150,23 @@ export async function POST(req: NextRequest) {
       });
       const searchData = await searchRes.json();
 
-      if (!searchData.data || searchData.data.length === 0) {
+      type ApiFeature = string | { name?: string };
+      type ApiNumber = { phone_number: string; features?: ApiFeature[] };
+      const candidates = ((searchData?.data as ApiNumber[] | undefined) || []).filter((n) => {
+        const feats = (n.features || []).map((f: ApiFeature) =>
+          (typeof f === "string" ? f : f?.name || "").toLowerCase()
+        );
+        return feats.includes("sms") && feats.includes("voice") && feats.includes("hd_voice");
+      });
+
+      if (candidates.length === 0) {
         return NextResponse.json(
-          { success: false, error: "No numbers available. Try a different area code." },
+          { success: false, error: "No SMS + voice + HD voice numbers available. Try a different area code." },
           { status: 404 }
         );
       }
 
-      numberToBuy = searchData.data[0].phone_number;
+      numberToBuy = candidates[0].phone_number;
     }
 
     // Order the number via Telnyx
@@ -102,6 +192,23 @@ export async function POST(req: NextRequest) {
     // Format for display
     const digits = numberToBuy.replace(/\D/g, "").slice(1); // remove + and country code
     const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+
+    // Assign the new number to our Voice API app + enable HD voice. Fire
+    // and forget-ish — we log failures but still return success for the
+    // SMS-only path (user can manually reassign in Telnyx portal later).
+    configureVoiceOnNumber(numberToBuy)
+      .then((r) => {
+        if (!r.ok) {
+          console.warn(
+            `[buy-number] voice config failed for ${numberToBuy}: ${r.reason}${
+              "detail" in r && r.detail ? ` — ${r.detail}` : ""
+            }`
+          );
+        }
+      })
+      .catch((err) => {
+        console.warn(`[buy-number] voice config threw for ${numberToBuy}:`, err);
+      });
 
     // Register the number in owned_phone_numbers so inbound SMS routing
     // (and anything else that needs a fast "who owns this?" lookup) finds it

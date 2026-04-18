@@ -6,8 +6,8 @@
 // that's more expensive to carry. Keep this in one place so pricing UI,
 // wallet debits, and admin dashboards all stay in sync.
 
-export const CALL_RATE_OUTBOUND_PER_MIN = 0.03;
-export const CALL_RATE_INBOUND_PER_MIN = 0.01;
+export const CALL_RATE_OUTBOUND_PER_MIN = 0.045;
+export const CALL_RATE_INBOUND_PER_MIN = 0.025;
 
 /** Round seconds up to the next minute (per-minute billing). */
 export function minutesBilled(seconds: number): number {
