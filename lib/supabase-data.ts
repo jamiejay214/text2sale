@@ -370,6 +370,20 @@ export async function insertTemplate(
   return data as MessageTemplate;
 }
 
+export async function updateTemplate(
+  templateId: string,
+  updates: Partial<Pick<MessageTemplate, "name" | "body" | "category">>
+): Promise<MessageTemplate | null> {
+  const { data, error } = await supabase
+    .from("message_templates")
+    .update(updates)
+    .eq("id", templateId)
+    .select()
+    .single();
+  if (error || !data) return null;
+  return data as MessageTemplate;
+}
+
 export async function deleteTemplate(templateId: string): Promise<boolean> {
   const { error } = await supabase
     .from("message_templates")

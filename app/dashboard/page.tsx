@@ -20,7 +20,7 @@ import {
   fetchTeamMembers, fetchTeamMemberContacts, fetchTeamMemberCampaigns,
   fetchTeamMemberConversations, joinTeamByCode, leaveTeam,
   insertConversation,
-  fetchTemplates, insertTemplate, deleteTemplate,
+  fetchTemplates, insertTemplate, updateTemplate, deleteTemplate,
   fetchScheduledMessages, insertScheduledMessage, cancelScheduledMessage,
 } from "@/lib/supabase-data";
 import type {
@@ -555,7 +555,7 @@ export default function DashboardPage() {
   // Deliverability keyed by 10-digit normalized number. Refreshed when the
   // Numbers tab opens and every 30s while it's visible, plus on every
   // messages-table INSERT/UPDATE via realtime so bad numbers show up fast.
-  const [deliverability, setDeliverability] = useState<Record<string, { total: number; delivered: number; failed: number }>>({});
+  const [deliverability, setDeliverability] = useState<Record<string, { total: number; delivered: number; failed: number; pending: number }>>({});
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
@@ -651,6 +651,13 @@ export default function DashboardPage() {
   const [newTemplateName, setNewTemplateName] = useState("");
   const [newTemplateBody, setNewTemplateBody] = useState("");
   const [newTemplateCategory, setNewTemplateCategory] = useState("general");
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editingTemplateName, setEditingTemplateName] = useState("");
+  const [editingTemplateBody, setEditingTemplateBody] = useState("");
+  const [editingTemplateCategory, setEditingTemplateCategory] = useState("general");
+  const [templateSearch, setTemplateSearch] = useState("");
+  const [templateCategoryFilter, setTemplateCategoryFilter] = useState("all");
+  const [copiedTemplateId, setCopiedTemplateId] = useState<string | null>(null);
   const [showTemplateManager, setShowTemplateManager] = useState(false);
 
   // Scheduled messages state
@@ -1684,12 +1691,13 @@ export default function DashboardPage() {
       p_days: 30,
     });
     if (error || !data) return;
-    const next: Record<string, { total: number; delivered: number; failed: number }> = {};
-    for (const row of data as Array<{ digits: string; total: number; delivered: number; failed: number }>) {
+    const next: Record<string, { total: number; delivered: number; failed: number; pending: number }> = {};
+    for (const row of data as Array<{ digits: string; total: number; delivered: number; failed: number; pending: number }>) {
       next[row.digits] = {
         total: Number(row.total),
         delivered: Number(row.delivered),
         failed: Number(row.failed),
+        pending: Number(row.pending ?? 0),
       };
     }
     setDeliverability(next);
@@ -2116,8 +2124,50 @@ export default function DashboardPage() {
   };
 
   const handleDeleteTemplate = async (id: string) => {
+    if (!window.confirm("Delete this template?")) return;
     const ok = await deleteTemplate(id);
-    if (ok) setTemplates((prev) => prev.filter((t) => t.id !== id));
+    if (ok) {
+      setTemplates((prev) => prev.filter((t) => t.id !== id));
+      if (editingTemplateId === id) setEditingTemplateId(null);
+    }
+  };
+
+  const handleStartEditTemplate = (tpl: MessageTemplate) => {
+    setEditingTemplateId(tpl.id);
+    setEditingTemplateName(tpl.name);
+    setEditingTemplateBody(tpl.body);
+    setEditingTemplateCategory(tpl.category);
+  };
+
+  const handleCancelEditTemplate = () => {
+    setEditingTemplateId(null);
+    setEditingTemplateName("");
+    setEditingTemplateBody("");
+    setEditingTemplateCategory("general");
+  };
+
+  const handleUpdateTemplate = async () => {
+    if (!editingTemplateId || !editingTemplateName.trim() || !editingTemplateBody.trim()) return;
+    const updated = await updateTemplate(editingTemplateId, {
+      name: editingTemplateName.trim(),
+      body: editingTemplateBody.trim(),
+      category: editingTemplateCategory,
+    });
+    if (updated) {
+      setTemplates((prev) => prev.map((t) => (t.id === editingTemplateId ? updated : t)));
+      handleCancelEditTemplate();
+      setMessage("✅ Template updated");
+    } else {
+      setMessage("❌ Failed to update template");
+    }
+    window.setTimeout(() => setMessage(""), 2500);
+  };
+
+  const handleCopyTemplateBody = (tpl: MessageTemplate) => {
+    navigator.clipboard.writeText(tpl.body).then(() => {
+      setCopiedTemplateId(tpl.id);
+      window.setTimeout(() => setCopiedTemplateId(null), 1500);
+    });
   };
 
   const handleUseTemplate = (body: string) => {
@@ -8037,103 +8087,345 @@ export default function DashboardPage() {
         )}
 
         {/* ═══════════════ TEMPLATES ═══════════════ */}
-        {activeTab === "templates" && (
-          <div className="grid gap-8 lg:grid-cols-2">
-            {/* Create Template */}
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Create Template</h2>
-              <p className="mt-1 text-sm text-zinc-500">Save message templates for quick reuse in conversations and campaigns.</p>
+        {activeTab === "templates" && (() => {
+          const TEMPLATE_CATEGORIES = [
+            { value: "general",      label: "General",       color: "bg-zinc-700 text-zinc-300" },
+            { value: "quick-reply",  label: "Quick Reply",   color: "bg-sky-900/60 text-sky-300" },
+            { value: "follow-up",    label: "Follow Up",     color: "bg-violet-900/60 text-violet-300" },
+            { value: "greeting",     label: "Greeting",      color: "bg-emerald-900/60 text-emerald-300" },
+            { value: "closing",      label: "Closing",       color: "bg-amber-900/60 text-amber-300" },
+            { value: "appointment",  label: "Appointment",   color: "bg-rose-900/60 text-rose-300" },
+          ];
+          const catColor = (val: string) =>
+            TEMPLATE_CATEGORIES.find((c) => c.value === val)?.color ?? "bg-zinc-700 text-zinc-300";
+          const catLabel = (val: string) =>
+            TEMPLATE_CATEGORIES.find((c) => c.value === val)?.label ?? val;
 
-              <div className="mt-5 space-y-4">
-                <div className="flex gap-3">
-                  <div className="flex-1">
-                    <label className="mb-2 block text-sm text-zinc-400">Template Name</label>
-                    <input
-                      value={newTemplateName}
-                      onChange={(e) => setNewTemplateName(e.target.value)}
-                      placeholder="e.g. Follow Up, Welcome, Appointment Reminder"
-                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-sm text-zinc-400">Category</label>
-                    <select
-                      value={newTemplateCategory}
-                      onChange={(e) => setNewTemplateCategory(e.target.value)}
-                      className="rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none"
-                    >
-                      <option value="general">General</option>
-                      <option value="follow-up">Follow Up</option>
-                      <option value="greeting">Greeting</option>
-                      <option value="closing">Closing</option>
-                      <option value="appointment">Appointment</option>
-                    </select>
-                  </div>
-                </div>
+          const filtered = templates.filter((t) => {
+            const matchesSearch =
+              !templateSearch ||
+              t.name.toLowerCase().includes(templateSearch.toLowerCase()) ||
+              t.body.toLowerCase().includes(templateSearch.toLowerCase());
+            const matchesCat =
+              templateCategoryFilter === "all" || t.category === templateCategoryFilter;
+            return matchesSearch && matchesCat;
+          });
 
+          const isEditing = !!editingTemplateId;
+
+          return (
+            <div className="space-y-6">
+              {/* ── Page header ── */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <label className="mb-2 block text-sm text-zinc-400">Message Body</label>
-                  <textarea
-                    value={newTemplateBody}
-                    onChange={(e) => setNewTemplateBody(e.target.value)}
-                    rows={5}
-                    placeholder="Type your template message here... Use {firstName}, {lastName}, etc. for personalization."
-                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3 text-white outline-none placeholder:text-zinc-500 focus:border-violet-500"
-                  />
+                  <h1 className="text-3xl font-bold tracking-tight">Templates</h1>
+                  <p className="mt-1 text-sm text-zinc-500">
+                    Reusable messages for conversations, campaigns, and quick replies.
+                  </p>
                 </div>
-
-                <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-xs text-zinc-500">
-                  <span className="font-semibold text-zinc-400">Variables:</span> {"{firstName}"}, {"{lastName}"}, {"{phone}"}, {"{email}"}, {"{city}"}, {"{state}"}
+                <div className="flex items-center gap-2">
+                  <span className="rounded-full border border-zinc-700 bg-zinc-900 px-3 py-1 text-xs font-medium text-zinc-400">
+                    {templates.length} saved
+                  </span>
                 </div>
-
-                <button
-                  onClick={handleSaveTemplate}
-                  disabled={!newTemplateName.trim() || !newTemplateBody.trim()}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-4 font-medium hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  Save Template
-                </button>
-              </div>
-            </div>
-
-            {/* Template List */}
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <div className="flex items-center justify-between">
-                <h2 className="text-2xl font-bold">Your Templates</h2>
-                <span className="text-sm text-zinc-500">{templates.length} template{templates.length !== 1 ? "s" : ""}</span>
               </div>
 
-              {templates.length === 0 ? (
-                <div className="mt-8 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-8 text-center text-zinc-500">
-                  No templates yet. Create your first one to speed up your messaging.
-                </div>
-              ) : (
-                <div className="mt-5 max-h-[500px] space-y-3 overflow-y-auto">
-                  {templates.map((tpl) => (
-                    <div key={tpl.id} className="rounded-2xl border border-zinc-700 bg-zinc-800/60 p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="font-semibold">{tpl.name}</span>
-                          <span className="rounded-full bg-zinc-700 px-2 py-0.5 text-[10px] text-zinc-400">{tpl.category}</span>
+              <div className="grid gap-6 xl:grid-cols-5">
+                {/* ── Left: Create / Edit form ── */}
+                <div className="xl:col-span-2">
+                  <div className="sticky top-6 rounded-3xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
+                    {/* Form header */}
+                    <div className="mb-5 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`flex h-9 w-9 items-center justify-center rounded-2xl ${isEditing ? "bg-amber-500/20" : "bg-violet-600/20"}`}>
+                          {isEditing ? (
+                            <svg className="h-4 w-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          ) : (
+                            <svg className="h-4 w-4 text-violet-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                            </svg>
+                          )}
                         </div>
+                        <h2 className="text-lg font-bold">
+                          {isEditing ? "Edit Template" : "New Template"}
+                        </h2>
+                      </div>
+                      {isEditing && (
                         <button
-                          onClick={() => handleDeleteTemplate(tpl.id)}
-                          className="rounded-lg px-2 py-1 text-xs text-zinc-500 hover:bg-red-900/40 hover:text-red-300"
+                          onClick={handleCancelEditTemplate}
+                          className="rounded-xl px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white"
                         >
-                          Delete
+                          Cancel
                         </button>
-                      </div>
-                      <div className="mt-2 whitespace-pre-wrap text-sm text-zinc-400">{tpl.body}</div>
-                      <div className="mt-2 text-[10px] text-zinc-600">
-                        Created {new Date(tpl.created_at).toLocaleDateString()}
-                      </div>
+                      )}
                     </div>
-                  ))}
+
+                    <div className="space-y-4">
+                      {/* Name */}
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium uppercase tracking-widest text-zinc-500">
+                          Template Name
+                        </label>
+                        <input
+                          value={isEditing ? editingTemplateName : newTemplateName}
+                          onChange={(e) =>
+                            isEditing
+                              ? setEditingTemplateName(e.target.value)
+                              : setNewTemplateName(e.target.value)
+                          }
+                          placeholder="e.g. Welcome Message, Follow Up #1"
+                          className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/80 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 transition"
+                        />
+                      </div>
+
+                      {/* Category */}
+                      <div>
+                        <label className="mb-1.5 block text-xs font-medium uppercase tracking-widest text-zinc-500">
+                          Category
+                        </label>
+                        <div className="flex flex-wrap gap-2">
+                          {TEMPLATE_CATEGORIES.map((cat) => {
+                            const active =
+                              (isEditing ? editingTemplateCategory : newTemplateCategory) === cat.value;
+                            return (
+                              <button
+                                key={cat.value}
+                                onClick={() =>
+                                  isEditing
+                                    ? setEditingTemplateCategory(cat.value)
+                                    : setNewTemplateCategory(cat.value)
+                                }
+                                className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                                  active
+                                    ? cat.color + " ring-1 ring-white/20"
+                                    : "bg-zinc-800 text-zinc-500 hover:bg-zinc-700 hover:text-zinc-300"
+                                }`}
+                              >
+                                {cat.label}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Body */}
+                      <div>
+                        <div className="mb-1.5 flex items-center justify-between">
+                          <label className="text-xs font-medium uppercase tracking-widest text-zinc-500">
+                            Message Body
+                          </label>
+                          <span className={`text-[10px] tabular-nums ${
+                            (isEditing ? editingTemplateBody : newTemplateBody).length > 160
+                              ? "text-amber-400"
+                              : "text-zinc-600"
+                          }`}>
+                            {(isEditing ? editingTemplateBody : newTemplateBody).length} chars
+                          </span>
+                        </div>
+                        <textarea
+                          value={isEditing ? editingTemplateBody : newTemplateBody}
+                          onChange={(e) =>
+                            isEditing
+                              ? setEditingTemplateBody(e.target.value)
+                              : setNewTemplateBody(e.target.value)
+                          }
+                          rows={5}
+                          placeholder={"Hi {firstName}, this is {agentName}..."}
+                          className="w-full rounded-2xl border border-zinc-700 bg-zinc-800/80 px-4 py-3 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-violet-500 focus:ring-1 focus:ring-violet-500/30 transition resize-none"
+                        />
+                      </div>
+
+                      {/* Variable chips */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {["{firstName}", "{lastName}", "{city}", "{state}", "{agentName}"].map((v) => (
+                          <button
+                            key={v}
+                            onClick={() => {
+                              if (isEditing) setEditingTemplateBody((b) => b + v);
+                              else setNewTemplateBody((b) => b + v);
+                            }}
+                            className="rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-1 text-[10px] font-mono text-violet-400 hover:border-violet-500/50 hover:bg-zinc-700 transition"
+                            title={`Insert ${v}`}
+                          >
+                            {v}
+                          </button>
+                        ))}
+                        <span className="self-center text-[10px] text-zinc-600">click to insert</span>
+                      </div>
+
+                      {/* Save button */}
+                      {isEditing ? (
+                        <button
+                          onClick={handleUpdateTemplate}
+                          disabled={!editingTemplateName.trim() || !editingTemplateBody.trim()}
+                          className="w-full rounded-2xl bg-amber-500 px-6 py-3.5 text-sm font-semibold text-black hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                        >
+                          Save Changes
+                        </button>
+                      ) : (
+                        <button
+                          onClick={handleSaveTemplate}
+                          disabled={!newTemplateName.trim() || !newTemplateBody.trim()}
+                          className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40 transition"
+                        >
+                          Save Template
+                        </button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                {/* ── Right: Template list ── */}
+                <div className="xl:col-span-3 space-y-4">
+                  {/* Search + filter */}
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                    <div className="relative flex-1">
+                      <svg className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                      </svg>
+                      <input
+                        value={templateSearch}
+                        onChange={(e) => setTemplateSearch(e.target.value)}
+                        placeholder="Search templates..."
+                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-900 py-2.5 pl-10 pr-4 text-sm text-white outline-none placeholder:text-zinc-600 focus:border-violet-500 transition"
+                      />
+                    </div>
+                    <div className="flex gap-1 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1">
+                      <button
+                        onClick={() => setTemplateCategoryFilter("all")}
+                        className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          templateCategoryFilter === "all"
+                            ? "bg-zinc-700 text-white"
+                            : "text-zinc-500 hover:text-zinc-300"
+                        }`}
+                      >
+                        All
+                      </button>
+                      {TEMPLATE_CATEGORIES.map((cat) => (
+                        <button
+                          key={cat.value}
+                          onClick={() => setTemplateCategoryFilter(cat.value)}
+                          className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                            templateCategoryFilter === cat.value
+                              ? "bg-zinc-700 text-white"
+                              : "text-zinc-500 hover:text-zinc-300"
+                          }`}
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Cards */}
+                  {filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-800 bg-zinc-900/50 py-16 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-800">
+                        <svg className="h-6 w-6 text-zinc-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                          <polyline points="14 2 14 8 20 8"/>
+                          <line x1="16" y1="13" x2="8" y2="13"/>
+                          <line x1="16" y1="17" x2="8" y2="17"/>
+                          <polyline points="10 9 9 9 8 9"/>
+                        </svg>
+                      </div>
+                      <p className="text-sm font-medium text-zinc-500">
+                        {templateSearch || templateCategoryFilter !== "all"
+                          ? "No templates match your search"
+                          : "No templates yet"}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-600">
+                        {templateSearch || templateCategoryFilter !== "all"
+                          ? "Try a different search or category"
+                          : "Create your first template using the form on the left"}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {filtered.map((tpl) => {
+                        const isBeingEdited = editingTemplateId === tpl.id;
+                        return (
+                          <div
+                            key={tpl.id}
+                            className={`group rounded-3xl border transition-all ${
+                              isBeingEdited
+                                ? "border-amber-500/40 bg-amber-500/5 shadow-[0_0_0_1px_rgba(245,158,11,0.15)]"
+                                : "border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 hover:border-zinc-700"
+                            }`}
+                          >
+                            <div className="p-5">
+                              {/* Card header */}
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="truncate font-semibold text-white">{tpl.name}</span>
+                                    <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${catColor(tpl.category)}`}>
+                                      {catLabel(tpl.category)}
+                                    </span>
+                                  </div>
+                                  <p className="mt-0.5 text-[10px] text-zinc-600">
+                                    {tpl.body.length} chars · saved {new Date(tpl.created_at).toLocaleDateString()}
+                                  </p>
+                                </div>
+                                {/* Action buttons */}
+                                <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                                  <button
+                                    onClick={() => handleCopyTemplateBody(tpl)}
+                                    title="Copy to clipboard"
+                                    className="rounded-xl border border-zinc-700 bg-zinc-800 p-2 text-zinc-400 hover:border-zinc-600 hover:text-white transition"
+                                  >
+                                    {copiedTemplateId === tpl.id ? (
+                                      <svg className="h-3.5 w-3.5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                                        <polyline points="20 6 9 17 4 12"/>
+                                      </svg>
+                                    ) : (
+                                      <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                                      </svg>
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={() => handleStartEditTemplate(tpl)}
+                                    title="Edit template"
+                                    className="rounded-xl border border-zinc-700 bg-zinc-800 p-2 text-zinc-400 hover:border-amber-500/50 hover:text-amber-400 transition"
+                                  >
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                    </svg>
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteTemplate(tpl.id)}
+                                    title="Delete template"
+                                    className="rounded-xl border border-zinc-700 bg-zinc-800 p-2 text-zinc-400 hover:border-red-500/50 hover:text-red-400 transition"
+                                  >
+                                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <polyline points="3 6 5 6 21 6"/>
+                                      <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                                      <path d="M10 11v6M14 11v6M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+                                    </svg>
+                                  </button>
+                                </div>
+                              </div>
+                              {/* Body preview */}
+                              <p className="mt-3 line-clamp-3 whitespace-pre-wrap text-sm leading-relaxed text-zinc-400">
+                                {tpl.body}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {activeTab === "settings" && (
           <div className="space-y-6">
@@ -8252,77 +8544,90 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-              <h2 className="text-2xl font-bold">Owned Numbers</h2>
-              <p className="mt-1 text-xs text-zinc-400">
-                {(currentUser.ownedNumbers || []).length} number{(currentUser.ownedNumbers || []).length !== 1 ? "s" : ""} · All numbers rotate automatically when launching campaigns
-              </p>
+            <div className="rounded-3xl border border-zinc-800/80 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-2xl shadow-black/40">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className="text-2xl font-bold tracking-tight">Owned Numbers</h2>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {(currentUser.ownedNumbers || []).length} number{(currentUser.ownedNumbers || []).length !== 1 ? "s" : ""} · Rotated automatically across campaigns
+                  </p>
+                </div>
+              </div>
 
-              <div className="mt-5 space-y-4">
+              <div className="mt-6 grid gap-3 sm:grid-cols-2">
                 {(currentUser.ownedNumbers || []).map((item) => {
-                  // 10-digit key for deliverability lookup.
                   const digits = item.number.replace(/\D/g, "");
                   const key = digits.startsWith("1") ? digits.slice(1) : digits;
                   const stats = deliverability[key];
-                  const pct = stats && stats.total > 0
-                    ? Math.round((stats.delivered / stats.total) * 1000) / 10
+
+                  // "Received receipts" is delivered + failed — i.e. what
+                  // Telnyx has confirmed one way or the other. If that's 0,
+                  // we haven't learned anything yet, so don't paint it red.
+                  const receipts = stats ? stats.delivered + stats.failed : 0;
+                  const pct = receipts > 0
+                    ? Math.round((stats!.delivered / receipts) * 1000) / 10
                     : null;
-                  // Color the badge by delivery rate. Under 70% = likely
-                  // carrier-blocked or spam-flagged; 70-89% watch; 90%+ good.
-                  const badgeColor = pct === null
-                    ? "bg-zinc-800 text-zinc-400"
-                    : pct >= 90
-                      ? "bg-emerald-900 text-emerald-300"
-                      : pct >= 70
-                        ? "bg-amber-900 text-amber-300"
-                        : "bg-red-900 text-red-300";
-                  const barColor = pct === null
-                    ? "bg-zinc-700"
-                    : pct >= 90
-                      ? "bg-emerald-500"
-                      : pct >= 70
-                        ? "bg-amber-500"
-                        : "bg-red-500";
+
+                  let state: "good" | "watch" | "bad" | "pending" | "idle";
+                  if (!stats || stats.total === 0) state = "idle";
+                  else if (pct === null) state = "pending";
+                  else if (pct >= 90) state = "good";
+                  else if (pct >= 70) state = "watch";
+                  else state = "bad";
+
+                  const palette = {
+                    good:    { pill: "bg-emerald-500/10 text-emerald-300 ring-1 ring-emerald-500/20", bar: "bg-emerald-400", dot: "bg-emerald-400", label: `${pct}% delivered` },
+                    watch:   { pill: "bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/20",       bar: "bg-amber-400",   dot: "bg-amber-400",   label: `${pct}% delivered` },
+                    bad:     { pill: "bg-red-500/10 text-red-300 ring-1 ring-red-500/20",             bar: "bg-red-400",     dot: "bg-red-400",     label: `${pct}% delivered` },
+                    pending: { pill: "bg-sky-500/10 text-sky-300 ring-1 ring-sky-500/20",             bar: "bg-sky-400/60",  dot: "bg-sky-400",     label: "Awaiting receipts" },
+                    idle:    { pill: "bg-zinc-800 text-zinc-400 ring-1 ring-zinc-700",                bar: "bg-zinc-700",    dot: "bg-zinc-500",    label: "No sends yet" },
+                  }[state];
+
+                  const barPct = state === "pending" ? 100 : (pct ?? 0);
+
                   return (
                     <div
                       key={item.id}
-                      className="rounded-2xl border border-zinc-800 bg-zinc-800/60 p-5"
+                      className="group relative overflow-hidden rounded-2xl border border-zinc-800/80 bg-zinc-900/70 p-5 transition hover:border-zinc-700"
                     >
-                      <div className="flex items-center justify-between gap-3">
+                      <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="font-semibold">{item.alias}</div>
-                          <div className="mt-1 font-mono text-zinc-300">{item.number}</div>
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                          <div className={`rounded-full px-3 py-1 text-xs ${badgeColor}`}>
-                            {pct === null ? "No data yet" : `${pct}% delivered`}
+                          <div className="flex items-center gap-2">
+                            <span className={`h-1.5 w-1.5 rounded-full ${palette.dot}`} />
+                            <span className="text-[11px] uppercase tracking-wider text-zinc-500">{item.alias}</span>
                           </div>
-                          <button
-                            onClick={() => handleDeleteOwnedNumber(item)}
-                            disabled={deletingNumberId === item.id}
-                            className="rounded-full border border-red-900/60 bg-red-950/40 px-3 py-1 text-xs text-red-300 hover:bg-red-900/60 disabled:opacity-50"
-                            title="Permanently release this number"
-                          >
-                            {deletingNumberId === item.id ? "Releasing…" : "Delete"}
-                          </button>
+                          <div className="mt-1 font-mono text-lg text-zinc-100">{item.number}</div>
                         </div>
+                        <button
+                          onClick={() => handleDeleteOwnedNumber(item)}
+                          disabled={deletingNumberId === item.id}
+                          className="opacity-0 group-hover:opacity-100 transition rounded-lg border border-red-900/40 bg-red-950/30 px-2.5 py-1 text-[11px] text-red-300 hover:bg-red-900/40 disabled:opacity-40"
+                          title="Permanently release this number"
+                        >
+                          {deletingNumberId === item.id ? "Releasing…" : "Release"}
+                        </button>
                       </div>
 
-                      {/* Deliverability bar + counts */}
-                      <div className="mt-4">
-                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
-                          <span>Deliverability · last 30 days</span>
-                          {stats && (
-                            <span>
-                              {stats.delivered.toLocaleString()} delivered · {stats.failed.toLocaleString()} failed · {stats.total.toLocaleString()} sent
+                      <div className={`mt-4 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-medium ${palette.pill}`}>
+                        {palette.label}
+                      </div>
+
+                      <div className="mt-3">
+                        <div className="h-1 w-full overflow-hidden rounded-full bg-zinc-950 ring-1 ring-zinc-800/60">
+                          <div
+                            className={`h-full ${palette.bar} transition-all duration-500`}
+                            style={{ width: `${barPct}%` }}
+                          />
+                        </div>
+                        <div className="mt-2 flex items-center justify-between text-[10.5px] text-zinc-500">
+                          <span>Last 30 days</span>
+                          {stats && stats.total > 0 && (
+                            <span className="tabular-nums">
+                              {stats.total.toLocaleString()} sent
+                              {stats.delivered > 0 && <> · <span className="text-emerald-400">{stats.delivered.toLocaleString()} delivered</span></>}
+                              {stats.failed > 0 && <> · <span className="text-red-400">{stats.failed.toLocaleString()} failed</span></>}
                             </span>
                           )}
-                        </div>
-                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900">
-                          <div
-                            className={`h-full ${barColor} transition-all`}
-                            style={{ width: `${pct ?? 0}%` }}
-                          />
                         </div>
                       </div>
                     </div>
@@ -8330,11 +8635,15 @@ export default function DashboardPage() {
                 })}
 
                 {(currentUser.ownedNumbers || []).length === 0 && (
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
-                    No phone numbers yet. Search and buy one to get started.
+                  <div className="sm:col-span-2 rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/40 p-10 text-center text-zinc-500">
+                    No phone numbers yet. Search and buy one above to get started.
                   </div>
                 )}
               </div>
+
+              <p className="mt-6 text-[11px] leading-relaxed text-zinc-600">
+                Deliverability is computed from Telnyx delivery receipts. If a number shows &quot;Awaiting receipts&quot; for a long time, verify that your Telnyx Messaging Profile has a webhook URL pointing to <span className="font-mono text-zinc-500">/api/sms-status</span>.
+              </p>
             </div>
           </div>
         )}
