@@ -10268,7 +10268,7 @@ export default function DashboardPage() {
               {availableNumbers.length > 0 && (
                 <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
                   <h3 className="text-lg font-bold">Available Numbers</h3>
-                  <p className="mt-1 text-xs text-zinc-400">{availableNumbers.length} numbers found — all call + text ready · click to buy</p>
+                  <p className="mt-1 text-xs text-zinc-400">{availableNumbers.length} numbers found — SMS + Voice + HD Voice ready · click to buy</p>
 
                   <div className="mt-4 space-y-2 max-h-[400px] overflow-y-auto">
                     {availableNumbers.map((num) => (
@@ -10285,9 +10285,10 @@ export default function DashboardPage() {
                               {[num.locality, num.region].filter(Boolean).join(", ")}
                             </div>
                           )}
-                          <div className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-emerald-400">
+                          <div className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-medium text-emerald-400">
                             <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5">💬 SMS</span>
                             <span className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-1.5 py-0.5">📞 Voice</span>
+                            <span className="rounded-full border border-violet-500/40 bg-violet-500/10 px-1.5 py-0.5 text-violet-300">🎧 HD Voice</span>
                           </div>
                         </div>
                         <div className="text-sm font-medium text-violet-400">
