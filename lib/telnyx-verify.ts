@@ -43,16 +43,19 @@ export async function verifyTelnyxSignature(
 }
 
 // Helper — returns true if we should allow the request through despite
-// verification failing. In production we ALWAYS fail closed; in dev/preview
-// we let it through (with a loud warning) so local testing isn't broken by
-// a missing env var.
+// verification failing.
+//
+// Policy: if TELNYX_PUBLIC_KEY is NOT configured we log loudly and let the
+// webhook through (otherwise inbound SMS silently dies). As soon as the key
+// IS configured, we fail closed on bad signatures — no env-based bypass.
+// This means: add the key in Vercel and verification instantly becomes
+// enforced, no code change needed.
 export function allowUnverifiedInDev(context: string): boolean {
   const hasKey =
     !!process.env.TELNYX_PUBLIC_KEY || !!process.env.TELNYX_WEBHOOK_PUBLIC_KEY;
   if (hasKey) return false;
-  if (process.env.NODE_ENV === "production") return false;
   console.warn(
-    `[${context}] TELNYX_PUBLIC_KEY not set — allowing unverified webhook in non-production env. DO NOT run like this in production.`
+    `[${context}] TELNYX_PUBLIC_KEY not set — allowing unverified webhook. Add the key in Vercel env vars to enable signature enforcement.`
   );
   return true;
 }
