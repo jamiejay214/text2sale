@@ -246,7 +246,7 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
           </div>
           <span className="flex items-center gap-1">
             Powered by
-            <span className="font-semibold text-violet-400">TextAlot AI</span>
+            <span className="font-semibold text-violet-400">Text2Sale AI</span>
           </span>
         </div>
       </div>

@@ -172,7 +172,7 @@ export async function createCalendarEvent(
 
   const event = {
     summary: appointment.title,
-    description: `Contact: ${appointment.contactName}\nPhone: ${appointment.contactPhone}\n\nBooked via Textalot`,
+    description: `Contact: ${appointment.contactName}\nPhone: ${appointment.contactPhone}\n\nBooked via Text2Sale`,
     start: {
       dateTime: startLocal,
       timeZone,

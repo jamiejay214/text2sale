@@ -4809,7 +4809,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-300">TextAlot AI</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-300">Text2Sale AI</span>
                       <span className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-[9px] font-bold text-fuchsia-300">BETA</span>
                     </div>
                     <h3 className="mt-1.5 text-lg font-semibold text-white">
@@ -12790,7 +12790,7 @@ export default function DashboardPage() {
                         </span>
                       </div>
                       <div>
-                        <div className="font-bold text-white">TextAlot Support</div>
+                        <div className="font-bold text-white">Text2Sale Support</div>
                         <div className="flex items-center gap-1.5 text-[11px] text-violet-100/90">
                           <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
                           Online • Replies within minutes
@@ -12913,7 +12913,7 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <div className="mt-1.5 px-1 text-center text-[10px] text-zinc-600">
-                    Powered by TextAlot · your messages are private
+                    Powered by Text2Sale · your messages are private
                   </div>
                 </div>
               </div>
