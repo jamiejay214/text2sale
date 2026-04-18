@@ -8,8 +8,10 @@ import CommandPalette, { type Command } from "@/components/CommandPalette";
 import Toasts from "@/components/Toasts";
 import Sparkline from "@/components/Sparkline";
 import TempBadge from "@/components/TempBadge";
+import SmartReplies from "@/components/SmartReplies";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
+import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
@@ -6014,39 +6016,56 @@ export default function DashboardPage() {
                     <div className="space-y-5">
                       {selectedConversation.messages
                         .filter((item) => !convFromNumber || item.direction === "inbound" || item.fromNumber === convFromNumber || !item.fromNumber)
-                        .map((item) => (
-                        <div
-                          key={item.id}
-                          className={`flex ${
-                            item.direction === "outbound" ? "justify-end" : "justify-start"
-                          }`}
-                        >
-                          <div className="max-w-[72%]">
+                        .map((item) => {
+                          // Only score inbound messages — outbound keeps the
+                          // signature violet→fuchsia gradient so the thread
+                          // still reads "my reply" vs "their reply" at a glance.
+                          const sent = item.direction === "inbound" ? analyzeSentiment(item.body) : null;
+                          const inboundClasses =
+                            sent && sent.tier !== "neutral"
+                              ? `${sent.bgClass} text-zinc-100 border ${sent.borderClass} ring-1 ${sent.ringClass}`
+                              : "bg-zinc-800 text-zinc-100";
+                          return (
                             <div
-                              className={`rounded-3xl px-5 py-4 text-[15px] leading-7 shadow-lg ${
-                                item.direction === "outbound"
-                                  ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white"
-                                  : "bg-zinc-800 text-zinc-100"
+                              key={item.id}
+                              className={`flex ${
+                                item.direction === "outbound" ? "justify-end" : "justify-start"
                               }`}
                             >
-                              {item.body}
-                            </div>
+                              <div className="max-w-[72%]">
+                                <div
+                                  title={sent && sent.matched.length > 0 ? `Matched: ${sent.matched.join(", ")}` : undefined}
+                                  className={`rounded-3xl px-5 py-4 text-[15px] leading-7 shadow-lg transition-all ${
+                                    item.direction === "outbound"
+                                      ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white"
+                                      : inboundClasses
+                                  }`}
+                                >
+                                  {item.body}
+                                </div>
 
-                            <div
-                              className={`mt-2 text-xs text-zinc-500 ${
-                                item.direction === "outbound"
-                                  ? "text-right"
-                                  : "text-left"
-                              }`}
-                            >
-                              {formatTime(item.createdAt)}
-                              {item.direction === "outbound"
-                                ? ` • ${displayMessageStatus(item.status)}`
-                                : ""}
+                                <div
+                                  className={`mt-2 flex items-center gap-2 text-xs text-zinc-500 ${
+                                    item.direction === "outbound"
+                                      ? "justify-end"
+                                      : "justify-start"
+                                  }`}
+                                >
+                                  {sent && sent.tier !== "neutral" && (
+                                    <span className="inline-flex items-center gap-1 rounded-full border border-zinc-800 bg-zinc-900/60 px-1.5 py-0.5 text-[10px] font-semibold">
+                                      <span>{sent.emoji}</span>
+                                      <span className="tracking-wide text-zinc-300">{sent.label}</span>
+                                    </span>
+                                  )}
+                                  <span>{formatTime(item.createdAt)}</span>
+                                  {item.direction === "outbound" && (
+                                    <span>• {displayMessageStatus(item.status)}</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
-                          </div>
-                        </div>
-                      ))}
+                          );
+                        })}
                     </div>
                     {/* Sentinel for auto-scroll to latest message */}
                     <div ref={convMessagesEndRef} />
@@ -6093,6 +6112,49 @@ export default function DashboardPage() {
                         </div>
                       </div>
                     )}
+
+                    {/* Smart Replies — sentiment-aware suggestions based on the
+                        last inbound message. Only shows when composer is empty
+                        and there's at least one inbound to react to. */}
+                    {composerText.length === 0 && (() => {
+                      const msgs = selectedConversation?.messages || [];
+                      const lastInbound = [...msgs].reverse().find((m) => m.direction === "inbound");
+                      if (!lastInbound) return null;
+                      const sent: Sentiment = analyzeSentiment(lastInbound.body);
+                      const replies = suggestReplies(sent, selectedContact?.firstName);
+                      return (
+                        <SmartReplies
+                          suggestions={replies}
+                          sentiment={sent}
+                          onPick={(t) => setComposerText(t)}
+                          className="mb-3"
+                        />
+                      );
+                    })()}
+
+                    {/* Send-window warning — if it's outside prime hours in the
+                        contact's local timezone, nudge but don't block. */}
+                    {composerText.length > 0 && (() => {
+                      const sw = computeSendWindow(selectedConversation?.messages, selectedContact?.state);
+                      if (!sw || sw.isInsideWindow) return null;
+                      // Only warn if it's actually late/early — outside 8am-9pm
+                      const nowLocalRaw = sw.contactLocalTimeLabel.match(/^(\d+)(?::\d+)?(am|pm)/i);
+                      if (!nowLocalRaw) return null;
+                      let h = parseInt(nowLocalRaw[1], 10);
+                      const isPm = nowLocalRaw[2].toLowerCase() === "pm";
+                      if (h === 12) h = isPm ? 12 : 0;
+                      else if (isPm) h += 12;
+                      const isLateOrEarly = h < 8 || h >= 21;
+                      if (!isLateOrEarly) return null;
+                      return (
+                        <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                          <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                          <span>
+                            It's <b>{sw.contactLocalTimeLabel}</b> for this contact. Better window opens around <b>{sw.suggestedLabel}</b>.
+                          </span>
+                        </div>
+                      );
+                    })()}
 
                     {composerText.length > 0 && (() => {
                       // Preview uses the SANITIZED body — same transform the
