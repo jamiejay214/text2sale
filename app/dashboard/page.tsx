@@ -10,6 +10,7 @@ import Sparkline from "@/components/Sparkline";
 import TempBadge from "@/components/TempBadge";
 import SmartReplies from "@/components/SmartReplies";
 import CallHud, { type CallHudState } from "@/components/CallHud";
+import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "@/components/BrowserPhone";
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import { computeTemperature } from "@/lib/lead-temperature";
@@ -563,6 +564,9 @@ export default function DashboardPage() {
   // history lives on the Calls tab; this `activeCall` is only the
   // in-flight one we're currently animating.
   const [activeCall, setActiveCall] = useState<CallHudState | null>(null);
+  // Browser WebRTC phone — ref gives us makeCall/hangup/mute, token fetched once.
+  const browserPhoneRef = useRef<BrowserPhoneHandle>(null);
+  const [webrtcToken, setWebrtcToken] = useState<string | null>(null);
   // Realtime connection status — drives the Live chip in the top bar.
   const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "offline">("connecting");
   // Power dialer (auto-advancing calling queue, built into the Calls tab).
@@ -1088,6 +1092,12 @@ export default function DashboardPage() {
       } catch { /* ignore */ }
 
       setMounted(true);
+
+      // Fetch WebRTC token for browser calling (best-effort — non-blocking)
+      authFetch("/api/telnyx/webrtc-token")
+        .then((r) => r.json())
+        .then((d) => { if (d.token) setWebrtcToken(d.token); })
+        .catch(() => { /* calling will fall back gracefully */ });
     };
 
     loadData();
@@ -2086,45 +2096,61 @@ export default function DashboardPage() {
     }
     if (!opts.to) return;
 
+    // Normalize to E.164
+    const toDigits = String(opts.to).replace(/\D/g, "");
+    const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
+    const fromDigits = String(fromGuess).replace(/\D/g, "");
+    const fromE164 = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
+
+    // Optimistically show the HUD immediately
     setActiveCall({
       callId: "pending",
       contactName: opts.contactName || "Contact",
-      contactPhone: opts.to,
-      fromNumber: fromGuess,
-      status: "initiating",
+      contactPhone: toE164,
+      fromNumber: fromE164,
+      status: "ringing",
       startedAt: Date.now(),
+      browserMode: true,
     });
 
-    try {
-      const res = await authFetch("/api/initiate-call", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ to: opts.to, from: fromGuess, contactId: opts.contactId || null }),
-      });
-      const data = await res.json();
-      if (!data.success) {
-        setActiveCall((prev) => prev ? { ...prev, status: "failed", error: data.error || "Call failed" } : prev);
-        return;
-      }
-      setActiveCall((prev) => prev ? { ...prev, callId: data.callId, status: "ringing" } : prev);
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Could not start call";
-      setActiveCall((prev) => prev ? { ...prev, status: "failed", error: msg } : prev);
+    // Initiate the WebRTC call directly in the browser
+    if (browserPhoneRef.current) {
+      browserPhoneRef.current.makeCall(toE164, fromE164);
+    } else {
+      setActiveCall((prev) =>
+        prev ? { ...prev, status: "failed", error: "Browser phone not ready — reload and try again." } : prev
+      );
+      return;
     }
+
+    // Create a calls row server-side for billing / history tracking (fire-and-forget)
+    authFetch("/api/calls/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to: toE164, from: fromE164, contactId: opts.contactId || null }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.callId) {
+          setActiveCall((prev) => prev ? { ...prev, callId: d.callId } : prev);
+        }
+      })
+      .catch(() => { /* non-blocking — HUD still works */ });
   }, [currentUser]);
 
   const hangupCall = useCallback(async (callId: string) => {
-    if (!callId || callId === "pending") {
-      setActiveCall(null);
-      return;
-    }
+    // Hang up the browser WebRTC call immediately
+    browserPhoneRef.current?.hangup();
+    setActiveCall((prev) => prev ? { ...prev, status: "completed" } : prev);
+
+    if (!callId || callId === "pending") return;
     try {
       await authFetch("/api/hangup-call", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ callId }),
       });
-    } catch { /* swallow — webhook will finalize the row either way */ }
+    } catch { /* swallow — row finalised by webhook or log route */ }
   }, []);
 
   // ─── Power dialer ────────────────────────────────────────────────────
@@ -14175,11 +14201,34 @@ export default function DashboardPage() {
         onAnswer={handleUshaAnswer}
       />
 
+      {/* Browser WebRTC phone — invisible audio engine */}
+      <BrowserPhone
+        ref={browserPhoneRef}
+        token={webrtcToken}
+        onStateChange={(s: BrowserPhoneStatus) => {
+          setActiveCall((prev) => {
+            if (!prev) return prev;
+            if (s.callState === "active") {
+              return { ...prev, status: "answered", answeredAt: prev.answeredAt ?? Date.now(), muted: s.muted };
+            }
+            if (s.callState === "ended") {
+              return { ...prev, status: "completed", muted: s.muted };
+            }
+            if (s.callState === "ringing" || s.callState === "calling") {
+              return { ...prev, status: "ringing", muted: s.muted };
+            }
+            return { ...prev, muted: s.muted };
+          });
+        }}
+      />
+
       {/* Floating Call HUD (always-on-top when a call is live) */}
       <CallHud
         call={activeCall}
         onHangup={hangupCall}
         onClose={() => setActiveCall(null)}
+        onMute={() => browserPhoneRef.current?.mute()}
+        onUnmute={() => browserPhoneRef.current?.unmute()}
       />
 
       {/* ── Power Dialer — full-screen auto-advancing calling queue ── */}

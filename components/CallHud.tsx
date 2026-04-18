@@ -29,15 +29,20 @@ export type CallHudState = {
   answeredAt?: number;
   durationSec?: number;
   error?: string;
+  /** true when audio is coming through the browser (WebRTC mode) */
+  browserMode?: boolean;
+  muted?: boolean;
 };
 
 type Props = {
   call: CallHudState | null;
   onHangup: (callId: string) => void;
   onClose: () => void;
+  onMute?: () => void;
+  onUnmute?: () => void;
 };
 
-export default function CallHud({ call, onHangup, onClose }: Props) {
+export default function CallHud({ call, onHangup, onClose, onMute, onUnmute }: Props) {
   const [tick, setTick] = useState(0);
 
   // Tick every second so the live timer renders in real time.
@@ -68,7 +73,7 @@ export default function CallHud({ call, onHangup, onClose }: Props) {
 
   const statusMeta: Record<CallHudState["status"], { label: string; tint: string; pulse: boolean }> = {
     initiating: { label: "Starting call…", tint: "from-sky-500 to-cyan-500", pulse: true },
-    ringing: { label: "Ringing your phone…", tint: "from-violet-500 to-fuchsia-500", pulse: true },
+    ringing: { label: call?.browserMode ? "Calling…" : "Ringing your phone…", tint: "from-violet-500 to-fuchsia-500", pulse: true },
     answered: { label: "On the line", tint: "from-emerald-500 to-green-500", pulse: true },
     completed: { label: "Call ended", tint: "from-zinc-500 to-zinc-600", pulse: false },
     "no-answer": { label: "No answer", tint: "from-amber-500 to-orange-500", pulse: false },
@@ -138,12 +143,43 @@ export default function CallHud({ call, onHangup, onClose }: Props) {
 
         {/* Action */}
         {isActive ? (
-          <button
-            onClick={() => onHangup(call.callId)}
-            className="mt-4 w-full rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-500/30 transition hover:brightness-110"
-          >
-            End call
-          </button>
+          <div className="mt-4 flex gap-2">
+            {/* Mute toggle — only shown in browser WebRTC mode */}
+            {call.browserMode && (
+              <button
+                onClick={call.muted ? onUnmute : onMute}
+                className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border text-sm font-semibold transition ${
+                  call.muted
+                    ? "border-amber-600 bg-amber-900/40 text-amber-300 hover:bg-amber-900/60"
+                    : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:bg-zinc-800"
+                }`}
+                title={call.muted ? "Unmute" : "Mute"}
+              >
+                {call.muted ? (
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                    <path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/>
+                    <path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                    <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                    <line x1="12" y1="19" x2="12" y2="23"/>
+                    <line x1="8" y1="23" x2="16" y2="23"/>
+                  </svg>
+                )}
+              </button>
+            )}
+            <button
+              onClick={() => onHangup(call.callId)}
+              className="flex-1 rounded-2xl bg-gradient-to-r from-red-500 to-rose-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-red-500/30 transition hover:brightness-110"
+            >
+              End call
+            </button>
+          </div>
         ) : (
           <button
             onClick={onClose}
@@ -160,7 +196,7 @@ export default function CallHud({ call, onHangup, onClose }: Props) {
         )}
 
         <p className="mt-3 text-center text-[10px] text-zinc-500">
-          We ring your phone first, then connect your contact.
+          {call.browserMode ? "🎧 Audio through your browser" : "We ring your phone first, then connect your contact."}
         </p>
       </div>
     </div>

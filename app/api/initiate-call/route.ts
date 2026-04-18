@@ -2,11 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 
-// TEMP DISABLED
-export async function POST() {
-  return NextResponse.json({ error: "Calling temporarily disabled" }, { status: 503 });
-}
-
 const apiKey = process.env.TELNYX_API_KEY!;
 const voiceAppId =
   process.env.TELNYX_VOICE_APP_ID ||
