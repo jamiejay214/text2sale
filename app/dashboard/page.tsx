@@ -13,6 +13,7 @@ import CallHud, { type CallHudState } from "@/components/CallHud";
 import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "@/components/BrowserPhone";
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
+import WinCelebration from "@/components/WinCelebration";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -567,6 +568,8 @@ export default function DashboardPage() {
   // Browser WebRTC phone — ref gives us makeCall/hangup/mute, token fetched once.
   const browserPhoneRef = useRef<BrowserPhoneHandle>(null);
   const [webrtcToken, setWebrtcToken] = useState<string | null>(null);
+  // Win celebration — 10-second confetti/fireworks when a lead hits "Won".
+  const [winCelebration, setWinCelebration] = useState<{ name: string } | null>(null);
   // Realtime connection status — drives the Live chip in the top bar.
   const [liveStatus, setLiveStatus] = useState<"connecting" | "live" | "offline">("connecting");
   // Power dialer (auto-advancing calling queue, built into the Calls tab).
@@ -7299,9 +7302,18 @@ export default function DashboardPage() {
           })();
 
           const setStage = (contactId: string, stage: PipelineStage) => {
+            const prevStage = stageMap[contactId];
             const next = { ...stageMap, [contactId]: stage };
             try { window.localStorage.setItem(STAGE_STORAGE_KEY, JSON.stringify(next)); } catch {}
             setPipelineVersion((v) => v + 1);
+            // 🎉 Confetti + fireworks when a fresh win lands. We only fire
+            // on the transition INTO "won" (not re-drops within the lane)
+            // so the rep gets celebrated once per close.
+            if (stage === "won" && prevStage !== "won") {
+              const c = contacts.find((x) => x.id === contactId);
+              const name = c ? `${c.firstName || ""} ${c.lastName || ""}`.trim() || "Deal closed!" : "Deal closed!";
+              setWinCelebration({ name });
+            }
           };
 
           // Only show contacts the user has actually worked — skip DNC and
@@ -14221,6 +14233,13 @@ export default function DashboardPage() {
             return { ...prev, muted: s.muted };
           });
         }}
+      />
+
+      {/* 🎉 Win celebration — fires when a lead is dropped into "Won" */}
+      <WinCelebration
+        active={!!winCelebration}
+        message={winCelebration ? `${winCelebration.name} closed!` : undefined}
+        onDone={() => setWinCelebration(null)}
       />
 
       {/* Floating Call HUD (always-on-top when a call is live) */}
