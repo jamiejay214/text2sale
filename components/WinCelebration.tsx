@@ -5,9 +5,11 @@
 // lead into "Won". Pure canvas — no deps, no images. Auto-unmounts after
 // the show so we don't leak animation frames.
 //
-// Usage:
-//   const [celebrate, setCelebrate] = useState(false);
-//   <WinCelebration active={celebrate} onDone={() => setCelebrate(false)} />
+// Implementation notes:
+//  - Setup runs ONCE per activation (keyed off the `active` prop). We use
+//    a ref for onDone so a re-rendered parent doesn't restart the show.
+//  - The dramatic gradient "background change" is a full-bleed animated
+//    div behind the canvas, not a subtle 10% veil.
 
 import React, { useEffect, useRef, useState } from "react";
 
@@ -33,6 +35,7 @@ const COLORS = [
   "#ec4899", // pink
   "#06b6d4", // cyan
   "#eab308", // yellow
+  "#ffffff", // white sparkle
 ];
 
 const DURATION_MS = 10_000;
@@ -47,16 +50,26 @@ export default function WinCelebration({ active, message, onDone }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
   const particlesRef = useRef<Particle[]>([]);
-  const startedAtRef = useRef<number>(0);
+  const onDoneRef = useRef(onDone);
   const [visible, setVisible] = useState(false);
+
+  // Keep onDone ref fresh without retriggering the setup effect
+  useEffect(() => {
+    onDoneRef.current = onDone;
+  }, [onDone]);
 
   useEffect(() => {
     if (!active) return;
+
     setVisible(true);
-    startedAtRef.current = performance.now();
+    const startedAt = performance.now();
 
     const canvas = canvasRef.current;
-    if (!canvas) return;
+    if (!canvas) {
+      // Canvas hasn't mounted yet — wait a frame and try again
+      const retryId = requestAnimationFrame(() => setVisible(true));
+      return () => cancelAnimationFrame(retryId);
+    }
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
@@ -69,38 +82,36 @@ export default function WinCelebration({ active, message, onDone }: Props) {
 
     particlesRef.current = [];
 
-    // Seed an initial confetti burst across the top of the screen
     const seedConfetti = (count: number) => {
       for (let i = 0; i < count; i++) {
         particlesRef.current.push({
           x: Math.random() * canvas.width,
           y: -20 - Math.random() * 200,
-          vx: (Math.random() - 0.5) * 4,
-          vy: 1 + Math.random() * 3,
+          vx: (Math.random() - 0.5) * 5,
+          vy: 2 + Math.random() * 4,
           color: COLORS[Math.floor(Math.random() * COLORS.length)],
-          size: 6 + Math.random() * 6,
+          size: 8 + Math.random() * 8,
           rot: Math.random() * Math.PI * 2,
-          vr: (Math.random() - 0.5) * 0.3,
+          vr: (Math.random() - 0.5) * 0.4,
           shape: Math.random() < 0.7 ? "rect" : "circle",
           life: 1,
         });
       }
     };
 
-    // Firework — radial burst from a point
     const firework = (cx: number, cy: number) => {
-      const n = 40 + Math.floor(Math.random() * 30);
+      const n = 60 + Math.floor(Math.random() * 40);
       const color = COLORS[Math.floor(Math.random() * COLORS.length)];
       for (let i = 0; i < n; i++) {
         const angle = (Math.PI * 2 * i) / n + Math.random() * 0.1;
-        const speed = 4 + Math.random() * 4;
+        const speed = 5 + Math.random() * 6;
         particlesRef.current.push({
           x: cx,
           y: cy,
           vx: Math.cos(angle) * speed,
           vy: Math.sin(angle) * speed,
           color,
-          size: 3 + Math.random() * 3,
+          size: 4 + Math.random() * 4,
           rot: 0,
           vr: 0,
           shape: "circle",
@@ -109,42 +120,39 @@ export default function WinCelebration({ active, message, onDone }: Props) {
       }
     };
 
-    seedConfetti(180);
+    // Opening burst
+    seedConfetti(260);
+    firework(canvas.width * 0.5, canvas.height * 0.3);
 
-    // Fire fireworks on a schedule
-    const fireworkTimers: number[] = [];
-    const scheduleFirework = (delay: number) => {
-      const t = window.setTimeout(() => {
-        firework(
-          canvas.width * (0.2 + Math.random() * 0.6),
-          canvas.height * (0.15 + Math.random() * 0.3)
-        );
-      }, delay);
-      fireworkTimers.push(t);
-    };
-    for (let i = 0; i < 8; i++) {
-      scheduleFirework(300 + i * 1000);
+    const timers: number[] = [];
+    // Fireworks on a schedule
+    for (let i = 0; i < 12; i++) {
+      timers.push(
+        window.setTimeout(() => {
+          firework(
+            canvas.width * (0.15 + Math.random() * 0.7),
+            canvas.height * (0.15 + Math.random() * 0.35)
+          );
+        }, 200 + i * 700)
+      );
     }
-    // Secondary confetti refills to keep the screen full
-    const confettiTimers: number[] = [];
-    for (let i = 0; i < 5; i++) {
-      confettiTimers.push(
-        window.setTimeout(() => seedConfetti(120), 1500 + i * 1500)
+    // Rolling confetti refills
+    for (let i = 0; i < 6; i++) {
+      timers.push(
+        window.setTimeout(() => seedConfetti(140), 1200 + i * 1300)
       );
     }
 
     const step = () => {
-      const elapsed = performance.now() - startedAtRef.current;
+      const elapsed = performance.now() - startedAt;
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       for (const p of particlesRef.current) {
-        // Basic physics: gravity + air drag
-        p.vy += 0.12;
+        p.vy += 0.14;
         p.vx *= 0.995;
         p.x += p.vx;
         p.y += p.vy;
         p.rot += p.vr;
-        // Fade out in the last 2 seconds of the show
         if (elapsed > DURATION_MS - 2000) {
           p.life = Math.max(0, 1 - (elapsed - (DURATION_MS - 2000)) / 2000);
         }
@@ -166,7 +174,6 @@ export default function WinCelebration({ active, message, onDone }: Props) {
       }
       ctx.globalAlpha = 1;
 
-      // Drop particles that have left the viewport or faded
       particlesRef.current = particlesRef.current.filter(
         (p) => p.y < canvas.height + 50 && p.life > 0.05
       );
@@ -175,58 +182,70 @@ export default function WinCelebration({ active, message, onDone }: Props) {
         rafRef.current = requestAnimationFrame(step);
       } else {
         setVisible(false);
-        onDone?.();
+        onDoneRef.current?.();
       }
     };
     rafRef.current = requestAnimationFrame(step);
 
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      fireworkTimers.forEach((t) => window.clearTimeout(t));
-      confettiTimers.forEach((t) => window.clearTimeout(t));
+      timers.forEach((t) => window.clearTimeout(t));
       window.removeEventListener("resize", resize);
     };
-  }, [active, onDone]);
+    // Only re-run when `active` flips — onDone is held in a ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active]);
 
   if (!visible) return null;
 
   return (
     <div className="pointer-events-none fixed inset-0 z-[200]">
-      {/* Soft gradient veil that fades in then out */}
-      <div className="absolute inset-0 animate-[winVeil_10s_ease-in-out] bg-gradient-to-br from-emerald-500/10 via-transparent to-violet-500/10" />
+      {/* DRAMATIC animated background — multiple color wash layers */}
+      <div className="absolute inset-0 animate-[winBg_10s_ease-in-out_forwards]">
+        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 via-violet-600 to-pink-600" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/60 via-transparent to-cyan-500/60" />
+      </div>
+
+      {/* Pulsing spotlight behind the banner */}
+      <div className="absolute left-1/2 top-1/2 h-[700px] w-[700px] -translate-x-1/2 -translate-y-1/2 animate-[winPulse_2s_ease-in-out_infinite] rounded-full bg-white/20 blur-3xl" />
 
       {/* Confetti + fireworks canvas */}
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
 
       {/* 🎉 Big centered label */}
-      <div className="absolute inset-x-0 top-20 flex justify-center">
-        <div className="animate-[winPop_10s_ease-out] rounded-3xl border border-emerald-400/50 bg-gradient-to-br from-emerald-500/30 via-green-500/20 to-emerald-600/30 px-10 py-6 shadow-2xl shadow-emerald-500/40 backdrop-blur-xl ring-1 ring-white/10">
-          <div className="flex items-center gap-3">
-            <span className="text-5xl">🎉</span>
-            <div>
-              <div className="text-[11px] font-semibold uppercase tracking-widest text-emerald-200">
-                Closed & Won
+      <div className="absolute inset-x-0 top-24 flex justify-center">
+        <div className="animate-[winPop_10s_ease-out_forwards] rounded-[2rem] border-2 border-white/60 bg-gradient-to-br from-white/30 via-white/10 to-white/30 px-12 py-8 shadow-2xl shadow-black/40 ring-4 ring-white/20 backdrop-blur-xl">
+          <div className="flex items-center gap-4">
+            <span className="text-6xl drop-shadow-lg">🎉</span>
+            <div className="text-center">
+              <div className="text-[13px] font-bold uppercase tracking-[0.3em] text-white/90 drop-shadow">
+                Closed &amp; Won
               </div>
-              <div className="text-3xl font-black tracking-tight text-white drop-shadow-lg">
+              <div className="mt-1 text-4xl font-black tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.5)]">
                 {message || "Cha-ching! 💰"}
               </div>
             </div>
-            <span className="text-5xl">🎊</span>
+            <span className="text-6xl drop-shadow-lg">🎊</span>
           </div>
         </div>
       </div>
 
       <style jsx>{`
         @keyframes winPop {
-          0% { transform: scale(0.2) rotate(-6deg); opacity: 0; }
-          10% { transform: scale(1.15) rotate(2deg); opacity: 1; }
-          15% { transform: scale(1) rotate(0deg); }
+          0% { transform: scale(0.2) rotate(-8deg); opacity: 0; }
+          8% { transform: scale(1.15) rotate(3deg); opacity: 1; }
+          14% { transform: scale(1) rotate(0deg); }
           85% { transform: scale(1) rotate(0deg); opacity: 1; }
-          100% { transform: scale(0.95) translateY(-20px); opacity: 0; }
+          100% { transform: scale(0.9) translateY(-30px); opacity: 0; }
         }
-        @keyframes winVeil {
-          0%, 100% { opacity: 0; }
-          10%, 80% { opacity: 1; }
+        @keyframes winBg {
+          0% { opacity: 0; }
+          5%, 80% { opacity: 0.85; }
+          100% { opacity: 0; }
+        }
+        @keyframes winPulse {
+          0%, 100% { transform: translate(-50%, -50%) scale(0.9); opacity: 0.4; }
+          50% { transform: translate(-50%, -50%) scale(1.1); opacity: 0.7; }
         }
       `}</style>
     </div>
