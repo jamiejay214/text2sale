@@ -1,12 +1,15 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import type { Sentiment } from "@/lib/sentiment";
 
 // ────────────────────────────────────────────────────────────────────────────
 // SmartReplies — horizontal chip strip of 3 context-aware reply suggestions.
 // Shows above the composer, color-tinted based on the last inbound message's
 // sentiment. Click a chip → inserts its text into the composer.
+//
+// Collapsible — users who find it noisy can minimize it into a thin one-line
+// pill. Preference is persisted in localStorage so it sticks across reloads.
 // ────────────────────────────────────────────────────────────────────────────
 
 type Props = {
@@ -16,7 +19,33 @@ type Props = {
   className?: string;
 };
 
+const STORAGE_KEY = "textalot_smart_replies_collapsed";
+
 export default function SmartReplies({ suggestions, sentiment, onPick, className = "" }: Props) {
+  const [collapsed, setCollapsed] = useState<boolean>(false);
+
+  // Restore preference on mount
+  useEffect(() => {
+    try {
+      const v = window.localStorage.getItem(STORAGE_KEY);
+      if (v === "1") setCollapsed(true);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  const toggle = () => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      try {
+        window.localStorage.setItem(STORAGE_KEY, next ? "1" : "0");
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+
   if (!suggestions || suggestions.length === 0) return null;
 
   const hintEmoji = sentiment?.emoji || "💡";
@@ -24,6 +53,22 @@ export default function SmartReplies({ suggestions, sentiment, onPick, className
     sentiment && sentiment.tier !== "neutral"
       ? `${sentiment.label} — try one of these`
       : "Smart suggestions";
+
+  // Collapsed — show a thin single-line pill so we don't eat vertical space.
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={toggle}
+        className={`group flex w-full items-center gap-2 rounded-xl border border-zinc-800/80 bg-zinc-900/50 px-3 py-1.5 text-[11px] text-zinc-400 transition hover:border-violet-500/40 hover:bg-violet-500/5 hover:text-zinc-200 ${className}`}
+        title="Show smart suggestions"
+      >
+        <span>{hintEmoji}</span>
+        <span className="font-semibold uppercase tracking-wider">{hintLabel}</span>
+        <span className="ml-auto text-zinc-500 group-hover:text-violet-300">Show ▾</span>
+      </button>
+    );
+  }
 
   return (
     <div
@@ -34,11 +79,20 @@ export default function SmartReplies({ suggestions, sentiment, onPick, className
         <span>{hintLabel}</span>
         {sentiment && sentiment.tier !== "neutral" && (
           <span
-            className={`ml-auto rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sentiment.bgClass} ${sentiment.borderClass}`}
+            className={`ml-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ${sentiment.bgClass} ${sentiment.borderClass}`}
           >
             {sentiment.tier.toUpperCase()}
           </span>
         )}
+        <button
+          type="button"
+          onClick={toggle}
+          className="ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500 hover:bg-zinc-800 hover:text-zinc-200"
+          title="Minimize"
+          aria-label="Minimize smart suggestions"
+        >
+          Hide ▴
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2">

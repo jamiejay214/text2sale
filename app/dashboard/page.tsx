@@ -5181,51 +5181,163 @@ export default function DashboardPage() {
 
             {/* Analytics Charts */}
             <div className="grid gap-8 lg:grid-cols-2">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h2 className="text-xl font-bold mb-4">7-Day Activity</h2>
-                <div className="flex items-end gap-1 h-40">
-                  {analytics.dailyCounts.map((day) => {
-                    const maxCount = Math.max(...analytics.dailyCounts.map((d) => d.count), 1);
-                    const height = Math.max((day.count / maxCount) * 100, 4);
-                    return (
-                      <div key={day.date} className="flex flex-1 flex-col items-center gap-1">
-                        <span className="text-[10px] text-zinc-400">{day.count}</span>
-                        <div className="w-full rounded-t-lg bg-violet-600" style={{ height: `${height}%` }} />
-                        <span className="text-[9px] text-zinc-500">{day.date.slice(5)}</span>
-                      </div>
-                    );
-                  })}
+              {/* 7-Day Activity — dual-series gradient bar chart. Violet bars
+                  are sent SMS; emerald pills on top are inbound replies so
+                  you can see engagement at a glance. */}
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6">
+                <div className="mb-4 flex items-end justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">7-Day Activity</h2>
+                    <p className="text-xs text-zinc-500">SMS sent & replies received</p>
+                  </div>
+                  <div className="flex items-center gap-3 text-[11px]">
+                    <span className="flex items-center gap-1.5 text-zinc-400">
+                      <span className="inline-block h-2 w-2 rounded-sm bg-gradient-to-t from-violet-600 to-fuchsia-400" />
+                      Sent
+                    </span>
+                    <span className="flex items-center gap-1.5 text-zinc-400">
+                      <span className="inline-block h-2 w-2 rounded-sm bg-emerald-400" />
+                      Replies
+                    </span>
+                  </div>
                 </div>
-                <div className="mt-3 flex justify-between text-xs text-zinc-500">
-                  <span>Total spent: {formatCurrency(analytics.totalSpent)}</span>
-                  <span>Total funded: {formatCurrency(analytics.totalFunded)}</span>
+
+                {(() => {
+                  const rows = analytics.dailyCounts.map((d, i) => ({
+                    ...d,
+                    replies: last7.replies[i] || 0,
+                  }));
+                  const maxVal = Math.max(
+                    ...rows.map((r) => Math.max(r.count, r.replies)),
+                    1
+                  );
+                  return (
+                    <div className="relative h-44 w-full">
+                      {/* Gridlines */}
+                      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none">
+                        {[0, 1, 2, 3].map((i) => (
+                          <div key={i} className="h-px bg-zinc-800/80" />
+                        ))}
+                      </div>
+                      {/* Bars */}
+                      <div className="relative flex h-full items-end gap-2 px-1">
+                        {rows.map((d) => {
+                          const sentH = Math.round((d.count / maxVal) * 150);
+                          const replyH = Math.round((d.replies / maxVal) * 150);
+                          const isToday = d.date === new Date().toISOString().slice(0, 10);
+                          return (
+                            <div key={d.date} className="group flex flex-1 flex-col items-center gap-1">
+                              <div className="flex h-[160px] w-full items-end justify-center gap-0.5">
+                                <div
+                                  className="w-3 rounded-t-md bg-gradient-to-t from-violet-600 via-violet-500 to-fuchsia-400 shadow-[0_0_10px_rgba(167,139,250,0.4)] transition-all group-hover:from-violet-500 group-hover:to-fuchsia-300"
+                                  style={{ height: `${Math.max(sentH, d.count > 0 ? 4 : 2)}px` }}
+                                  title={`${d.count} sent`}
+                                />
+                                <div
+                                  className="w-3 rounded-t-md bg-gradient-to-t from-emerald-600 to-emerald-300 shadow-[0_0_10px_rgba(52,211,153,0.4)] transition-all group-hover:from-emerald-500 group-hover:to-emerald-200"
+                                  style={{ height: `${Math.max(replyH, d.replies > 0 ? 4 : 2)}px` }}
+                                  title={`${d.replies} replies`}
+                                />
+                              </div>
+                              <div className={`text-[10px] font-semibold tabular-nums ${isToday ? "text-violet-300" : "text-zinc-400"}`}>
+                                {d.count}
+                              </div>
+                              <div className={`text-[9px] tabular-nums ${isToday ? "text-fuchsia-300 font-semibold" : "text-zinc-500"}`}>
+                                {d.date.slice(5)}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="mt-4 flex justify-between border-t border-zinc-800 pt-3 text-xs">
+                  <span className="text-zinc-400">
+                    Total spent: <span className="font-semibold text-rose-300">{formatCurrency(analytics.totalSpent)}</span>
+                  </span>
+                  <span className="text-zinc-400">
+                    Total funded: <span className="font-semibold text-emerald-300">{formatCurrency(analytics.totalFunded)}</span>
+                  </span>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h2 className="text-xl font-bold mb-4">Campaign Performance</h2>
-                {analytics.campaignStats.length === 0 ? (
-                  <p className="text-sm text-zinc-500">No completed campaigns yet.</p>
-                ) : (
-                  <div className="space-y-3 max-h-48 overflow-y-auto">
-                    {analytics.campaignStats.map((c) => (
-                      <div key={c.name} className="rounded-xl bg-zinc-800 p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium truncate">{c.name}</span>
-                          <span className="text-xs text-zinc-400">{c.sent} sent</span>
-                        </div>
-                        <div className="mt-2 flex gap-4 text-xs">
-                          <span className="text-emerald-400">{c.deliveryRate}% delivered</span>
-                          <span className="text-amber-400">{c.replyRate}% replied</span>
-                          {c.failed > 0 && <span className="text-red-400">{c.failed} failed</span>}
-                        </div>
-                        <div className="mt-2 h-1.5 rounded-full bg-zinc-700">
-                          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${c.deliveryRate}%` }} />
-                        </div>
-                      </div>
-                    ))}
+              {/* Campaign Performance — shows ALL campaigns with activity, not
+                  just Completed ones. Live campaigns get a pulsing indicator. */}
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6">
+                <div className="mb-4 flex items-end justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Campaign Performance</h2>
+                    <p className="text-xs text-zinc-500">Top {Math.min(6, campaigns.filter((c) => c.sent > 0).length)} campaigns by send volume</p>
                   </div>
-                )}
+                </div>
+                {(() => {
+                  const active = campaigns
+                    .filter((c) => c.sent > 0)
+                    .sort((a, b) => b.sent - a.sent)
+                    .slice(0, 6);
+                  if (active.length === 0) {
+                    return (
+                      <div className="flex h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-800 bg-zinc-950/50 text-center">
+                        <div className="text-3xl">📣</div>
+                        <p className="mt-2 text-sm font-semibold text-zinc-300">Ready to send your first blast?</p>
+                        <p className="mt-1 text-xs text-zinc-500">Launch a campaign and metrics appear here in real time.</p>
+                        <button
+                          onClick={() => setActiveTab("campaigns")}
+                          className="mt-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-violet-500/30 hover:brightness-110"
+                        >
+                          Create Campaign
+                        </button>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div className="space-y-3 max-h-56 overflow-y-auto pr-1">
+                      {active.map((c) => {
+                        const deliv = c.sent > 0 ? ((c.sent - c.failed) / c.sent) * 100 : 0;
+                        const reply = c.sent > 0 ? (c.replies / c.sent) * 100 : 0;
+                        const isLive = c.status === "Sending" || c.status === "Scheduled";
+                        return (
+                          <div key={c.id || c.name} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-3 transition hover:border-violet-500/40">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="flex min-w-0 items-center gap-2">
+                                {isLive && (
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60" />
+                                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                                  </span>
+                                )}
+                                <span className="truncate text-sm font-semibold text-white">{c.name}</span>
+                                {c.status && (
+                                  <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wider ${
+                                    c.status === "Completed" ? "bg-emerald-500/15 text-emerald-300" :
+                                    c.status === "Sending" ? "bg-violet-500/15 text-violet-300" :
+                                    c.status === "Scheduled" ? "bg-sky-500/15 text-sky-300" :
+                                    c.status === "Paused" ? "bg-amber-500/15 text-amber-300" :
+                                    "bg-zinc-700 text-zinc-300"
+                                  }`}>
+                                    {c.status}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="shrink-0 text-xs font-semibold tabular-nums text-zinc-300">{c.sent}<span className="text-zinc-500 font-normal"> sent</span></span>
+                            </div>
+                            <div className="mt-2 flex gap-4 text-xs tabular-nums">
+                              <span className="text-emerald-400">{deliv.toFixed(1)}% delivered</span>
+                              <span className="text-amber-400">{reply.toFixed(1)}% replied</span>
+                              {c.failed > 0 && <span className="text-rose-400">{c.failed} failed</span>}
+                            </div>
+                            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-zinc-800">
+                              <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400" style={{ width: `${deliv}%` }} />
+                              <div className="h-full bg-gradient-to-r from-amber-500 to-amber-400" style={{ width: `${Math.min(reply, 100 - deliv)}%` }} />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
               </div>
             </div>
 
@@ -5491,11 +5603,17 @@ export default function DashboardPage() {
                               <span className={`text-[10px] font-medium uppercase ${statusColor}`}>
                                 {displayMessageStatus(msg.status)}
                               </span>
+                              {/* Subtle colored star shows WHICH line this
+                                  message went out on — color matches the
+                                  line's chip in the number picker. Hover to
+                                  see the full number. */}
                               {msg.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
                                 <span
-                                  className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] ring-1 ring-inset ${getNumberColor(msg.fromNumber)}`}
+                                  className={`text-[11px] leading-none ${getNumberColor(msg.fromNumber).replace(/bg-[^\s]+|ring-[^\s]+/g, "").trim()}`}
+                                  title={`Sent from ${msg.fromNumber}`}
+                                  aria-label={`Sent from ${msg.fromNumber}`}
                                 >
-                                  •••{getLastFour(msg.fromNumber)}
+                                  ★
                                 </span>
                               )}
                             </div>
@@ -5591,6 +5709,18 @@ export default function DashboardPage() {
                                   {temp.emoji}
                                 </span>
                               )}
+                              {/* Colored star — identifies which of the user's
+                                  lines this thread is on. Color matches the
+                                  line's chip in the number picker. */}
+                              {conversation.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
+                                <span
+                                  className={`shrink-0 text-sm leading-none ${getNumberColor(conversation.fromNumber).replace(/bg-[^\s]+|ring-[^\s]+/g, "").trim()}`}
+                                  title={`On ${conversation.fromNumber}`}
+                                  aria-label={`On ${conversation.fromNumber}`}
+                                >
+                                  ★
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-zinc-400">
                               {formatTime(conversation.lastMessageAt)}
@@ -5601,19 +5731,6 @@ export default function DashboardPage() {
                             {conversation.preview}
                           </div>
 
-                          {/* Which of the user's lines this thread is on —
-                              shown only when more than one number is owned. */}
-                          {conversation.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
-                            <div className="mt-1.5 flex items-center gap-1.5">
-                              <span
-                                className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ring-1 ring-inset ${getNumberColor(conversation.fromNumber)}`}
-                                title={`On ${conversation.fromNumber}`}
-                              >
-                                <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                                •••{getLastFour(conversation.fromNumber)}
-                              </span>
-                            </div>
-                          )}
                         </div>
 
                         {conversation.unread > 0 && (
@@ -12632,84 +12749,202 @@ export default function DashboardPage() {
       {!impersonating && (
         <>
           {/* Chat Window */}
-          {chatOpen && (
-            <div className="fixed bottom-24 right-6 z-50 w-[360px] rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl flex flex-col" style={{ height: "480px" }}>
-              {/* Header */}
-              <div className="flex items-center justify-between rounded-t-2xl bg-violet-600 px-5 py-4">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-white/20 text-lg">💬</div>
-                  <div>
-                    <div className="font-bold text-white">Support Chat</div>
-                    <div className="text-xs text-violet-200">We typically reply within minutes</div>
-                  </div>
-                </div>
-                <button onClick={() => { setChatOpen(false); setChatUnread(0); }} className="text-white/70 hover:text-white text-xl">✕</button>
-              </div>
+          {chatOpen && (() => {
+            // Group messages by calendar day so it reads like a real chat
+            // history, not a flat list of "hello"s. Each day gets a divider.
+            const groups: { label: string; msgs: typeof chatMessages }[] = [];
+            const dayLabel = (iso: string) => {
+              const d = new Date(iso);
+              const now = new Date();
+              const diffDays = Math.floor((now.getTime() - d.getTime()) / 86400000);
+              if (d.toDateString() === now.toDateString()) return "Today";
+              const y = new Date(now); y.setDate(now.getDate() - 1);
+              if (d.toDateString() === y.toDateString()) return "Yesterday";
+              if (diffDays < 7) return d.toLocaleDateString("en-US", { weekday: "long" });
+              return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined });
+            };
+            for (const m of chatMessages) {
+              const label = dayLabel(m.created_at);
+              const last = groups[groups.length - 1];
+              if (last && last.label === label) last.msgs.push(m);
+              else groups.push({ label, msgs: [m] });
+            }
+            return (
+              <div className="fixed bottom-24 right-6 z-50 flex w-[380px] max-w-[calc(100vw-3rem)] flex-col overflow-hidden rounded-3xl border border-zinc-800/80 bg-zinc-950/95 shadow-[0_24px_80px_rgba(0,0,0,0.7)] backdrop-blur-xl" style={{ height: "560px" }}>
+                {/* Gradient Header */}
+                <div className="relative overflow-hidden bg-gradient-to-br from-violet-600 via-purple-600 to-fuchsia-600 px-5 py-4">
+                  {/* Animated blobs */}
+                  <div className="pointer-events-none absolute -top-10 -right-10 h-32 w-32 rounded-full bg-fuchsia-400/40 blur-2xl" />
+                  <div className="pointer-events-none absolute -bottom-10 -left-10 h-32 w-32 rounded-full bg-violet-400/40 blur-2xl" />
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                {chatMessages.length === 0 && (
-                  <div className="text-center text-sm text-zinc-500 mt-8">
-                    <div className="text-3xl mb-2">👋</div>
-                    <div>Hi there! How can we help you?</div>
-                    <div className="mt-1 text-xs">Send us a message and we&apos;ll get back to you shortly.</div>
-                  </div>
-                )}
-                {chatMessages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.sender_role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
-                      msg.sender_role === "user"
-                        ? "bg-violet-600 text-white rounded-br-sm"
-                        : "bg-zinc-800 text-zinc-200 rounded-bl-sm"
-                    }`}>
-                      {msg.sender_role === "admin" && <div className="text-[10px] font-semibold text-violet-400 mb-0.5">Support</div>}
-                      <div>{msg.message}</div>
-                      <div className={`text-[10px] mt-1 ${msg.sender_role === "user" ? "text-violet-300" : "text-zinc-500"}`}>
-                        {new Date(msg.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                  <div className="relative flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="relative">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-white/20 text-lg shadow-lg ring-2 ring-white/30 backdrop-blur">
+                          💬
+                        </div>
+                        {/* Online indicator */}
+                        <span className="absolute -bottom-0.5 -right-0.5 flex h-3 w-3">
+                          <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+                          <span className="relative inline-flex h-3 w-3 rounded-full bg-emerald-400 ring-2 ring-violet-600" />
+                        </span>
+                      </div>
+                      <div>
+                        <div className="font-bold text-white">TextAlot Support</div>
+                        <div className="flex items-center gap-1.5 text-[11px] text-violet-100/90">
+                          <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                          Online • Replies within minutes
+                        </div>
                       </div>
                     </div>
+                    <button
+                      onClick={() => { setChatOpen(false); setChatUnread(0); }}
+                      className="rounded-full p-1.5 text-white/80 transition hover:bg-white/10 hover:text-white"
+                      title="Close"
+                      aria-label="Close chat"
+                    >
+                      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
                   </div>
-                ))}
-                <div ref={chatEndRef} />
-              </div>
+                </div>
 
-              {/* Input */}
-              <div className="border-t border-zinc-700 p-3">
-                <div className="flex gap-2">
-                  <input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChatMessage(); } }}
-                    placeholder="Type a message..."
-                    className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm focus:border-violet-500 focus:outline-none"
-                  />
-                  <button
-                    onClick={handleSendChatMessage}
-                    disabled={!chatInput.trim()}
-                    className="rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-medium hover:bg-violet-700 disabled:opacity-50"
-                  >
-                    Send
-                  </button>
+                {/* Messages */}
+                <div className="flex-1 overflow-y-auto bg-gradient-to-b from-zinc-950 to-zinc-900/80 p-4">
+                  {chatMessages.length === 0 ? (
+                    <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 text-center">
+                      <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 text-3xl ring-1 ring-violet-500/40">
+                        👋
+                      </div>
+                      <div className="text-sm font-semibold text-white">Hi there! How can we help?</div>
+                      <div className="mt-1 text-xs text-zinc-400">
+                        Ask about billing, campaigns, 10DLC — anything. A real human replies, usually in minutes.
+                      </div>
+                      {/* Quick-ask chips */}
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        {[
+                          "How do I add credits?",
+                          "10DLC status?",
+                          "Cancel subscription",
+                        ].map((q) => (
+                          <button
+                            key={q}
+                            onClick={() => setChatInput(q)}
+                            className="rounded-full border border-zinc-700 bg-zinc-800/50 px-2.5 py-1 text-[11px] text-zinc-300 hover:border-violet-500/60 hover:bg-violet-500/10 hover:text-white"
+                          >
+                            {q}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {groups.map((g, gi) => (
+                        <div key={`${g.label}-${gi}`} className="space-y-2">
+                          <div className="my-2 flex items-center gap-2">
+                            <span className="h-px flex-1 bg-zinc-800" />
+                            <span className="rounded-full bg-zinc-800/80 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                              {g.label}
+                            </span>
+                            <span className="h-px flex-1 bg-zinc-800" />
+                          </div>
+                          {g.msgs.map((msg, i) => {
+                            const isUser = msg.sender_role === "user";
+                            const prev = g.msgs[i - 1];
+                            const stacked = prev && prev.sender_role === msg.sender_role;
+                            return (
+                              <div key={msg.id} className={`flex items-end gap-2 ${isUser ? "justify-end" : "justify-start"}`}>
+                                {!isUser && !stacked && (
+                                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-fuchsia-500 text-[11px] font-bold text-white ring-2 ring-zinc-950">
+                                    S
+                                  </div>
+                                )}
+                                {!isUser && stacked && <div className="w-7 shrink-0" />}
+                                <div className="max-w-[78%]">
+                                  <div
+                                    className={`px-3.5 py-2 text-sm leading-snug shadow-sm ${
+                                      isUser
+                                        ? "rounded-2xl rounded-br-md bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white"
+                                        : "rounded-2xl rounded-bl-md border border-zinc-800 bg-zinc-800/90 text-zinc-100"
+                                    }`}
+                                  >
+                                    {msg.message}
+                                  </div>
+                                  <div className={`mt-0.5 px-1 text-[10px] ${isUser ? "text-right text-zinc-500" : "text-left text-zinc-500"}`}>
+                                    {new Date(msg.created_at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  <div ref={chatEndRef} />
+                </div>
+
+                {/* Input */}
+                <div className="border-t border-zinc-800 bg-zinc-950/80 p-3">
+                  <div className="flex items-end gap-2 rounded-2xl border border-zinc-800 bg-zinc-900 px-3 py-2 focus-within:border-violet-500">
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChatMessage(); } }}
+                      placeholder="Type a message..."
+                      className="flex-1 bg-transparent py-1 text-sm text-white placeholder:text-zinc-500 focus:outline-none"
+                    />
+                    <button
+                      onClick={handleSendChatMessage}
+                      disabled={!chatInput.trim()}
+                      className={`flex h-8 w-8 items-center justify-center rounded-xl transition ${
+                        chatInput.trim()
+                          ? "bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30 hover:brightness-110"
+                          : "bg-zinc-800 text-zinc-600"
+                      }`}
+                      title="Send"
+                      aria-label="Send"
+                    >
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13" />
+                        <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="mt-1.5 px-1 text-center text-[10px] text-zinc-600">
+                    Powered by TextAlot · your messages are private
+                  </div>
                 </div>
               </div>
-            </div>
-          )}
+            );
+          })()}
 
           {/* Floating Chat Button */}
           <button
             onClick={() => { setChatOpen(!chatOpen); if (!chatOpen) setChatUnread(0); }}
-            className="fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-violet-600 shadow-lg hover:bg-violet-700 transition-all hover:scale-105"
+            className={`fixed bottom-6 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full shadow-2xl transition-all hover:scale-110 ${
+              chatOpen
+                ? "bg-zinc-800 text-white ring-1 ring-zinc-700"
+                : "bg-gradient-to-br from-violet-500 via-purple-500 to-fuchsia-500 shadow-violet-500/50"
+            }`}
+            title={chatOpen ? "Close chat" : "Open support chat"}
+            aria-label={chatOpen ? "Close chat" : "Open support chat"}
           >
             {chatOpen ? (
-              <span className="text-xl text-white">✕</span>
+              <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
             ) : (
               <>
                 <span className="text-2xl">💬</span>
                 {chatUnread > 0 && (
-                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                  <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] font-bold text-white ring-2 ring-zinc-950">
                     {chatUnread}
                   </span>
                 )}
+                {/* Ambient pulse */}
+                <span className="pointer-events-none absolute inset-0 animate-ping rounded-full bg-violet-400/30" />
               </>
             )}
           </button>

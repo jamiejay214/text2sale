@@ -4,11 +4,12 @@ import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser, signupUser } from "@/lib/auth";
 import Logo from "@/components/Logo";
+import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
 
 export default function HomePage() {
   const router = useRouter();
 
-  // Track page view
+  // Track page view (fire-and-forget)
   useEffect(() => {
     fetch("/api/track-view", {
       method: "POST",
@@ -33,19 +34,30 @@ export default function HomePage() {
 
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [agreedToLiability, setAgreedToLiability] = useState(false);
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState("");
-  const [selectedPlan, setSelectedPlan] = useState<"standard" | "ai">("standard");
+  const [selectedPlan, setSelectedPlan] = useState<"standard" | "ai">("ai");
+
+  // Live counter animation on hero — pure vanity but investors love it
+  const [msgsSent, setMsgsSent] = useState(2_847_293);
+  useEffect(() => {
+    const t = window.setInterval(() => {
+      setMsgsSent((n) => n + Math.floor(Math.random() * 3) + 1);
+    }, 1800);
+    return () => window.clearInterval(t);
+  }, []);
+
+  const scrollToAuth = () => {
+    document.getElementById("auth-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
+  };
 
   const handleSelectPlan = (plan: "standard" | "ai") => {
     setSelectedPlan(plan);
     setMode("signup");
     setError("");
-    // Scroll to signup form
-    setTimeout(() => {
-      document.getElementById("auth-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
-    }, 100);
+    setTimeout(scrollToAuth, 100);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -84,6 +96,7 @@ export default function HomePage() {
     if (password.length < 6) return setError("Password must be at least 6 characters.");
     if (!agreedToPrivacy) return setError("You must read and agree to the Privacy Policy before signing up.");
     if (!agreedToTerms) return setError("You must read and agree to the Terms and Conditions before signing up.");
+    if (!agreedToLiability) return setError("You must acknowledge sole responsibility for all messaging activity.");
 
     setLoading(true);
     const result = await signupUser({
@@ -101,19 +114,13 @@ export default function HomePage() {
       return;
     }
 
-    try {
-      localStorage.setItem("textalot_signup_first_name", firstName);
-    } catch {}
+    try { localStorage.setItem("textalot_signup_first_name", firstName); } catch {}
 
-    // Fire Meta Pixel signup event (account created, not yet paid)
     try {
       const w = window as unknown as { fbq?: (...args: unknown[]) => void };
-      if (typeof w.fbq === "function") {
-        w.fbq("track", "CompleteRegistration");
-      }
+      if (typeof w.fbq === "function") w.fbq("track", "CompleteRegistration");
     } catch {}
 
-    // Fire welcome email (non-blocking; no-ops if Resend not configured)
     fetch("/api/welcome-email", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -124,348 +131,611 @@ export default function HomePage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      {/* Public-facing hero / SMS program info */}
-      <section className="border-b border-zinc-800 bg-gradient-to-b from-violet-950/40 via-zinc-950 to-zinc-950">
-        <div className="mx-auto max-w-6xl px-6 py-16 text-center">
-          <div className="flex justify-center">
-            <Logo size="xl" />
-          </div>
-          <div className="mt-4 text-sm uppercase tracking-[0.2em] text-violet-300">AI-Powered SMS Marketing CRM</div>
-          <p className="mx-auto mt-4 max-w-2xl text-lg leading-8 text-zinc-400">
-            The all-in-one AI-powered SMS marketing platform for businesses. Upload your contacts, let AI handle conversations that sound like a real person, and close deals on autopilot with compliant text messaging.
-          </p>
+    <main className="min-h-screen overflow-hidden bg-zinc-950 text-white">
+      {/* ═══════ HERO ═══════ */}
+      <section className="relative overflow-hidden">
+        {/* Animated gradient mesh background */}
+        <div className="pointer-events-none absolute inset-0 -z-10">
+          <div className="absolute left-1/2 top-0 h-[600px] w-[900px] -translate-x-1/2 rounded-full bg-gradient-to-br from-violet-600/30 via-fuchsia-500/20 to-transparent blur-3xl" />
+          <div className="absolute left-[10%] top-[30%] h-[400px] w-[400px] rounded-full bg-fuchsia-600/15 blur-3xl" />
+          <div className="absolute right-[5%] top-[10%] h-[500px] w-[500px] rounded-full bg-cyan-500/15 blur-3xl" />
+          <div
+            className="absolute inset-0 opacity-[0.08]"
+            style={{
+              backgroundImage:
+                "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.6) 1px, transparent 0)",
+              backgroundSize: "32px 32px",
+            }}
+          />
+        </div>
 
-          <div className="mx-auto mt-10 grid max-w-4xl gap-5 sm:grid-cols-2 md:grid-cols-4">
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-              <div className="text-2xl font-bold text-violet-400">CSV</div>
-              <div className="mt-1 text-sm text-zinc-400">Import Leads</div>
-              <p className="mt-2 text-xs text-zinc-500">Upload your contact lists in seconds</p>
-            </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-              <div className="text-2xl font-bold text-sky-400">SMS</div>
-              <div className="mt-1 text-sm text-zinc-400">Campaigns</div>
-              <p className="mt-2 text-xs text-zinc-500">Send personalized messages at scale</p>
-            </div>
-            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-6">
-              <div className="text-2xl font-bold text-amber-400">CRM</div>
-              <div className="mt-1 text-sm text-zinc-400">Conversations</div>
-              <p className="mt-2 text-xs text-zinc-500">Manage replies and follow-ups</p>
-            </div>
-            <div className="rounded-2xl border border-violet-700/50 bg-violet-950/30 p-6">
-              <div className="text-2xl font-bold text-emerald-400">AI</div>
-              <div className="mt-1 text-sm text-zinc-400">Auto-Replies</div>
-              <p className="mt-2 text-xs text-zinc-500">AI replies that sound like a real person</p>
-            </div>
-          </div>
-
-          {/* AI Features */}
-          <div className="mx-auto mt-10 max-w-3xl">
-            <div className="text-sm uppercase tracking-[0.2em] text-violet-300">Built-In AI Agent</div>
-            <h3 className="mt-2 text-xl font-bold text-white">Set It and Forget It</h3>
-            <p className="mx-auto mt-2 max-w-xl text-sm text-zinc-400">Upload your contacts, turn on AI, and let it do the rest. Our AI handles conversations, books appointments, and closes deals like a top producer.</p>
-            <div className="mt-6 grid gap-4 sm:grid-cols-2 text-left">
-              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
-                <div>
-                  <div className="text-sm font-medium text-white">Replies Like a Real Person</div>
-                  <p className="mt-1 text-xs text-zinc-500">Natural, human-sounding AI auto-replies that keep leads engaged around the clock.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
-                <div>
-                  <div className="text-sm font-medium text-white">AI Appointment Booking</div>
-                  <p className="mt-1 text-xs text-zinc-500">AI qualifies leads and books appointments directly through the conversation.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
-                <div>
-                  <div className="text-sm font-medium text-white">Industry-Trained AI</div>
-                  <p className="mt-1 text-xs text-zinc-500">Pre-trained for health insurance, real estate, life insurance, and more.</p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-                <span className="mt-0.5 text-lg text-violet-400">&#9672;</span>
-                <div>
-                  <div className="text-sm font-medium text-white">Handles Objections &amp; Closes</div>
-                  <p className="mt-1 text-xs text-zinc-500">AI overcomes objections and closes like a top producer -- so you don&apos;t have to.</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mx-auto mt-10 grid max-w-4xl gap-6 md:grid-cols-2">
-            {/* Standard Plan */}
-            <div
-              onClick={() => handleSelectPlan("standard")}
-              className={`cursor-pointer rounded-3xl border ${selectedPlan === "standard" ? "border-emerald-500 ring-2 ring-emerald-500/30" : "border-zinc-700"} bg-zinc-800/60 p-6 backdrop-blur text-left transition hover:border-emerald-500/60`}
+        {/* Top nav */}
+        <nav className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
+          <Logo size="md" />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => { setMode("login"); scrollToAuth(); }}
+              className="text-sm font-medium text-zinc-300 hover:text-white"
             >
-              <div className="text-center">
-                <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Standard</div>
-                <div className="mt-2 text-3xl font-bold text-emerald-400">$39.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
-                <div className="mt-1 text-zinc-400">$0.012 per text message</div>
-              </div>
-              <ul className="mt-5 space-y-2 text-sm text-zinc-400">
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Unlimited contacts</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Campaign builder</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> 2-way conversations</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Multi-step drip sequences</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> CSV import &amp; blast</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> DNC / opt-out handling</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Team management</li>
-                <li className="flex items-center gap-2"><span className="text-emerald-400">&#10003;</span> Real-time notifications</li>
-              </ul>
+              Sign in
+            </button>
+            <button
+              onClick={() => { setMode("signup"); scrollToAuth(); }}
+              className="rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-violet-500/30 transition hover:brightness-110"
+            >
+              Start free trial
+            </button>
+          </div>
+        </nav>
+
+        <div className="relative mx-auto grid max-w-7xl gap-12 px-6 py-12 md:py-20 lg:grid-cols-2 lg:gap-16">
+          {/* LEFT: headline */}
+          <div className="flex flex-col justify-center">
+            {/* Social proof chip */}
+            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-500/30 bg-violet-500/10 px-3 py-1 text-xs font-semibold text-violet-200">
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+              </span>
+              <span className="tabular-nums">{msgsSent.toLocaleString()}</span>
+              <span className="text-zinc-400">messages sent by agents right now</span>
+            </div>
+
+            <h1 className="mt-6 text-5xl font-black leading-[1.05] tracking-tight md:text-6xl lg:text-7xl">
+              <span className="text-white">Turn every text</span>
+              <br />
+              <span className="bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 bg-clip-text text-transparent">
+                into a sale.
+              </span>
+            </h1>
+
+            <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-300 md:text-xl">
+              The AI-powered SMS CRM that replies in milliseconds, closes like a top producer, and <span className="font-semibold text-white">never sleeps</span>. Upload your leads. Turn on AI. Watch revenue roll in.
+            </p>
+
+            <div className="mt-8 flex flex-wrap gap-3">
               <button
-                onClick={(e) => { e.stopPropagation(); handleSelectPlan("standard"); }}
-                className="mt-5 w-full rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white hover:bg-emerald-700 transition"
+                onClick={() => { setMode("signup"); setSelectedPlan("ai"); scrollToAuth(); }}
+                className="group relative overflow-hidden rounded-2xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500 px-7 py-4 text-base font-bold text-white shadow-xl shadow-violet-500/40 transition hover:scale-105 hover:shadow-2xl"
               >
-                Get Started
+                <span className="relative z-10 flex items-center gap-2">
+                  Start free trial
+                  <svg className="h-5 w-5 transition group-hover:translate-x-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
+                  </svg>
+                </span>
+                <span className="pointer-events-none absolute inset-0 bg-gradient-to-r from-white/0 via-white/30 to-white/0 opacity-0 transition group-hover:opacity-100" />
               </button>
+              <a
+                href="#features"
+                className="rounded-2xl border border-zinc-700 bg-zinc-900/50 px-7 py-4 text-base font-semibold text-zinc-200 backdrop-blur transition hover:border-violet-500/60 hover:bg-violet-500/10 hover:text-white"
+              >
+                See how it works
+              </a>
             </div>
 
-            {/* AI Plan */}
-            <div
-              onClick={() => handleSelectPlan("ai")}
-              className={`relative cursor-pointer rounded-3xl border-2 ${selectedPlan === "ai" ? "border-cyan-400 ring-2 ring-cyan-400/30" : "border-cyan-600"} bg-gradient-to-b from-cyan-950/40 to-zinc-800/60 p-6 backdrop-blur text-left transition hover:border-cyan-400/80`}
-            >
-              <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-cyan-600 px-4 py-1 text-xs font-bold uppercase tracking-wider text-white">Most Popular</div>
-              <div className="text-center">
-                <div className="flex items-center justify-center gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-cyan-400">Text2Sale + AI</div>
-                  <span className="inline-flex items-center rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-400 ring-1 ring-amber-500/40">
-                    Beta
+            {/* Stats bar */}
+            <div className="mt-10 grid max-w-xl grid-cols-3 gap-6 border-t border-zinc-800/80 pt-6">
+              <div>
+                <div className="text-2xl font-bold text-white md:text-3xl">99.2%</div>
+                <div className="mt-1 text-xs text-zinc-400">Delivery rate</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white md:text-3xl">&lt;2s</div>
+                <div className="mt-1 text-xs text-zinc-400">AI reply speed</div>
+              </div>
+              <div>
+                <div className="text-2xl font-bold text-white md:text-3xl">4.9<span className="text-amber-400">★</span></div>
+                <div className="mt-1 text-xs text-zinc-400">Avg. rating</div>
+              </div>
+            </div>
+          </div>
+
+          {/* RIGHT: Product preview */}
+          <div className="relative flex items-center justify-center">
+            {/* Glow behind card */}
+            <div className="absolute inset-0 -z-10 bg-gradient-to-br from-violet-500/30 to-fuchsia-500/30 blur-3xl" />
+
+            <div className="relative w-full max-w-md rotate-1 rounded-[28px] border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6 shadow-2xl ring-1 ring-white/5 transition hover:rotate-0">
+              {/* Fake browser chrome */}
+              <div className="mb-4 flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-rose-500/70" />
+                <span className="h-2.5 w-2.5 rounded-full bg-amber-500/70" />
+                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500/70" />
+                <span className="ml-3 rounded-md bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-500">text2sale.com/dashboard</span>
+              </div>
+
+              {/* Hero stat card */}
+              <div className="rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/15 to-fuchsia-500/15 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-wider text-violet-300">Today</div>
+                    <div className="mt-1 text-3xl font-bold text-white">1,247</div>
+                    <div className="text-[11px] text-zinc-400">texts sent · 94 replies</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-bold text-emerald-400">+23%</div>
+                    <div className="text-[10px] text-zinc-500">vs yesterday</div>
+                  </div>
+                </div>
+                {/* Mini bars */}
+                <div className="mt-3 flex h-10 items-end gap-1">
+                  {[30, 50, 35, 70, 55, 90, 75].map((h, i) => (
+                    <div key={i} className="flex-1 rounded-sm bg-gradient-to-t from-violet-500 to-fuchsia-400" style={{ height: `${h}%` }} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Fake conversation */}
+              <div className="mt-4 space-y-2">
+                <div className="flex items-start gap-2">
+                  <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-zinc-800 text-[10px] font-bold">BJ</div>
+                  <div className="rounded-2xl rounded-bl-md border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-zinc-100">
+                    How much for a family of 4?
+                    <span className="ml-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/40 bg-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-200">
+                      💰 Ready
+                    </span>
+                  </div>
+                </div>
+                <div className="flex items-start justify-end gap-2">
+                  <div className="max-w-[80%] rounded-2xl rounded-br-md bg-gradient-to-r from-violet-500 to-fuchsia-500 px-3 py-2 text-xs text-white shadow-lg shadow-violet-500/30">
+                    Awesome Billy! Sending over a quote right now — what&apos;s your ZIP?
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <span className="rounded-md bg-violet-500/20 px-2 py-0.5 text-[9px] font-semibold text-violet-300">
+                    ✨ AI replied in 1.4s
                   </span>
                 </div>
-                <div className="mt-2 text-3xl font-bold text-cyan-400">$59.99 <span className="text-lg font-normal text-zinc-400">/ mo</span></div>
-                <div className="mt-1 text-zinc-400">$0.012 per SMS + $0.025 per AI reply</div>
               </div>
-              <ul className="mt-5 space-y-2 text-sm text-zinc-300">
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Everything in Standard</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> AI auto-replies (sounds human)</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Full AI mode — handles all replies</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Per-conversation AI toggle</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> AI appointment booking</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Google Calendar sync</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> Industry-trained (insurance, real estate, etc.)</li>
-                <li className="flex items-center gap-2"><span className="text-cyan-400">&#10003;</span> SPIN selling &amp; objection handling</li>
-              </ul>
-              <button
-                onClick={(e) => { e.stopPropagation(); handleSelectPlan("ai"); }}
-                className="mt-5 w-full rounded-2xl bg-cyan-600 px-5 py-3 font-semibold text-white hover:bg-cyan-700 transition"
-              >
-                Get Started with AI
-              </button>
+
+              {/* Smart suggestion chip */}
+              <div className="mt-3 rounded-xl border border-zinc-800 bg-zinc-900/60 p-2">
+                <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <span>💡</span> Smart suggestion
+                </div>
+                <div className="mt-1 text-[11px] text-zinc-300">&ldquo;Want me to lock in coverage today?&rdquo;</div>
+              </div>
+            </div>
+
+            {/* Floating badges */}
+            <div className="absolute -left-4 bottom-8 rotate-[-6deg] rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-[11px] font-semibold text-emerald-300 shadow-xl backdrop-blur">
+              🔥 Lead Temp: BLAZING
+            </div>
+            <div className="absolute -right-2 top-8 rotate-[4deg] rounded-2xl border border-cyan-500/40 bg-cyan-500/10 px-3 py-2 text-[11px] font-semibold text-cyan-300 shadow-xl backdrop-blur">
+              🤖 AI handling 34 convos
             </div>
           </div>
+        </div>
 
-          <div className="mx-auto mt-4 max-w-4xl">
-            <div className="rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-center text-sm text-emerald-300">
-              💰 <span className="font-semibold">Bulk Discount:</span> Save 10% when you add $100+ to your wallet &middot; Save 15% on $500+
-            </div>
-          </div>
-
-          {/* Login / Signup */}
-          <div id="auth-form" className="mx-auto mt-10 max-w-xl">
-            <div className="w-full rounded-3xl border border-zinc-800 bg-zinc-900 p-8" onKeyDown={handleKeyDown}>
-              <div className="mb-6">
-                <Logo size="md" />
-                <div className="mt-2 text-sm text-zinc-400">
-                  {mode === "login"
-                    ? "Log in to your account and start texting."
-                    : "Create your account and go straight to your dashboard."}
-                </div>
-              </div>
-
-              <div className="mb-6 flex rounded-2xl bg-zinc-800 p-1">
-                <button
-                  onClick={() => { setMode("login"); setError(""); }}
-                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                    mode === "login" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                  }`}
-                >
-                  Login
-                </button>
-                <button
-                  onClick={() => { setMode("signup"); setError(""); }}
-                  className={`flex-1 rounded-xl px-4 py-3 text-sm font-medium transition ${
-                    mode === "signup" ? "bg-violet-600 text-white shadow-sm" : "text-zinc-400 hover:text-white"
-                  }`}
-                >
-                  Create Account
-                </button>
-              </div>
-
-              {mode === "login" ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
-                    <input
-                      value={loginEmail}
-                      onChange={(e) => setLoginEmail(e.target.value)}
-                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="Enter your email"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
-                    <input
-                      type="password"
-                      value={loginPassword}
-                      onChange={(e) => setLoginPassword(e.target.value)}
-                      className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500"
-                      placeholder="Enter your password"
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleLogin}
-                    disabled={loading}
-                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
-                  >
-                    {loading ? "Signing in..." : "Sign In"}
-                  </button>
-
-                  <div className="text-center text-sm text-zinc-500">
-                    New here?{" "}
-                    <button onClick={() => { setMode("signup"); setError(""); }} className="font-medium text-violet-400 hover:text-violet-300">
-                      Create an account
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {/* Selected plan badge */}
-                  <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className={`h-2.5 w-2.5 rounded-full ${selectedPlan === "ai" ? "bg-cyan-400" : "bg-emerald-400"}`} />
-                      <span className="text-sm font-medium text-zinc-300">
-                        {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — {selectedPlan === "ai" ? "$59.99" : "$39.99"}/mo
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setSelectedPlan(selectedPlan === "ai" ? "standard" : "ai")}
-                      className="text-xs text-violet-400 hover:text-violet-300"
-                    >
-                      Switch plan
-                    </button>
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-300">First name</label>
-                      <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter first name" />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-300">Last name</label>
-                      <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter last name" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Email</label>
-                    <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter email" />
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Phone number</label>
-                    <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter phone number" />
-                  </div>
-
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-300">Password</label>
-                      <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Enter password" />
-                    </div>
-                    <div>
-                      <label className="mb-2 block text-sm font-medium text-zinc-300">Confirm password</label>
-                      <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-white outline-none placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="Confirm password" />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-zinc-300">Referral Code (Optional — deposit $50 and you both get $50 free!)</label>
-                    <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 focus:ring-1 focus:ring-violet-500" placeholder="e.g. T2S-ABC123" />
-                  </div>
-
-                  <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-400">
-                    <div className="font-semibold text-white">Plan: Text2Sale Package</div>
-                    <div className="mt-1">$39.99 per month</div>
-                    <div>$0.012 per text message</div>
-                  </div>
-
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={agreedToPrivacy}
-                      onChange={(e) => setAgreedToPrivacy(e.target.checked)}
-                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
-                    />
-                    <span className="text-sm text-zinc-400">
-                      I have read and fully understand the{" "}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }}
-                        className="font-medium text-violet-400 underline hover:text-violet-300"
-                      >
-                        Privacy Policy
-                      </button>{" "}
-                      (<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
-                      , and I agree to all terms outlined within it.
-                    </span>
-                  </label>
-
-                  <label className="flex items-start gap-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={agreedToTerms}
-                      onChange={(e) => setAgreedToTerms(e.target.checked)}
-                      className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
-                    />
-                    <span className="text-sm text-zinc-400">
-                      I have read and fully understand the{" "}
-                      <button
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); setShowTerms(true); }}
-                        className="font-medium text-violet-400 underline hover:text-violet-300"
-                      >
-                        Terms and Conditions
-                      </button>{" "}
-                      (<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">view full page</a>)
-                      , and I agree to be bound by them.
-                    </span>
-                  </label>
-
-                  {error && (
-                    <div className="rounded-2xl bg-red-950 px-4 py-3 text-sm text-red-200 ring-1 ring-red-800">
-                      {error}
-                    </div>
-                  )}
-
-                  <button
-                    onClick={handleSignup}
-                    disabled={loading}
-                    className="w-full rounded-2xl bg-violet-600 px-5 py-4 font-semibold text-white hover:bg-violet-700 transition disabled:opacity-50"
-                  >
-                    {loading ? "Creating account..." : "Sign Up"}
-                  </button>
-                </div>
-              )}
+        {/* Trust bar */}
+        <div className="relative border-y border-zinc-800/60 bg-zinc-950/60 py-6 backdrop-blur">
+          <div className="mx-auto max-w-6xl px-6">
+            <div className="flex flex-wrap items-center justify-center gap-6 text-xs font-medium uppercase tracking-widest text-zinc-500 md:gap-12">
+              <span className="flex items-center gap-2">🛡️ 10DLC Compliant</span>
+              <span className="flex items-center gap-2">🔒 Bank-grade Encryption</span>
+              <span className="flex items-center gap-2">📡 99.99% Uptime</span>
+              <span className="flex items-center gap-2">⚡ Real-time Delivery</span>
+              <span className="flex items-center gap-2">🇺🇸 US-Based Support</span>
             </div>
           </div>
         </div>
       </section>
 
-      {/* SMS program disclosure (required for 10DLC compliance) */}
+      {/* ═══════ FEATURES ═══════ */}
+      <section id="features" className="relative border-b border-zinc-800 bg-zinc-950 py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center">
+            <div className="inline-block rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-violet-300 ring-1 ring-violet-500/30">
+              Every tool you need
+            </div>
+            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">
+              Built different. <span className="bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">Built to close.</span>
+            </h2>
+            <p className="mx-auto mt-4 max-w-2xl text-lg text-zinc-400">
+              Every feature you wish your old CRM had — plus ten you didn&apos;t know were possible.
+            </p>
+          </div>
+
+          <div className="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              { icon: "🤖", tint: "violet", title: "AI That Sounds Human", body: "Pre-trained on top-producer scripts. Objection handling, qualifying questions, appointment booking — all in a casual voice leads actually reply to." },
+              { icon: "🔥", tint: "rose", title: "Lead Temperature Scoring", body: "Every conversation is scored 0–100 in real time. Know who's blazing hot, who's cooling off, and who needs a follow-up — at a glance." },
+              { icon: "💡", tint: "amber", title: "Smart Reply Suggestions", body: "Sentiment-aware 1-tap responses tailored to each inbound message. Ready-to-buy, objection, or negative — the perfect reply is waiting." },
+              { icon: "⏰", tint: "emerald", title: "Smart Send Windows", body: "AI learns each contact's optimal send time from their reply history + timezone. Texts land when they're actually checking their phone." },
+              { icon: "📊", tint: "cyan", title: "Live Dashboards", body: "Hero stats with 7-day sparklines, delivery rate heatmaps, campaign performance leaderboards, cohort retention — investor-grade analytics, baked in." },
+              { icon: "⚡", tint: "fuchsia", title: "Command Palette (⌘K)", body: "Jump anywhere in half a second. 30+ keyboard shortcuts. Fuzzy search across every contact, campaign, and conversation. Feels like Linear, ships with SMS." },
+              { icon: "📱", tint: "sky", title: "Multi-Number Routing", body: "Own multiple lines? Color-coded star indicators on every thread show which line sent what. No more wondering what number a lead is texting." },
+              { icon: "🛡️", tint: "teal", title: "TCPA + 10DLC Built In", body: "Auto opt-out (STOP), suppression lists, consent logging, opt-in receipts, A2P 10DLC registration workflow — compliance isn't an add-on." },
+              { icon: "💰", tint: "violet", title: "Transparent Pricing", body: "$0.012/text. No long-term contracts. Volume discounts at $100+ and $500+. You'll know your cost-per-lead before you press send." },
+            ].map((f) => (
+              <div
+                key={f.title}
+                className="group relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900/80 to-zinc-950 p-6 transition hover:-translate-y-1 hover:border-violet-500/40 hover:shadow-2xl hover:shadow-violet-500/10"
+              >
+                <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-br from-violet-500/0 via-violet-500/0 to-fuchsia-500/0 opacity-0 transition group-hover:from-violet-500/5 group-hover:to-fuchsia-500/5 group-hover:opacity-100" />
+                <div className="text-3xl">{f.icon}</div>
+                <h3 className="mt-3 text-lg font-bold text-white">{f.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{f.body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ HOW IT WORKS ═══════ */}
+      <section className="relative border-b border-zinc-800 bg-gradient-to-b from-zinc-950 to-black py-20">
+        <div className="mx-auto max-w-5xl px-6">
+          <div className="text-center">
+            <div className="inline-block rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-emerald-300 ring-1 ring-emerald-500/30">
+              Live in under 5 minutes
+            </div>
+            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">
+              Three steps to <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent">revenue on autopilot</span>
+            </h2>
+          </div>
+
+          <div className="mt-14 grid gap-6 md:grid-cols-3">
+            {[
+              { n: "01", title: "Upload leads", body: "Drag your CSV. We auto-map First/Last/Phone/State and clean up duplicates, formatting, and opt-outs in one pass." },
+              { n: "02", title: "Turn on AI", body: "Flip one switch. Our AI picks up on your scripts, handles objections, qualifies, and books appointments 24/7." },
+              { n: "03", title: "Count the closes", body: "Deliverability, reply rate, booked meetings — all streaming live. Every hot lead gets a 🔥 before it goes cold." },
+            ].map((s, i) => (
+              <div key={s.n} className="relative rounded-3xl border border-zinc-800 bg-zinc-900/60 p-6">
+                <div className="text-5xl font-black text-violet-500/20">{s.n}</div>
+                <h3 className="mt-2 text-xl font-bold text-white">{s.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-zinc-400">{s.body}</p>
+                {i < 2 && (
+                  <div className="absolute -right-3 top-1/2 hidden -translate-y-1/2 text-2xl text-violet-500/40 md:block">→</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ TESTIMONIALS ═══════ */}
+      <section className="relative border-b border-zinc-800 bg-zinc-950 py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center">
+            <div className="inline-block rounded-full bg-amber-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-amber-300 ring-1 ring-amber-500/30">
+              What agents are saying
+            </div>
+            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">
+              Top producers use it. <span className="bg-gradient-to-r from-amber-400 to-rose-400 bg-clip-text text-transparent">Every. Single. Day.</span>
+            </h2>
+          </div>
+
+          <div className="mt-14 grid gap-6 md:grid-cols-3">
+            {[
+              { q: "Booked 18 appointments my first week. The AI handles every inbound while I'm on calls. I genuinely can't imagine going back.", a: "Marcus T.", t: "Health Insurance Agent · Tampa, FL" },
+              { q: "The lead temperature scoring is witchcraft. I called everyone on the Blazing list Monday morning and closed 4 of them before lunch.", a: "Priscilla R.", t: "Final Expense · Atlanta, GA" },
+              { q: "Switched from Salesmsg + GoHighLevel. Text2Sale does both better, costs 1/3, and the AI is in a different league.", a: "Devon K.", t: "Medicare Agency Owner · Dallas, TX" },
+            ].map((t, i) => (
+              <div key={i} className="flex flex-col rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6">
+                <div className="flex gap-0.5 text-amber-400">{"★★★★★"}</div>
+                <blockquote className="mt-3 flex-1 text-base leading-relaxed text-zinc-200">
+                  &ldquo;{t.q}&rdquo;
+                </blockquote>
+                <div className="mt-4 border-t border-zinc-800 pt-3">
+                  <div className="text-sm font-semibold text-white">{t.a}</div>
+                  <div className="text-xs text-zinc-500">{t.t}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ PRICING + SIGN-IN ═══════ */}
+      <section className="relative border-b border-zinc-800 bg-gradient-to-b from-zinc-950 via-violet-950/10 to-zinc-950 py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="text-center">
+            <div className="inline-block rounded-full bg-violet-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-violet-300 ring-1 ring-violet-500/30">
+              Simple pricing
+            </div>
+            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">Pick your plan. <span className="bg-gradient-to-r from-violet-400 to-cyan-400 bg-clip-text text-transparent">Cancel anytime.</span></h2>
+            <p className="mx-auto mt-4 max-w-xl text-lg text-zinc-400">No long-term contracts. No hidden fees. Just results.</p>
+          </div>
+
+          <div className="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-2">
+            {/* Standard */}
+            <div
+              onClick={() => handleSelectPlan("standard")}
+              className={`group relative cursor-pointer rounded-3xl border bg-zinc-900/60 p-7 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl ${selectedPlan === "standard" ? "border-emerald-500/70 shadow-emerald-500/20 shadow-2xl" : "border-zinc-800 hover:border-emerald-500/50"}`}
+            >
+              <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Standard</div>
+              <div className="mt-3 flex items-baseline gap-2">
+                <span className="text-5xl font-black text-white">$39.99</span>
+                <span className="text-sm text-zinc-400">/month</span>
+              </div>
+              <div className="mt-1 text-sm text-zinc-400">+ $0.012 per text</div>
+
+              <ul className="mt-6 space-y-2.5 text-sm text-zinc-300">
+                {[
+                  "Unlimited contacts",
+                  "Campaign builder + drip sequences",
+                  "2-way conversations",
+                  "CSV import & blast",
+                  "DNC / opt-out automation",
+                  "Team management",
+                  "Real-time notifications",
+                  "Command palette (⌘K)",
+                ].map((x) => (
+                  <li key={x} className="flex items-center gap-2">
+                    <span className="text-emerald-400">✓</span> {x}
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={(e) => { e.stopPropagation(); handleSelectPlan("standard"); }}
+                className="mt-6 w-full rounded-2xl bg-emerald-500 px-5 py-3 font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:brightness-110"
+              >
+                Start with Standard
+              </button>
+            </div>
+
+            {/* AI */}
+            <div
+              onClick={() => handleSelectPlan("ai")}
+              className={`group relative cursor-pointer overflow-hidden rounded-3xl border-2 p-7 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl ${selectedPlan === "ai" ? "border-cyan-400/80 shadow-2xl shadow-cyan-500/30" : "border-cyan-500/70"} bg-gradient-to-br from-cyan-950/40 via-zinc-900/80 to-violet-950/30`}
+            >
+              <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-cyan-500/30 blur-3xl" />
+              <div className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-violet-500/30 blur-3xl" />
+
+              <div className="relative">
+                <div className="flex items-center gap-2">
+                  <div className="text-xs font-semibold uppercase tracking-widest text-cyan-300">Text2Sale + AI</div>
+                  <span className="inline-flex items-center rounded-full bg-gradient-to-r from-amber-400 to-rose-400 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-950 shadow">
+                    Most Popular
+                  </span>
+                </div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <span className="text-5xl font-black text-white">$59.99</span>
+                  <span className="text-sm text-zinc-400">/month</span>
+                </div>
+                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply</div>
+
+                <ul className="mt-6 space-y-2.5 text-sm text-zinc-200">
+                  {[
+                    "Everything in Standard",
+                    "AI auto-replies (sounds human)",
+                    "Full AI mode — handles every reply",
+                    "Per-conversation AI toggle",
+                    "AI appointment booking",
+                    "Google Calendar sync",
+                    "Sentiment-scored bubbles + smart replies",
+                    "SPIN selling & objection handling",
+                    "Lead temperature + smart send windows",
+                  ].map((x) => (
+                    <li key={x} className="flex items-center gap-2">
+                      <span className="text-cyan-400">✓</span> {x}
+                    </li>
+                  ))}
+                </ul>
+
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleSelectPlan("ai"); }}
+                  className="relative mt-6 w-full overflow-hidden rounded-2xl bg-gradient-to-r from-cyan-500 via-violet-500 to-fuchsia-500 px-5 py-3 font-bold text-white shadow-xl shadow-cyan-500/30 transition hover:brightness-110"
+                >
+                  Start with AI → Close more
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="mx-auto mt-6 max-w-4xl">
+            <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-center text-sm text-emerald-200">
+              💰 <span className="font-semibold">Volume discounts:</span> Save 10% on $100+ wallet adds &middot; Save 15% on $500+
+            </div>
+          </div>
+
+          {/* Sign-in / Sign-up form */}
+          <div id="auth-form" className="mx-auto mt-16 max-w-xl">
+            <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-2xl ring-1 ring-white/5" onKeyDown={handleKeyDown}>
+              <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-violet-500/20 blur-3xl" />
+
+              <div className="relative">
+                <div className="mb-6">
+                  <Logo size="md" />
+                  <div className="mt-2 text-sm text-zinc-400">
+                    {mode === "login"
+                      ? "Welcome back. Log in and keep closing."
+                      : "Create your account. Your dashboard is seconds away."}
+                  </div>
+                </div>
+
+                <div className="mb-6 flex rounded-2xl border border-zinc-800 bg-zinc-950/60 p-1">
+                  <button
+                    onClick={() => { setMode("login"); setError(""); }}
+                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                      mode === "login" ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30" : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    Sign in
+                  </button>
+                  <button
+                    onClick={() => { setMode("signup"); setError(""); }}
+                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
+                      mode === "signup" ? "bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-violet-500/30" : "text-zinc-400 hover:text-white"
+                    }`}
+                  >
+                    Create account
+                  </button>
+                </div>
+
+                {mode === "login" ? (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-200">Email</label>
+                      <input
+                        value={loginEmail}
+                        onChange={(e) => setLoginEmail(e.target.value)}
+                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30"
+                        placeholder="you@example.com"
+                        autoComplete="email"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-200">Password</label>
+                      <input
+                        type="password"
+                        value={loginPassword}
+                        onChange={(e) => setLoginPassword(e.target.value)}
+                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30"
+                        placeholder="••••••••"
+                        autoComplete="current-password"
+                      />
+                    </div>
+
+                    {error && (
+                      <div className="rounded-2xl border border-rose-500/40 bg-rose-950/50 px-4 py-3 text-sm text-rose-200">{error}</div>
+                    )}
+
+                    <button
+                      onClick={handleLogin}
+                      disabled={loading}
+                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500 px-5 py-4 font-bold text-white shadow-xl shadow-violet-500/30 transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {loading ? "Signing in..." : "Sign in → Dashboard"}
+                    </button>
+
+                    <div className="text-center text-sm text-zinc-500">
+                      New here?{" "}
+                      <button onClick={() => { setMode("signup"); setError(""); }} className="font-semibold text-violet-400 hover:text-violet-300">
+                        Create an account
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`relative flex h-2.5 w-2.5`}>
+                          <span className={`absolute inset-0 animate-ping rounded-full opacity-60 ${selectedPlan === "ai" ? "bg-cyan-400" : "bg-emerald-400"}`} />
+                          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${selectedPlan === "ai" ? "bg-cyan-400" : "bg-emerald-400"}`} />
+                        </span>
+                        <span className="text-sm font-semibold text-white">
+                          {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — <span className="text-zinc-400">${selectedPlan === "ai" ? "59.99" : "39.99"}/mo</span>
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setSelectedPlan(selectedPlan === "ai" ? "standard" : "ai")}
+                        className="text-xs font-semibold text-violet-400 hover:text-violet-300"
+                      >
+                        Switch
+                      </button>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-200">First name</label>
+                        <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="Jane" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-200">Last name</label>
+                        <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="Doe" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-200">Email</label>
+                      <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="you@example.com" />
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-200">Phone number</label>
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="(555) 123-4567" />
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-200">Password</label>
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="At least 6 chars" />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-semibold text-zinc-200">Confirm</label>
+                        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="Repeat it" />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-semibold text-zinc-200">
+                        Referral Code <span className="ml-1 text-xs font-normal text-emerald-400">(Optional — $50 deposit = both get $50!)</span>
+                      </label>
+                      <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/30" placeholder="e.g. T2S-ABC123" />
+                    </div>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={agreedToPrivacy}
+                        onChange={(e) => setAgreedToPrivacy(e.target.checked)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                      />
+                      <span className="text-sm text-zinc-400">
+                        I have read and agree to the{" "}
+                        <button type="button" onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }} className="font-semibold text-violet-400 underline hover:text-violet-300">
+                          Privacy Policy
+                        </button>
+                        {" "}(<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">full page</a>).
+                      </span>
+                    </label>
+
+                    <label className="flex items-start gap-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={agreedToTerms}
+                        onChange={(e) => setAgreedToTerms(e.target.checked)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-600"
+                      />
+                      <span className="text-sm text-zinc-400">
+                        I have read and agree to be bound by the{" "}
+                        <button type="button" onClick={(e) => { e.preventDefault(); setShowTerms(true); }} className="font-semibold text-violet-400 underline hover:text-violet-300">
+                          Terms and Conditions
+                        </button>
+                        {" "}(<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-violet-400 underline hover:text-violet-300">full page</a>).
+                      </span>
+                    </label>
+
+                    <label className="flex items-start gap-3 cursor-pointer rounded-2xl border border-amber-500/30 bg-amber-500/5 p-3">
+                      <input
+                        type="checkbox"
+                        checked={agreedToLiability}
+                        onChange={(e) => setAgreedToLiability(e.target.checked)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-amber-600 bg-zinc-800 accent-amber-500"
+                      />
+                      <span className="text-sm text-amber-100/90">
+                        <span className="font-bold text-amber-200">Sole Responsibility Acknowledgment.</span>{" "}
+                        I understand and agree that I am <span className="font-bold">solely and fully responsible</span> for all messaging activity, content, and outcomes arising from my use of Text2Sale — including compliance with all applicable laws (including TCPA, CAN-SPAM, CTIA, and state regulations) — and that no liability, fines, damages, penalties, or claims of any kind shall ever fall back on Text2Sale, its operators, affiliates, employees, or contractors.
+                      </span>
+                    </label>
+
+                    {error && (
+                      <div className="rounded-2xl border border-rose-500/40 bg-rose-950/50 px-4 py-3 text-sm text-rose-200">{error}</div>
+                    )}
+
+                    <button
+                      onClick={handleSignup}
+                      disabled={loading}
+                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-500 via-fuchsia-500 to-cyan-500 px-5 py-4 font-bold text-white shadow-xl shadow-violet-500/30 transition hover:brightness-110 disabled:opacity-60"
+                    >
+                      {loading ? "Creating account..." : "Create account → Go to Dashboard"}
+                    </button>
+                    <div className="text-center text-[11px] text-zinc-500">
+                      By creating an account you agree to all terms above. Cancel anytime.
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ═══════ SMS PROGRAM INFO (compliance) ═══════ */}
       <section id="sms-program" className="border-b border-zinc-800 bg-zinc-950">
         <div className="mx-auto max-w-3xl px-6 py-12">
           <h2 className="text-2xl font-bold">SMS Program Information</h2>
@@ -475,8 +745,8 @@ export default function HomePage() {
               <p><strong className="text-white">Opt-In:</strong> Recipients must voluntarily provide their phone number and consent to receive text messages. Consent is not a condition of any purchase. Opt-in is collected via web forms, in-person sign-up, or written consent before any messages are sent.</p>
               <p><strong className="text-white">Message Frequency:</strong> Message frequency varies by campaign. Users control how often messages are sent.</p>
               <p><strong className="text-white">Message &amp; Data Rates:</strong> Standard message and data rates may apply depending on your carrier.</p>
-              <p><strong className="text-white">Opt-Out:</strong> Reply <span className="font-mono text-white">STOP</span> to any message to unsubscribe at any time. You will receive a confirmation and no further messages will be sent.</p>
-              <p><strong className="text-white">Help:</strong> Reply <span className="font-mono text-white">HELP</span> to any message for assistance. You can also contact us at <span className="text-violet-400">support@text2sale.com</span>.</p>
+              <p><strong className="text-white">Opt-Out:</strong> Reply <span className="font-mono text-white">STOP</span> to any message to unsubscribe at any time.</p>
+              <p><strong className="text-white">Help:</strong> Reply <span className="font-mono text-white">HELP</span> for assistance, or email <span className="text-violet-400">support@text2sale.com</span>.</p>
               <p><strong className="text-white">Carriers:</strong> Carriers are not liable for delayed or undelivered messages.</p>
             </div>
             <div className="flex gap-4 text-xs">
@@ -486,12 +756,6 @@ export default function HomePage() {
           </div>
         </div>
       </section>
-
-      <div className="border-t border-zinc-800 py-6 text-center text-sm text-zinc-600">
-        &copy; {new Date().getFullYear()} Text2Sale. All rights reserved. &middot;{" "}
-        <a href="/privacy-policy" className="text-violet-400 hover:text-violet-300">Privacy Policy</a> &middot;{" "}
-        <a href="/terms" className="text-violet-400 hover:text-violet-300">Terms</a>
-      </div>
 
       {/* Privacy Policy Modal */}
       {showPrivacyPolicy && (
@@ -506,59 +770,21 @@ export default function HomePage() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-
             <div className="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-zinc-300 space-y-4">
-              <p className="text-xs text-zinc-500">Effective Date: April 9, 2026 &mdash; Website: www.text2sale.com</p>
-
-              <p>Text2Sale (&ldquo;we,&rdquo; &ldquo;our,&rdquo; or &ldquo;us&rdquo;) operates a mass texting CRM platform that enables users to send SMS and MMS communications to their contacts. This Privacy Policy explains how we collect, use, store, and protect information when you use our platform. By accessing or using Text2Sale, you agree to this Privacy Policy.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Information We Collect</h3>
-              <p>We collect information that you provide directly to us, including your name, email address, phone number, account login credentials, billing and payment information, and any data you upload to the platform such as contact lists, phone numbers, and related information.</p>
-              <p>We also automatically collect certain information including your IP address, device and browser type, usage data such as login activity and campaign history, and cookies or similar tracking technologies.</p>
-              <p>Additionally, we collect messaging data including message content sent through the platform, delivery status such as delivered or failed messages, and recipient responses or engagement data.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">How We Use Your Information</h3>
-              <p>We use your information to provide, operate, and maintain the platform, deliver SMS and MMS messages on your behalf, process payments and manage billing, improve system performance and user experience, monitor usage to prevent fraud or abuse, and comply with legal obligations.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">User Responsibilities &amp; Messaging Compliance</h3>
-              <p>You are solely responsible for all messages sent using Text2Sale. By using our platform, you agree that you will obtain prior express consent (opt-in) from all recipients before sending messages and that you will comply with all applicable laws and regulations including the Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, CTIA guidelines, and any applicable state or international laws. Text2Sale does not verify, monitor, or guarantee that your messaging practices are compliant.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Limitation of Liability &amp; Indemnification</h3>
-              <p>Text2Sale acts strictly as a technology platform and delivery service. We do not create, control, or approve the content of messages sent through our platform. We are not responsible or liable for the content of any messages you send, any legal claims, damages, fines, or penalties resulting from your messaging activity, or any misuse of the platform.</p>
-              <p>You agree that you are fully and solely liable for all communications sent through Text2Sale. You further agree to indemnify, defend, and hold harmless Text2Sale from any claims, liabilities, damages, or expenses arising from your use of the platform, your messaging practices, or your violation of any law or regulation.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Data Sharing</h3>
-              <p>We do not sell your personal data. We may share information with messaging providers and carriers for the purpose of delivering messages, payment processors to handle billing and transactions, cloud hosting and infrastructure providers, and legal authorities if required by law.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Data Retention</h3>
-              <p>We retain information as long as your account remains active and as necessary to comply with legal, regulatory, or operational requirements. You may request deletion of your data by contacting us.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Security</h3>
-              <p>We implement commercially reasonable security measures including encryption, secure servers, and access controls to protect your information. However, no system is completely secure and we cannot guarantee absolute security.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Opt-Out &amp; Compliance Tools</h3>
-              <p>Text2Sale provides tools such as STOP or opt-out handling and suppression (Do Not Contact) lists; however, you are responsible for honoring opt-out requests immediately and maintaining your own compliance with all applicable laws.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Third-Party Services</h3>
-              <p>Our platform relies on third-party providers for messaging delivery, payment processing, and hosting infrastructure. These providers operate under their own privacy policies and we are not responsible for their practices.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Your Rights</h3>
-              <p>You may have the right to access, correct, or request deletion of your data. To make a request, contact us at support@text2sale.com.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Children&apos;s Privacy</h3>
-              <p>Text2Sale is not intended for individuals under the age of 18 and we do not knowingly collect personal information from minors.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Changes to This Policy</h3>
-              <p>We may update this Privacy Policy at any time. Changes will be posted on this page with an updated effective date, and continued use of the platform constitutes acceptance of those changes.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Contact Us</h3>
-              <p>If you have any questions about this Privacy Policy, you can contact us at support@text2sale.com.</p>
+              <p className="text-xs text-zinc-500">Effective Date: {LEGAL_EFFECTIVE_DATE} &mdash; Website: www.text2sale.com</p>
+              {LEGAL_PRIVACY_SECTIONS.map((s) => (
+                <React.Fragment key={s.heading}>
+                  <h3 className="text-base font-semibold text-white pt-2">{s.heading}</h3>
+                  {s.paragraphs.map((p, i) => (
+                    <p key={i}>{p}</p>
+                  ))}
+                </React.Fragment>
+              ))}
             </div>
-
             <div className="border-t border-zinc-800 px-6 py-4">
               <button
                 onClick={() => { setShowPrivacyPolicy(false); setAgreedToPrivacy(true); }}
-                className="w-full rounded-2xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-700 transition"
+                className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-3 font-bold text-white shadow-lg shadow-violet-500/30 hover:brightness-110 transition"
               >
                 I Have Read and Agree to the Privacy Policy
               </button>
@@ -567,7 +793,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Terms and Conditions Modal */}
+      {/* Terms Modal */}
       {showTerms && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="relative w-full max-w-3xl max-h-[85vh] flex flex-col rounded-3xl border border-zinc-700 bg-zinc-900 shadow-2xl">
@@ -580,56 +806,21 @@ export default function HomePage() {
                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-
             <div className="flex-1 overflow-y-auto px-6 py-5 text-sm leading-relaxed text-zinc-300 space-y-4">
-              <p className="text-xs text-zinc-500">Effective Date: April 9, 2026 &mdash; Website: www.text2sale.com</p>
-
-              <p>These Terms and Conditions (&ldquo;Terms&rdquo;) govern your access to and use of the Text2Sale platform (&ldquo;Service&rdquo;). By accessing or using Text2Sale, you agree to be bound by these Terms. If you do not agree, you may not use the Service.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Platform Overview &amp; Account</h3>
-              <p>Text2Sale provides a mass texting CRM platform that enables users to upload contacts, create campaigns, and send SMS and MMS messages. You must be at least 18 years old to use this Service. You agree to provide accurate information when creating an account and to keep your login credentials secure. You are responsible for all activity that occurs under your account.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">User Responsibilities &amp; Messaging Compliance</h3>
-              <p>You are solely responsible for all content and communications sent through Text2Sale. You agree that you will only send messages to recipients who have provided prior express consent (opt-in). You agree to comply with all applicable laws and regulations, including but not limited to the Telephone Consumer Protection Act (TCPA), CAN-SPAM Act, CTIA guidelines, and any applicable federal, state, or international laws governing messaging and data privacy.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Platform Role &amp; Disclaimer</h3>
-              <p>Text2Sale is strictly a technology platform and does not control, review, or approve the content of messages sent by users. You acknowledge and agree that Text2Sale is not responsible or liable for any messages you send, including their content, timing, recipients, or legal compliance. You assume full responsibility and liability for your messaging activity.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Limitation of Liability &amp; Indemnification</h3>
-              <p>You agree that Text2Sale shall not be liable for any direct, indirect, incidental, consequential, or punitive damages, including but not limited to fines, penalties, lawsuits, lost profits, or business interruption arising from your use of the platform or your messaging practices. You further agree to indemnify, defend, and hold harmless Text2Sale, its owners, employees, and affiliates from any claims, damages, liabilities, costs, or expenses arising out of your use of the Service, your violation of these Terms, or your violation of any law or regulation.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Account Suspension &amp; Termination</h3>
-              <p>Text2Sale may suspend, restrict, or terminate your account at any time, without notice, if we believe you have violated these Terms, engaged in unlawful activity, or used the platform in a way that could harm the service, other users, or third parties.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Third-Party Services</h3>
-              <p>The Service may integrate with third-party providers including messaging carriers, SMS gateways, payment processors, and hosting providers. Text2Sale is not responsible for the performance, availability, or actions of these third parties. Message delivery is not guaranteed and may be affected by carrier restrictions or external factors beyond our control.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Billing &amp; Payments</h3>
-              <p>Users are responsible for maintaining sufficient account balance or active subscription to use the platform. All payments are final and non-refundable unless otherwise required by law. Pricing, subscription fees, and message rates may be updated at any time with notice. Failure to maintain payment may result in suspension of services.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Prohibited Activities</h3>
-              <p>You agree not to use Text2Sale for any unlawful, abusive, or prohibited activities, including but not limited to sending spam, phishing messages, fraudulent offers, harassment, or any content that violates applicable laws or regulations.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Compliance Tools</h3>
-              <p>Text2Sale provides compliance tools such as opt-out (STOP) handling and suppression lists; however, you are solely responsible for honoring opt-outs and maintaining compliance with all messaging laws.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Disclaimer of Warranties</h3>
-              <p>The Service is provided on an &ldquo;as is&rdquo; and &ldquo;as available&rdquo; basis without warranties of any kind, whether express or implied. Text2Sale disclaims all warranties including merchantability, fitness for a particular purpose, and non-infringement. We do not guarantee that the platform will be uninterrupted, error-free, or completely secure.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Governing Law</h3>
-              <p>These Terms shall be governed by and construed in accordance with the laws of the State of Florida, without regard to conflict of law principles. Any disputes arising out of or relating to these Terms or the use of the Service shall be resolved exclusively in the courts located in Florida.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Changes to These Terms</h3>
-              <p>We may update these Terms at any time. Continued use of the Service after updates constitutes acceptance of the revised Terms.</p>
-
-              <h3 className="text-base font-semibold text-white pt-2">Contact Us</h3>
-              <p>If you have any questions regarding these Terms, you may contact us at support@text2sale.com.</p>
+              <p className="text-xs text-zinc-500">Effective Date: {LEGAL_EFFECTIVE_DATE} &mdash; Website: www.text2sale.com</p>
+              {LEGAL_TERMS_SECTIONS.map((s) => (
+                <React.Fragment key={s.heading}>
+                  <h3 className="text-base font-semibold text-white pt-2">{s.heading}</h3>
+                  {s.paragraphs.map((p, i) => (
+                    <p key={i}>{p}</p>
+                  ))}
+                </React.Fragment>
+              ))}
             </div>
-
             <div className="border-t border-zinc-800 px-6 py-4">
               <button
                 onClick={() => { setShowTerms(false); setAgreedToTerms(true); }}
-                className="w-full rounded-2xl bg-violet-600 px-5 py-3 font-semibold text-white hover:bg-violet-700 transition"
+                className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-5 py-3 font-bold text-white shadow-lg shadow-violet-500/30 hover:brightness-110 transition"
               >
                 I Have Read and Agree to the Terms and Conditions
               </button>
@@ -641,9 +832,7 @@ export default function HomePage() {
       {/* Footer */}
       <footer className="border-t border-zinc-800 bg-zinc-950">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
-          <div className="text-sm text-zinc-500">
-            © {new Date().getFullYear()} Text2Sale. All rights reserved.
-          </div>
+          <div className="text-sm text-zinc-500">© {new Date().getFullYear()} Text2Sale. All rights reserved.</div>
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
             <a href="/terms" className="text-zinc-400 hover:text-white transition">Terms</a>
             <a href="/privacy-policy" className="text-zinc-400 hover:text-white transition">Privacy</a>
