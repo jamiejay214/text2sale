@@ -49,6 +49,11 @@ export type Profile = {
   ai_plan?: boolean;
   free_ai_plan?: boolean;
   agent_plan?: boolean;
+  // USHA partner flag. When `is_usha` is true we hide AI features and pin the
+  // user to the Standard plan. `usha_prompted` tracks whether we have already
+  // asked — so the popup only shows once per user.
+  is_usha?: boolean;
+  usha_prompted?: boolean;
   industry?: string;
   available_hours?: Record<string, unknown> | null;
   appointment_reminders?: Record<string, unknown> | null;

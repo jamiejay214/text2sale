@@ -11,6 +11,7 @@ import TempBadge from "@/components/TempBadge";
 import SmartReplies from "@/components/SmartReplies";
 import CallHud, { type CallHudState } from "@/components/CallHud";
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
+import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -75,6 +76,13 @@ type AccountRecord = {
   agentPlan?: boolean;
   industry?: string;
   googleCalendarConnected?: boolean;
+  // USHA partner flag — true when the user confirmed "I am with US Health
+  // Advisors" in the first-login popup. AI features stay hidden and the
+  // plan stays locked to Standard for these users.
+  isUsha?: boolean;
+  // True once we have shown the USHA popup (regardless of Yes / No) so we
+  // never ask twice.
+  ushaPrompted?: boolean;
   availableHours?: {
     enabled: boolean;
     timezone: string;
@@ -295,6 +303,8 @@ function profileToAccount(p: Profile): AccountRecord {
     industry: p.industry || "",
     availableHours: (p.available_hours as AccountRecord["availableHours"]) || undefined,
     googleCalendarConnected: !!p.google_calendar_tokens,
+    isUsha: !!p.is_usha,
+    ushaPrompted: !!p.usha_prompted,
   };
 }
 
@@ -1745,6 +1755,28 @@ export default function DashboardPage() {
     if (updated) setCurrentUser(profileToAccount(updated));
     return updated;
   }, [userId]);
+
+  // ─── USHA onboarding answer ─────────────────────────────────────────────
+  // "Are you with US Health Advisors?" The answer sticks the user to the
+  // Standard plan and force-disables AI flags server-side so we never bill
+  // USHA reps for AI features they don't use.
+  const handleUshaAnswer = useCallback(async (isUsha: boolean) => {
+    if (!userId) return;
+    const updates: Record<string, unknown> = {
+      is_usha: isUsha,
+      usha_prompted: true,
+    };
+    if (isUsha) {
+      updates.ai_plan = false;
+      updates.ai_auto_reply = false;
+      updates.agent_plan = false;
+      updates.free_ai_plan = false;
+      // Pin to the Standard plan's economics — keeps the billing surface
+      // simple for USHA reps while still letting them call + text.
+      updates.plan = { name: "Text2Sale Standard", price: 39.99, messageCost: 0.012 };
+    }
+    await persistProfile(updates);
+  }, [userId, persistProfile]);
 
   // Permanently release a Telnyx number and remove it from the profile.
   const handleDeleteOwnedNumber = async (num: OwnedNumber) => {
@@ -10129,7 +10161,8 @@ export default function DashboardPage() {
                 { id: "opt-out", label: "🚫 Opt-Out / DNC" },
                 { id: "10dlc", label: "✅ 10DLC" },
                 { id: "biz-page", label: "🌐 Biz Page" },
-                { id: "ai", label: "🤖 AI" },
+                // USHA accounts never activate AI — hide the AI settings tab.
+                ...(!currentUser.isUsha ? [{ id: "ai" as const, label: "🤖 AI" }] : []),
                 { id: "suggestions", label: "💡 Suggestions" },
                 { id: "integrations", label: "🔗 Integrations" },
               ] as { id: SettingsSubTab; label: string }[]).map((sub) => (
@@ -11847,7 +11880,23 @@ export default function DashboardPage() {
           />
         )}
 
-        {activeTab === "settings" && settingsSubTab === "ai" && (
+        {activeTab === "settings" && settingsSubTab === "ai" && currentUser.isUsha && (
+          <div className="space-y-6">
+            <div className="rounded-3xl border border-violet-500/30 bg-gradient-to-br from-violet-500/10 via-fuchsia-500/5 to-zinc-900 p-8 text-center">
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-600 to-fuchsia-600 text-2xl shadow-lg">
+                🏥
+              </div>
+              <h2 className="mt-4 text-2xl font-bold text-white">AI features aren&apos;t enabled on USHA accounts</h2>
+              <p className="mx-auto mt-2 max-w-xl text-sm text-zinc-400">
+                You&apos;re flagged as a US Health Advisors rep, so we&apos;ve kept your account on the
+                Standard plan with calling, SMS, campaigns, and pipeline — but without AI auto-reply.
+                Reach out to your team admin if you believe this is incorrect.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "settings" && settingsSubTab === "ai" && !currentUser.isUsha && (
           <div className="space-y-6">
             {/* AI Plan status */}
             <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -14118,6 +14167,13 @@ export default function DashboardPage() {
 
       {/* Toast notifications — replaces the legacy bottom banner */}
       <Toasts message={message} />
+
+      {/* ── USHA onboarding popup (first visit only) ───────────────── */}
+      <UshaWelcomeModal
+        open={!!currentUser && !currentUser.ushaPrompted && !impersonating}
+        firstName={currentUser?.firstName}
+        onAnswer={handleUshaAnswer}
+      />
 
       {/* Floating Call HUD (always-on-top when a call is live) */}
       <CallHud

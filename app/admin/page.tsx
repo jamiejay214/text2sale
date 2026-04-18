@@ -34,6 +34,9 @@ type AccountRecord = {
   freeSubscription?: boolean;
   aiPlan?: boolean;
   freeAiPlan?: boolean;
+  // USHA partner flag — surfaced here so admins can identify US Health
+  // Advisors reps at a glance and filter the user list by org.
+  isUsha?: boolean;
   teamCode?: string;
   managerId?: string | null;
   referralCode?: string;
@@ -96,6 +99,7 @@ function profileToAccount(p: Profile): AccountRecord {
     freeSubscription: p.free_subscription || false,
     aiPlan: p.ai_plan || false,
     freeAiPlan: p.free_ai_plan || false,
+    isUsha: !!p.is_usha,
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
     a2pStatus: p.a2p_registration?.status || "not_started",
     a2pBusinessName: p.a2p_registration?.businessName || "",
@@ -192,7 +196,7 @@ export default function AdminPage() {
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [selectedId, setSelectedId] = useState("");
   const [search, setSearch] = useState("");
-  const [userFilter, setUserFilter] = useState<"all" | "active" | "inactive" | "paused">("all");
+  const [userFilter, setUserFilter] = useState<"all" | "active" | "inactive" | "paused" | "usha">("all");
   const [message, setMessage] = useState("");
   const [txSort, setTxSort] = useState<"newest" | "oldest" | "largest">("newest");
   const [txFilter, setTxFilter] = useState<"all" | "charge" | "fund_add" | "credit_add" | "number_purchase">("all");
@@ -438,6 +442,7 @@ export default function AdminPage() {
       if (userFilter === "active") return matchesSearch && acct.subscriptionStatus === "active" && !acct.paused;
       if (userFilter === "inactive") return matchesSearch && acct.subscriptionStatus !== "active";
       if (userFilter === "paused") return matchesSearch && acct.paused;
+      if (userFilter === "usha") return matchesSearch && !!acct.isUsha;
       return matchesSearch;
     });
   }, [accounts, search, userFilter]);
@@ -1481,11 +1486,17 @@ export default function AdminPage() {
               <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search users..."
                 className="mb-3 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-5 py-3" />
 
-              <div className="mb-4 flex gap-2">
-                {(["all", "active", "inactive", "paused"] as const).map((f) => (
+              <div className="mb-4 flex flex-wrap gap-2">
+                {(["all", "active", "inactive", "paused", "usha"] as const).map((f) => (
                   <button key={f} onClick={() => setUserFilter(f)}
-                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${userFilter === f ? "bg-violet-600 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"}`}>
-                    {f === "all" ? "All" : f.charAt(0).toUpperCase() + f.slice(1)}
+                    className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                      userFilter === f
+                        ? (f === "usha" ? "bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white" : "bg-violet-600 text-white")
+                        : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                    }`}>
+                    {f === "all" ? "All"
+                      : f === "usha" ? `🏥 USHA (${accounts.filter((a) => a.isUsha).length})`
+                      : f.charAt(0).toUpperCase() + f.slice(1)}
                   </button>
                 ))}
               </div>
@@ -1501,6 +1512,14 @@ export default function AdminPage() {
                           <span className="font-semibold">{acct.firstName} {acct.lastName}</span>
                           {acct.role === "admin" && <span className="rounded-full bg-violet-900 px-2 py-0.5 text-[10px] font-medium text-violet-300">ADMIN</span>}
                           {acct.role === "manager" && <span className="rounded-full bg-amber-900 px-2 py-0.5 text-[10px] font-medium text-amber-300">MGR</span>}
+                          {acct.isUsha && (
+                            <span
+                              className="rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-2 py-0.5 text-[10px] font-bold text-white"
+                              title="Self-identified as US Health Advisors — AI features disabled, locked to Standard plan"
+                            >
+                              🏥 USHA
+                            </span>
+                          )}
                         </div>
                         <div className="flex gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${sub.cls}`}>{sub.label}</span>
