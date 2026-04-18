@@ -7,6 +7,9 @@ import Logo from "@/components/Logo";
 import CommandPalette, { type Command } from "@/components/CommandPalette";
 import Toasts from "@/components/Toasts";
 import Sparkline from "@/components/Sparkline";
+import TempBadge from "@/components/TempBadge";
+import { computeTemperature } from "@/lib/lead-temperature";
+import { computeSendWindow } from "@/lib/send-window";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
@@ -5515,6 +5518,7 @@ export default function DashboardPage() {
                   const contact = conversation.contact;
                   const active = conversation.id === selectedConversation?.id;
                   const isSelected = selectedConvIds.has(conversation.id);
+                  const temp = computeTemperature(conversation.messages, contact?.dnc);
 
                   return (
                     <div
@@ -5576,6 +5580,15 @@ export default function DashboardPage() {
                                   ? `${contact.firstName} ${contact.lastName}`
                                   : "Unknown Contact"}
                               </div>
+                              {/* Lead temperature — warm/hot/blazing indicator */}
+                              {(temp.tier === "hot" || temp.tier === "blazing" || temp.tier === "warm") && (
+                                <span
+                                  title={`Lead Temperature: ${temp.label} (${temp.score}/100)`}
+                                  className={`shrink-0 ${temp.tier === "blazing" ? "animate-pulse" : ""}`}
+                                >
+                                  {temp.emoji}
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-zinc-400">
                               {formatTime(conversation.lastMessageAt)}
@@ -5633,8 +5646,15 @@ export default function DashboardPage() {
                         {selectedContact ? getInitials(selectedContact.firstName, selectedContact.lastName) : "?"}
                       </div>
                       <div>
-                        <div className="font-semibold text-white">
-                          {selectedContact ? `${selectedContact.firstName} ${selectedContact.lastName}` : "Unknown Contact"}
+                        <div className="flex items-center gap-2">
+                          <div className="font-semibold text-white">
+                            {selectedContact ? `${selectedContact.firstName} ${selectedContact.lastName}` : "Unknown Contact"}
+                          </div>
+                          {selectedConversation && (() => {
+                            const temp = computeTemperature(selectedConversation.messages, selectedContact?.dnc);
+                            if (temp.tier === "cold" && temp.score === 0) return null;
+                            return <TempBadge temp={temp} size="md" />;
+                          })()}
                         </div>
                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                           <span>{selectedContact?.phone || "No contact linked"}</span>
@@ -5656,6 +5676,31 @@ export default function DashboardPage() {
                               })()}
                             </span>
                           )}
+                          {/* Smart Send Window — best time to text this contact */}
+                          {(() => {
+                            const sw = computeSendWindow(selectedConversation?.messages, selectedContact?.state);
+                            if (!sw) return null;
+                            return (
+                              <span
+                                className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium ${
+                                  sw.isInsideWindow
+                                    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                                    : "border-zinc-700 bg-zinc-800 text-zinc-400"
+                                }`}
+                                title={`${sw.reason} · Suggested: ${sw.suggestedLabel} local`}
+                              >
+                                {sw.isInsideWindow ? (
+                                  <span className="relative flex h-1.5 w-1.5">
+                                    <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                                  </span>
+                                ) : (
+                                  <svg className="h-2.5 w-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                )}
+                                {sw.isInsideWindow ? "Prime time" : `Best ~${sw.suggestedLabel}`}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
                     </div>
