@@ -43,7 +43,7 @@ function cleanPhone(raw: string): string {
 }
 
 // POST /api/integrations/inbound/[token]
-// Called by external CRMs (OnlySales, ISalesCRM, VanillaSoft, etc.)
+// Called by external lead vendors posting new leads to the user's webhook.
 // when a new lead is created. No auth header needed — the token in
 // the URL is the credential. Returns 200 so the caller doesn't retry.
 export async function POST(

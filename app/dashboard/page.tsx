@@ -10232,7 +10232,7 @@ export default function DashboardPage() {
               <div>
                 <h2 className="text-2xl font-bold">Integrations</h2>
                 <p className="mt-1 text-sm text-zinc-400">
-                  Connect your lead sources. Copy the Integration Link into OnlySales, ISalesCRM, VanillaSoft, or any webhook-compatible CRM.
+                  Connect your lead vendors. Give the Integration Link to any vendor so new leads are delivered straight into your Contacts in real time.
                 </p>
               </div>
               <button
@@ -10429,12 +10429,12 @@ export default function DashboardPage() {
 
             {/* How to use callout */}
             <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5 text-sm text-zinc-400">
-              <div className="font-medium text-zinc-300 mb-2">How to connect a CRM</div>
+              <div className="font-medium text-zinc-300 mb-2">How to connect a lead vendor</div>
               <ol className="space-y-1.5 list-decimal list-inside">
-                <li>Click <span className="text-white">Create new integration</span> above and give it a name (e.g. "OnlySales — Health leads")</li>
+                <li>Click <span className="text-white">Create new integration</span> above and give it a name (e.g. &quot;Health leads — Vendor A&quot;)</li>
                 <li>Copy the <span className="text-white">Integration Link</span> from the card</li>
-                <li>In your CRM (OnlySales, ISalesCRM, VanillaSoft, etc.) open <span className="text-white">Integrations → Add Integration</span> and paste the link as the webhook URL</li>
-                <li>Send a test lead — it will appear instantly in your Contacts</li>
+                <li>Send that link to your lead vendor and ask them to post new leads to it as a webhook (every vendor&apos;s setup is slightly different — they&apos;ll know what to do with a webhook URL)</li>
+                <li>Ask them to send a test lead — it will appear instantly in your Contacts</li>
               </ol>
             </div>
           </div>
@@ -10991,7 +10991,7 @@ export default function DashboardPage() {
                   type="text"
                   value={integrationName}
                   onChange={(e) => setIntegrationName(e.target.value)}
-                  placeholder="e.g. OnlySales — Health leads"
+                  placeholder="e.g. Health leads — Vendor A"
                   className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm focus:border-violet-500 focus:outline-none"
                 />
               </div>
