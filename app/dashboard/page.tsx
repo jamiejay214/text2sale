@@ -4,6 +4,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import Logo from "@/components/Logo";
+import CommandPalette, { type Command } from "@/components/CommandPalette";
+import Toasts from "@/components/Toasts";
+import Sparkline from "@/components/Sparkline";
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
@@ -515,6 +518,7 @@ export default function DashboardPage() {
   const [activeTab, setActiveTab] = useState<DashboardTab>("overview");
   const [settingsSubTab, setSettingsSubTab] = useState<SettingsSubTab>("billing");
   const [message, setMessage] = useState("");
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
@@ -1332,6 +1336,39 @@ export default function DashboardPage() {
     return (totalReplies / totalSent) * 100;
   }, [totalReplies, totalSent]);
 
+  // ─── 7-day sparkline series ───────────────────────────────────────
+  // Walks every conversation's messages and bins outbound vs. inbound
+  // counts by day. Returns three parallel arrays of length 7 (oldest
+  // first), ready to hand to <Sparkline values={...} />. This runs
+  // entirely over in-memory state so it's cheap — no extra fetches.
+  const last7 = useMemo(() => {
+    const days = 7;
+    const sent: number[] = Array(days).fill(0);
+    const replies: number[] = Array(days).fill(0);
+    const delivered: number[] = Array(days).fill(0);
+
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    const DAY = 24 * 60 * 60 * 1000;
+
+    for (const conv of conversations) {
+      for (const m of conv.messages || []) {
+        const ts = m.createdAt ? new Date(m.createdAt).getTime() : 0;
+        if (!ts) continue;
+        const diff = startOfToday - new Date(ts).setHours(0, 0, 0, 0);
+        const idx = days - 1 - Math.round(diff / DAY);
+        if (idx < 0 || idx >= days) continue;
+        if (m.direction === "outbound") {
+          sent[idx]++;
+          if (m.status === "delivered" || m.status === "sent") delivered[idx]++;
+        } else if (m.direction === "inbound") {
+          replies[idx]++;
+        }
+      }
+    }
+    return { sent, replies, delivered };
+  }, [conversations]);
+
   // All unique tags across contacts
   const viewContact = useMemo(() => {
     if (!viewContactId) return null;
@@ -1727,6 +1764,30 @@ export default function DashboardPage() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [userId, settingsSubTab, refreshDeliverability]);
+
+  // ─── ⌘K / Ctrl+K — global command palette trigger ─────────────────
+  // Investor-grade CRMs (Linear, Attio, Superhuman) all have this. It
+  // opens from anywhere, anytime — except when focus is already inside
+  // an editable element and the user hasn't held the meta key.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const isMeta = e.metaKey || e.ctrlKey;
+      if (isMeta && (e.key === "k" || e.key === "K")) {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (!isMeta && e.key === "/" && !paletteOpen) {
+        // "/" opens palette too, but only if not typing in a field
+        const t = e.target as HTMLElement | null;
+        const tag = t?.tagName?.toLowerCase();
+        if (tag !== "input" && tag !== "textarea" && !t?.isContentEditable) {
+          e.preventDefault();
+          setPaletteOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [paletteOpen]);
 
   const handleManageBilling = async () => {
     if (!userId) return;
@@ -4416,6 +4477,42 @@ export default function DashboardPage() {
     );
   }
 
+  // ─── Command Palette commands ───────────────────────────────────────
+  // The master list of navigable actions the palette exposes. Keep this
+  // close to the return so setters/handlers are in scope.
+  const paletteCommands: Command[] = [
+    // Navigation
+    { id: "nav-overview",      section: "Go to",    label: "Overview",        hint: "Stats, sparklines, AI insights", onRun: () => setActiveTab("overview"),      icon: <span className="text-base">📊</span> },
+    { id: "nav-conversations", section: "Go to",    label: "Conversations",   hint: "All inbox threads",              onRun: () => setActiveTab("conversations"), icon: <span className="text-base">💬</span> },
+    { id: "nav-campaigns",     section: "Go to",    label: "Campaigns",       hint: "Launch or review campaigns",     onRun: () => setActiveTab("campaigns"),     icon: <span className="text-base">🚀</span> },
+    { id: "nav-contacts",      section: "Go to",    label: "Contacts",        hint: "Browse and tag your list",       onRun: () => setActiveTab("contacts"),      icon: <span className="text-base">👥</span> },
+    { id: "nav-appointments",  section: "Go to",    label: "Appointments",    hint: "Calendar & bookings",            onRun: () => setActiveTab("appointments"),  icon: <span className="text-base">📅</span> },
+    { id: "nav-upload",        section: "Go to",    label: "Upload CSV",      hint: "Import leads in bulk",           onRun: () => setActiveTab("upload"),        icon: <span className="text-base">📤</span> },
+    { id: "nav-templates",     section: "Go to",    label: "Templates",       hint: "Quick replies & canned messages", onRun: () => setActiveTab("templates"),    icon: <span className="text-base">📝</span> },
+    { id: "nav-settings",      section: "Go to",    label: "Settings",        hint: "Billing, numbers, AI, team",     onRun: () => setActiveTab("settings"),      icon: <span className="text-base">⚙️</span> },
+    { id: "nav-learn",         section: "Go to",    label: "Learn",           hint: "Tutorials & tips",               onRun: () => setActiveTab("learn"),         icon: <span className="text-base">📖</span> },
+
+    // Settings sub-pages
+    { id: "set-billing",    section: "Settings",  label: "Billing & Wallet",      onRun: () => { setActiveTab("settings"); setSettingsSubTab("billing"); },     icon: <span className="text-base">💳</span> },
+    { id: "set-numbers",    section: "Settings",  label: "Phone Numbers",         hint: "View deliverability, buy more", onRun: () => { setActiveTab("settings"); setSettingsSubTab("numbers"); },     icon: <span className="text-base">📱</span> },
+    { id: "set-ai",         section: "Settings",  label: "AI Assistant",          hint: "Auto-reply, tone, instructions", onRun: () => { setActiveTab("settings"); setSettingsSubTab("ai"); },           icon: <span className="text-base">🤖</span> },
+    { id: "set-10dlc",      section: "Settings",  label: "10DLC Registration",    onRun: () => { setActiveTab("settings"); setSettingsSubTab("10dlc"); },       icon: <span className="text-base">✅</span> },
+    { id: "set-biz",        section: "Settings",  label: "Business Page",         onRun: () => { setActiveTab("settings"); setSettingsSubTab("biz-page"); },    icon: <span className="text-base">🌐</span> },
+    { id: "set-team",       section: "Settings",  label: "Team Members",          onRun: () => { setActiveTab("settings"); setSettingsSubTab("team"); },        icon: <span className="text-base">👥</span> },
+    { id: "set-integrations", section: "Settings", label: "Integrations",         hint: "Lead vendor webhooks",         onRun: () => { setActiveTab("settings"); setSettingsSubTab("integrations"); }, icon: <span className="text-base">🔗</span> },
+    { id: "set-activity",   section: "Settings",  label: "Activity Log",          onRun: () => { setActiveTab("settings"); setSettingsSubTab("activity"); },    icon: <span className="text-base">📋</span> },
+
+    // Actions
+    { id: "act-addfunds-25",  section: "Actions", label: "Add $25 to wallet",     onRun: () => handleAddFunds(25),  icon: <span className="text-base">💵</span> },
+    { id: "act-addfunds-50",  section: "Actions", label: "Add $50 to wallet",     onRun: () => handleAddFunds(50),  icon: <span className="text-base">💵</span> },
+    { id: "act-addfunds-100", section: "Actions", label: "Add $100 to wallet",    onRun: () => handleAddFunds(100), icon: <span className="text-base">💵</span> },
+    { id: "act-unread",       section: "Actions", label: "Show unread conversations", onRun: () => { setActiveTab("conversations"); setConvShowUnread(true); setConvShowRecents(false); setConvShowArchived(false); setConvShowWorking(false); }, icon: <span className="text-base">🔥</span> },
+    { id: "act-buy-number",   section: "Actions", label: "Buy a phone number",    onRun: () => { setActiveTab("settings"); setSettingsSubTab("numbers"); }, icon: <span className="text-base">➕</span> },
+    { id: "act-toggle-theme", section: "Actions", label: `Switch to ${themeMode === "dark" ? "light" : "dark"} mode`, onRun: () => { const next = themeMode === "dark" ? "light" : "dark"; setThemeMode(next); try { window.localStorage.setItem("t2s_theme", next); } catch {} }, icon: <span className="text-base">{themeMode === "dark" ? "☀️" : "🌙"}</span> },
+    ...(currentUser?.role === "admin" ? [{ id: "act-admin", section: "Actions", label: "Open Admin Portal", onRun: () => router.push("/admin"), icon: <span className="text-base">🛡️</span> } as Command] : []),
+    { id: "act-logout", section: "Actions", label: "Log out", onRun: () => handleLogout(), icon: <span className="text-base">🚪</span> },
+  ];
+
   return (
     <main className={`min-h-screen transition-colors duration-300 ${themeMode === "light" ? "t2s-light bg-gray-50 text-zinc-900" : "bg-zinc-950 text-white"}`}>
       {/* Demo Mode Banner */}
@@ -4460,55 +4557,104 @@ export default function DashboardPage() {
         </div>
       )}
       <div className="mx-auto max-w-screen-2xl px-6 py-8 lg:px-8">
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <div className="flex items-center gap-3">
-              <Logo size="sm" />
-              {impersonating && (
-                <span className="text-sm uppercase tracking-[0.2em] text-violet-300">
-                  Viewing {impersonatingUserName}&apos;s Dashboard
-                </span>
-              )}
+        {/* ─── Premium top bar ─────────────────────────────────────────
+            Compact row with logo, glass-style search trigger that opens
+            the command palette, and a cluster of avatar/theme/logout
+            actions. Works on all breakpoints. */}
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Logo size="sm" />
+            <span className="hidden h-6 w-px bg-zinc-800 sm:block" />
+            {impersonating && (
+              <span className="hidden rounded-full bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-300 sm:inline-block">
+                Viewing {impersonatingUserName}
+              </span>
+            )}
+            {/* Live status pulse */}
+            <div className="hidden items-center gap-1.5 rounded-full border border-zinc-800 bg-zinc-900/60 px-2.5 py-1 text-[11px] font-medium text-zinc-400 sm:flex">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              </span>
+              <span>Live</span>
             </div>
-            <h1 className="mt-2 text-4xl font-bold tracking-tight">
-              Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : ""}
-            </h1>
-            <div className="mt-2 text-sm text-zinc-400">
-              {new Date().toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-              {" · "}
-              {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-            </div>
-            <p className="mt-1 text-zinc-400 italic">
-              &ldquo;{dailyQuote}&rdquo;
-            </p>
           </div>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex items-center gap-2">
+            {/* Command palette trigger */}
+            <button
+              onClick={() => setPaletteOpen(true)}
+              className="group flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400 transition hover:border-violet-500/40 hover:bg-zinc-900 hover:text-white"
+              title="Search (⌘K)"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span className="hidden sm:inline">Search or jump…</span>
+              <kbd className="hidden rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 sm:inline">⌘K</kbd>
+            </button>
+
+            {/* Wallet chip */}
+            <button
+              onClick={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
+              className="hidden items-center gap-2 rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 px-3 py-2 text-sm font-semibold text-emerald-300 transition hover:border-emerald-500/40 sm:flex"
+              title="Billing & wallet"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M20 12v4H6a2 2 0 0 0 0 4h14v-4"/><circle cx="16" cy="14" r="1"/>
+              </svg>
+              <span className="tabular-nums">{formatCurrency(currentUser.walletBalance || 0)}</span>
+            </button>
+
             <button
               onClick={() => {
                 const next = themeMode === "dark" ? "light" : "dark";
                 setThemeMode(next);
                 try { window.localStorage.setItem("t2s_theme", next); } catch { /* ignore */ }
               }}
-              className="rounded-2xl border border-zinc-700 px-4 py-3 hover:bg-zinc-900 text-xl"
+              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 text-lg transition hover:border-zinc-700 hover:bg-zinc-900"
               title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
             >
               {themeMode === "dark" ? "☀️" : "🌙"}
             </button>
+
             {currentUser.role === "admin" && (
               <button
                 onClick={() => router.push("/admin")}
-                className="rounded-2xl border border-zinc-700 px-5 py-3 hover:bg-zinc-900"
+                className="hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm font-medium text-zinc-300 transition hover:border-zinc-700 hover:text-white md:inline-flex"
               >
-                Admin Portal
+                Admin
               </button>
             )}
+
+            {/* Avatar menu (logout) */}
             <button
               onClick={handleLogout}
-              className="rounded-2xl bg-red-600 px-5 py-3 hover:bg-red-700"
+              className="group flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-sm transition hover:border-red-500/40 hover:bg-red-500/10"
+              title="Log out"
             >
-              Logout
+              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-xs font-bold text-white">
+                {(currentUser.firstName?.[0] || "?").toUpperCase()}{(currentUser.lastName?.[0] || "").toUpperCase()}
+              </span>
+              <svg className="h-4 w-4 text-zinc-500 transition group-hover:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+              </svg>
             </button>
+          </div>
+        </div>
+
+        {/* ─── Hero welcome block ─────────────────────────────────── */}
+        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-400">
+              {new Date().toLocaleDateString("en-US", { weekday: "long" })} · {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
+            </div>
+            <h1 className="mt-1.5 bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl">
+              Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : "there"}
+            </h1>
+            <p className="mt-2 text-[15px] text-zinc-400 italic">
+              &ldquo;{dailyQuote}&rdquo;
+            </p>
           </div>
         </div>
 
@@ -4556,164 +4702,333 @@ export default function DashboardPage() {
 
         {activeTab === "overview" && (
           <div className="space-y-8">
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Wallet Balance</div>
-                <div className="mt-3 text-4xl font-bold text-emerald-400">
+            {/* ═══════════════ HERO METRIC ROW ═══════════════
+                Four gradient stat cards with embedded sparklines. Each
+                card links to the relevant deep-dive view. The sparkline
+                renders the last 7 days of the metric, giving instant
+                pattern recognition without clicking into analytics. */}
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+              {/* Wallet */}
+              <button
+                onClick={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
+                className="group relative overflow-hidden rounded-3xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 via-zinc-900 to-zinc-950 p-6 text-left transition hover:border-emerald-400/40 hover:shadow-[0_0_30px_rgba(52,211,153,0.15)]"
+              >
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-emerald-500/10 blur-3xl transition group-hover:bg-emerald-500/20"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300">Wallet</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/15 text-emerald-300">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M20 12v4H6a2 2 0 0 0 0 4h14v-4"/><circle cx="16" cy="14" r="1"/></svg>
+                  </span>
+                </div>
+                <div className="mt-3 text-4xl font-bold tabular-nums text-white">
                   {formatCurrency(currentUser.walletBalance || 0)}
                 </div>
-                <div className="mt-2 text-xs text-zinc-500">{currentUser.credits} credits</div>
-              </div>
+                <div className="mt-1 text-xs text-zinc-500">{currentUser.credits || 0} credits · Plan: {currentUser.plan.name}</div>
+              </button>
 
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Delivery Rate</div>
-                <div className="mt-3 text-4xl font-bold text-sky-400">
-                  {deliveryRate.toFixed(1)}%
+              {/* Delivery rate + sparkline */}
+              <div className="group relative overflow-hidden rounded-3xl border border-sky-500/20 bg-gradient-to-br from-sky-500/10 via-zinc-900 to-zinc-950 p-6">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-sky-500/10 blur-3xl"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-300">Delivery</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-sky-500/15 text-sky-300">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                  </span>
                 </div>
-                <div className="mt-2 text-xs text-zinc-500">{totalSent} sent · {totalFailed} failed</div>
-              </div>
-
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Reply Rate</div>
-                <div className="mt-3 text-4xl font-bold text-amber-400">
-                  {replyRate.toFixed(1)}%
+                <div className="mt-3 flex items-baseline gap-1.5">
+                  <span className="text-4xl font-bold tabular-nums text-white">{deliveryRate.toFixed(1)}</span>
+                  <span className="text-lg font-semibold text-sky-400">%</span>
                 </div>
-                <div className="mt-2 text-xs text-zinc-500">{totalReplies} replies</div>
-              </div>
-
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Contacts · Numbers</div>
-                <div className="mt-3 text-4xl font-bold text-violet-400">
-                  {contacts.length} · {currentUser.ownedNumbers?.length || 0}
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">{contacts.filter(c => c.dnc).length} on DNC list</div>
-              </div>
-            </div>
-
-            {/* Response-time SLA row — the "speed to lead" metrics sales managers
-                actually care about. Left card shows our 30-day avg first-reply
-                time; right card highlights hot leads that just replied and are
-                waiting for a callback. Clicking the hot-leads card jumps to the
-                Unread filter so the rep can start dialing. */}
-            <div className="grid gap-5 md:grid-cols-2">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="text-sm text-zinc-400">Avg First-Reply Time</div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <div className="text-4xl font-bold text-cyan-400">
-                    {firstReplyStats.repliedCount === 0
-                      ? "—"
-                      : firstReplyStats.avgMinutes >= 60
-                        ? `${(firstReplyStats.avgMinutes / 60).toFixed(1)}h`
-                        : `${firstReplyStats.avgMinutes.toFixed(1)}m`}
-                  </div>
-                  {firstReplyStats.repliedCount > 0 && (
-                    <div className="text-sm text-zinc-500">
-                      across {firstReplyStats.repliedCount.toLocaleString()} repl{firstReplyStats.repliedCount === 1 ? "y" : "ies"}
-                    </div>
-                  )}
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  Outbound → first inbound reply · last 30 days
+                <div className="mt-2 flex items-end justify-between">
+                  <span className="text-xs text-zinc-500">{totalSent.toLocaleString()} sent · {totalFailed.toLocaleString()} failed</span>
+                  <Sparkline values={last7.delivered} width={70} height={24} stroke="#38bdf8" fill="rgba(56,189,248,0.18)" />
                 </div>
               </div>
 
+              {/* Reply rate + sparkline */}
+              <div className="group relative overflow-hidden rounded-3xl border border-amber-500/20 bg-gradient-to-br from-amber-500/10 via-zinc-900 to-zinc-950 p-6">
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-amber-500/10 blur-3xl"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-amber-300">Reply Rate</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-amber-500/15 text-amber-300">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                  </span>
+                </div>
+                <div className="mt-3 flex items-baseline gap-1.5">
+                  <span className="text-4xl font-bold tabular-nums text-white">{replyRate.toFixed(1)}</span>
+                  <span className="text-lg font-semibold text-amber-400">%</span>
+                </div>
+                <div className="mt-2 flex items-end justify-between">
+                  <span className="text-xs text-zinc-500">{totalReplies.toLocaleString()} replies</span>
+                  <Sparkline values={last7.replies} width={70} height={24} stroke="#fbbf24" fill="rgba(251,191,36,0.2)" />
+                </div>
+              </div>
+
+              {/* Contacts · Numbers */}
               <button
-                onClick={() => {
-                  setActiveTab("conversations");
-                  setConvShowUnread(true);
-                  setConvShowRecents(false);
-                  setConvShowArchived(false);
-                  setConvShowWorking(false);
-                }}
-                className={`rounded-3xl border p-6 text-left transition ${
-                  firstReplyStats.hotLeads > 0
-                    ? "border-amber-500/40 bg-amber-500/10 hover:border-amber-400"
-                    : "border-zinc-800 bg-zinc-900 hover:border-zinc-700"
-                }`}
+                onClick={() => setActiveTab("contacts")}
+                className="group relative overflow-hidden rounded-3xl border border-violet-500/20 bg-gradient-to-br from-violet-500/10 via-zinc-900 to-zinc-950 p-6 text-left transition hover:border-violet-400/40 hover:shadow-[0_0_30px_rgba(167,139,250,0.15)]"
               >
-                <div className="flex items-center gap-2 text-sm text-zinc-400">
-                  {firstReplyStats.hotLeads > 0 && <span className="animate-pulse">🔥</span>}
-                  <span>Hot Leads Waiting</span>
+                <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-violet-500/10 blur-3xl transition group-hover:bg-violet-500/20"></div>
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-violet-300">Your Book</span>
+                  <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-violet-500/15 text-violet-300">
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <div className={`text-4xl font-bold ${firstReplyStats.hotLeads > 0 ? "text-amber-400" : "text-zinc-500"}`}>
-                    {firstReplyStats.hotLeads}
-                  </div>
-                  {firstReplyStats.hotLeads > 0 && (
-                    <div className="text-sm text-amber-300">call them now</div>
-                  )}
+                  <span className="text-4xl font-bold tabular-nums text-white">{contacts.length.toLocaleString()}</span>
+                  <span className="text-sm text-zinc-500">contacts</span>
                 </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  Unread inbound in the last hour · click to open
+                <div className="mt-1 flex items-center gap-3 text-xs text-zinc-500">
+                  <span>{currentUser.ownedNumbers?.length || 0} number{currentUser.ownedNumbers?.length === 1 ? "" : "s"}</span>
+                  <span>·</span>
+                  <span>{contacts.filter(c => c.dnc).length} DNC</span>
                 </div>
               </button>
             </div>
 
-            <div className="grid gap-8 lg:grid-cols-[1.3fr_0.9fr]">
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <div className="mb-5 flex items-center justify-between">
-                  <h2 className="text-2xl font-bold">Performance Snapshot</h2>
-                  <span className="rounded-full bg-zinc-800 px-3 py-1 text-xs text-zinc-300">
-                    Live totals
-                  </span>
-                </div>
-
-                <div className="grid gap-4 md:grid-cols-3">
-                  <div className="rounded-2xl bg-zinc-800 p-5">
-                    <div className="text-sm text-zinc-400">Sent</div>
-                    <div className="mt-2 text-3xl font-bold">{totalSent}</div>
+            {/* ═══════════════ SPEED-TO-LEAD SLA ROW ═══════════════
+                Left: AI-style insight card that adapts to the current
+                state of the user's sales motion. Right: hot-leads
+                call-to-action that pulses when there's work to do. */}
+            <div className="grid gap-4 md:grid-cols-3">
+              {/* AI Insight card */}
+              <div className="group relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-fuchsia-500/5 via-zinc-900 to-zinc-950 p-6 md:col-span-2">
+                <div className="pointer-events-none absolute -right-16 -bottom-16 h-48 w-48 rounded-full bg-fuchsia-500/10 blur-3xl"></div>
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-lg shadow-fuchsia-500/30">
+                    <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+                    </svg>
                   </div>
-                  <div className="rounded-2xl bg-zinc-800 p-5">
-                    <div className="text-sm text-zinc-400">Replies</div>
-                    <div className="mt-2 text-3xl font-bold text-emerald-400">
-                      {totalReplies}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-fuchsia-300">TextAlot AI</span>
+                      <span className="rounded-full border border-fuchsia-500/30 bg-fuchsia-500/10 px-2 py-0.5 text-[9px] font-bold text-fuchsia-300">BETA</span>
                     </div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-800 p-5">
-                    <div className="text-sm text-zinc-400">Failed</div>
-                    <div className="mt-2 text-3xl font-bold text-red-400">
-                      {totalFailed}
+                    <h3 className="mt-1.5 text-lg font-semibold text-white">
+                      {(() => {
+                        // Adaptive insight based on current state. Investors love
+                        // seeing the product "think" about them; we derive a
+                        // targeted nudge from the same data already on screen.
+                        if (firstReplyStats.hotLeads > 0) return `${firstReplyStats.hotLeads} hot lead${firstReplyStats.hotLeads === 1 ? "" : "s"} just replied — close them fast.`;
+                        if (replyRate > 0 && replyRate < 5) return "Your reply rate is low. Try shorter opening messages and personalization.";
+                        if (totalSent === 0) return "You haven't launched a campaign yet. Upload a CSV and try a welcome blast.";
+                        if (deliveryRate < 85 && totalSent > 50) return "Delivery rate is under 85% — verify your 10DLC status and from-numbers.";
+                        if (firstReplyStats.repliedCount > 0 && firstReplyStats.avgMinutes > 60) return `Avg reply time is ${(firstReplyStats.avgMinutes / 60).toFixed(1)}h. Fast follow-ups 3× your close rate.`;
+                        return "You're on a roll. Keep the texts warm and personal — momentum sells.";
+                      })()}
+                    </h3>
+                    <p className="mt-2 text-sm text-zinc-400">
+                      {(() => {
+                        if (firstReplyStats.hotLeads > 0) return "Unread inbound messages from the last hour — the fastest reply wins the sale.";
+                        if (replyRate > 0 && replyRate < 5) return "Top performers see 12-18% reply rates. Shorten your opener to one sentence with a question.";
+                        if (totalSent === 0) return "Go to Upload CSV → tag your list → launch a campaign from the Campaigns tab.";
+                        if (deliveryRate < 85 && totalSent > 50) return "Unverified brands and flagged numbers fail silently. Check Settings → 10DLC.";
+                        return "Keep the momentum — every reply compounds when your list is warm.";
+                      })()}
+                    </p>
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      {firstReplyStats.hotLeads > 0 && (
+                        <button
+                          onClick={() => { setActiveTab("conversations"); setConvShowUnread(true); setConvShowRecents(false); setConvShowArchived(false); setConvShowWorking(false); }}
+                          className="rounded-2xl bg-gradient-to-r from-violet-600 to-fuchsia-600 px-4 py-2 text-xs font-semibold text-white shadow-lg shadow-violet-500/30 transition hover:shadow-violet-500/50"
+                        >
+                          Open Hot Leads →
+                        </button>
+                      )}
+                      <button
+                        onClick={() => setActiveTab("campaigns")}
+                        className="rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+                      >
+                        Launch Campaign
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("templates")}
+                        className="rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-2 text-xs font-medium text-zinc-300 transition hover:border-zinc-600 hover:text-white"
+                      >
+                        Browse Templates
+                      </button>
                     </div>
-                  </div>
-                </div>
-
-                <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-5">
-                  <div className="text-sm text-zinc-400">Current Plan</div>
-                  <div className="mt-2 text-2xl font-bold">{currentUser.plan.name}</div>
-                  <div className="mt-2 text-zinc-400">
-                    {formatCurrency(currentUser.plan.price)} / month •{" "}
-                    {formatCurrency(currentUser.plan.messageCost)} per message
                   </div>
                 </div>
               </div>
 
-              <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h2 className="text-2xl font-bold">Quick Actions</h2>
+              {/* Hot Leads pulse card */}
+              <button
+                onClick={() => { setActiveTab("conversations"); setConvShowUnread(true); setConvShowRecents(false); setConvShowArchived(false); setConvShowWorking(false); }}
+                className={`group relative overflow-hidden rounded-3xl border p-6 text-left transition ${
+                  firstReplyStats.hotLeads > 0
+                    ? "border-amber-500/40 bg-gradient-to-br from-amber-500/15 via-orange-500/5 to-zinc-950 shadow-[0_0_40px_rgba(245,158,11,0.15)] hover:shadow-[0_0_50px_rgba(245,158,11,0.3)]"
+                    : "border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 hover:border-zinc-700"
+                }`}
+              >
+                {firstReplyStats.hotLeads > 0 && (
+                  <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-amber-500/20 blur-3xl"></div>
+                )}
+                <div className="flex items-center gap-2">
+                  <div className={`flex h-8 w-8 items-center justify-center rounded-xl ${firstReplyStats.hotLeads > 0 ? "bg-amber-500/20 text-amber-300" : "bg-zinc-800 text-zinc-500"}`}>
+                    {firstReplyStats.hotLeads > 0 ? (
+                      <span className="text-base animate-pulse">🔥</span>
+                    ) : (
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                    )}
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-zinc-400">
+                    {firstReplyStats.hotLeads > 0 ? "Hot Leads" : "All Quiet"}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-baseline gap-2">
+                  <div className={`text-5xl font-bold tabular-nums ${firstReplyStats.hotLeads > 0 ? "text-amber-400" : "text-zinc-600"}`}>
+                    {firstReplyStats.hotLeads}
+                  </div>
+                </div>
+                <div className="mt-2 text-xs text-zinc-500">
+                  {firstReplyStats.hotLeads > 0 ? (
+                    <>Unread replies in the last hour · <span className="text-amber-300">click to call</span></>
+                  ) : (
+                    "No unread inbound in the last hour"
+                  )}
+                </div>
+                {firstReplyStats.repliedCount > 0 && (
+                  <div className="mt-4 border-t border-zinc-800 pt-3 text-[11px] text-zinc-500">
+                    Avg first-reply time:{" "}
+                    <span className="font-semibold text-cyan-400">
+                      {firstReplyStats.avgMinutes >= 60
+                        ? `${(firstReplyStats.avgMinutes / 60).toFixed(1)}h`
+                        : `${firstReplyStats.avgMinutes.toFixed(0)}m`}
+                    </span>
+                  </div>
+                )}
+              </button>
+            </div>
 
-                <div className="mt-5 grid gap-3">
+            {/* ═══════════════ PERFORMANCE + QUICK ACTIONS ═══════════════ */}
+            <div className="grid gap-6 lg:grid-cols-[1.3fr_0.9fr]">
+              {/* Performance Snapshot with activity sparkline */}
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
+                <div className="mb-5 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold">Performance Snapshot</h2>
+                    <p className="text-xs text-zinc-500">Last 7 days of outbound &amp; inbound activity</p>
+                  </div>
+                  <span className="flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-emerald-300">
+                    <span className="relative flex h-1.5 w-1.5">
+                      <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
+                      <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+                    </span>
+                    Live
+                  </span>
+                </div>
+
+                {/* Inline sparkline overlay */}
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-5">
+                  <div className="flex items-end justify-between gap-4">
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">7-day sent</div>
+                      <div className="mt-1 text-3xl font-bold tabular-nums text-white">
+                        {last7.sent.reduce((a, b) => a + b, 0).toLocaleString()}
+                      </div>
+                    </div>
+                    <Sparkline values={last7.sent} width={180} height={44} stroke="#a78bfa" fill="rgba(167,139,250,0.2)" />
+                  </div>
+                  <div className="mt-4 grid grid-cols-3 gap-3 border-t border-zinc-800 pt-4">
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Sent</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums">{totalSent.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Replies</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums text-emerald-400">{totalReplies.toLocaleString()}</div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Failed</div>
+                      <div className="mt-1 text-xl font-bold tabular-nums text-red-400">{totalFailed.toLocaleString()}</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-5 flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+                  <div>
+                    <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Current Plan</div>
+                    <div className="mt-1 text-lg font-bold">{currentUser.plan.name}</div>
+                    <div className="text-xs text-zinc-500">
+                      {formatCurrency(currentUser.plan.price)}/mo · {formatCurrency(currentUser.plan.messageCost)}/msg
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
+                    className="rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 transition hover:border-violet-500/40 hover:text-white"
+                  >
+                    Manage
+                  </button>
+                </div>
+              </div>
+
+              {/* Quick Actions — premium tile grid */}
+              <div className="rounded-3xl border border-zinc-800 bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 shadow-xl">
+                <div className="mb-5 flex items-center justify-between">
+                  <h2 className="text-xl font-bold">Quick Actions</h2>
+                  <button
+                    onClick={() => setPaletteOpen(true)}
+                    className="hidden items-center gap-1 rounded-lg border border-zinc-800 bg-zinc-950 px-2 py-1 text-[10px] font-medium text-zinc-500 transition hover:text-zinc-300 sm:flex"
+                  >
+                    <kbd>⌘</kbd><kbd>K</kbd>
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => setActiveTab("conversations")}
-                    className="rounded-2xl bg-violet-600 px-5 py-4 text-left hover:bg-violet-700"
+                    className="group rounded-2xl border border-zinc-800 bg-gradient-to-br from-violet-600 to-fuchsia-600 p-4 text-left shadow-lg shadow-violet-500/20 transition hover:shadow-violet-500/40"
                   >
-                    Open Conversations
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-white/15 text-white">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-white">Inbox</div>
+                    <div className="text-[11px] text-violet-100/80">Reply to leads</div>
                   </button>
                   <button
                     onClick={() => setActiveTab("campaigns")}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 text-left hover:bg-zinc-800"
+                    className="group rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left transition hover:border-zinc-700 hover:bg-zinc-800/60"
                   >
-                    Create Campaign
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-800 text-violet-400">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-white">Launch</div>
+                    <div className="text-[11px] text-zinc-500">New campaign</div>
                   </button>
                   <button
-                    onClick={() => handleAddFunds(25)}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 text-left hover:bg-zinc-800"
+                    onClick={() => setActiveTab("upload")}
+                    className="group rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left transition hover:border-zinc-700 hover:bg-zinc-800/60"
                   >
-                    Add $25 to Wallet
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-800 text-sky-400">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-white">Upload</div>
+                    <div className="text-[11px] text-zinc-500">CSV of leads</div>
                   </button>
                   <button
                     onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); }}
-                    className="rounded-2xl border border-zinc-700 px-5 py-4 text-left hover:bg-zinc-800"
+                    className="group rounded-2xl border border-zinc-800 bg-zinc-900 p-4 text-left transition hover:border-zinc-700 hover:bg-zinc-800/60"
                   >
-                    Buy Number
+                    <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-zinc-800 text-emerald-400">
+                      <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                    </div>
+                    <div className="text-sm font-semibold text-white">Numbers</div>
+                    <div className="text-[11px] text-zinc-500">Buy or view</div>
+                  </button>
+                  <button
+                    onClick={() => handleAddFunds(50)}
+                    className="group col-span-2 rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 p-4 text-left transition hover:border-emerald-400/40"
+                  >
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-emerald-300">Add $50 to wallet</div>
+                        <div className="text-[11px] text-emerald-300/70">Instant via Stripe</div>
+                      </div>
+                      <svg className="h-5 w-5 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                    </div>
                   </button>
                 </div>
               </div>
@@ -12293,6 +12608,16 @@ export default function DashboardPage() {
           </button>
         </>
       )}
+
+      {/* Command palette (⌘K) */}
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands}
+      />
+
+      {/* Toast notifications — replaces the legacy bottom banner */}
+      <Toasts message={message} />
     </main>
   );
 }
