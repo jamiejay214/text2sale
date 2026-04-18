@@ -551,6 +551,11 @@ export default function DashboardPage() {
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
   const [searchingNumbers, setSearchingNumbers] = useState(false);
   const [buyingNumber, setBuyingNumber] = useState<string | null>(null);
+  const [deletingNumberId, setDeletingNumberId] = useState<string | null>(null);
+  // Deliverability keyed by 10-digit normalized number. Refreshed when the
+  // Numbers tab opens and every 30s while it's visible, plus on every
+  // messages-table INSERT/UPDATE via realtime so bad numbers show up fast.
+  const [deliverability, setDeliverability] = useState<Record<string, { total: number; delivered: number; failed: number }>>({});
   const [conversationSearch, setConversationSearch] = useState("");
   const [selectedConversationId, setSelectedConversationId] = useState("");
   const [showConvContactPanel, setShowConvContactPanel] = useState(false);
@@ -1636,6 +1641,84 @@ export default function DashboardPage() {
     if (updated) setCurrentUser(profileToAccount(updated));
     return updated;
   }, [userId]);
+
+  // Permanently release a Telnyx number and remove it from the profile.
+  const handleDeleteOwnedNumber = async (num: OwnedNumber) => {
+    if (!userId || !currentUser) return;
+    const ok = window.confirm(
+      `Permanently release ${num.number}?\n\nThis cancels the number on Telnyx and removes it from your account. You will stop receiving messages to this number immediately. This cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingNumberId(num.id);
+    try {
+      const res = await authFetch("/api/delete-number", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ numberId: num.id, phoneNumber: num.number }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setMessage(`❌ ${data.error || "Could not release number"}`);
+        window.setTimeout(() => setMessage(""), 3500);
+        return;
+      }
+      const next = (currentUser.ownedNumbers || []).filter((n) => n.id !== num.id);
+      await persistProfile({ owned_numbers: next });
+      setMessage(`✅ ${num.number} released`);
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch {
+      setMessage("❌ Could not connect to release service");
+      window.setTimeout(() => setMessage(""), 3000);
+    } finally {
+      setDeletingNumberId(null);
+    }
+  };
+
+  // Pull deliverability counts per number. Called on mount of the Numbers
+  // tab, on a 30s interval while that tab is open, and any time a message
+  // status changes via realtime.
+  const refreshDeliverability = useCallback(async () => {
+    if (!userId) return;
+    const { data, error } = await supabase.rpc("deliverability_stats", {
+      p_user_id: userId,
+      p_days: 30,
+    });
+    if (error || !data) return;
+    const next: Record<string, { total: number; delivered: number; failed: number }> = {};
+    for (const row of data as Array<{ digits: string; total: number; delivered: number; failed: number }>) {
+      next[row.digits] = {
+        total: Number(row.total),
+        delivered: Number(row.delivered),
+        failed: Number(row.failed),
+      };
+    }
+    setDeliverability(next);
+  }, [userId]);
+
+  // Auto-refresh while Numbers sub-tab is visible.
+  useEffect(() => {
+    if (settingsSubTab !== "numbers") return;
+    refreshDeliverability();
+    const interval = window.setInterval(refreshDeliverability, 30000);
+    return () => window.clearInterval(interval);
+  }, [settingsSubTab, refreshDeliverability]);
+
+  // Realtime: any message status change refreshes deliverability so a
+  // stream of failed sends turns the card red within a couple seconds.
+  useEffect(() => {
+    if (!userId) return;
+    const channel = supabase
+      .channel(`deliverability_${userId}`)
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "messages" },
+        () => {
+          if (settingsSubTab === "numbers") refreshDeliverability();
+        }
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [userId, settingsSubTab, refreshDeliverability]);
 
   const handleManageBilling = async () => {
     if (!userId) return;
@@ -8176,22 +8259,75 @@ export default function DashboardPage() {
               </p>
 
               <div className="mt-5 space-y-4">
-                {(currentUser.ownedNumbers || []).map((item) => (
-                  <div
-                    key={item.id}
-                    className="rounded-2xl border border-zinc-800 bg-zinc-800/60 p-5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="font-semibold">{item.alias}</div>
-                        <div className="mt-1 font-mono text-zinc-300">{item.number}</div>
+                {(currentUser.ownedNumbers || []).map((item) => {
+                  // 10-digit key for deliverability lookup.
+                  const digits = item.number.replace(/\D/g, "");
+                  const key = digits.startsWith("1") ? digits.slice(1) : digits;
+                  const stats = deliverability[key];
+                  const pct = stats && stats.total > 0
+                    ? Math.round((stats.delivered / stats.total) * 1000) / 10
+                    : null;
+                  // Color the badge by delivery rate. Under 70% = likely
+                  // carrier-blocked or spam-flagged; 70-89% watch; 90%+ good.
+                  const badgeColor = pct === null
+                    ? "bg-zinc-800 text-zinc-400"
+                    : pct >= 90
+                      ? "bg-emerald-900 text-emerald-300"
+                      : pct >= 70
+                        ? "bg-amber-900 text-amber-300"
+                        : "bg-red-900 text-red-300";
+                  const barColor = pct === null
+                    ? "bg-zinc-700"
+                    : pct >= 90
+                      ? "bg-emerald-500"
+                      : pct >= 70
+                        ? "bg-amber-500"
+                        : "bg-red-500";
+                  return (
+                    <div
+                      key={item.id}
+                      className="rounded-2xl border border-zinc-800 bg-zinc-800/60 p-5"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="font-semibold">{item.alias}</div>
+                          <div className="mt-1 font-mono text-zinc-300">{item.number}</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className={`rounded-full px-3 py-1 text-xs ${badgeColor}`}>
+                            {pct === null ? "No data yet" : `${pct}% delivered`}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteOwnedNumber(item)}
+                            disabled={deletingNumberId === item.id}
+                            className="rounded-full border border-red-900/60 bg-red-950/40 px-3 py-1 text-xs text-red-300 hover:bg-red-900/60 disabled:opacity-50"
+                            title="Permanently release this number"
+                          >
+                            {deletingNumberId === item.id ? "Releasing…" : "Delete"}
+                          </button>
+                        </div>
                       </div>
-                      <div className="rounded-full bg-emerald-900 px-3 py-1 text-xs text-emerald-300">
-                        Active
+
+                      {/* Deliverability bar + counts */}
+                      <div className="mt-4">
+                        <div className="flex items-center justify-between text-[11px] text-zinc-500">
+                          <span>Deliverability · last 30 days</span>
+                          {stats && (
+                            <span>
+                              {stats.delivered.toLocaleString()} delivered · {stats.failed.toLocaleString()} failed · {stats.total.toLocaleString()} sent
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1.5 h-1.5 w-full overflow-hidden rounded-full bg-zinc-900">
+                          <div
+                            className={`h-full ${barColor} transition-all`}
+                            style={{ width: `${pct ?? 0}%` }}
+                          />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
 
                 {(currentUser.ownedNumbers || []).length === 0 && (
                   <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-6 text-center text-zinc-500">
