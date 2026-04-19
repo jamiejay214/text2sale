@@ -6,7 +6,15 @@ import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
+// Assign newly-purchased numbers to our WebRTC *credential connection*, not
+// the Voice API app. Browser calls register against the credential
+// connection (see /api/telnyx/webrtc-token), and Telnyx only routes
+// outbound calls when the caller-ID number shares a connection with the
+// registered SIP user. TELNYX_VOICE_APP_ID points at a separate Call
+// Control app and is the WRONG thing to stamp on new numbers — using it
+// silently breaks outbound calling from the browser.
 const voiceAppId =
+  process.env.TELNYX_CREDENTIAL_CONNECTION_ID ||
   process.env.TELNYX_VOICE_APP_ID ||
   process.env.TELNYX_CALL_CONTROL_APP_ID ||
   "";
