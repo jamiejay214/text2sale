@@ -7876,7 +7876,7 @@ export default function DashboardPage() {
                     Quick dial
                   </div>
                   <QuickDialer
-                    onDial={(num) => startCall({ to: num, contactName: "Direct dial" })}
+                    onDial={(num, from) => startCall({ to: num, fromNumber: from, contactName: "Direct dial" })}
                     ownedNumbers={currentUser?.ownedNumbers || []}
                   />
                   <p className="mt-3 text-[11px] text-zinc-500">
@@ -14299,15 +14299,17 @@ export default function DashboardPage() {
 // ═══════════════════════ QUICK DIALER ═══════════════════════
 // Phone-pad widget used inside the Calls tab. Lets a rep type or paste
 // any number and fire an outbound call through the same startCall path
-// the other UI surfaces use.
+// the other UI surfaces use. Includes a "Call from" dropdown so the rep
+// can pick which sales line number shows as the caller ID.
 function QuickDialer({
   onDial,
   ownedNumbers,
 }: {
-  onDial: (phone: string) => void;
-  ownedNumbers: { number: string }[];
+  onDial: (phone: string, from: string) => void;
+  ownedNumbers: { number: string; alias?: string }[];
 }) {
   const [digits, setDigits] = useState("");
+  const [selectedFrom, setSelectedFrom] = useState(ownedNumbers[0]?.number || "");
   const keypad = ["1","2","3","4","5","6","7","8","9","*","0","#"];
   const tap = (k: string) => setDigits((d) => (d + k).slice(0, 20));
   const backspace = () => setDigits((d) => d.slice(0, -1));
@@ -14320,6 +14322,13 @@ function QuickDialer({
   })();
 
   const canDial = digits.replace(/\D/g, "").length >= 10;
+
+  // Keep selectedFrom in sync if ownedNumbers loads after mount
+  React.useEffect(() => {
+    if (!selectedFrom && ownedNumbers.length > 0) {
+      setSelectedFrom(ownedNumbers[0].number);
+    }
+  }, [ownedNumbers, selectedFrom]);
 
   return (
     <div className="mt-4 space-y-4">
@@ -14341,6 +14350,26 @@ function QuickDialer({
         ))}
       </div>
 
+      {/* Call-from number picker */}
+      {ownedNumbers.length > 0 && (
+        <div className="space-y-1">
+          <label className="text-[10px] font-semibold uppercase tracking-widest text-zinc-500">
+            Call from
+          </label>
+          <select
+            value={selectedFrom}
+            onChange={(e) => setSelectedFrom(e.target.value)}
+            className="w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white focus:border-violet-500 focus:outline-none"
+          >
+            {ownedNumbers.map((n) => (
+              <option key={n.number} value={n.number}>
+                {n.number}{n.alias ? ` — ${n.alias}` : ""}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <button
           onClick={backspace}
@@ -14350,10 +14379,10 @@ function QuickDialer({
           ⌫
         </button>
         <button
-          disabled={!canDial}
-          onClick={() => { onDial(digits); setDigits(""); }}
+          disabled={!canDial || !selectedFrom}
+          onClick={() => { onDial(digits, selectedFrom); setDigits(""); }}
           className={`flex-1 rounded-2xl px-4 py-3 text-sm font-bold text-white transition ${
-            canDial
+            canDial && selectedFrom
               ? "bg-gradient-to-r from-emerald-500 to-green-600 shadow-lg shadow-emerald-500/30 hover:brightness-110"
               : "bg-zinc-800 text-zinc-500"
           }`}
@@ -14361,12 +14390,6 @@ function QuickDialer({
           📞 Call {canDial ? formatted : ""}
         </button>
       </div>
-
-      {ownedNumbers.length > 0 && (
-        <div className="text-[11px] text-zinc-500">
-          Calls will show from <span className="font-mono text-zinc-300">{ownedNumbers[0].number}</span>
-        </div>
-      )}
     </div>
   );
 }
