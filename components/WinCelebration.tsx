@@ -59,19 +59,34 @@ export default function WinCelebration({ active, message, onDone }: Props) {
   }, [onDone]);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // Parent dismissed us — make sure we're hidden and bail.
+      setVisible(false);
+      return;
+    }
 
     setVisible(true);
     const startedAt = performance.now();
 
+    // HARD safety timeout — no matter what happens below (canvas init
+    // failing, RAF loop getting killed, etc), we ALWAYS tear down the
+    // overlay after the duration. Without this, a failed animation left
+    // the gradient background flashing on screen until a page refresh.
+    const hardStopId = window.setTimeout(() => {
+      setVisible(false);
+      onDoneRef.current?.();
+    }, DURATION_MS + 300);
+
     const canvas = canvasRef.current;
-    if (!canvas) {
-      // Canvas hasn't mounted yet — wait a frame and try again
-      const retryId = requestAnimationFrame(() => setVisible(true));
-      return () => cancelAnimationFrame(retryId);
+    const ctx = canvas?.getContext("2d") || null;
+    if (!canvas || !ctx) {
+      // Canvas unavailable — we still honor DURATION_MS via the hard
+      // timeout above, so the label + background animations play out
+      // and then cleanly dismiss.
+      return () => {
+        window.clearTimeout(hardStopId);
+      };
     }
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
 
     const resize = () => {
       canvas.width = window.innerWidth;
@@ -190,6 +205,7 @@ export default function WinCelebration({ active, message, onDone }: Props) {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       timers.forEach((t) => window.clearTimeout(t));
+      window.clearTimeout(hardStopId);
       window.removeEventListener("resize", resize);
     };
     // Only re-run when `active` flips — onDone is held in a ref.
