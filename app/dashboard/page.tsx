@@ -568,6 +568,7 @@ export default function DashboardPage() {
   // Browser WebRTC phone — ref gives us makeCall/hangup/mute, token fetched once.
   const browserPhoneRef = useRef<BrowserPhoneHandle>(null);
   const [webrtcToken, setWebrtcToken] = useState<string | null>(null);
+  const [webrtcError, setWebrtcError] = useState<string | null>(null);
   // Win celebration — 10-second confetti/fireworks when a lead hits "Won".
   const [winCelebration, setWinCelebration] = useState<{ name: string } | null>(null);
   // Realtime connection status — drives the Live chip in the top bar.
@@ -1096,11 +1097,20 @@ export default function DashboardPage() {
 
       setMounted(true);
 
-      // Fetch WebRTC token for browser calling (best-effort — non-blocking)
+      // Fetch WebRTC token for browser calling. If the operator hasn't
+      // finished Telnyx setup, surface that — we used to fail silently
+      // and the user would see "Ringing…" forever.
       authFetch("/api/telnyx/webrtc-token")
-        .then((r) => r.json())
-        .then((d) => { if (d.token) setWebrtcToken(d.token); })
-        .catch(() => { /* calling will fall back gracefully */ });
+        .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+        .then(({ ok, body }) => {
+          if (ok && body.token) {
+            setWebrtcToken(body.token);
+            setWebrtcError(null);
+          } else {
+            setWebrtcError(body.error || "Browser calling isn't ready. Reload or contact support.");
+          }
+        })
+        .catch(() => setWebrtcError("Couldn't reach the call server."));
     };
 
     loadData();
@@ -2099,6 +2109,14 @@ export default function DashboardPage() {
     }
     if (!opts.to) return;
 
+    // Bail early if browser calling isn't set up — previously we'd show
+    // a fake "Ringing…" HUD and the call would silently never happen.
+    if (webrtcError || !webrtcToken) {
+      setMessage(webrtcError || "Browser calling is still warming up — try again in a moment.");
+      window.setTimeout(() => setMessage(""), 4500);
+      return;
+    }
+
     // Normalize to E.164
     const toDigits = String(opts.to).replace(/\D/g, "");
     const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
@@ -2139,7 +2157,7 @@ export default function DashboardPage() {
         }
       })
       .catch(() => { /* non-blocking — HUD still works */ });
-  }, [currentUser]);
+  }, [currentUser, webrtcToken, webrtcError]);
 
   const hangupCall = useCallback(async (callId: string) => {
     // Hang up the browser WebRTC call immediately
