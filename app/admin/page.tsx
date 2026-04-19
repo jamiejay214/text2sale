@@ -239,6 +239,7 @@ export default function AdminPage() {
   const [newChatMessage, setNewChatMessage] = useState("");
   const [newChatSending, setNewChatSending] = useState(false);
   const [adminUserId, setAdminUserId] = useState<string | null>(null);
+  const [callMinutes, setCallMinutes] = useState<{ outbound: number; inbound: number }>({ outbound: 0, inbound: 0 });
 
   useEffect(() => {
     const loadData = async () => {
@@ -267,6 +268,24 @@ export default function AdminPage() {
       setContactCounts(counts);
 
       if (accts.length > 0) setSelectedId(accts[0].id);
+
+      // Aggregate lifetime call minutes by direction for cost estimates.
+      // We only count completed/answered calls (those with a duration).
+      try {
+        const { data: callRows } = await supabase
+          .from("calls")
+          .select("direction, duration_seconds")
+          .not("duration_seconds", "is", null);
+        let outSec = 0, inSec = 0;
+        for (const r of (callRows || []) as { direction: string | null; duration_seconds: number | null }[]) {
+          const s = Number(r.duration_seconds || 0);
+          if (r.direction === "inbound") inSec += s;
+          else outSec += s;
+        }
+        setCallMinutes({ outbound: outSec / 60, inbound: inSec / 60 });
+      } catch {
+        // non-fatal — profit card will just show $0 for voice
+      }
 
       // Load visitor alerts preference
       if (myProfile.visitor_alerts !== undefined) {
@@ -493,6 +512,58 @@ export default function AdminPage() {
     const charges = allTransactions.filter((t) => t.type === "charge" || t.type === "number_purchase").reduce((s, t) => s + t.amount, 0);
     return { deposits, charges, net: deposits - charges };
   }, [allTransactions]);
+
+  // ─── Estimated operational costs & profit ─────────────────────────────
+  // These are best-effort estimates based on what we can observe in-app.
+  // Published rates used (update here if vendors change pricing):
+  //   Telnyx SMS outbound:   $0.0040 / segment
+  //   Telnyx SMS inbound:    $0.0035 / segment
+  //   Telnyx number rental:  $1.00 / number / month
+  //   Stripe card fees:      2.9% + $0.30 per successful charge
+  //   Fixed infra (monthly): Supabase Pro $25 + Vercel Pro $20 + Anthropic API ~$20
+  const costBreakdown = useMemo(() => {
+    const SMS_OUT = 0.004;
+    const SMS_IN = 0.0035;
+    const NUMBER_RENTAL = 1.0; // per month
+    const VOICE_OUT_MIN = 0.007;  // Telnyx outbound per-minute (US)
+    const VOICE_IN_MIN = 0.0055;  // Telnyx inbound per-minute (US)
+    const STRIPE_PCT = 0.029;
+    const STRIPE_FIXED = 0.3;
+    const INFRA_MONTHLY = 25 + 20 + 20; // Supabase + Vercel + Anthropic
+
+    const smsOutCost = totalMessagesSent * SMS_OUT;
+    const smsInCost = totalReplies * SMS_IN;
+    const numberRentalMonthly = totalNumbers * NUMBER_RENTAL;
+    const voiceOutCost = callMinutes.outbound * VOICE_OUT_MIN;
+    const voiceInCost = callMinutes.inbound * VOICE_IN_MIN;
+    const voiceCost = voiceOutCost + voiceInCost;
+
+    const deposits = allTransactions.filter((t) => t.type === "fund_add");
+    const depositCount = deposits.length;
+    const depositSum = deposits.reduce((s, t) => s + t.amount, 0);
+    const stripeFees = depositSum * STRIPE_PCT + depositCount * STRIPE_FIXED;
+
+    // Lifetime costs (best-effort). Infra + number rental are monthly
+    // run-rates; SMS, voice, and Stripe fees are lifetime totals.
+    const lifetimeCost = smsOutCost + smsInCost + voiceCost + stripeFees + numberRentalMonthly + INFRA_MONTHLY;
+    const grossRevenue = txTotals.charges; // what we billed users for usage/numbers
+    const profit = grossRevenue - lifetimeCost;
+
+    return {
+      smsOutCost,
+      smsInCost,
+      voiceOutCost,
+      voiceInCost,
+      voiceCost,
+      numberRentalMonthly,
+      stripeFees,
+      depositCount,
+      infraMonthly: INFRA_MONTHLY,
+      lifetimeCost,
+      grossRevenue,
+      profit,
+    };
+  }, [allTransactions, totalMessagesSent, totalReplies, totalNumbers, txTotals.charges, callMinutes]);
 
   const selectedThread = useMemo(() => supportThreads.find((t) => t.userId === selectedThreadUserId) || null, [supportThreads, selectedThreadUserId]);
 
@@ -2009,18 +2080,83 @@ export default function AdminPage() {
             </div>
 
             {/* Totals */}
-            <div className="mb-6 grid gap-4 md:grid-cols-3">
+            <div className="mb-4 grid gap-4 md:grid-cols-3">
               <div className="rounded-2xl bg-zinc-800 p-4 text-center">
                 <div className="text-xs text-zinc-500">Total Deposits</div>
                 <div className="mt-1 text-2xl font-bold text-emerald-400">{formatCurrency(txTotals.deposits)}</div>
               </div>
               <div className="rounded-2xl bg-zinc-800 p-4 text-center">
-                <div className="text-xs text-zinc-500">Total Charges</div>
+                <div className="text-xs text-zinc-500">Total Charges (Revenue)</div>
                 <div className="mt-1 text-2xl font-bold text-red-400">{formatCurrency(txTotals.charges)}</div>
               </div>
               <div className="rounded-2xl bg-zinc-800 p-4 text-center">
-                <div className="text-xs text-zinc-500">Net</div>
+                <div className="text-xs text-zinc-500">Net (Deposits − Charges)</div>
                 <div className="mt-1 text-2xl font-bold">{formatCurrency(txTotals.net)}</div>
+              </div>
+            </div>
+
+            {/* ─── Profit & Cost Breakdown ─── */}
+            <div className="mb-6 rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
+              <div className="mb-4 flex items-center justify-between">
+                <h3 className="text-lg font-bold">Profit & Loss (estimated)</h3>
+                <div className="text-[11px] text-zinc-500">Based on published vendor rates · lifetime totals</div>
+              </div>
+              <div className="grid gap-3 md:grid-cols-4 lg:grid-cols-7">
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Telnyx SMS Out</div>
+                  <div className="mt-1 text-base font-bold text-violet-300">{formatCurrency(costBreakdown.smsOutCost)}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">{totalMessagesSent.toLocaleString()} × $0.004</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Telnyx SMS In</div>
+                  <div className="mt-1 text-base font-bold text-violet-300">{formatCurrency(costBreakdown.smsInCost)}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">{totalReplies.toLocaleString()} × $0.0035</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Telnyx Voice</div>
+                  <div className="mt-1 text-base font-bold text-fuchsia-300">{formatCurrency(costBreakdown.voiceCost)}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">{(callMinutes.outbound + callMinutes.inbound).toFixed(1)} min (out $0.007 · in $0.0055)</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Number Rental</div>
+                  <div className="mt-1 text-base font-bold text-sky-300">{formatCurrency(costBreakdown.numberRentalMonthly)}<span className="text-xs text-zinc-500">/mo</span></div>
+                  <div className="mt-1 text-[10px] text-zinc-500">{totalNumbers} × $1.00</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Stripe Fees</div>
+                  <div className="mt-1 text-base font-bold text-amber-300">{formatCurrency(costBreakdown.stripeFees)}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">2.9% + $0.30 × {costBreakdown.depositCount}</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Infra (Supabase+Vercel+AI)</div>
+                  <div className="mt-1 text-base font-bold text-rose-300">{formatCurrency(costBreakdown.infraMonthly)}<span className="text-xs text-zinc-500">/mo</span></div>
+                  <div className="mt-1 text-[10px] text-zinc-500">$25 + $20 + $20</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-3">
+                  <div className="text-[10px] uppercase tracking-wide text-zinc-500">Total Costs</div>
+                  <div className="mt-1 text-base font-bold text-red-400">{formatCurrency(costBreakdown.lifetimeCost)}</div>
+                  <div className="mt-1 text-[10px] text-zinc-500">all-in (lifetime)</div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <div className="rounded-xl bg-zinc-900 p-4 text-center">
+                  <div className="text-xs text-zinc-500">Gross Revenue (charges billed)</div>
+                  <div className="mt-1 text-2xl font-bold text-emerald-400">{formatCurrency(costBreakdown.grossRevenue)}</div>
+                </div>
+                <div className="rounded-xl bg-zinc-900 p-4 text-center">
+                  <div className="text-xs text-zinc-500">Estimated Costs</div>
+                  <div className="mt-1 text-2xl font-bold text-red-400">−{formatCurrency(costBreakdown.lifetimeCost)}</div>
+                </div>
+                <div className={`rounded-xl p-4 text-center ${costBreakdown.profit >= 0 ? "bg-emerald-950/40 border border-emerald-800" : "bg-red-950/40 border border-red-800"}`}>
+                  <div className="text-xs text-zinc-400">Estimated Profit</div>
+                  <div className={`mt-1 text-2xl font-bold ${costBreakdown.profit >= 0 ? "text-emerald-300" : "text-red-300"}`}>
+                    {costBreakdown.profit >= 0 ? "" : "−"}{formatCurrency(Math.abs(costBreakdown.profit))}
+                  </div>
+                  <div className="mt-1 text-[10px] text-zinc-500">
+                    margin: {costBreakdown.grossRevenue > 0 ? ((costBreakdown.profit / costBreakdown.grossRevenue) * 100).toFixed(1) : "0.0"}%
+                  </div>
+                </div>
               </div>
             </div>
 
