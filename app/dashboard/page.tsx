@@ -2543,6 +2543,30 @@ export default function DashboardPage() {
     setSavingQuietHours(false);
   };
 
+  // One-shot toggle — flip quiet hours on/off and persist immediately, so the
+  // switch in Settings feels like a real toggle button and doesn't require
+  // clicking "Save" after.
+  const handleToggleQuietHours = async (next: boolean) => {
+    setQuietHoursEnabled(next);
+    if (!userId) return;
+    try {
+      await updateProfile(userId, {
+        quiet_hours_enabled: next,
+        quiet_hours_start_hour: quietHoursStartHour,
+        quiet_hours_end_hour: quietHoursEndHour,
+      });
+      setMessage(next
+        ? "✅ Quiet hours ON"
+        : "⚠️ Quiet hours OFF — you are responsible for TCPA compliance");
+      window.setTimeout(() => setMessage(""), 3000);
+    } catch {
+      // Revert optimistic state if persistence failed
+      setQuietHoursEnabled(!next);
+      setMessage("❌ Failed to update quiet hours");
+      window.setTimeout(() => setMessage(""), 3000);
+    }
+  };
+
   // ── Team handlers ──
   const handleJoinTeam = async () => {
     if (!userId || !teamJoinCode.trim()) return;
@@ -11125,7 +11149,7 @@ export default function DashboardPage() {
                     <input
                       type="checkbox"
                       checked={quietHoursEnabled}
-                      onChange={(e) => setQuietHoursEnabled(e.target.checked)}
+                      onChange={(e) => handleToggleQuietHours(e.target.checked)}
                       className="peer sr-only"
                     />
                     <span className="relative h-7 w-12 rounded-full bg-zinc-700 after:absolute after:left-0.5 after:top-0.5 after:h-6 after:w-6 after:rounded-full after:bg-zinc-300 after:transition peer-checked:bg-violet-600 peer-checked:after:translate-x-5 peer-checked:after:bg-white"></span>
