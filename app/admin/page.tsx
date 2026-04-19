@@ -405,6 +405,55 @@ export default function AdminPage() {
     loadData();
   }, [router]);
 
+  // ─── Live refresh for Profit & Loss panel ─────────────────────────────
+  // Every 30s while the admin tab is visible, re-pull the three things that
+  // feed the cost/profit math: profiles (wallet + usage_history drives
+  // transactions), campaigns (SMS counts), and calls.duration_seconds
+  // (voice minutes). Cheap queries — this is much simpler than wiring up
+  // realtime channels on four different tables.
+  useEffect(() => {
+    if (!mounted) return;
+    let cancelled = false;
+
+    const refresh = async () => {
+      if (document.hidden) return; // don't poll in background tabs
+      try {
+        const [profiles, dbCampaigns, callsRes] = await Promise.all([
+          fetchAllProfiles(),
+          fetchAllCampaigns(),
+          supabase
+            .from("calls")
+            .select("direction, duration_seconds")
+            .not("duration_seconds", "is", null),
+        ]);
+        if (cancelled) return;
+        setAccounts(profiles.map(profileToAccount));
+        setCampaigns(dbCampaigns.map(campaignToRecord));
+        let outSec = 0, inSec = 0;
+        for (const r of (callsRes.data || []) as { direction: string | null; duration_seconds: number | null }[]) {
+          const s = Number(r.duration_seconds || 0);
+          if (r.direction === "inbound") inSec += s;
+          else outSec += s;
+        }
+        setCallMinutes({ outbound: outSec / 60, inbound: inSec / 60 });
+      } catch {
+        // non-fatal — next tick will try again
+      }
+    };
+
+    const id = window.setInterval(refresh, 30_000);
+    // Also refresh immediately when the tab regains focus so the P&L
+    // isn't stale when you come back to it.
+    const onVis = () => { if (!document.hidden) refresh(); };
+    document.addEventListener("visibilitychange", onVis);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(id);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [mounted]);
+
   // Realtime subscription for support messages (admin sees all)
   useEffect(() => {
     if (!mounted) return;
