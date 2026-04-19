@@ -46,8 +46,37 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // Telnyx has two different IDs in play and we need the right one:
+    //   - Number Order ID — returned by POST /number_orders (what we saved
+    //     as `numberId` at purchase time)
+    //   - Phone Number ID — the UUID of the live phone_numbers resource
+    //     (what DELETE /v2/phone_numbers/{id} expects)
+    // The stored id might be either, so we always resolve the *current*
+    // phone_number UUID by E.164 first. Falls back to the stored id for
+    // legacy rows that happened to store the right value.
+    const e164 = phoneNumber.startsWith("+")
+      ? phoneNumber
+      : `+${digitsOnly.startsWith("1") ? digitsOnly : `1${digitsOnly}`}`;
+
+    let phoneNumberUuid: string | null = null;
+    try {
+      const lookup = await fetch(
+        `https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      const lookupBody = await lookup.json().catch(() => ({}));
+      phoneNumberUuid = lookupBody?.data?.[0]?.id ?? null;
+    } catch (err) {
+      console.error("[delete-number] lookup failed:", err);
+    }
+
+    // Use the resolved UUID; fall back to whatever the client sent only if
+    // lookup truly returned nothing (new purchases stored the order ID,
+    // which Telnyx DELETE doesn't accept — hence the 404 on release).
+    const targetId = phoneNumberUuid || numberId;
+
     // Delete/release the number on Telnyx
-    const res = await fetch(`https://api.telnyx.com/v2/phone_numbers/${numberId}`, {
+    const res = await fetch(`https://api.telnyx.com/v2/phone_numbers/${targetId}`, {
       method: "DELETE",
       headers: {
         Authorization: `Bearer ${apiKey}`,
@@ -56,7 +85,10 @@ export async function POST(req: NextRequest) {
 
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
-      const errMsg = data?.errors?.[0]?.detail || `Failed to release number (${res.status})`;
+      const errMsg = data?.errors?.[0]?.detail
+        || (res.status === 404
+          ? "Telnyx can't find this number — it may already be released. Refresh the page."
+          : `Failed to release number (${res.status})`);
       return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
     }
 
