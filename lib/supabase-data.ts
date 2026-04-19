@@ -189,6 +189,50 @@ export async function fetchMessages(conversationId: string): Promise<Message[]> 
   return data as Message[];
 }
 
+// Batch-fetch every message for a user in one round-trip, grouped by
+// conversation_id. Replaces the N+1 pattern the dashboard used to run on
+// mount (one fetchMessages() per conversation × thousands of conversations
+// = a 30s+ load). We page through in chunks of 1000 because Supabase caps
+// single-query results at that size.
+//
+// Messages rows don't carry user_id — we filter by the set of conversation
+// IDs we already loaded, which keeps RLS simple and stays on an indexed
+// column.
+export async function fetchAllMessagesForUser(
+  conversationIds: string[]
+): Promise<Map<string, Message[]>> {
+  const grouped = new Map<string, Message[]>();
+  if (conversationIds.length === 0) return grouped;
+
+  // Split IDs into chunks so the URL stays under Postgres/Supabase limits
+  // even for users with tens of thousands of conversations.
+  const ID_CHUNK = 300;
+  const PAGE = 1000;
+
+  for (let i = 0; i < conversationIds.length; i += ID_CHUNK) {
+    const ids = conversationIds.slice(i, i + ID_CHUNK);
+    let offset = 0;
+    for (;;) {
+      const { data, error } = await supabase
+        .from("messages")
+        .select("*")
+        .in("conversation_id", ids)
+        .order("created_at", { ascending: true })
+        .range(offset, offset + PAGE - 1);
+      if (error || !data || data.length === 0) break;
+      for (const row of data as Message[]) {
+        const arr = grouped.get(row.conversation_id) || [];
+        arr.push(row);
+        grouped.set(row.conversation_id, arr);
+      }
+      if (data.length < PAGE) break;
+      offset += PAGE;
+      if (offset > 50_000) break; // safety cap — ~50k msgs per chunk
+    }
+  }
+  return grouped;
+}
+
 export async function insertMessage(
   message: Omit<Message, "id" | "created_at">
 ): Promise<Message | null> {
