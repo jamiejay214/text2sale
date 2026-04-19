@@ -195,22 +195,27 @@ export async function POST(req: NextRequest) {
     const digits = numberToBuy.replace(/\D/g, "").slice(1); // remove + and country code
     const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 
-    // Assign the new number to our Voice API app + enable HD voice. Fire
-    // and forget-ish — we log failures but still return success for the
-    // SMS-only path (user can manually reassign in Telnyx portal later).
-    configureVoiceOnNumber(numberToBuy)
-      .then((r) => {
-        if (!r.ok) {
-          console.warn(
-            `[buy-number] voice config failed for ${numberToBuy}: ${r.reason}${
-              "detail" in r && r.detail ? ` — ${r.detail}` : ""
-            }`
-          );
-        }
-      })
-      .catch((err) => {
-        console.warn(`[buy-number] voice config threw for ${numberToBuy}:`, err);
-      });
+    // Assign the new number to our Voice API app + enable HD voice.
+    // AWAITED now (used to be fire-and-forget) so the number is actually
+    // ready to place/receive calls by the time we return success. Without
+    // this, users who call immediately after purchase hit a Telnyx
+    // "connection not found" rejection and see "Call ended 00:00".
+    let voiceConfigStatus: "ok" | "failed" | "skipped" = "skipped";
+    let voiceConfigDetail: string | null = null;
+    try {
+      const r = await configureVoiceOnNumber(numberToBuy);
+      if (r.ok) {
+        voiceConfigStatus = "ok";
+      } else {
+        voiceConfigStatus = "failed";
+        voiceConfigDetail = `${r.reason}${"detail" in r && r.detail ? ` — ${r.detail}` : ""}`;
+        console.warn(`[buy-number] voice config failed for ${numberToBuy}: ${voiceConfigDetail}`);
+      }
+    } catch (err) {
+      voiceConfigStatus = "failed";
+      voiceConfigDetail = err instanceof Error ? err.message : "unknown";
+      console.warn(`[buy-number] voice config threw for ${numberToBuy}:`, err);
+    }
 
     // Register the number in owned_phone_numbers so inbound SMS routing
     // (and anything else that needs a fast "who owns this?" lookup) finds it
@@ -266,6 +271,8 @@ export async function POST(req: NextRequest) {
       campaignAssigned: assignment.assigned,
       campaignAssignmentError: assignment.error || null,
       campaignId: assignment.campaignId || null,
+      voiceConfigStatus,
+      voiceConfigDetail,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
