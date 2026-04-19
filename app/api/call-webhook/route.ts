@@ -4,10 +4,12 @@ import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify
 import { calcCallCharge, CALL_RATE_INBOUND_PER_MIN } from "@/lib/call-pricing";
 
 const apiKey = process.env.TELNYX_API_KEY!;
-const voiceAppId =
-  process.env.TELNYX_VOICE_APP_ID ||
-  process.env.TELNYX_CALL_CONTROL_APP_ID ||
-  "";
+// The old B-leg dial path used TELNYX_VOICE_APP_ID to stamp newly-created
+// legs with a Call Control app. That whole bridged-outbound path is dead
+// (see /api/initiate-call) and phone numbers now live on our credential
+// connection (see /api/buy-number), so we no longer have a Voice API app
+// to reference here. If a future feature needs to originate Call Control
+// legs, read TELNYX_CREDENTIAL_CONNECTION_ID instead.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseKey);
@@ -177,7 +179,9 @@ export async function POST(req: NextRequest) {
         // Bridge to the existing A-leg as soon as the B-leg answers.
         link_to: ccid,
       };
-      if (voiceAppId) bLegPayload.connection_id = voiceAppId;
+      // NB: no connection_id — this branch is dead (see /api/initiate-call).
+      // Leaving the POST in place only so any in-flight events from legacy
+      // deploys still resolve.
 
       await telnyx(`/calls`, bLegPayload);
       return NextResponse.json({ status: "ok" });
