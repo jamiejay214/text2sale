@@ -125,14 +125,11 @@ export async function POST(req: NextRequest) {
         .select("id")
         .single();
 
-      // Answer the call and then transfer to the user's cell so they can
-      // pick up. The user's cell is stored on their profile.
-      const { data: ownerProfile } = await supabase
-        .from("profiles")
-        .select("phone")
-        .eq("id", ownership.user_id)
-        .single();
-
+      // Answer the call and play a brief ringing tone. The dashboard's
+      // browser WebRTC session handles the actual audio — we no longer
+      // forward inbound calls to the agent's cell phone. The calls row
+      // with status="ringing" is enough to notify the UI via Supabase
+      // realtime so the agent can pick up in the browser.
       if (ccid) {
         const newState = encodeClientState({
           v: 1,
@@ -141,19 +138,6 @@ export async function POST(req: NextRequest) {
           callRowId: row?.id,
         });
         await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
-
-        if (ownerProfile?.phone) {
-          const agentDigits = String(ownerProfile.phone).replace(/\D/g, "");
-          const agentE164 = `+${
-            agentDigits.startsWith("1") ? agentDigits : `1${agentDigits}`
-          }`;
-          // Transfer bridges our contact to the user's cell.
-          await telnyx(`/calls/${ccid}/actions/transfer`, {
-            to: agentE164,
-            from: toE164,
-            client_state: newState,
-          });
-        }
       }
 
       return NextResponse.json({ status: "ok" });
