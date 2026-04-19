@@ -1293,6 +1293,9 @@ export default function DashboardPage() {
       )
       .subscribe();
 
+    // Was 2s — too aggressive, was causing ERR_INSUFFICIENT_RESOURCES in
+    // Chrome when combined with the 7 realtime channels. Realtime already
+    // fires on every wallet change; this poll is only a backstop.
     const interval = window.setInterval(async () => {
       const { data } = await supabase
         .from("profiles")
@@ -1306,7 +1309,7 @@ export default function DashboardPage() {
           return { ...prev, walletBalance: fresh };
         });
       }
-    }, 2000);
+    }, 15000);
     return () => {
       window.clearInterval(interval);
       supabase.removeChannel(channel);
