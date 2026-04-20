@@ -159,6 +159,13 @@ type ConversationRecord = {
 
 type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 
+// ─── FEATURE FLAG ────────────────────────────────────────────────────────
+// Calling is temporarily disabled while the Telnyx routing issue is open
+// on their side. Flip this to `true` when support ticket resolves and the
+// in-app WebRTC dialer is back online. Leaving all the code intact so we
+// can just flip the flag rather than re-implementing.
+const CALLING_ENABLED = false;
+
 // ── Pipeline stages ───────────────────────────────────────────────────────
 // The pipeline is a lightweight CRM lane view over contacts. Each contact
 // carries a pipeline_stage (stored on the contact row) that places them in
@@ -1108,17 +1115,21 @@ export default function DashboardPage() {
       // Fetch WebRTC token for browser calling. If the operator hasn't
       // finished Telnyx setup, surface that — we used to fail silently
       // and the user would see "Ringing…" forever.
-      authFetch("/api/telnyx/webrtc-token")
-        .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
-        .then(({ ok, body }) => {
-          if (ok && body.token) {
-            setWebrtcToken(body.token);
-            setWebrtcError(null);
-          } else {
-            setWebrtcError(body.error || "Browser calling isn't ready. Reload or contact support.");
-          }
-        })
-        .catch(() => setWebrtcError("Couldn't reach the call server."));
+      // Skipped entirely while CALLING_ENABLED is off — saves a round-trip
+      // every login.
+      if (CALLING_ENABLED) {
+        authFetch("/api/telnyx/webrtc-token")
+          .then(async (r) => ({ ok: r.ok, body: await r.json().catch(() => ({})) }))
+          .then(({ ok, body }) => {
+            if (ok && body.token) {
+              setWebrtcToken(body.token);
+              setWebrtcError(null);
+            } else {
+              setWebrtcError(body.error || "Browser calling isn't ready. Reload or contact support.");
+            }
+          })
+          .catch(() => setWebrtcError("Couldn't reach the call server."));
+      }
     };
 
     loadData();
@@ -2109,6 +2120,12 @@ export default function DashboardPage() {
   // Start an outbound call from anywhere in the dashboard. Picks a
   // from-number sensibly (active conversation's line > first owned line).
   const startCall = useCallback(async (opts: { to: string; contactId?: string | null; contactName?: string; fromNumber?: string }) => {
+    // Calling temporarily disabled — see CALLING_ENABLED at top of file.
+    if (!CALLING_ENABLED) {
+      setMessage("📞 Calling is temporarily disabled — coming back soon.");
+      window.setTimeout(() => setMessage(""), 3500);
+      return;
+    }
     const fromGuess =
       opts.fromNumber ||
       currentUser?.ownedNumbers?.[0]?.number ||
@@ -5258,11 +5275,11 @@ export default function DashboardPage() {
               if (!c.messages.some((m) => m.direction === "inbound")) return sum;
               return sum + c.unread;
             }, 0);
-            return ([
+            return (([
               { id: "overview", label: "Overview" },
               { id: "conversations", label: "Conversations" },
               { id: "pipeline", label: "Pipeline" },
-              { id: "calls", label: "📞 Calls" },
+              ...(CALLING_ENABLED ? [{ id: "calls" as DashboardTab, label: "📞 Calls" }] : []),
               { id: "campaigns", label: "Campaigns" },
               { id: "contacts", label: "Contacts" },
               { id: "appointments", label: "Appointments" },
@@ -5270,7 +5287,7 @@ export default function DashboardPage() {
               { id: "templates", label: "Templates" },
               { id: "settings", label: "Settings" },
               { id: "learn", label: "📖 Learn" },
-            ] as { id: DashboardTab; label: string }[]).map((tab) => (
+            ] as { id: DashboardTab; label: string }[])).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
@@ -6365,7 +6382,7 @@ export default function DashboardPage() {
                         </div>
                         <div className="flex items-center gap-2 text-sm text-zinc-400">
                           <span>{selectedContact?.phone || "No contact linked"}</span>
-                          {selectedContact?.phone && !selectedContact?.dnc && (
+                          {CALLING_ENABLED && selectedContact?.phone && !selectedContact?.dnc && (
                             <button
                               onClick={() => startCall({
                                 to: selectedContact.phone,
@@ -7699,20 +7716,22 @@ export default function DashboardPage() {
                                         💬 Chat
                                       </button>
                                     )}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        startCall({
-                                          to: c.phone,
-                                          contactId: c.id,
-                                          contactName: `${c.firstName} ${c.lastName || ""}`.trim(),
-                                        });
-                                      }}
-                                      title="Call this lead"
-                                      className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 px-2 py-1.5 text-[10px] font-semibold text-white shadow hover:brightness-110"
-                                    >
-                                      📞
-                                    </button>
+                                    {CALLING_ENABLED && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          startCall({
+                                            to: c.phone,
+                                            contactId: c.id,
+                                            contactName: `${c.firstName} ${c.lastName || ""}`.trim(),
+                                          });
+                                        }}
+                                        title="Call this lead"
+                                        className="rounded-lg bg-gradient-to-r from-emerald-500 to-green-600 px-2 py-1.5 text-[10px] font-semibold text-white shadow hover:brightness-110"
+                                      >
+                                        📞
+                                      </button>
+                                    )}
                                     <select
                                       value={stage.id}
                                       onClick={(e) => e.stopPropagation()}
@@ -7745,7 +7764,7 @@ export default function DashboardPage() {
             links back to its contact so you can jump straight to the
             thread. Metrics up top pull from `callHistory` so they're
             always current — no manual refresh. */}
-        {activeTab === "calls" && (() => {
+        {CALLING_ENABLED && activeTab === "calls" && (() => {
           const now = Date.now();
           const DAY = 24 * 60 * 60 * 1000;
           const callsToday = callHistory.filter(
@@ -14268,25 +14287,27 @@ export default function DashboardPage() {
       />
 
       {/* Browser WebRTC phone — invisible audio engine */}
-      <BrowserPhone
-        ref={browserPhoneRef}
-        token={webrtcToken}
-        onStateChange={(s: BrowserPhoneStatus) => {
-          setActiveCall((prev) => {
-            if (!prev) return prev;
-            if (s.callState === "active") {
-              return { ...prev, status: "answered", answeredAt: prev.answeredAt ?? Date.now(), muted: s.muted };
-            }
-            if (s.callState === "ended") {
-              return { ...prev, status: "completed", muted: s.muted };
-            }
-            if (s.callState === "ringing" || s.callState === "calling") {
-              return { ...prev, status: "ringing", muted: s.muted };
-            }
-            return { ...prev, muted: s.muted };
-          });
-        }}
-      />
+      {CALLING_ENABLED && (
+        <BrowserPhone
+          ref={browserPhoneRef}
+          token={webrtcToken}
+          onStateChange={(s: BrowserPhoneStatus) => {
+            setActiveCall((prev) => {
+              if (!prev) return prev;
+              if (s.callState === "active") {
+                return { ...prev, status: "answered", answeredAt: prev.answeredAt ?? Date.now(), muted: s.muted };
+              }
+              if (s.callState === "ended") {
+                return { ...prev, status: "completed", muted: s.muted };
+              }
+              if (s.callState === "ringing" || s.callState === "calling") {
+                return { ...prev, status: "ringing", muted: s.muted };
+              }
+              return { ...prev, muted: s.muted };
+            });
+          }}
+        />
+      )}
 
       {/* 🎉 Win celebration — fires when a lead is dropped into "Won" */}
       <WinCelebration
@@ -14296,37 +14317,41 @@ export default function DashboardPage() {
       />
 
       {/* Floating Call HUD (always-on-top when a call is live) */}
-      <CallHud
-        call={activeCall}
-        onHangup={hangupCall}
-        onClose={() => setActiveCall(null)}
-        onMute={() => browserPhoneRef.current?.mute()}
-        onUnmute={() => browserPhoneRef.current?.unmute()}
-      />
+      {CALLING_ENABLED && (
+        <CallHud
+          call={activeCall}
+          onHangup={hangupCall}
+          onClose={() => setActiveCall(null)}
+          onMute={() => browserPhoneRef.current?.mute()}
+          onUnmute={() => browserPhoneRef.current?.unmute()}
+        />
+      )}
 
       {/* ── Power Dialer — full-screen auto-advancing calling queue ── */}
-      <PowerDialer
-        open={powerDialerOpen}
-        onClose={() => setPowerDialerOpen(false)}
-        queue={powerDialerEntries}
-        index={powerIndex}
-        onIndexChange={setPowerIndex}
-        autoAdvance={powerAutoAdvance}
-        onAutoAdvanceChange={setPowerAutoAdvance}
-        paused={powerPaused}
-        onPausedChange={setPowerPaused}
-        activeCall={activeCall}
-        fromNumber={currentUser?.ownedNumbers?.[0]?.number}
-        ownedNumbers={(currentUser?.ownedNumbers || []).map((n) => ({ number: n.number }))}
-        onStart={(entry, from) => startCall({
-          to: entry.phone,
-          contactId: entry.contactId,
-          contactName: entry.name,
-          fromNumber: from,
-        })}
-        onHangup={hangupCall}
-        onDisposition={savePowerDisposition}
-      />
+      {CALLING_ENABLED && (
+        <PowerDialer
+          open={powerDialerOpen}
+          onClose={() => setPowerDialerOpen(false)}
+          queue={powerDialerEntries}
+          index={powerIndex}
+          onIndexChange={setPowerIndex}
+          autoAdvance={powerAutoAdvance}
+          onAutoAdvanceChange={setPowerAutoAdvance}
+          paused={powerPaused}
+          onPausedChange={setPowerPaused}
+          activeCall={activeCall}
+          fromNumber={currentUser?.ownedNumbers?.[0]?.number}
+          ownedNumbers={(currentUser?.ownedNumbers || []).map((n) => ({ number: n.number }))}
+          onStart={(entry, from) => startCall({
+            to: entry.phone,
+            contactId: entry.contactId,
+            contactName: entry.name,
+            fromNumber: from,
+          })}
+          onHangup={hangupCall}
+          onDisposition={savePowerDisposition}
+        />
+      )}
     </main>
   );
 }

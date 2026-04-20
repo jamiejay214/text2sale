@@ -190,12 +190,8 @@ export default function HomePage() {
             </h1>
 
             <p className="mt-6 max-w-xl text-lg leading-relaxed text-zinc-300 md:text-xl">
-              The AI-powered SMS &amp; calling CRM that replies in milliseconds, closes like a top producer, and <span className="font-semibold text-white">never sleeps</span>. Text them. Call them. Close them — all from one dashboard.
+              The AI-powered SMS CRM that replies in milliseconds, closes like a top producer, and <span className="font-semibold text-white">never sleeps</span>. Text them. Qualify them. Close them — all from one dashboard.
             </p>
-            <div className="mt-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emerald-200">
-              <span>📞 NEW</span>
-              <span className="text-emerald-100/80 normal-case tracking-normal">One-click calling now live — ring your phone, bridge the lead, log the call</span>
-            </div>
 
             <div className="mt-8 flex flex-wrap gap-3">
               <button
@@ -343,7 +339,6 @@ export default function HomePage() {
 
           <div className="mt-14 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { icon: "📞", tint: "emerald", title: "One-Click Calling", body: "See a hot lead in the pipeline? Click a button. We ring your phone, then bridge the contact — with full recordings, call logs, and per-minute billing from the same wallet." },
               { icon: "🤖", tint: "violet", title: "AI That Sounds Human", body: "Pre-trained on top-producer scripts. Objection handling, qualifying questions, appointment booking — all in a casual voice leads actually reply to." },
               { icon: "🔥", tint: "rose", title: "Lead Temperature Scoring", body: "Every conversation is scored 0–100 in real time. Know who's blazing hot, who's cooling off, and who needs a follow-up — at a glance." },
               { icon: "💡", tint: "amber", title: "Smart Reply Suggestions", body: "Sentiment-aware 1-tap responses tailored to each inbound message. Ready-to-buy, objection, or negative — the perfect reply is waiting." },
@@ -461,7 +456,6 @@ export default function HomePage() {
                   "Unlimited contacts",
                   "Campaign builder + drip sequences",
                   "2-way conversations",
-                  "Click-to-call with recording",
                   "CSV import & blast",
                   "DNC / opt-out automation",
                   "Team management",
@@ -501,7 +495,7 @@ export default function HomePage() {
                   <span className="text-5xl font-black text-white">$59.99</span>
                   <span className="text-sm text-zinc-400">/month</span>
                 </div>
-                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply · $0.045/min outbound · $0.025/min inbound</div>
+                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply</div>
 
                 <ul className="mt-6 space-y-2.5 text-sm text-zinc-200">
                   {[
@@ -514,8 +508,6 @@ export default function HomePage() {
                     "Sentiment-scored bubbles + smart replies",
                     "SPIN selling & objection handling",
                     "Lead temperature + smart send windows",
-                    "Click-to-call + call recordings",
-                    "Inbound calls — $0.025/min",
                   ].map((x) => (
                     <li key={x} className="flex items-center gap-2">
                       <span className="text-cyan-400">✓</span> {x}
