@@ -20,6 +20,13 @@ const CUSTOM_DOMAINS: { domain: string; slug: string }[] = [
 
 const nextConfig: NextConfig = {
   async rewrites() {
+    // Two rules per domain:
+    //   / → /biz/<slug>
+    //   /(opt-in|privacy-policy|terms) → /biz/<slug>/<that>
+    // We explicitly whitelist the subpaths instead of catch-all `:path*`
+    // because Next.js's beforeFiles chain re-applies rules to already-
+    // rewritten URLs, which would double-prefix us to
+    // /biz/<slug>/biz/<slug>.
     const biz = CUSTOM_DOMAINS.flatMap(({ domain, slug }) => [
       {
         source: "/",
@@ -27,9 +34,9 @@ const nextConfig: NextConfig = {
         destination: `/biz/${slug}`,
       },
       {
-        source: "/:path*",
+        source: "/:path(opt-in|privacy-policy|terms)",
         has: [{ type: "host" as const, value: domain }],
-        destination: `/biz/${slug}/:path*`,
+        destination: `/biz/${slug}/:path`,
       },
     ]);
     return { beforeFiles: biz, afterFiles: [], fallback: [] };
