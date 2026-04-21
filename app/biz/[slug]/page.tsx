@@ -17,7 +17,7 @@ export async function generateMetadata({
   const name = getBusinessName(biz);
   const description =
     biz.business_description ||
-    `${name} provides professional services to our customers with personalized consultations, expert guidance, and trusted support.`;
+    `${name} is a licensed insurance agency dedicated to helping individuals, families, and businesses find affordable, comprehensive coverage that fits their needs.`;
 
   return {
     title: `${name} | Official Business Page`,
@@ -27,30 +27,20 @@ export async function generateMetadata({
   };
 }
 
+// Insurance-focused service grid — matches the jjjohnsonhealth.org design.
+// These are generic enough to work for any licensed agency on the platform.
 const SERVICES = [
   {
-    title: "Personalized Consultations",
-    desc: "One-on-one guidance tailored to your specific needs and goals.",
+    title: "Individual & Family Plans",
+    desc: "ACA-compliant plans, short-term coverage, and supplemental options tailored to your budget.",
   },
   {
-    title: "Expert Support",
-    desc: "Work with trusted professionals committed to your success.",
+    title: "Medicare Solutions",
+    desc: "Medicare Advantage, Supplement, and Part D plans to ensure you get the care you need.",
   },
   {
-    title: "Free Quotes & Estimates",
-    desc: "No-obligation consultations and transparent pricing — always.",
-  },
-  {
-    title: "Customer Service",
-    desc: "Responsive, friendly support when you need answers or help.",
-  },
-  {
-    title: "Flexible Scheduling",
-    desc: "Appointments and follow-ups on your timeline, not ours.",
-  },
-  {
-    title: "Trusted Guidance",
-    desc: "Honest recommendations that put your best interests first.",
+    title: "Life Insurance",
+    desc: "Term and whole-life policies to protect the people who matter most.",
   },
 ];
 
@@ -67,21 +57,25 @@ export default async function BizHomePage({
   const contact = getBusinessContact(biz);
   const description =
     biz.business_description ||
-    `${businessName} is a dedicated service provider helping customers get the personalized support, expert guidance, and trusted service they deserve.`;
+    `${businessName} is a licensed insurance brokerage dedicated to helping individuals, families, and businesses find affordable, comprehensive coverage that fits their needs.`;
 
   return (
     <>
-      {/* Hero */}
+      {/* Hero — emerald gradient, centered content, two CTAs */}
       <section className="bg-gradient-to-br from-emerald-700 to-emerald-900 text-white">
         <div className="mx-auto max-w-6xl px-6 py-24 text-center">
-          <h1 className="text-4xl font-bold sm:text-5xl">{businessName}</h1>
-          <p className="mx-auto mt-6 max-w-2xl text-lg text-emerald-100">{description}</p>
+          <h1 className="text-4xl font-bold sm:text-5xl md:text-6xl">
+            Insurance Made Simple
+          </h1>
+          <p className="mx-auto mt-8 max-w-2xl text-lg text-emerald-100">
+            {description}
+          </p>
           <div className="mt-10 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
             <Link
               href={`/biz/${slug}/opt-in`}
               className="rounded-xl bg-white px-8 py-4 text-sm font-semibold text-emerald-800 shadow-lg hover:bg-emerald-50 transition"
             >
-              Get Started
+              Get a Free Quote
             </Link>
             {contact.email && (
               <a
@@ -95,23 +89,28 @@ export default async function BizHomePage({
         </div>
       </section>
 
-      {/* Services */}
+      {/* What We Offer — three service cards */}
       <section className="bg-white py-20">
         <div className="mx-auto max-w-6xl px-6">
-          <h2 className="text-center text-3xl font-bold text-gray-900">What We Offer</h2>
+          <h2 className="text-center text-3xl font-bold text-gray-900 sm:text-4xl">
+            What We Offer
+          </h2>
           <p className="mx-auto mt-4 max-w-xl text-center text-gray-500">
-            {businessName} is committed to delivering exceptional service tailored to each
-            customer&apos;s unique needs.
+            We work with top carriers to find the best rates and coverage for your unique situation.
           </p>
 
           <div className="mt-14 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
             {SERVICES.map((svc) => (
               <div
                 key={svc.title}
-                className="rounded-2xl border border-gray-200 bg-gray-50 p-6"
+                className="rounded-2xl border border-gray-200 bg-gray-50 p-6 transition hover:border-emerald-300 hover:shadow-md"
               >
-                <h3 className="text-lg font-semibold text-emerald-800">{svc.title}</h3>
-                <p className="mt-2 text-sm text-gray-600">{svc.desc}</p>
+                <h3 className="text-lg font-semibold text-emerald-800">
+                  {svc.title}
+                </h3>
+                <p className="mt-2 text-sm leading-relaxed text-gray-600">
+                  {svc.desc}
+                </p>
               </div>
             ))}
           </div>
@@ -158,13 +157,12 @@ export default async function BizHomePage({
         </section>
       )}
 
-      {/* CTA */}
+      {/* CTA — Stay in the loop */}
       <section className="bg-emerald-50 py-16">
         <div className="mx-auto max-w-3xl px-6 text-center">
           <h2 className="text-2xl font-bold text-gray-900">Stay in the Loop</h2>
           <p className="mt-4 text-gray-600">
-            Sign up to receive updates, reminders, and personalized offers from {businessName} via
-            text message.
+            Sign up to receive updates, reminders, and personalized offers from {businessName} via text message.
           </p>
           <Link
             href={`/biz/${slug}/opt-in`}
