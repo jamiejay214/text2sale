@@ -346,7 +346,7 @@ export default function HomePage() {
               { icon: "📊", tint: "cyan", title: "Live Dashboards", body: "Hero stats with 7-day sparklines, delivery rate heatmaps, campaign performance leaderboards, cohort retention — investor-grade analytics, baked in." },
               { icon: "⚡", tint: "fuchsia", title: "Command Palette (⌘K)", body: "Jump anywhere in half a second. 30+ keyboard shortcuts. Fuzzy search across every contact, campaign, and conversation. Feels like Linear, ships with SMS." },
               { icon: "📱", tint: "sky", title: "Multi-Number Routing", body: "Own multiple lines? Color-coded star indicators on every thread show which line sent what. No more wondering what number a lead is texting." },
-              { icon: "🛡️", tint: "teal", title: "TCPA + 10DLC Built In", body: "Auto opt-out (STOP), suppression lists, consent logging, opt-in receipts, A2P 10DLC registration workflow — compliance isn't an add-on." },
+              { icon: "🛡️", tint: "teal", title: "TCPA + 10DLC Built In", body: "Auto opt-out (STOP), consent logging, opt-in receipts, A2P 10DLC registration workflow — compliance isn't an add-on." },
               { icon: "💰", tint: "violet", title: "Transparent Pricing", body: "$0.012/text. No long-term contracts. Volume discounts at $100+ and $500+. You'll know your cost-per-lead before you press send." },
             ].map((f) => (
               <div
@@ -377,7 +377,7 @@ export default function HomePage() {
 
           <div className="mt-14 grid gap-6 md:grid-cols-3">
             {[
-              { n: "01", title: "Upload leads", body: "Drag your CSV. We auto-map First/Last/Phone/State and clean up duplicates, formatting, and opt-outs in one pass." },
+              { n: "01", title: "Upload leads", body: "Drag your CSV. We auto-map First/Last/Phone/State and clean up duplicates and formatting in one pass." },
               { n: "02", title: "Turn on AI", body: "Flip one switch. Our AI picks up on your scripts, handles objections, qualifies, and books appointments 24/7." },
               { n: "03", title: "Count the closes", body: "Deliverability, reply rate, booked meetings — all streaming live. Every hot lead gets a 🔥 before it goes cold." },
             ].map((s, i) => (

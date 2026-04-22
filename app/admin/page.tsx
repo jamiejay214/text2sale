@@ -765,6 +765,58 @@ export default function AdminPage() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
+  // Swap a user between the Standard ($39.99) and AI ($59.99) packages.
+  // Updates plan shape + ai_plan flag in Supabase AND swaps their Stripe
+  // subscription line item to the matching recurring price (Stripe prorates
+  // the partial period automatically on the next invoice). No-op on
+  // comp'd accounts.
+  const switchPackage = async (id: string, pkg: "standard" | "ai") => {
+    const acct = accounts.find((a) => a.id === id);
+    if (!acct) return;
+    const currentIsAi = !!acct.aiPlan;
+    const targetIsAi = pkg === "ai";
+    if (currentIsAi === targetIsAi) {
+      setMessage(`${acct.firstName} is already on the ${targetIsAi ? "AI" : "Standard"} package.`);
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    const label = targetIsAi ? "AI ($59.99/mo)" : "Standard ($39.99/mo)";
+    if (!window.confirm(`Move ${acct.firstName} ${acct.lastName} to ${label}?\n\nStripe will prorate the partial period on their next invoice.`)) return;
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) { setMessage("❌ Session expired. Re-login."); return; }
+
+    try {
+      const res = await fetch("/api/admin/switch-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ userId: id, pkg }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        setMessage(`❌ ${result.error || "Failed to switch package"}`);
+        window.setTimeout(() => setMessage(""), 4000);
+        return;
+      }
+      await refreshAccount(id);
+      const suffix = result.stripeResult === "updated"
+        ? " — Stripe billing updated"
+        : result.stripeResult === "skipped-free"
+          ? " — comp'd account, no billing change"
+          : result.stripeResult === "skipped-no-sub"
+            ? " — no active Stripe sub to update"
+            : result.stripeResult === "error"
+              ? ` — Stripe error: ${result.stripeMessage}`
+              : "";
+      setMessage(`✅ Moved to ${label}${suffix}`);
+      window.setTimeout(() => setMessage(""), 5000);
+    } catch (err) {
+      setMessage(`❌ ${err instanceof Error ? err.message : "Network error"}`);
+      window.setTimeout(() => setMessage(""), 4000);
+    }
+  };
+
   const toggleFreeAiPlan = async (id: string) => {
     const acct = accounts.find((a) => a.id === id);
     if (!acct) return;
@@ -1644,7 +1696,15 @@ export default function AdminPage() {
                         <div className="flex gap-2">
                           <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${sub.cls}`}>{sub.label}</span>
                           {acct.freeSubscription && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE</span>}
-                          {acct.aiPlan && <span className="rounded-full bg-cyan-900 px-2.5 py-0.5 text-[10px] font-medium text-cyan-300">AI</span>}
+                          {/* Package badge — makes the plan the user is on
+                              obvious at a glance in the list. */}
+                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
+                            acct.aiPlan
+                              ? "bg-cyan-900 text-cyan-300"
+                              : "bg-violet-900 text-violet-300"
+                          }`}>
+                            {acct.aiPlan ? "AI · $59.99" : "STANDARD · $39.99"}
+                          </span>
                           {acct.freeAiPlan && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE AI</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
                         </div>
@@ -1877,6 +1937,56 @@ export default function AdminPage() {
                         }`}
                       />
                     </button>
+                  </div>
+
+                  {/* Package switcher — move a user between Standard/AI
+                      packages. Writes plan + ai_plan in Supabase AND swaps
+                      the Stripe subscription price so billing stays in sync
+                      (Stripe prorates the partial period automatically). */}
+                  <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-medium text-white">
+                          Package
+                          <span className={`ml-2 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
+                            selectedAccount.aiPlan
+                              ? "bg-cyan-900 text-cyan-300"
+                              : "bg-violet-900 text-violet-300"
+                          }`}>
+                            {selectedAccount.aiPlan ? "AI — $59.99/mo" : "STANDARD — $39.99/mo"}
+                          </span>
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-400">
+                          {selectedAccount.freeAiPlan
+                            ? "User has a comp'd AI plan — switching packages won't affect billing."
+                            : "Swap packages here if they signed up for the wrong one. Stripe billing updates automatically and prorates the partial period."}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => switchPackage(selectedAccount.id, "standard")}
+                        disabled={!selectedAccount.aiPlan}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                          !selectedAccount.aiPlan
+                            ? "bg-violet-600/30 text-violet-300 ring-1 ring-violet-500/50 cursor-default"
+                            : "bg-zinc-900 text-zinc-300 hover:bg-violet-600/20 hover:text-violet-300 ring-1 ring-zinc-700 hover:ring-violet-500/50"
+                        }`}
+                      >
+                        {!selectedAccount.aiPlan ? "✓ " : ""}Standard · $39.99
+                      </button>
+                      <button
+                        onClick={() => switchPackage(selectedAccount.id, "ai")}
+                        disabled={!!selectedAccount.aiPlan}
+                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
+                          selectedAccount.aiPlan
+                            ? "bg-cyan-600/30 text-cyan-300 ring-1 ring-cyan-500/50 cursor-default"
+                            : "bg-zinc-900 text-zinc-300 hover:bg-cyan-600/20 hover:text-cyan-300 ring-1 ring-zinc-700 hover:ring-cyan-500/50"
+                        }`}
+                      >
+                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $59.99
+                      </button>
+                    </div>
                   </div>
 
                   {/* AI Plan toggle */}
