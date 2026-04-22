@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const auth = await authenticate(req);
     if (!auth.ok) return auth.response;
 
-    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1 } = await req.json();
+    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1, importedSinceIso } = await req.json();
 
     const forbid = requireSameUser(auth.user.id, bodyUserId);
     if (forbid) return forbid;
@@ -172,6 +172,15 @@ export async function POST(req: NextRequest) {
 
       if (campaignName) {
         contactsQuery = contactsQuery.eq("campaign", campaignName);
+      }
+
+      // Scope to contacts created at/after this timestamp. The CSV
+      // "Import & Send" flow passes this so a second Import & Send against
+      // the same campaign only targets the NEW upload's contacts instead of
+      // re-texting everyone who ever imported under that campaign name.
+      // Older manual launches omit this and keep their full-campaign behavior.
+      if (typeof importedSinceIso === "string" && importedSinceIso) {
+        contactsQuery = contactsQuery.gte("created_at", importedSinceIso);
       }
 
       const { data: pageData, error: contactsErr } = await contactsQuery;

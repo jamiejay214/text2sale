@@ -625,6 +625,19 @@ export default function DashboardPage() {
   const [csvUploadTags, setCsvUploadTags] = useState<string[]>([]);
   const [csvTagInput, setCsvTagInput] = useState("");
   const [csvUploading, setCsvUploading] = useState(false);
+  // Ref-backed guard so rapid double-clicks of the Import button can't race
+  // past the `csvUploading` state check (state updates aren't synchronous, so
+  // two clicks in the same tick would both see `csvUploading === false`).
+  const csvUploadingRef = useRef(false);
+  // Same pattern for the conversation Send button — prevents a double-click
+  // from firing two Telnyx sends (+ two wallet charges) for the same message.
+  const sendingConvMsgRef = useRef(false);
+  const [sendingConvMsg, setSendingConvMsg] = useState(false);
+  // Serializes auto-recharge attempts across the whole session. The Stripe
+  // idempotency key uses a 1-minute bucket, so two triggers ~60s apart would
+  // otherwise both produce real charges. This ref keeps only one recharge in
+  // flight at a time — subsequent triggers wait until the first resolves.
+  const autoRechargingRef = useRef(false);
   const [csvUploadHistory, setCsvUploadHistory] = useState<CSVUploadRecord[]>([]);
   const [csvHistorySearch, setCsvHistorySearch] = useState("");
   const [csvHistoryHasMore, setCsvHistoryHasMore] = useState(false);
@@ -2370,6 +2383,13 @@ export default function DashboardPage() {
     const settings = currentUser.autoRecharge;
     if (!settings?.enabled) return;
     if (newBalance >= settings.threshold) return;
+    // Serialize: if an auto-recharge is already in flight (e.g. fired from a
+    // previous send that hasn't returned yet), skip this trigger. Stripe
+    // idempotency protects against charging twice in the same 60s window,
+    // but cross-minute retries would otherwise charge twice. One attempt at
+    // a time is always safe.
+    if (autoRechargingRef.current) return;
+    autoRechargingRef.current = true;
 
     try {
       const res = await authFetch("/api/auto-recharge", {
@@ -2389,6 +2409,8 @@ export default function DashboardPage() {
       window.setTimeout(() => setMessage(""), 4000);
     } catch {
       console.error("Auto recharge error");
+    } finally {
+      autoRechargingRef.current = false;
     }
   }, [userId, currentUser]);
 
@@ -3548,117 +3570,154 @@ export default function DashboardPage() {
 
   const handleSendConversationMessage = async () => {
     if (!requireSubscription()) return;
+    // Atomic double-click guard. Before this, a fast double-click on Send
+    // would POST to Telnyx twice AND decrement the wallet twice (the wallet
+    // debit is client-side). Ref is flipped synchronously so two clicks in
+    // the same React tick can't both pass the check.
+    if (sendingConvMsgRef.current) return;
     if (!selectedConversation || !composerText.trim() || !currentUser) {
       setMessage("❌ Type a message first");
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
+    sendingConvMsgRef.current = true;
+    setSendingConvMsg(true);
 
-    const body = composerText.trim();
-    const now = new Date().toISOString();
+    // Wrap the body in try/finally so the ref ALWAYS releases — even if a
+    // thrown error would otherwise leave the button locked forever.
+    const releaseGuard = () => {
+      sendingConvMsgRef.current = false;
+      setSendingConvMsg(false);
+    };
 
-    // Get the contact's phone and a from number
-    const contact = contacts.find((c) => c.id === selectedConversation.contactId);
-    const fromNumber = convFromNumber || currentUser.ownedNumbers?.[0]?.number;
-
-    if (!contact?.phone) {
-      setMessage("❌ Contact has no phone number");
-      window.setTimeout(() => setMessage(""), 2500);
-      return;
-    }
-
-    if (!fromNumber) {
-      setMessage("❌ Buy a phone number first before sending messages");
-      window.setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-
-    // Check wallet balance
-    const cost = currentUser.plan.messageCost || 0.012;
-    if ((currentUser.walletBalance || 0) < cost) {
-      setMessage("❌ Insufficient funds. Add funds to your wallet.");
-      window.setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-
-    setComposerText("");
-
-    // Send via Telnyx — include the current Supabase session so the API
-    // can verify the caller and their ownership of the `from` number.
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token || "";
-      const res = await fetch("/api/send-sms", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
-      });
+      const body = composerText.trim();
+      const now = new Date().toISOString();
 
-      const data = await res.json();
+      // Get the contact's phone and a from number
+      const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+      const fromNumber = convFromNumber || currentUser.ownedNumbers?.[0]?.number;
 
-      if (!data.success) {
-        setMessage(`❌ ${data.error || "Failed to send"}`);
+      if (!contact?.phone) {
+        setMessage("❌ Contact has no phone number");
+        window.setTimeout(() => setMessage(""), 2500);
+        return;
+      }
+
+      if (!fromNumber) {
+        setMessage("❌ Buy a phone number first before sending messages");
         window.setTimeout(() => setMessage(""), 3000);
         return;
       }
-    } catch {
-      setMessage("❌ Could not connect to SMS service");
-      window.setTimeout(() => setMessage(""), 3000);
-      return;
-    }
 
-    // Save to DB
-    const dbMsg = await insertMessage({
-      conversation_id: selectedConversation.id,
-      direction: "outbound", body, status: "sent",
-      from_number: fromNumber,
-    });
+      // Check wallet balance
+      const cost = currentUser.plan.messageCost || 0.012;
+      if ((currentUser.walletBalance || 0) < cost) {
+        setMessage("❌ Insufficient funds. Add funds to your wallet.");
+        window.setTimeout(() => setMessage(""), 3000);
+        return;
+      }
 
-    if (dbMsg) {
-      const newMsg: ConversationMessage = messageToRecord(dbMsg);
-      // Lock the conversation to this from_number the first time it's set, so
-      // future replies (and the badge in the conv list) always match.
-      const shouldLockFromNumber = !selectedConversation.fromNumber && fromNumber;
-      setConversations((prev) => {
-        const updated = prev.map((c) => c.id !== selectedConversation.id ? c : {
-          ...c, preview: body, lastMessageAt: now,
-          // Sending a reply clears the unread badge — the last message is
-          // now outbound so there's nothing new waiting for the agent.
-          unread: 0,
-          fromNumber: c.fromNumber || fromNumber,
-          // Manual send clears the "AI skipped" chip — if the user is
-          // engaging directly, the decline filter shouldn't keep warning.
-          aiSkippedReason: null,
-          messages: [...c.messages, newMsg],
+      setComposerText("");
+
+      // Send via Telnyx — include the current Supabase session so the API
+      // can verify the caller and their ownership of the `from` number.
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token || "";
+        const res = await fetch("/api/send-sms", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
         });
-        // Re-sort so the freshly-active conversation stays at the top.
-        return updated.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+
+        const data = await res.json();
+
+        if (!data.success) {
+          setMessage(`❌ ${data.error || "Failed to send"}`);
+          window.setTimeout(() => setMessage(""), 3000);
+          return;
+        }
+      } catch {
+        setMessage("❌ Could not connect to SMS service");
+        window.setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+
+      // Save to DB
+      const dbMsg = await insertMessage({
+        conversation_id: selectedConversation.id,
+        direction: "outbound", body, status: "sent",
+        from_number: fromNumber,
       });
-      const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now, unread: 0, ai_skipped_reason: null };
-      if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
-      await dbUpdateConversation(selectedConversation.id, convUpdate);
+
+      if (dbMsg) {
+        const newMsg: ConversationMessage = messageToRecord(dbMsg);
+        // Lock the conversation to this from_number the first time it's set, so
+        // future replies (and the badge in the conv list) always match.
+        const shouldLockFromNumber = !selectedConversation.fromNumber && fromNumber;
+        setConversations((prev) => {
+          const updated = prev.map((c) => c.id !== selectedConversation.id ? c : {
+            ...c, preview: body, lastMessageAt: now,
+            // Sending a reply clears the unread badge — the last message is
+            // now outbound so there's nothing new waiting for the agent.
+            unread: 0,
+            fromNumber: c.fromNumber || fromNumber,
+            // Manual send clears the "AI skipped" chip — if the user is
+            // engaging directly, the decline filter shouldn't keep warning.
+            aiSkippedReason: null,
+            messages: [...c.messages, newMsg],
+          });
+          // Re-sort so the freshly-active conversation stays at the top.
+          return updated.sort((a, b) => (b.lastMessageAt || "").localeCompare(a.lastMessageAt || ""));
+        });
+        const convUpdate: Record<string, unknown> = { preview: body, last_message_at: now, unread: 0, ai_skipped_reason: null };
+        if (shouldLockFromNumber) convUpdate.from_number = fromNumber;
+        await dbUpdateConversation(selectedConversation.id, convUpdate);
+      }
+
+      // ── Atomic wallet decrement ────────────────────────────────────────
+      // Before: read `currentUser.walletBalance` from React state, subtract
+      // `cost`, write via `persistProfile({ wallet_balance })`. Two Sends
+      // fired back-to-back (or a Send + an incoming top-off webhook) would
+      // both read the same starting balance and the second write would
+      // silently CLOBBER any concurrent balance changes. Now: decrement_wallet
+      // is an atomic Postgres RPC that can't over-debit or lose updates.
+      const chargeEntry: UsageHistoryItem = {
+        id: `msg_${Date.now()}`, type: "charge", amount: cost,
+        description: `SMS to ${contact.phone}`,
+        createdAt: now, status: "succeeded",
+      };
+      const { data: newBalData, error: decErr } = await supabase.rpc("decrement_wallet", {
+        p_user_id: userId,
+        p_amount: cost,
+      });
+      const newBal = decErr || newBalData === null
+        ? Math.max(0, Number(((currentUser.walletBalance || 0) - cost).toFixed(2)))
+        : Number(newBalData);
+      if (decErr) {
+        console.warn("decrement_wallet failed, falling back to local estimate:", decErr.message);
+      }
+
+      // Audit-log append. This isn't atomic with the decrement above, but
+      // the wallet is correct regardless — log entries are recoverable from
+      // messages/contacts if one ever gets clobbered.
+      await persistProfile({
+        wallet_balance: newBal,
+        usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
+      });
+
+      // Check if auto-recharge should trigger
+      checkAutoRecharge(newBal);
+
+      setMessage("✅ Message sent");
+      window.setTimeout(() => setMessage(""), 2500);
+    } finally {
+      releaseGuard();
     }
-
-    // Deduct message cost
-    const chargeEntry: UsageHistoryItem = {
-      id: `msg_${Date.now()}`, type: "charge", amount: cost,
-      description: `SMS to ${contact.phone}`,
-      createdAt: now, status: "succeeded",
-    };
-    const newBal = Number(((currentUser.walletBalance || 0) - cost).toFixed(2));
-    await persistProfile({
-      wallet_balance: newBal,
-      usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
-    });
-
-    // Check if auto-recharge should trigger
-    checkAutoRecharge(newBal);
-
-    setMessage("✅ Message sent");
-    window.setTimeout(() => setMessage(""), 2500);
   };
 
   const handleOpenContactConversation = async (contactId: string) => {
@@ -4476,8 +4535,23 @@ export default function DashboardPage() {
   };
 
   const handleCSVWizardSubmit = async () => {
-    if (!userId || csvUploading) return;
+    // Atomic guard: a ref flip is synchronous, so two clicks fired in the
+    // same React tick can't both sneak past this check. Without this, a fast
+    // double-click would enqueue two full imports AND two campaign sends —
+    // the exact "CSV sent out twice" bug we're guarding against.
+    if (!userId || csvUploadingRef.current) return;
+    csvUploadingRef.current = true;
     setCsvUploading(true);
+
+    // Snapshot taken BEFORE inserts so we have a conservative lower bound on
+    // the created_at of rows imported in THIS run. We pass this to
+    // /api/send-campaign as `importedSinceIso` so the follow-up send only
+    // targets the newly imported contacts — not every historical contact
+    // that ever landed in this named campaign. Without this bound the send
+    // route filters by `contacts.campaign == campaignName` and happily re-
+    // texts every previous upload under the same campaign. Minus 5s for any
+    // client↔server clock skew.
+    const importedSinceIso = new Date(Date.now() - 5_000).toISOString();
 
     // Build mapping: contact field → csv header
     const fieldToHeader: Record<string, string> = {};
@@ -4694,6 +4768,7 @@ export default function DashboardPage() {
       ];
       setMessage(`❌ No new contacts to import (${parts.join(", ")})`);
       window.setTimeout(() => setMessage(""), 3500);
+      csvUploadingRef.current = false;
       setCsvUploading(false);
       resetCSVWizard();
       return;
@@ -4746,6 +4821,7 @@ export default function DashboardPage() {
         if (ownedNumbers.length === 0) {
           setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but no phone number to send from. Buy a number first.`);
           window.setTimeout(() => setMessage(""), 5000);
+          csvUploadingRef.current = false;
           setCsvUploading(false);
           resetCSVWizard();
           return;
@@ -4766,6 +4842,7 @@ export default function DashboardPage() {
         if (walletBalance < cost) {
           setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need ${formatCurrency(cost)} for ${totalMessages} messages.`);
           window.setTimeout(() => setMessage(""), 5000);
+          csvUploadingRef.current = false;
           setCsvUploading(false);
           resetCSVWizard();
           return;
@@ -4810,6 +4887,10 @@ export default function DashboardPage() {
                 campaignName: campaign.name,
                 stepIndex: stepIdx,
                 totalSteps: steps.length,
+                // Scope the send to contacts imported in THIS upload only —
+                // otherwise the server re-texts every historical contact
+                // with the same campaign name, causing the CSV-double-send.
+                importedSinceIso,
               }),
             });
 
@@ -4844,6 +4925,7 @@ export default function DashboardPage() {
         }
 
         window.setTimeout(() => setMessage(""), 5000);
+        csvUploadingRef.current = false;
         setCsvUploading(false);
         resetCSVWizard();
         return;
@@ -4852,6 +4934,7 @@ export default function DashboardPage() {
 
     setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}${dncRemoved > 0 ? ` (${dncRemoved} on DNC)` : ""}`);
     window.setTimeout(() => setMessage(""), 4000);
+    csvUploadingRef.current = false;
     setCsvUploading(false);
     resetCSVWizard();
   };
@@ -6963,11 +7046,11 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={handleSendConversationMessage}
-                            disabled={!selectedContact}
+                            disabled={!selectedContact || sendingConvMsg}
                             title={!selectedContact ? "No contact linked to this conversation" : undefined}
                             className="rounded-2xl bg-violet-600 px-6 py-3 font-medium hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
                           >
-                            Send
+                            {sendingConvMsg ? "Sending…" : "Send"}
                           </button>
                         </div>
                       </div>

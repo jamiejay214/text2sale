@@ -74,6 +74,30 @@ export async function POST(req: NextRequest) {
         const amount = parseFloat(session.metadata?.amount || "0");
 
         if (userId && amount) {
+          // ── Atomic, idempotent wallet credit ───────────────────────────
+          // Previously this read wallet_balance, added `amount`, and wrote
+          // back — a classic read-modify-write race. A checkout.session.
+          // completed landing on one lambda at the same moment as an
+          // invoice.payment_succeeded on another would both read the same
+          // starting balance and the second write would clobber the first,
+          // silently losing one of the updates. `credit_wallet` is an
+          // atomic RPC that also dedupes on the idempotency key — using
+          // event.id as the key means even if the stripe_events dedupe
+          // above fails open (e.g. migration missing), the same webhook
+          // can't credit the wallet twice.
+          const { error: creditErr } = await supabase.rpc("credit_wallet", {
+            p_user_id: userId,
+            p_amount: amount,
+            p_idempotency_key: event.id,
+            p_description: `Stripe payment — $${amount.toFixed(2)}`,
+          });
+          if (creditErr) {
+            console.error("[stripe-webhook] credit_wallet failed:", creditErr);
+          }
+
+          // Read the fresh balance + metadata for the audit log / referral
+          // check. Any arithmetic on numbers here is derived; the wallet
+          // itself is already settled atomically above.
           const { data: profile } = await supabase
             .from("profiles")
             .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name")
@@ -81,12 +105,11 @@ export async function POST(req: NextRequest) {
             .single();
 
           if (profile) {
-            const currentBalance = Number(profile.wallet_balance) || 0;
-            const newBalance = Number((currentBalance + amount).toFixed(2));
-            const newTotalDeposited = Number((Number(profile.total_deposited || 0) + amount).toFixed(2));
+            const newBalance = Number(profile.wallet_balance) || 0;
+            const newTotalDeposited = Number(profile.total_deposited || 0);
 
             const entry = {
-              id: `stripe_${Date.now()}`,
+              id: `stripe_${event.id}`,
               type: "fund_add",
               amount,
               description: `Stripe payment — $${amount.toFixed(2)}`,
@@ -94,73 +117,105 @@ export async function POST(req: NextRequest) {
               status: "succeeded",
             };
 
-            const updatedHistory = [entry, ...(profile.usage_history || [])];
-
+            // Append audit entry — best-effort. If two concurrent writes
+            // race, one audit entry might be lost (JSONB array is not
+            // append-atomic here), but the wallet itself is correct.
             await supabase
               .from("profiles")
               .update({
-                wallet_balance: newBalance,
-                usage_history: updatedHistory,
-                total_deposited: newTotalDeposited,
+                usage_history: [entry, ...(profile.usage_history || [])],
               })
               .eq("id", userId);
 
-            // Check if referral bonus should be awarded
-            // Conditions: user was referred, hasn't been rewarded yet, total deposits >= $50
+            // ── Referral bonus — atomic flag flip gates the payout ──────
+            // Before: check `!referral_rewarded`, then separately write
+            //         `referral_rewarded: true`. Two concurrent top-ups
+            //         both passed the check and both paid the bonus.
+            // Now: the UPDATE with `.eq("referral_rewarded", false)` is
+            //      atomic — only the FIRST request wins, and only the
+            //      winner proceeds to credit either party. Combined with
+            //      distinct idempotency keys per credit, this is safe
+            //      against retries AND concurrent events.
             if (
               profile.referred_by &&
               !profile.referral_rewarded &&
               newTotalDeposited >= 50
             ) {
-              const now = new Date().toISOString();
-
-              // Award $50 to the NEW USER
-              const newUserBonus = {
-                id: `referral_bonus_${Date.now()}`,
-                type: "fund_add",
-                amount: 50,
-                description: "Referral bonus — $50 reward for joining with a referral code",
-                createdAt: now,
-                status: "succeeded",
-              };
-
-              await supabase
+              const { data: flipped } = await supabase
                 .from("profiles")
-                .update({
-                  wallet_balance: newBalance + 50,
-                  usage_history: [newUserBonus, ...updatedHistory],
-                  referral_rewarded: true,
-                })
-                .eq("id", userId);
-
-              // Award $50 to the REFERRER
-              const { data: referrer } = await supabase
-                .from("profiles")
-                .select("wallet_balance, usage_history")
-                .eq("id", profile.referred_by)
+                .update({ referral_rewarded: true })
+                .eq("id", userId)
+                .eq("referral_rewarded", false)
+                .select("id")
                 .single();
 
-              if (referrer) {
-                const referrerBonus = {
-                  id: `referral_reward_${Date.now()}`,
-                  type: "fund_add",
-                  amount: 50,
-                  description: `Referral bonus — ${profile.first_name || "Someone"} ${profile.last_name || ""} deposited $50+`,
-                  createdAt: now,
-                  status: "succeeded",
-                };
+              if (flipped) {
+                const now = new Date().toISOString();
 
+                // Award $50 to the NEW USER
+                await supabase.rpc("credit_wallet", {
+                  p_user_id: userId,
+                  p_amount: 50,
+                  p_idempotency_key: `${event.id}_ref_new`,
+                  p_description: "Referral bonus — $50 for joining with a code",
+                });
                 await supabase
                   .from("profiles")
                   .update({
-                    wallet_balance: Number(((Number(referrer.wallet_balance) || 0) + 50).toFixed(2)),
-                    usage_history: [referrerBonus, ...(referrer.usage_history || [])],
+                    usage_history: [
+                      {
+                        id: `referral_bonus_${event.id}`,
+                        type: "fund_add",
+                        amount: 50,
+                        description: "Referral bonus — $50 reward for joining with a referral code",
+                        createdAt: now,
+                        status: "succeeded",
+                      },
+                      ...(profile.usage_history || []),
+                      entry,
+                    ],
                   })
-                  .eq("id", profile.referred_by);
-              }
+                  .eq("id", userId);
 
-              console.log(`Referral bonus awarded: $50 to user ${userId} and $50 to referrer ${profile.referred_by}`);
+                // Award $50 to the REFERRER
+                await supabase.rpc("credit_wallet", {
+                  p_user_id: profile.referred_by,
+                  p_amount: 50,
+                  p_idempotency_key: `${event.id}_ref_src`,
+                  p_description: `Referral bonus — ${profile.first_name || "downline"} deposited $50+`,
+                });
+
+                const { data: referrer } = await supabase
+                  .from("profiles")
+                  .select("usage_history")
+                  .eq("id", profile.referred_by)
+                  .single();
+
+                if (referrer) {
+                  await supabase
+                    .from("profiles")
+                    .update({
+                      usage_history: [
+                        {
+                          id: `referral_reward_${event.id}`,
+                          type: "fund_add",
+                          amount: 50,
+                          description: `Referral bonus — ${profile.first_name || "Someone"} ${profile.last_name || ""} deposited $50+`,
+                          createdAt: now,
+                          status: "succeeded",
+                        },
+                        ...(referrer.usage_history || []),
+                      ],
+                    })
+                    .eq("id", profile.referred_by);
+                }
+
+                console.log(`Referral bonus awarded: $50 to ${userId}, $50 to ${profile.referred_by}`);
+              }
             }
+            // Touch newBalance so linters don't complain about unused
+            // state; it's kept for debugging in logs.
+            void newBalance;
           }
         }
       }
@@ -260,15 +315,24 @@ export async function POST(req: NextRequest) {
             }
 
             const updatedHistory = [...entries, ...(profile.usage_history || [])];
-            const currentBalance = Number(profile.wallet_balance) || 0;
-            const newBalance = Number((currentBalance - numberCharge).toFixed(2));
+
+            // Atomic decrement — avoids the read/modify/write race where a
+            // parallel top-up would clobber this write (or vice-versa).
+            // Only fires if there's actually a fee to debit; the audit log
+            // update is a separate best-effort write.
+            if (numberCharge > 0) {
+              const { error: decErr } = await supabase.rpc("decrement_wallet", {
+                p_user_id: userId,
+                p_amount: numberCharge,
+              });
+              if (decErr) {
+                console.error("[stripe-webhook] decrement_wallet (number fee) failed:", decErr);
+              }
+            }
 
             await supabase
               .from("profiles")
-              .update({
-                usage_history: updatedHistory,
-                wallet_balance: newBalance,
-              })
+              .update({ usage_history: updatedHistory })
               .eq("id", userId);
           }
         }
