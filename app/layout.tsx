@@ -120,7 +120,6 @@ export default function RootLayout({
       "Campaign builder with drip sequences",
       "Real-time delivery tracking",
       "TCPA & 10DLC compliance tools",
-      "DNC / opt-out handling",
       "Quiet hours compliance",
       "Team collaboration",
       "Local phone numbers",
@@ -176,7 +175,7 @@ export default function RootLayout({
         name: "Is Text2Sale TCPA compliant?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Yes. Text2Sale includes built-in TCPA compliance tools: automatic STOP keyword handling, DNC list management, quiet hours enforcement, opt-in tracking, and 10DLC brand/campaign registration.",
+          text: "Yes. Text2Sale includes built-in TCPA compliance tools: automatic STOP keyword handling, quiet hours enforcement, opt-in tracking, and 10DLC brand/campaign registration.",
         },
       },
       {

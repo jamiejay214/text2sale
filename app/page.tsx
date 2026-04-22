@@ -457,7 +457,6 @@ export default function HomePage() {
                   "Campaign builder + drip sequences",
                   "2-way conversations",
                   "CSV import & blast",
-                  "DNC / opt-out automation",
                   "Team management",
                   "Real-time notifications",
                   "Command palette (⌘K)",

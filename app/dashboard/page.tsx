@@ -12820,7 +12820,7 @@ export default function DashboardPage() {
                 steps: [
                   {
                     title: "Subscribe to a Plan",
-                    description: "Go to the Settings tab and click on 💳 Billing. Subscribe to the Text2Sale Package ($35/month) to unlock all features including sending messages, buying numbers, and adding funds.",
+                    description: "Go to the Settings tab and click on 💳 Billing. Pick the subscription plan that fits your volume to unlock all features including sending messages, buying numbers, and adding funds.",
                     tip: "Your subscription gives you access to the platform. Message costs are separate and come from your wallet balance.",
                   },
                   {
