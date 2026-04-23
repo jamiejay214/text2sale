@@ -94,6 +94,56 @@ const META_LINE = /^(thinking:|plan:|reasoning:|note:|step \d+:)/i;
 // Trailing "Let me book the appointment first:" style hand-off phrases.
 const TRAILING_HANDOFF = /\b(let me|i('|\s)ll|i will|i'm going to|i am going to)\s+(book|schedule|send|reply|respond|text|message|draft|write|check|look|verify|confirm)[^.!?]*:\s*$/i;
 
+// ------------------------------------------------------------
+// Refusal / operator-addressed output detection
+// ------------------------------------------------------------
+// Sometimes the model breaks the fourth wall entirely and addresses the
+// user of the product (the agent running the campaign) instead of the
+// customer on the other end of the SMS. Example leak:
+//   "I appreciate you wanting me to continue the conversation, but I
+//    need to point out something: the conversation history shows I
+//    (jamie johnson) have been sending a lot of repetitive messages...
+//    What would you like me to do?"
+// That text MUST NEVER reach the lead. If we see any of these patterns
+// we consider the entire output a refusal and return "" — the caller
+// will then treat it as "no reply generated" (502 for the dashboard,
+// silent no-op for webhook auto-replies).
+const REFUSAL_PATTERNS: RegExp[] = [
+  /\bI appreciate you\b/i,
+  /\bI need to point out\b/i,
+  /\bthe conversation history shows\b/i,
+  /\bwhat would you like me to do\b/i,
+  /\bif you want me to\b/i,
+  /\blet me know what (they|he|she) said\b/i,
+  /\bthe (best|natural|right) (next )?move is\b/i,
+  /\bsince I don'?t have (their|his|her) (response|reply|answer)\b/i,
+  /\bwithout (their|his|her) (response|reply|answer)\b/i,
+  /\bI('| a)m (the|an?) (AI|bot|assistant|language model)\b/i,
+  /\bas an AI\b/i,
+  /\bI can'?t (continue|respond|reply|help with)\b/i,
+  /\bI won'?t (continue|respond|send|reply)\b/i,
+  /\bI('| wi)ll not (continue|send|reply|respond)\b/i,
+  /\bI don'?t feel comfortable\b/i,
+  /\bI'?m not (comfortable|able) (to|with)\b/i,
+  /\b(pushy|repetitive|inappropriate) (and|to)\b/i,
+  /\bIf they'?ve responded and I missed it\b/i,
+  /\bwould be (pushy|spammy|inappropriate)\b/i,
+];
+
+/**
+ * Return true if the output reads like the model is talking to the
+ * operator (refusing, asking clarifying questions, narrating its own
+ * reasoning about what to send) rather than producing an SMS aimed at
+ * the customer.
+ */
+export function looksLikeRefusal(body: string): boolean {
+  if (!body) return false;
+  for (const rx of REFUSAL_PATTERNS) {
+    if (rx.test(body)) return true;
+  }
+  return false;
+}
+
 /**
  * Strip chain-of-thought / planning prose from a model-generated SMS.
  * Safe to call on any string. Returns the cleaned body.
@@ -101,6 +151,12 @@ const TRAILING_HANDOFF = /\b(let me|i('|\s)ll|i will|i'm going to|i am going to)
 export function stripReasoningLeaks(body: string): string {
   if (!body) return body;
   let out = body.trim();
+
+  // Hard stop: if the reply reads like the model is addressing the
+  // operator (refusing, asking "what would you like me to do?", etc.)
+  // then NOTHING in it is safe to send as an SMS. Return "" so the
+  // caller treats it as "no reply generated".
+  if (looksLikeRefusal(out)) return "";
 
   // Drop whole lines that are obviously meta.
   out = out

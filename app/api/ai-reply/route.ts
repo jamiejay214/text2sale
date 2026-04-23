@@ -236,6 +236,38 @@ export async function POST(req: NextRequest) {
       .map((m) => `${m.direction === "outbound" ? "Agent" : "Customer"}: ${m.body}`)
       .join("\n");
 
+    // Build a proper alternating user/assistant turn list for the Anthropic
+    // API. Without this the model sometimes addresses the OPERATOR ("I
+    // appreciate you wanting me to continue... what would you like me to
+    // do?") because it's framed as a meta-assistant being asked to draft
+    // an SMS. With proper alternation — customer = user, agent = assistant
+    // — the model simply generates the next assistant turn, which IS the
+    // SMS to the customer.
+    type Turn = { role: "user" | "assistant"; content: string };
+    const turns: Turn[] = [];
+    for (const m of messages) {
+      const role: "user" | "assistant" = m.direction === "outbound" ? "assistant" : "user";
+      const body = String(m.body || "").trim();
+      if (!body) continue;
+      const last = turns[turns.length - 1];
+      if (last && last.role === role) {
+        last.content += `\n${body}`;
+      } else {
+        turns.push({ role, content: body });
+      }
+    }
+    // Anthropic requires the first message to be user-role. If the
+    // conversation starts with us (outbound), prepend a synthetic opener.
+    if (turns.length > 0 && turns[0].role === "assistant") {
+      turns.unshift({ role: "user", content: "(start of conversation)" });
+    }
+    // Anthropic requires the final message to be user-role for the
+    // model to produce an assistant reply. If the last stored message
+    // was outbound (the operator wants a follow-up), append a nudge.
+    if (turns.length === 0 || turns[turns.length - 1].role === "assistant") {
+      turns.push({ role: "user", content: "(no reply yet — send a friendly follow-up)" });
+    }
+
     const userInstructions = profile.ai_instructions?.trim() || "";
     const agentName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || "Agent";
 
@@ -324,12 +356,7 @@ When the customer wants to schedule/book/meet/talk/call:
         max_tokens: 500,
         system: systemPrompt,
         tools: tools.length > 0 ? tools : undefined,
-        messages: [
-          {
-            role: "user",
-            content: "Generate the next SMS reply to send to this customer.",
-          },
-        ],
+        messages: turns,
       }),
     });
 
@@ -440,10 +467,7 @@ When the customer wants to schedule/book/meet/talk/call:
             max_tokens: 300,
             system: systemPrompt,
             messages: [
-              {
-                role: "user",
-                content: "Generate the next SMS reply to send to this customer.",
-              },
+              ...turns,
               {
                 role: "assistant",
                 content: content,
