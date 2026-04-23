@@ -48,6 +48,7 @@ type AccountRecord = {
   einCertificateType?: string | null;
   einCertificateUploadedAt?: string | null;
   stripeCustomerId?: string | null;
+  stripeSubscriptionId?: string | null;
   totalDeposited?: number;
   contactCount?: number;
 };
@@ -109,6 +110,7 @@ function profileToAccount(p: Profile): AccountRecord {
     einCertificateType: p.a2p_registration?.einCertificateType || null,
     einCertificateUploadedAt: p.a2p_registration?.einCertificateUploadedAt || null,
     stripeCustomerId: p.stripe_customer_id,
+    stripeSubscriptionId: p.stripe_subscription_id,
     totalDeposited: p.total_deposited || 0,
   };
 }
@@ -740,19 +742,33 @@ export default function AdminPage() {
     const acct = accounts.find((a) => a.id === id);
     if (!acct) return;
     const next = !acct.freeSubscription;
-    // When granting, also flip subscription_status to "active" so all
-    // downstream UI (badges, gating) reflects it immediately. When revoking,
-    // drop to "inactive" unless they have a real Stripe sub — Stripe will
-    // re-sync from the next webhook.
+    // Granting: flip subscription_status to "active" so all downstream UI
+    // (badges, gating) reflects the comp immediately.
+    //
+    // Revoking: drop to "inactive" UNLESS they have a real Stripe
+    // subscription ID on file (meaning they're actually paying). The earlier
+    // version of this only reset when stripe_customer_id was null, which
+    // left users stuck on "active" forever if a stub customer record
+    // existed without a paid subscription behind it. That's how David ended
+    // up on a free ride after we flipped this toggle on and back off.
     const update: Record<string, unknown> = { free_subscription: next };
-    if (next) update.subscription_status = "active";
-    else if (acct.subscriptionStatus === "active" && !acct.stripeCustomerId) {
+    if (next) {
+      update.subscription_status = "active";
+    } else if (!acct.stripeSubscriptionId) {
+      // No paid subscription backing this account → force them back to
+      // the paywall so they have to go subscribe.
       update.subscription_status = "inactive";
     }
     await updateProfile(id, update);
     await refreshAccount(id);
-    setMessage(next ? "✅ Free subscription granted" : "✅ Free subscription revoked");
-    window.setTimeout(() => setMessage(""), 2500);
+    setMessage(
+      next
+        ? "✅ Free subscription granted"
+        : acct.stripeSubscriptionId
+          ? "✅ Free subscription revoked — user has a paid Stripe sub, keeping active"
+          : "✅ Free subscription revoked — user must now pay to use the app"
+    );
+    window.setTimeout(() => setMessage(""), 3500);
   };
 
   const toggleAiPlan = async (id: string) => {
