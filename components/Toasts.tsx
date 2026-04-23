@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 
 // ────────────────────────────────────────────────────────────────────────────
 // Toast — lightweight animated toast container.
@@ -22,20 +22,44 @@ function kindFromMessage(msg: string): ToastKind {
 
 type Item = { id: number; text: string; kind: ToastKind; createdAt: number };
 
+const TOAST_TTL_MS = 3200;
+
 export default function Toasts({ message }: { message: string }) {
   const [items, setItems] = useState<Item[]>([]);
+  // Track every scheduled removal timer so we can clean up on unmount
+  // WITHOUT cancelling previous toasts' timers when a new message arrives.
+  // The old code called clearTimeout in the effect cleanup, which fired on
+  // every message change — the earlier toast's dismissal timer was killed
+  // the moment the next toast came in, so toasts piled up on screen and
+  // never disappeared until the page was refreshed.
+  const timersRef = useRef<number[]>([]);
+  const lastMessageRef = useRef<string>("");
 
   useEffect(() => {
     if (!message || !message.trim()) return;
+    // Guard against StrictMode double-invocation (same message, same render)
+    if (message === lastMessageRef.current) return;
+    lastMessageRef.current = message;
+
     const id = Date.now() + Math.random();
     const kind = kindFromMessage(message);
     const text = message.replace(/^([✅❌⚠️⚠])\s*/, "");
     setItems((prev) => [...prev, { id, text, kind, createdAt: Date.now() }]);
     const timer = window.setTimeout(() => {
       setItems((prev) => prev.filter((i) => i.id !== id));
-    }, 3200);
-    return () => window.clearTimeout(timer);
+      timersRef.current = timersRef.current.filter((t) => t !== timer);
+    }, TOAST_TTL_MS);
+    timersRef.current.push(timer);
   }, [message]);
+
+  // One-time unmount cleanup: blow away any in-flight timers. No per-effect
+  // cleanup (that was the bug).
+  useEffect(() => {
+    return () => {
+      timersRef.current.forEach((t) => window.clearTimeout(t));
+      timersRef.current = [];
+    };
+  }, []);
 
   if (items.length === 0) return null;
 
