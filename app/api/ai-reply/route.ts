@@ -4,7 +4,7 @@ import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
-import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -95,7 +95,11 @@ async function getAvailableSlots(
 
 export async function POST(req: NextRequest) {
   try {
-    const auth = await authenticate(req);
+    // Accept either a user JWT (dashboard → /api/ai-reply) or a trusted
+    // internal-webhook header (incoming-sms webhook → /api/ai-reply for
+    // auto-replies). The old `authenticate()` rejected webhook calls with
+    // 401, which silently killed AI auto-replies in production.
+    const auth = await authenticateOrInternal(req);
     if (!auth.ok) return auth.response;
 
     const { userId: bodyUserId, conversationId, contactId, sendReply } = await req.json();
@@ -497,8 +501,28 @@ When the customer wants to schedule/book/meet/talk/call:
         })
         .eq("id", conversationId);
 
-      // Charge wallet
-      const newBalance = Number((balance - AI_MESSAGE_COST).toFixed(2));
+      // Charge wallet atomically. The old code was read-modify-write:
+      // it re-used the `balance` we fetched before awaiting the Telnyx
+      // send, so two AI replies firing in parallel for the same user
+      // would both read the same balance and both write `balance - cost`
+      // — one send was free. `decrement_wallet` is SECURITY DEFINER
+      // and runs a single UPDATE with the amount check built in.
+      const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
+        p_user_id: userId,
+        p_amount: AI_MESSAGE_COST,
+      });
+      const newBalance =
+        typeof newBal === "number" || typeof newBal === "string"
+          ? Number(newBal)
+          : Number((balance - AI_MESSAGE_COST).toFixed(2));
+      if (decErr) {
+        console.error("[ai-reply] decrement_wallet failed:", decErr.message);
+      }
+
+      // Append to usage history in a follow-up update. This is still
+      // read-modify-write for the JSON array, but history is additive
+      // and ordering-agnostic — worst case we lose one entry display,
+      // not money. Not worth a second RPC right now.
       const entry = {
         id: `ai_msg_${Date.now()}`,
         type: "charge",
@@ -508,10 +532,9 @@ When the customer wants to schedule/book/meet/talk/call:
         status: "succeeded",
       };
       const history = [entry, ...(profile.usage_history || [])];
-
       await supabase
         .from("profiles")
-        .update({ wallet_balance: newBalance, usage_history: history })
+        .update({ usage_history: history })
         .eq("id", userId);
 
       return NextResponse.json({

@@ -31,6 +31,30 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "ok" });
     }
 
+    // Webhook dedupe. Telnyx retries webhooks on any 5xx / network error,
+    // which would double-process inbound messages — creating two
+    // conversation rows, firing two opt-out replies, debiting two AI
+    // auto-replies. Track the event id in telnyx_events and drop any
+    // replay. Missing table → skip dedupe (log only) so we don't stop
+    // processing; migration should create the table.
+    const telnyxEventId: string | undefined = event.id;
+    if (telnyxEventId) {
+      const { error: dupeErr } = await supabase
+        .from("telnyx_events")
+        .insert({ event_id: telnyxEventId });
+      if (dupeErr) {
+        // 23505 is Postgres unique_violation → we've already processed this event.
+        // Any other error (42P01 relation does not exist, etc) we log and continue.
+        if ((dupeErr as { code?: string }).code === "23505") {
+          console.log(`[incoming-sms] skipping duplicate Telnyx event ${telnyxEventId}`);
+          return NextResponse.json({ status: "ok", deduped: true });
+        }
+        if ((dupeErr as { code?: string }).code !== "42P01") {
+          console.warn("[incoming-sms] telnyx_events insert error:", dupeErr);
+        }
+      }
+    }
+
     // Handle delivery receipts (message.finalized)
     if (event.event_type === "message.finalized") {
       return handleDeliveryReceipt(event.payload);
@@ -385,16 +409,32 @@ export async function POST(req: NextRequest) {
             const origin = req.headers.get("x-forwarded-proto") === "https"
               ? `https://${req.headers.get("host")}`
               : `http://${req.headers.get("host")}`;
-            fetch(`${origin}/api/ai-reply`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                userId: contact.user_id,
-                conversationId: conversation.id,
-                contactId: contact.id,
-                sendReply: true,
-              }),
-            }).catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
+            // Use the internal-webhook shared secret instead of a user
+            // JWT — webhooks don't have one. /api/ai-reply accepts this
+            // via authenticateOrInternal(). If the secret isn't set in
+            // env, the AI auto-reply just won't fire (intended — don't
+            // want anonymous access to ai-reply).
+            const internalSecret = process.env.INTERNAL_WEBHOOK_SECRET;
+            if (internalSecret) {
+              fetch(`${origin}/api/ai-reply`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  "X-Internal-Webhook": internalSecret,
+                  "X-Acting-User": contact.user_id,
+                },
+                body: JSON.stringify({
+                  userId: contact.user_id,
+                  conversationId: conversation.id,
+                  contactId: contact.id,
+                  sendReply: true,
+                }),
+              }).catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
+            } else {
+              console.warn(
+                "[incoming-sms] AI auto-reply skipped — set INTERNAL_WEBHOOK_SECRET env var to enable."
+              );
+            }
           }
         }
       } catch (err) {
