@@ -13,6 +13,18 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const AI_MESSAGE_COST = 0.025;
 
+// Humanize auto-replies: wait before sending so it doesn't feel bot-instant.
+// Randomized within a window so it's not a suspiciously round number, and
+// timed to sit naturally in the "reading + typing" range a person would take
+// for a short SMS. Only applied for webhook-triggered auto-replies; manual
+// "draft this for me" calls from the dashboard skip the delay.
+const AI_REPLY_DELAY_MIN_MS = 12_000; // 12s
+const AI_REPLY_DELAY_MAX_MS = 18_000; // 18s
+// Tell Vercel this route can legitimately take a while so the platform
+// doesn't kill us mid-think. 60s covers the reply delay + LLM round trip +
+// Telnyx send comfortably.
+export const maxDuration = 60;
+
 type DaySlot = { enabled: boolean; start: string; end: string };
 type AvailableHours = {
   enabled: boolean;
@@ -122,6 +134,58 @@ export async function POST(req: NextRequest) {
       .single();
     if (!conv || conv.user_id !== userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    // ── Human-feel delay + debounce (auto-reply path only) ──────────────
+    // 1. Auto-reply is the path where the caller is the incoming-sms webhook
+    //    using the internal-webhook header. If the dashboard called us
+    //    directly (user clicked "draft this for me"), we skip the delay —
+    //    a human clicked, they want it NOW.
+    // 2. Before sleeping we snapshot the latest inbound message timestamp
+    //    on this conversation. After the sleep we re-check: if a newer
+    //    inbound has arrived since our snapshot, that newer inbound will
+    //    have kicked off its own delayed ai-reply call — so this one bails,
+    //    letting the latest trigger win. Prevents 3 rapid-fire inbounds
+    //    from producing 3 charged replies.
+    const isAutoReply = req.headers.get("x-internal-webhook") != null;
+    let preSleepLatestInboundAt: string | null = null;
+    if (isAutoReply) {
+      const { data: latest } = await supabase
+        .from("messages")
+        .select("created_at")
+        .eq("conversation_id", conversationId)
+        .eq("direction", "in")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      preSleepLatestInboundAt = latest?.created_at ?? null;
+
+      const delay =
+        AI_REPLY_DELAY_MIN_MS +
+        Math.floor(Math.random() * (AI_REPLY_DELAY_MAX_MS - AI_REPLY_DELAY_MIN_MS));
+      await new Promise((resolve) => setTimeout(resolve, delay));
+
+      // Did a newer inbound arrive while we slept?
+      const { data: latestAfter } = await supabase
+        .from("messages")
+        .select("created_at")
+        .eq("conversation_id", conversationId)
+        .eq("direction", "in")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (
+        latestAfter?.created_at &&
+        preSleepLatestInboundAt &&
+        new Date(latestAfter.created_at).getTime() >
+          new Date(preSleepLatestInboundAt).getTime()
+      ) {
+        return NextResponse.json({
+          status: "ok",
+          aiSkipped: "newer_inbound",
+          reason: "A newer inbound arrived during the human-feel delay; the newer trigger will handle the reply.",
+        });
+      }
     }
 
     const [profileRes, messagesRes, contactRes] = await Promise.all([
