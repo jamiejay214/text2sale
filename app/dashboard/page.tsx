@@ -1168,7 +1168,14 @@ export default function DashboardPage() {
         { event: "INSERT", schema: "public", table: "messages" },
         async (payload) => {
           const newMsg = payload.new as { id: string; conversation_id: string; direction: string; body: string; status: string; created_at: string; from_number?: string };
-          if (newMsg.direction !== "inbound") return;
+          // Accept BOTH directions. The previous version early-returned on
+          // anything except "inbound", which silently dropped server-side
+          // outbound inserts from AI auto-replies + scheduled-send — they
+          // never appeared in the dashboard until the page was refreshed.
+          // Outbound messages sent from this browser are optimistically
+          // added to local state first; when realtime echoes them back we
+          // dedupe by id below so we don't double-render.
+          const isInbound = newMsg.direction === "inbound";
 
           const msgRecord: ConversationMessage = {
             id: newMsg.id,
@@ -1194,7 +1201,12 @@ export default function DashboardPage() {
               ...next[idx],
               preview: newMsg.body.slice(0, 100),
               lastMessageAt: newMsg.created_at,
-              unread: next[idx].id === selectedConversationId ? next[idx].unread : next[idx].unread + 1,
+              // Only bump unread for inbound messages. Outbound messages
+              // (including AI auto-replies) shouldn't mark the thread as
+              // unread — they ARE the read.
+              unread: isInbound
+                ? (next[idx].id === selectedConversationId ? next[idx].unread : next[idx].unread + 1)
+                : next[idx].unread,
               messages: [...next[idx].messages, msgRecord],
             };
             // Re-sort so the freshly-active conversation jumps to the top of the list.
@@ -1202,8 +1214,11 @@ export default function DashboardPage() {
             return next;
           });
 
-          if (!conversationExists) {
+          if (!conversationExists && isInbound) {
             // New conversation — pull it + its messages and merge in.
+            // Only triggered on inbound because the outbound-first path
+            // (send-sms / campaign) already inserts the conversation row
+            // via our client before firing Telnyx.
             const freshConvs = await dbFetchConversations(userId);
             const freshConv = freshConvs.find((c) => c.id === newMsg.conversation_id);
             if (!freshConv) return; // Not ours (wrong user).
@@ -1220,20 +1235,22 @@ export default function DashboardPage() {
             setContacts(dbContacts.map(contactToRecord));
           }
 
-          // Browser notification
-          if (notificationsEnabled && typeof document !== "undefined" && document.hidden) {
-            new Notification("New Message", {
-              body: newMsg.body.slice(0, 100),
-              icon: "/favicon.ico",
-            });
-          }
+          // Browser notification + audio ping — inbound only. Outbound AI
+          // replies shouldn't chirp at the rep.
+          if (isInbound) {
+            if (notificationsEnabled && typeof document !== "undefined" && document.hidden) {
+              new Notification("New Message", {
+                body: newMsg.body.slice(0, 100),
+                icon: "/favicon.ico",
+              });
+            }
 
-          // Audio ping
-          try {
-            const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkIuDdW1wfIiOjYV8c3B9iI+OhXtzc3yHjo6FeXV0fIaOjYV7c3J9h46NhXtzcnyHjo2FfHNyfYeOjYV7c3J8h46OhXtzcnuHj46Fe3NyfYePjoV7c3J8h4+OhXtzcnyHj46Fe3NzfIePjoV7c3J8h4+OhXtzcnyHj46FenRyfYeOjoV7c3J8h4+OhXtzcnyGj46Fe3Nze4eOjoV7c3N8h4+OhXt0cnyHj42FfHNyfYeOjYV8cnJ9h46NhXxzc3yHjo2FfHNyfIeOjYV7c3N8ho6NhXxzc32Hjo2Fe3NyfYePjYV7c3J8h46Ng==");
-            audio.volume = 0.3;
-            audio.play().catch(() => {});
-          } catch {}
+            try {
+              const audio = new Audio("data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdH2JkIuDdW1wfIiOjYV8c3B9iI+OhXtzc3yHjo6FeXV0fIaOjYV7c3J9h46NhXtzcnyHjo2FfHNyfYeOjYV7c3J8h46OhXtzcnuHj46Fe3NyfYePjoV7c3J8h4+OhXtzcnyHj46Fe3NzfIePjoV7c3J8h4+OhXtzcnyHj46FenRyfYeOjoV7c3J8h4+OhXtzcnyGj46Fe3Nze4eOjoV7c3N8h4+OhXt0cnyHj42FfHNyfYeOjYV8cnJ9h46NhXxzc3yHjo2FfHNyfIeOjYV7c3N8ho6NhXxzc32Hjo2Fe3NyfYePjYV7c3J8h46Ng==");
+              audio.volume = 0.3;
+              audio.play().catch(() => {});
+            } catch {}
+          }
         }
       )
       .subscribe();

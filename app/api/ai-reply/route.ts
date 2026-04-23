@@ -18,8 +18,8 @@ const AI_MESSAGE_COST = 0.025;
 // timed to sit naturally in the "reading + typing" range a person would take
 // for a short SMS. Only applied for webhook-triggered auto-replies; manual
 // "draft this for me" calls from the dashboard skip the delay.
-const AI_REPLY_DELAY_MIN_MS = 12_000; // 12s
-const AI_REPLY_DELAY_MAX_MS = 18_000; // 18s
+const AI_REPLY_DELAY_MIN_MS = 4_000; // 4s
+const AI_REPLY_DELAY_MAX_MS = 6_000; // 6s
 // Tell Vercel this route can legitimately take a while so the platform
 // doesn't kill us mid-think. 60s covers the reply delay + LLM round trip +
 // Telnyx send comfortably.
