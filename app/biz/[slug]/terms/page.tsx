@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import { fetchBusiness, getBusinessName, getBusinessContact } from "@/lib/biz-fetch";
+import { cleanBizMetadata } from "@/lib/biz-metadata";
 
 export const revalidate = 60;
 
@@ -11,7 +12,11 @@ export async function generateMetadata({
   const { slug } = await params;
   const biz = await fetchBusiness(slug);
   if (!biz) return { title: "Not Found" };
-  return { title: `Terms of Service | ${getBusinessName(biz)}` };
+  const name = getBusinessName(biz);
+  return cleanBizMetadata({
+    title: `Terms of Service | ${name}`,
+    description: `Terms of service for ${name}, including SMS messaging terms.`,
+  });
 }
 
 export default async function TermsPage({

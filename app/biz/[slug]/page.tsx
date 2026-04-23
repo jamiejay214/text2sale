@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { fetchBusiness, getBusinessName, getBusinessContact } from "@/lib/biz-fetch";
+import { cleanBizMetadata } from "@/lib/biz-metadata";
 
 export const revalidate = 60;
 
@@ -19,12 +20,10 @@ export async function generateMetadata({
     biz.business_description ||
     `${name} is a licensed insurance agency dedicated to helping individuals, families, and businesses find affordable, comprehensive coverage that fits their needs.`;
 
-  return {
+  return cleanBizMetadata({
     title: `${name} | Official Business Page`,
     description,
-    openGraph: { title: name, description, type: "website" },
-    robots: { index: true, follow: true },
-  };
+  });
 }
 
 // Insurance-focused service grid — matches the jjjohnsonhealth.org design.
