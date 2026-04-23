@@ -35,10 +35,11 @@ export default function VerifyPage() {
   }, [router]);
 
   const creditDiscountPreview = useMemo(() => {
-    const base = 100;
+    // Bulk discount: 10% off at $500+.
+    const base = 500;
     const discount = 0.1;
     const final = base - base * discount;
-    return { discountPercent: 10, final };
+    return { discountPercent: 10, final, threshold: base };
   }, []);
 
   const persistProfile = async (updates: Partial<Profile>) => {
@@ -72,14 +73,16 @@ export default function VerifyPage() {
   const handlePurchaseCredits = async (amount: number) => {
     if (!profile) return;
 
-    const discounted = amount >= 100 ? amount * 0.9 : amount;
+    // Bulk discount: 10% off when the top-up is $500+.
+    const qualifies = amount >= 500;
+    const discounted = qualifies ? amount * 0.9 : amount;
 
     const newBalance = Number(profile.wallet_balance) + discounted;
     const entry: import("@/lib/types").UsageHistoryItem = {
       id: crypto.randomUUID(),
       type: "fund_add",
       amount: discounted,
-      description: `Purchased $${amount} in credits${amount >= 100 ? " (10% discount)" : ""}`,
+      description: `Purchased $${amount} in credits${qualifies ? " (10% discount)" : ""}`,
       createdAt: new Date().toISOString(),
     };
     const newHistory = [...(profile.usage_history || []), entry];
@@ -90,7 +93,7 @@ export default function VerifyPage() {
     });
 
     setMessage(
-      amount >= 100
+      qualifies
         ? `Credits purchased with 10% discount. $${amount} became $${discounted.toFixed(2)}.`
         : `Credits purchased: $${discounted.toFixed(2)}.`
     );
@@ -234,9 +237,9 @@ export default function VerifyPage() {
 
                   <button
                     onClick={() => handlePurchaseCredits(100)}
-                    className="w-full rounded-2xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-left font-medium text-emerald-300 hover:bg-emerald-950/60 transition"
+                    className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-left font-medium text-zinc-200 hover:bg-zinc-700 transition"
                   >
-                    Add $100.00 &rarr; 10% off = $90.00
+                    Add $100.00
                   </button>
 
                   <button
@@ -245,12 +248,19 @@ export default function VerifyPage() {
                   >
                     Add $250.00
                   </button>
+
+                  <button
+                    onClick={() => handlePurchaseCredits(500)}
+                    className="w-full rounded-2xl border border-emerald-800 bg-emerald-950/40 px-4 py-3 text-left font-medium text-emerald-300 hover:bg-emerald-950/60 transition"
+                  >
+                    Add $500.00 &rarr; 10% off = $450.00
+                  </button>
                 </div>
 
                 <div className="mt-4 rounded-2xl border border-zinc-700 bg-zinc-800/40 p-4">
                   <div className="text-sm font-semibold text-zinc-300">Discount Example</div>
                   <div className="mt-2 text-sm text-zinc-400">
-                    $100 in credits gets {creditDiscountPreview.discountPercent}% off, so you only
+                    $500 in credits gets {creditDiscountPreview.discountPercent}% off, so you only
                     pay ${creditDiscountPreview.final.toFixed(2)}.
                   </div>
                 </div>

@@ -347,7 +347,7 @@ export default function HomePage() {
               { icon: "⚡", tint: "fuchsia", title: "Command Palette (⌘K)", body: "Jump anywhere in half a second. 30+ keyboard shortcuts. Fuzzy search across every contact, campaign, and conversation. Feels like Linear, ships with SMS." },
               { icon: "📱", tint: "sky", title: "Multi-Number Routing", body: "Own multiple lines? Color-coded star indicators on every thread show which line sent what. No more wondering what number a lead is texting." },
               { icon: "🛡️", tint: "teal", title: "TCPA + 10DLC Built In", body: "Auto opt-out (STOP), consent logging, opt-in receipts, A2P 10DLC registration workflow — compliance isn't an add-on." },
-              { icon: "💰", tint: "violet", title: "Transparent Pricing", body: "$0.012/text. No long-term contracts. Volume discounts at $100+ and $500+. You'll know your cost-per-lead before you press send." },
+              { icon: "💰", tint: "violet", title: "Transparent Pricing", body: "$0.012/text. No long-term contracts. 10% volume discount at $500+. You'll know your cost-per-lead before you press send." },
             ].map((f) => (
               <div
                 key={f.title}
@@ -526,7 +526,7 @@ export default function HomePage() {
 
           <div className="mx-auto mt-6 max-w-4xl">
             <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-center text-sm text-emerald-200">
-              💰 <span className="font-semibold">Volume discounts:</span> Save 10% on $100+ wallet adds &middot; Save 15% on $500+
+              💰 <span className="font-semibold">Volume discount:</span> Save 10% on $500+ wallet adds
             </div>
           </div>
 

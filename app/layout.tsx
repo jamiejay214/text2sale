@@ -180,7 +180,7 @@ export default async function RootLayout({
         name: "How much does Text2Sale cost?",
         acceptedAnswer: {
           "@type": "Answer",
-          text: "Text2Sale starts at $39.99 per month for full platform access, plus $0.012 per text message sent. Bulk discounts apply: save 10% when you add $100+ to your wallet and 15% off $500+.",
+          text: "Text2Sale starts at $39.99 per month for full platform access, plus $0.012 per text message sent. Save 10% when you add $500+ to your wallet.",
         },
       },
       {

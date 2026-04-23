@@ -2415,8 +2415,8 @@ export default function DashboardPage() {
   }, [userId, currentUser]);
 
   const getDiscount = (amount: number) => {
-    if (amount >= 500) return { percent: 15, discounted: Number((amount * 0.85).toFixed(2)) };
-    if (amount >= 100) return { percent: 10, discounted: Number((amount * 0.9).toFixed(2)) };
+    // Single-tier bulk discount: 10% off at $500+. No discount below.
+    if (amount >= 500) return { percent: 10, discounted: Number((amount * 0.9).toFixed(2)) };
     return { percent: 0, discounted: amount };
   };
 
@@ -5114,7 +5114,7 @@ export default function DashboardPage() {
 
           <div className="mt-6 w-full max-w-3xl rounded-2xl border border-emerald-800/40 bg-emerald-950/20 px-6 py-4 text-center text-emerald-300">
             <span className="text-lg font-semibold">💰 Bulk Discount:</span>
-            <span className="ml-2 text-zinc-300">Save 10% when you add $100+ to your wallet &middot; 15% off $500+</span>
+            <span className="ml-2 text-zinc-300">Save 10% when you add $500+ to your wallet</span>
           </div>
 
           <div className="mt-10 flex items-center gap-3">
@@ -10687,8 +10687,7 @@ export default function DashboardPage() {
                 <div className="mt-5 rounded-2xl border border-emerald-800/40 bg-emerald-950/20 p-4">
                   <div className="text-sm font-semibold text-emerald-300">Bulk Discounts</div>
                   <div className="mt-2 flex gap-4 text-xs text-zinc-400">
-                    <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">$100+ = 10% off</span>
-                    <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">$500+ = 15% off</span>
+                    <span className="rounded-full bg-emerald-900/50 px-3 py-1 text-emerald-300">$500+ = 10% off</span>
                   </div>
                 </div>
 
@@ -12826,7 +12825,7 @@ export default function DashboardPage() {
                   {
                     title: "Add Funds to Your Wallet",
                     description: "In the 💳 Billing tab, scroll down to Add Funds. Choose a preset amount ($20, $50, $100, $250, $500) or enter a custom amount. Minimum is $20. You can also enable Auto Recharge to automatically top up when your balance gets low.",
-                    tip: "Bulk discounts: $100+ gets 10% off, $500+ gets 15% off!",
+                    tip: "Bulk discount: spend $500+ and get 10% off!",
                   },
                   {
                     title: "Register for 10DLC (Required)",
