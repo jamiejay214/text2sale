@@ -13,13 +13,11 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const AI_MESSAGE_COST = 0.025;
 
-// Humanize auto-replies: wait before sending so it doesn't feel bot-instant.
-// Randomized within a window so it's not a suspiciously round number, and
-// timed to sit naturally in the "reading + typing" range a person would take
-// for a short SMS. Only applied for webhook-triggered auto-replies; manual
-// "draft this for me" calls from the dashboard skip the delay.
-const AI_REPLY_DELAY_MIN_MS = 4_000; // 4s
-const AI_REPLY_DELAY_MAX_MS = 6_000; // 6s
+// Humanize auto-replies: wait 5s after the customer's inbound before
+// sending so it doesn't feel bot-instant. Only applied for webhook-
+// triggered auto-replies; manual "draft this for me" calls from the
+// dashboard skip the delay.
+const AI_REPLY_DELAY_MS = 5_000; // 5s flat
 // Tell Vercel this route can legitimately take a while so the platform
 // doesn't kill us mid-think. 60s covers the reply delay + LLM round trip +
 // Telnyx send comfortably.
@@ -160,10 +158,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle();
       preSleepLatestInboundAt = latest?.created_at ?? null;
 
-      const delay =
-        AI_REPLY_DELAY_MIN_MS +
-        Math.floor(Math.random() * (AI_REPLY_DELAY_MAX_MS - AI_REPLY_DELAY_MIN_MS));
-      await new Promise((resolve) => setTimeout(resolve, delay));
+      await new Promise((resolve) => setTimeout(resolve, AI_REPLY_DELAY_MS));
 
       // Did a newer inbound arrive while we slept?
       const { data: latestAfter } = await supabase
