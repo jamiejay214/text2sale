@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
+import { headers } from "next/headers";
+import { isCustomComplianceHost } from "@/lib/custom-domains";
 import "./globals.css";
 
 const META_PIXEL_ID = "959512910266492";
@@ -64,11 +66,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // ─── Schema + tracking suppression on compliance domains ────────────
+  // Custom-domain compliance sites (e.g. northernlegacyia.info) must NOT
+  // advertise themselves as a mass-texting CRM via Schema.org, or MNOs
+  // flag the opt-in page and reject the 10DLC campaign. They also must
+  // NOT load Meta Pixel (carrier reviewers treat 3rd-party tracking on
+  // consent pages as a consent-leak risk). We detect the host per-request
+  // and serve a stripped <head> for those domains.
+  const hdrs = await headers();
+  const host = hdrs.get("host");
+  const isComplianceSite = isCustomComplianceHost(host);
+
   // Schema.org structured data — helps Google show rich results
   const organizationSchema = {
     "@context": "https://schema.org",
@@ -200,25 +213,30 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <head>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
-        />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
-        />
-        {/* Meta Pixel */}
-        <Script id="meta-pixel" strategy="afterInteractive">
-          {`
+        {/* Schema + Meta Pixel ONLY on text2sale.com. Compliance sites
+            (custom domains like northernlegacyia.info) get a clean head
+            so carriers don't flag the opt-in page as a bulk-SMS CRM. */}
+        {!isComplianceSite && (
+          <>
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+            />
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+            />
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+            />
+            <script
+              type="application/ld+json"
+              dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
+            />
+            {/* Meta Pixel */}
+            <Script id="meta-pixel" strategy="afterInteractive">
+              {`
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -229,20 +247,24 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${META_PIXEL_ID}');
 fbq('track', 'PageView');
-          `}
-        </Script>
+              `}
+            </Script>
+          </>
+        )}
       </head>
       <body className="min-h-full bg-background text-foreground">
-        <noscript>
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            height="1"
-            width="1"
-            style={{ display: "none" }}
-            src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
-            alt=""
-          />
-        </noscript>
+        {!isComplianceSite && (
+          <noscript>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              height="1"
+              width="1"
+              style={{ display: "none" }}
+              src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
+              alt=""
+            />
+          </noscript>
+        )}
         {children}
       </body>
     </html>

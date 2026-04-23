@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { CUSTOM_DOMAINS } from "./lib/custom-domains";
 
 // ─── Custom-domain rewrites for per-user 10DLC compliance sites ──────────
 // Each user has a /biz/<slug> page that satisfies Telnyx + TCR brand /
@@ -7,16 +8,15 @@ import type { NextConfig } from "next";
 // /biz/<slug> page when the host matches. URL stays on their domain (no
 // visible redirect) so TCR/Telnyx are happy with the domain match.
 //
+// Domain list lives in lib/custom-domains.ts so app/layout.tsx can read
+// the same set at request time to suppress Text2Sale SaaS schema.org
+// markup on compliance sites (carriers reject opt-in pages tagged as
+// mass-texting CRMs).
+//
 // To add a new custom domain:
 //   1. Add the domain in Vercel → Settings → Domains
 //   2. Point DNS at Vercel (A 76.76.21.21 or CNAME cname.vercel-dns.com)
-//   3. Add a new { domain, slug } entry below and redeploy
-const CUSTOM_DOMAINS: { domain: string; slug: string }[] = [
-  { domain: "jjjohnsonhealth.org",      slug: "jjjohnsonhealth" },
-  { domain: "www.jjjohnsonhealth.org",  slug: "jjjohnsonhealth" },
-  { domain: "northernlegacyia.info",     slug: "northernlegacy" },
-  { domain: "www.northernlegacyia.info", slug: "northernlegacy" },
-];
+//   3. Add a new { domain, slug } entry in lib/custom-domains.ts + redeploy
 
 const nextConfig: NextConfig = {
   async rewrites() {
