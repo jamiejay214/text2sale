@@ -10628,13 +10628,10 @@ export default function DashboardPage() {
                     </div>
                   )}
 
-                  <div className="rounded-2xl bg-zinc-800 p-5">
-                    <div className="text-sm text-zinc-400">Message Cost</div>
-                    <div className="mt-2 text-2xl font-bold">
-                      {formatCurrency(currentUser.plan.messageCost)}
-                    </div>
-                    <div className="mt-2 text-zinc-400">Per outbound text segment</div>
-                  </div>
+                  {/* Message Cost tile removed — per-segment pricing is
+                      internal metering detail we don't surface on billing
+                      anymore. The only number users need to track is their
+                      wallet balance, which ticks down live. */}
                 </div>
               </div>
 
