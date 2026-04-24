@@ -273,8 +273,7 @@ export async function POST(req: NextRequest) {
     // immediately, without scanning every user's profile.
     if (userId) {
       try {
-        const admin = createClient(supabaseUrl, serviceKey);
-        await admin
+        await walletClient
           .from("owned_phone_numbers")
           .upsert(
             { user_id: userId, digits, formatted: display },
@@ -284,6 +283,53 @@ export async function POST(req: NextRequest) {
         // Non-fatal — the fallback path in the webhook still works until
         // the record catches up.
         console.error("[buy-number] owned_phone_numbers upsert failed:", err);
+      }
+    }
+
+    // Append to profiles.owned_numbers + usage_history server-side. These
+    // columns are blocked by the RLS trigger from self-updates, so the
+    // dashboard's previous client-side write was silently rejected — the
+    // user got charged and had a working number on the Telnyx side, but
+    // the Numbers tab on their dashboard stayed empty (which is exactly
+    // what happened to David Brazell). Doing it here with the service
+    // role bypasses the trigger and keeps the display in sync.
+    if (userId) {
+      try {
+        const { data: current } = await walletClient
+          .from("profiles")
+          .select("owned_numbers, usage_history")
+          .eq("id", userId)
+          .single();
+        const currentOwned = Array.isArray(current?.owned_numbers) ? (current!.owned_numbers as Array<Record<string, unknown>>) : [];
+        const currentUsage = Array.isArray(current?.usage_history) ? (current!.usage_history as Array<Record<string, unknown>>) : [];
+        const alreadyListed = currentOwned.some((n) => {
+          const num = typeof n.number === "string" ? n.number.replace(/\D/g, "") : "";
+          return num === digits;
+        });
+        if (!alreadyListed) {
+          const newEntry = {
+            id: orderData.data?.id || `num_${digits}`,
+            number: display,
+            alias: `Sales Line ${currentOwned.length + 1}`,
+          };
+          const usageEntry = {
+            id: `number_${Date.now()}`,
+            type: "number_purchase",
+            amount: NUMBER_PURCHASE_COST,
+            description: `Purchased number ${display}`,
+            createdAt: new Date().toISOString(),
+            status: "succeeded",
+          };
+          await walletClient
+            .from("profiles")
+            .update({
+              owned_numbers: [...currentOwned, newEntry],
+              usage_history: [...currentUsage, usageEntry],
+            })
+            .eq("id", userId);
+        }
+      } catch (err) {
+        console.error("[buy-number] profiles.owned_numbers update failed:", err);
       }
     }
 

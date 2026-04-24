@@ -1333,7 +1333,13 @@ export default function DashboardPage() {
           filter: `id=eq.${userId}`,
         },
         (payload) => {
-          const fresh = Number((payload.new as { wallet_balance?: number })?.wallet_balance) || 0;
+          // Guard against malformed payloads: if REPLICA IDENTITY is not
+          // FULL, wallet_balance can arrive as undefined and flash the
+          // display to $0. Only apply when it's an actual finite number.
+          const raw = (payload.new as { wallet_balance?: number | string | null })?.wallet_balance;
+          if (raw === undefined || raw === null) return;
+          const fresh = Number(raw);
+          if (!Number.isFinite(fresh)) return;
           setCurrentUser((prev) => {
             if (!prev || prev.walletBalance === fresh) return prev;
             return { ...prev, walletBalance: fresh };
@@ -1342,9 +1348,11 @@ export default function DashboardPage() {
       )
       .subscribe();
 
-    // Was 2s — too aggressive, was causing ERR_INSUFFICIENT_RESOURCES in
-    // Chrome when combined with the 7 realtime channels. Realtime already
-    // fires on every wallet change; this poll is only a backstop.
+    // 5s polling backstop so the wallet card visibly ticks down during a
+    // campaign send even when Supabase realtime misses an event (flaky
+    // network, REPLICA IDENTITY surprises, etc.). Campaigns decrement per
+    // 100-message chunk so the balance updates every few seconds on a
+    // running send — polling at 5s is what makes that feel live.
     const interval = window.setInterval(async () => {
       const { data } = await supabase
         .from("profiles")
@@ -1352,13 +1360,14 @@ export default function DashboardPage() {
         .eq("id", userId)
         .single();
       if (data) {
-        const fresh = Number(data.wallet_balance) || 0;
+        const fresh = Number(data.wallet_balance);
+        if (!Number.isFinite(fresh)) return;
         setCurrentUser((prev) => {
           if (!prev || prev.walletBalance === fresh) return prev;
           return { ...prev, walletBalance: fresh };
         });
       }
-    }, 15000);
+    }, 5000);
     return () => {
       window.clearInterval(interval);
       supabase.removeChannel(channel);
@@ -3535,29 +3544,13 @@ export default function DashboardPage() {
         return;
       }
 
-      const newNumber: OwnedNumber = {
-        id: data.sid || `num_${Date.now()}`,
-        number: data.number,
-        alias: `Sales Line ${((currentUser.ownedNumbers?.length || 0) + 1).toString()}`,
-      };
-
-      const purchaseEntry: UsageHistoryItem = {
-        id: `number_${Date.now()}`, type: "number_purchase", amount: data.charged ?? 1.5,
-        description: `Purchased number ${data.number}`,
-        createdAt: new Date().toISOString(), status: "succeeded",
-      };
-
-      // wallet_balance is charged server-side inside /api/buy-number (the
-      // RLS trigger blocks self-modification, and the client-side version
-      // was silently failing anyway). Use the authoritative balance from
-      // the API response here so the UI shows the real post-charge amount.
-      await persistProfile({
-        owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
-        usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
-      });
-      if (typeof data.walletBalance === "number") {
-        setCurrentUser((prev) => prev ? { ...prev, walletBalance: data.walletBalance } : prev);
-      }
+      // Everything persists server-side inside /api/buy-number — wallet
+      // charge, owned_numbers, usage_history are all blocked from self-
+      // updates by the profiles RLS trigger, so the route does them with
+      // the service role. Here we just refetch the profile so the UI
+      // shows the new number + balance.
+      const refreshed = await fetchProfile(userId);
+      if (refreshed) setCurrentUser(profileToAccount(refreshed));
 
       // Remove purchased number from available list
       setAvailableNumbers((prev) => prev.filter((n) => n.raw !== phoneNumber));
@@ -10678,21 +10671,11 @@ export default function DashboardPage() {
                 <div className="mt-4 text-5xl font-bold text-green-400">
                   {formatCurrency(currentUser.walletBalance || 0)}
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  <div className="rounded-2xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Messages Available</div>
-                    <div className="mt-1 text-2xl font-bold text-violet-400">
-                      {Math.floor((currentUser.walletBalance || 0) / (currentUser.plan.messageCost || 0.012)).toLocaleString()}
-                    </div>
-                  </div>
-                  <div className="rounded-2xl bg-zinc-800 p-4">
-                    <div className="text-xs text-zinc-500">Cost Per Message</div>
-                    <div className="mt-1 text-2xl font-bold">
-                      {formatCurrency(currentUser.plan.messageCost)}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 text-xs text-zinc-500">
+                {/* Messages-available + cost-per-message breakdown removed
+                    by request — users only need to see the live balance
+                    ticking down. The wallet auto-refreshes every 10s so
+                    campaign + conversation sends show up in near-realtime. */}
+                <div className="mt-4 text-xs text-zinc-500">
                   Your balance decreases automatically as messages are sent from campaigns and conversations.
                 </div>
               </div>
