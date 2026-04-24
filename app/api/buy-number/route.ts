@@ -235,10 +235,34 @@ export async function POST(req: NextRequest) {
       }),
     });
 
-    const orderData = await orderRes.json();
+    const orderData = await orderRes.json().catch(() => ({}));
 
-    if (orderData.errors) {
-      const errMsg = orderData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
+    // Treat ANY of these as a failed order (and trigger a wallet refund):
+    //   - HTTP non-2xx
+    //   - explicit top-level `errors` array (standard Telnyx error shape)
+    //   - top-level `error` field (occasional non-standard shape, seen on
+    //     some billing errors like "Not enough credit for the order")
+    //   - an order document whose status is not "pending" / "success"
+    //
+    // The prior version only checked `orderData.errors`, so a 402-ish
+    // billing failure could slip past the guard — the user got charged
+    // $1.50, no number was issued, and no refund fired. That's how David
+    // lost $3 in this session to two failed attempts.
+    const orderErrors = Array.isArray(orderData?.errors) ? orderData.errors as Array<{ detail?: string; title?: string }> : [];
+    const topLevelError = typeof orderData?.error === "string" ? orderData.error : null;
+    const orderStatus = (orderData?.data as { status?: string } | undefined)?.status;
+    const orderFailed =
+      !orderRes.ok ||
+      orderErrors.length > 0 ||
+      !!topLevelError ||
+      (orderStatus && !["pending", "success", "complete", "completed"].includes(orderStatus));
+
+    if (orderFailed) {
+      const errMsg =
+        orderErrors.map((e) => e.detail || e.title).filter(Boolean).join(", ") ||
+        topLevelError ||
+        `Telnyx order failed (HTTP ${orderRes.status}${orderStatus ? `, status: ${orderStatus}` : ""})`;
+      console.error("[buy-number] order failed, refunding:", errMsg, JSON.stringify(orderData).slice(0, 500));
       return refundAndFail(errMsg);
     }
 
