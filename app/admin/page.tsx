@@ -51,6 +51,8 @@ type AccountRecord = {
   stripeSubscriptionId?: string | null;
   totalDeposited?: number;
   contactCount?: number;
+  customDomain?: string | null;
+  businessSlug?: string | null;
 };
 
 type CampaignRecord = {
@@ -112,6 +114,8 @@ function profileToAccount(p: Profile): AccountRecord {
     stripeCustomerId: p.stripe_customer_id,
     stripeSubscriptionId: p.stripe_subscription_id,
     totalDeposited: p.total_deposited || 0,
+    customDomain: (p as unknown as { custom_domain?: string | null }).custom_domain ?? null,
+    businessSlug: (p as unknown as { business_slug?: string | null }).business_slug ?? null,
   };
 }
 
@@ -827,6 +831,67 @@ export default function AdminPage() {
               : "";
       setMessage(`✅ Moved to ${label}${suffix}`);
       window.setTimeout(() => setMessage(""), 5000);
+    } catch (err) {
+      setMessage(`❌ ${err instanceof Error ? err.message : "Network error"}`);
+      window.setTimeout(() => setMessage(""), 4000);
+    }
+  };
+
+  // Buy a custom TLD (like jjjohnsonhealth.org) for this user through
+  // Vercel's Domains API. WHOIS info is pulled from their a2p_registration
+  // on the server — admin just clicks "Buy Domain" and we:
+  //   1. generate candidates from the business name (northernlegacyins.com,
+  //      northernlegacyins.info, …)
+  //   2. probe Vercel for the first affordable available one
+  //   3. purchase it (~$12/yr on the company Vercel billing profile)
+  //   4. attach it to this Vercel project and save custom_domain on their
+  //      profile — middleware.ts then routes it to /biz/<slug> within ~1min
+  // "Preview" mode runs the probe without buying so we can show the admin
+  // the candidate + price before spending.
+  const purchaseDomain = async (id: string, mode: "preview" | "buy") => {
+    const acct = accounts.find((a) => a.id === id);
+    if (!acct) return;
+    if (mode === "buy" && acct.customDomain) {
+      setMessage(`${acct.firstName} already has ${acct.customDomain}.`);
+      window.setTimeout(() => setMessage(""), 2500);
+      return;
+    }
+    if (mode === "buy") {
+      const ok = window.confirm(
+        `Buy a custom domain for ${acct.firstName} ${acct.lastName}?\n\n` +
+          `We'll pick the first affordable available domain from their ` +
+          `business name and charge the company Vercel account (~$12/yr). ` +
+          `This cannot be undone.`
+      );
+      if (!ok) return;
+    }
+    setMessage(mode === "buy" ? "Purchasing domain…" : "Checking availability…");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) { setMessage("❌ Session expired. Re-login."); return; }
+
+    try {
+      const res = await fetch("/api/admin/purchase-domain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ userId: id, dryRun: mode === "preview" }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        setMessage(`❌ ${result.error || "Domain purchase failed"}`);
+        window.setTimeout(() => setMessage(""), 5000);
+        return;
+      }
+      if (mode === "preview") {
+        setMessage(`💡 Available: ${result.domain} — $${result.price}/yr. Click Buy to purchase.`);
+        window.setTimeout(() => setMessage(""), 6000);
+        return;
+      }
+      await refreshAccount(id);
+      const suffix = result.attachError ? ` (attach failed: ${result.attachError})` : "";
+      setMessage(`✅ Bought ${result.domain} — live in ~60s${suffix}`);
+      window.setTimeout(() => setMessage(""), 6000);
     } catch (err) {
       setMessage(`❌ ${err instanceof Error ? err.message : "Network error"}`);
       window.setTimeout(() => setMessage(""), 4000);
@@ -2003,6 +2068,54 @@ export default function AdminPage() {
                         {selectedAccount.aiPlan ? "✓ " : ""}AI · $59.99
                       </button>
                     </div>
+                  </div>
+
+                  {/* Custom domain — buy a real TLD for the user on Vercel.
+                      WHOIS uses their a2p_registration info. Middleware
+                      picks up the new custom_domain on the next request; no
+                      redeploy needed. */}
+                  <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="text-sm font-medium text-white">
+                          Custom Domain
+                          {selectedAccount.customDomain ? (
+                            <span className="ml-2 rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-semibold text-emerald-300">
+                              {selectedAccount.customDomain}
+                            </span>
+                          ) : (
+                            <span className="ml-2 rounded-full bg-zinc-900 px-2.5 py-0.5 text-[10px] font-semibold text-zinc-400">
+                              NONE
+                            </span>
+                          )}
+                        </div>
+                        <div className="mt-1 text-xs text-zinc-400">
+                          {selectedAccount.customDomain
+                            ? `Compliance pages live at ${selectedAccount.customDomain}. Auto-renews yearly.`
+                            : selectedAccount.a2pBusinessName
+                              ? `We'll buy a domain like "${selectedAccount.a2pBusinessName.toLowerCase().replace(/\s+/g, "").slice(0, 15)}.com" on Vercel (~$12/yr) and wire it to their /biz page.`
+                              : "User needs to complete 10DLC registration first — we generate the domain from their business name."}
+                        </div>
+                      </div>
+                    </div>
+                    {!selectedAccount.customDomain && (
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => purchaseDomain(selectedAccount.id, "preview")}
+                          disabled={!selectedAccount.a2pBusinessName}
+                          className="rounded-xl bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 ring-1 ring-zinc-700 transition hover:bg-emerald-600/20 hover:text-emerald-300 hover:ring-emerald-500/50 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Preview Candidate
+                        </button>
+                        <button
+                          onClick={() => purchaseDomain(selectedAccount.id, "buy")}
+                          disabled={!selectedAccount.a2pBusinessName}
+                          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Buy Domain
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   {/* AI Plan toggle */}
