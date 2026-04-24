@@ -898,6 +898,42 @@ export default function AdminPage() {
     }
   };
 
+  // Backfill 10DLC campaign assignment for every number in the user's
+  // owned_numbers. Needed for anyone who bought numbers before the Telnyx
+  // endpoint fix — their numbers exist and route inbound correctly but
+  // weren't registered against the approved campaign, which kills
+  // outbound deliverability on every major carrier. Idempotent, safe to
+  // click more than once.
+  const linkNumbersToCampaign = async (id: string) => {
+    setMessage("Linking numbers to 10DLC campaign…");
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) { setMessage("❌ Session expired. Re-login."); return; }
+
+    try {
+      const res = await fetch("/api/admin/link-numbers-to-campaign", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+        body: JSON.stringify({ userId: id }),
+      });
+      const result = await res.json();
+      if (!result.success) {
+        setMessage(`❌ ${result.error || "Failed to link numbers"}`);
+        window.setTimeout(() => setMessage(""), 5000);
+        return;
+      }
+      const failCount = Array.isArray(result.failures) ? result.failures.length : 0;
+      const summary = failCount
+        ? `${result.linked}/${result.total} linked · ${failCount} failed (${result.failures[0].error})`
+        : `All ${result.linked} numbers linked to campaign`;
+      setMessage(`✅ ${summary}`);
+      window.setTimeout(() => setMessage(""), 6000);
+    } catch (err) {
+      setMessage(`❌ ${err instanceof Error ? err.message : "Network error"}`);
+      window.setTimeout(() => setMessage(""), 4000);
+    }
+  };
+
   const toggleFreeAiPlan = async (id: string) => {
     const acct = accounts.find((a) => a.id === id);
     if (!acct) return;
@@ -2117,6 +2153,31 @@ export default function AdminPage() {
                       </div>
                     )}
                   </div>
+
+                  {/* 10DLC campaign backfill — use when a user has
+                      numbers on the dashboard but they aren't linked to
+                      their approved Telnyx campaign. Runs the corrected
+                      assignment for every number in their owned_numbers.
+                      Idempotent. */}
+                  {(selectedAccount.ownedNumbers?.length || 0) > 0 &&
+                    (selectedAccount.a2pStatus === "completed" ||
+                      selectedAccount.a2pStatus === "campaign_approved") && (
+                      <div className="rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">
+                        <div className="text-sm font-medium text-white">10DLC Numbers</div>
+                        <div className="mt-1 text-xs text-zinc-400">
+                          Re-link all {selectedAccount.ownedNumbers?.length || 0} owned number
+                          {(selectedAccount.ownedNumbers?.length || 0) === 1 ? "" : "s"} to their
+                          approved Telnyx campaign. Fixes deliverability on accounts bought
+                          before the endpoint was corrected. Safe to click multiple times.
+                        </div>
+                        <button
+                          onClick={() => linkNumbersToCampaign(selectedAccount.id)}
+                          className="mt-3 rounded-xl bg-amber-600 px-3 py-2 text-xs font-semibold text-white transition hover:bg-amber-500"
+                        >
+                          Link Numbers to Campaign
+                        </button>
+                      </div>
+                    )}
 
                   {/* AI Plan toggle */}
                   <div className="flex items-center justify-between rounded-2xl border border-zinc-700 bg-zinc-800/50 px-5 py-4">

@@ -102,28 +102,42 @@ async function configureVoiceOnNumber(e164: string) {
   return { ok: true as const };
 }
 
-async function assignNumberToCampaign(e164: string, campaignId: string) {
-  // Telnyx phone_number_campaigns — associate a number with an approved 10DLC campaign.
-  // Retry a few times because Telnyx may not register the new order for a few seconds.
+export async function assignNumberToCampaign(e164: string, campaignId: string) {
+  // Associate a phone number with an approved 10DLC campaign on Telnyx.
+  // We used to POST to /v2/10dlc/phone_number_campaigns with camelCase
+  // fields — that's the LEGACY endpoint, which Telnyx silently rejects
+  // on accounts provisioned after the TCR migration. The current
+  // endpoint is /v2/phone_number_campaigns with snake_case body. That's
+  // why David's 6 numbers ended up on the dashboard but never linked to
+  // his Northern Legacy campaign on Telnyx.
+  //
+  // Retry a few times because Telnyx sometimes hasn't indexed a
+  // brand-new order yet (the number exists in the order response but
+  // isn't yet assignable for 1-3 seconds).
   for (let attempt = 0; attempt < 4; attempt++) {
     if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch("https://api.telnyx.com/v2/10dlc/phone_number_campaigns", {
+    const res = await fetch("https://api.telnyx.com/v2/phone_number_campaigns", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ phoneNumber: e164, campaignId }),
+      body: JSON.stringify({ phone_number: e164, campaign_id: campaignId }),
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok && !data?.errors) {
       return { assigned: true as const };
     }
-    // Only retry on "number not found" / provisioning errors; other errors fail fast.
     const detail = Array.isArray(data?.errors)
       ? data.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title || "").join(", ")
-      : "";
-    const transient = /not found|provisioning|does not exist/i.test(detail);
+      : typeof data?.error === "string"
+        ? data.error
+        : "";
+    // "already assigned" is fine — idempotent success.
+    if (/already/i.test(detail) && /assigned|exists/i.test(detail)) {
+      return { assigned: true as const };
+    }
+    const transient = /not found|provisioning|does not exist|not yet/i.test(detail);
     if (!transient) {
       return { assigned: false as const, error: detail || `HTTP ${res.status}` };
     }
