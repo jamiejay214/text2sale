@@ -21,6 +21,13 @@ const voiceAppId =
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
+// Per-number purchase fee deducted from the user's wallet. Matches the
+// $1.50 advertised in the dashboard "Buy" button + help text. Keep this in
+// sync with app/dashboard/page.tsx if it ever changes. The Telnyx side
+// charges ~$1/mo per local number on our billing account; the extra covers
+// our overhead.
+const NUMBER_PURCHASE_COST = 1.5;
+
 // ─── Configure new number for voice + HD voice ───────────────────────────
 // Telnyx provisions numbers in a couple of seconds. Once the number is
 // live, we PATCH its voice settings to:
@@ -134,6 +141,42 @@ export async function POST(req: NextRequest) {
     if (forbid) return forbid;
     const userId = auth.user.id;
 
+    // ── Charge the user's wallet BEFORE hitting Telnyx ─────────────────────
+    // Reserve the $1.50 fee up front so we can't ship them a number they
+    // didn't pay for. The RPC atomically decrements wallet_balance and
+    // returns NULL if they don't have enough — which we then surface as a
+    // 402 instead of silently ordering a number. If the Telnyx call fails
+    // later in this handler, we call credit_wallet to refund the hold.
+    const walletClient = createClient(supabaseUrl, serviceKey);
+    const { data: newBalance, error: decErr } = await walletClient.rpc(
+      "decrement_wallet",
+      { p_user_id: userId, p_amount: NUMBER_PURCHASE_COST }
+    );
+    if (decErr || newBalance === null) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Insufficient wallet balance — need $${NUMBER_PURCHASE_COST.toFixed(2)} to buy a number.`,
+        },
+        { status: 402 }
+      );
+    }
+
+    // Helper so every early-exit below refunds the charge.
+    const refundAndFail = async (message: string, status = 500) => {
+      try {
+        await walletClient.rpc("credit_wallet", {
+          p_user_id: userId,
+          p_amount: NUMBER_PURCHASE_COST,
+          p_idempotency_key: null,
+          p_description: `Refund — buy-number failed: ${message.slice(0, 80)}`,
+        });
+      } catch (e) {
+        console.error("[buy-number] refund failed — manual reconciliation needed:", e);
+      }
+      return NextResponse.json({ success: false, error: message }, { status });
+    };
+
     let numberToBuy: string;
 
     if (phoneNumber) {
@@ -170,9 +213,9 @@ export async function POST(req: NextRequest) {
       });
 
       if (candidates.length === 0) {
-        return NextResponse.json(
-          { success: false, error: "No SMS + voice numbers available. Try a different area code." },
-          { status: 404 }
+        return refundAndFail(
+          "No SMS + voice numbers available. Try a different area code.",
+          404
         );
       }
 
@@ -196,7 +239,7 @@ export async function POST(req: NextRequest) {
 
     if (orderData.errors) {
       const errMsg = orderData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
-      return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
+      return refundAndFail(errMsg);
     }
 
     // Format for display
@@ -281,6 +324,10 @@ export async function POST(req: NextRequest) {
       campaignId: assignment.campaignId || null,
       voiceConfigStatus,
       voiceConfigDetail,
+      // Post-charge wallet balance so the dashboard can update its display
+      // without a separate profile refetch.
+      walletBalance: Number(newBalance),
+      charged: NUMBER_PURCHASE_COST,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";

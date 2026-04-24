@@ -3542,16 +3542,22 @@ export default function DashboardPage() {
       };
 
       const purchaseEntry: UsageHistoryItem = {
-        id: `number_${Date.now()}`, type: "number_purchase", amount: 1.5,
+        id: `number_${Date.now()}`, type: "number_purchase", amount: data.charged ?? 1.5,
         description: `Purchased number ${data.number}`,
         createdAt: new Date().toISOString(), status: "succeeded",
       };
 
+      // wallet_balance is charged server-side inside /api/buy-number (the
+      // RLS trigger blocks self-modification, and the client-side version
+      // was silently failing anyway). Use the authoritative balance from
+      // the API response here so the UI shows the real post-charge amount.
       await persistProfile({
-        wallet_balance: Number((walletBalance - 1.5).toFixed(2)),
         owned_numbers: addOwnedNumber(currentUser.ownedNumbers || [], newNumber),
         usage_history: addUsageEntry(currentUser.usageHistory || [], purchaseEntry),
       });
+      if (typeof data.walletBalance === "number") {
+        setCurrentUser((prev) => prev ? { ...prev, walletBalance: data.walletBalance } : prev);
+      }
 
       // Remove purchased number from available list
       setAvailableNumbers((prev) => prev.filter((n) => n.raw !== phoneNumber));

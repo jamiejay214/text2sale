@@ -156,6 +156,31 @@ export async function POST(req: NextRequest) {
 
     console.log("Telnyx send OK:", data.data?.id, "from:", fromE164, "to:", toE164);
 
+    // ── Charge the wallet for this 1:1 message ────────────────────────────
+    // Campaigns already decrement via send-campaign; this is the matching
+    // path for ad-hoc replies/DMs from the conversation view. We charge
+    // AFTER a successful Telnyx accept so a rejected send doesn't bill the
+    // user. messageCost comes from the profile's plan shape (default
+    // $0.012 — matches the Standard/AI plan rate). Decrement is
+    // best-effort: a failed RPC (e.g. zero balance) is logged but doesn't
+    // fail the send since Telnyx has already queued it. The real hard gate
+    // on zero-balance senders is the campaign loop + auto-recharge cron.
+    try {
+      const { data: planRow } = await adminSupabase
+        .from("profiles")
+        .select("plan")
+        .eq("id", userId)
+        .single();
+      const planObj = (planRow?.plan as Record<string, unknown> | null) || null;
+      const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
+      await adminSupabase.rpc("decrement_wallet", {
+        p_user_id: userId,
+        p_amount: messageCost,
+      });
+    } catch (e) {
+      console.error("[send-sms] wallet decrement failed:", e);
+    }
+
     return NextResponse.json({
       success: true,
       sid: data.data?.id || "",
