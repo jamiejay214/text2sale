@@ -4,43 +4,53 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://text2sale.com";
   const today = new Date();
 
+  const corePages = [
+    { path: "", priority: 1.0 },
+    { path: "/mass-texting-crm", priority: 0.9 },
+    { path: "/ai-texting-crm", priority: 0.9 },
+    { path: "/sms-crm-for-insurance-agents", priority: 0.9 },
+    { path: "/bulk-sms-software", priority: 0.85 },
+    { path: "/10dlc-compliant-texting", priority: 0.85 },
+  ];
+
+  const comparisonPages = [
+    "/text2sale-vs-onlysales",
+    "/text2sale-vs-textdrip",
+    "/text2sale-vs-salesmsg",
+    "/text2sale-vs-gohighlevel",
+    "/text2sale-vs-twilio",
+    "/best-onlysales-alternative",
+    "/best-textdrip-alternative",
+  ];
+
+  const nichePages = [
+    "/health-insurance-texting-crm",
+    "/life-insurance-texting-crm",
+    "/final-expense-texting-crm",
+    "/medicare-agent-texting-crm",
+    "/recruiting-texting-crm",
+    "/sales-team-texting-crm",
+  ];
+
   return [
-    {
-      url: baseUrl,
+    ...corePages.map((page) => ({
+      url: `${baseUrl}${page.path}`,
       lastModified: today,
-      changeFrequency: "weekly",
-      priority: 1.0,
-    },
-    {
-      url: `${baseUrl}/mass-texting-crm`,
+      changeFrequency: "weekly" as const,
+      priority: page.priority,
+    })),
+    ...comparisonPages.map((path) => ({
+      url: `${baseUrl}${path}`,
       lastModified: today,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/ai-texting-crm`,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    })),
+    ...nichePages.map((path) => ({
+      url: `${baseUrl}${path}`,
       lastModified: today,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/sms-crm-for-insurance-agents`,
-      lastModified: today,
-      changeFrequency: "weekly",
-      priority: 0.9,
-    },
-    {
-      url: `${baseUrl}/bulk-sms-software`,
-      lastModified: today,
-      changeFrequency: "weekly",
-      priority: 0.85,
-    },
-    {
-      url: `${baseUrl}/10dlc-compliant-texting`,
-      lastModified: today,
-      changeFrequency: "weekly",
-      priority: 0.85,
-    },
+      changeFrequency: "weekly" as const,
+      priority: 0.82,
+    })),
     {
       url: `${baseUrl}/privacy-policy`,
       lastModified: today,
