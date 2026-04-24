@@ -183,12 +183,14 @@ export async function POST(req: NextRequest) {
       // User selected a specific number
       numberToBuy = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber.replace(/\D/g, "")}`;
     } else {
-      // Search for first available — require SMS + voice server-side, then
-      // client-filter for HD voice so every number we sell can text, call,
-      // and stream crisp wideband audio over browser WebRTC.
+      // Search for first available — SMS-only. We used to require sms+voice
+      // + HD voice so browser calling worked, but voice-capable locals cost
+      // nearly 2x on Telnyx and nobody's using the click-to-call feature
+      // yet. SMS-only local numbers are cheaper and available in more area
+      // codes, which is what this app actually sells.
       const params = new URLSearchParams({
         "filter[country_code]": "US",
-        "filter[features]": "sms,voice",
+        "filter[features]": "sms",
         "filter[phone_number_type]": "local",
         "filter[limit]": "40",
       });
@@ -201,20 +203,20 @@ export async function POST(req: NextRequest) {
       });
       const searchData = await searchRes.json();
 
-      // HD voice isn't a server-side filter on Telnyx — we enable it via
-      // PATCH right after purchase. Here we only need sms + voice.
+      // SMS-only filter — voice capability is no longer required since the
+      // click-to-call feature is gated off.
       type ApiFeature = string | { name?: string };
       type ApiNumber = { phone_number: string; features?: ApiFeature[] };
       const candidates = ((searchData?.data as ApiNumber[] | undefined) || []).filter((n) => {
         const feats = (n.features || []).map((f: ApiFeature) =>
           (typeof f === "string" ? f : f?.name || "").toLowerCase()
         );
-        return feats.includes("sms") && feats.includes("voice");
+        return feats.includes("sms");
       });
 
       if (candidates.length === 0) {
         return refundAndFail(
-          "No SMS + voice numbers available. Try a different area code.",
+          "No SMS numbers available. Try a different area code.",
           404
         );
       }
@@ -270,27 +272,12 @@ export async function POST(req: NextRequest) {
     const digits = numberToBuy.replace(/\D/g, "").slice(1); // remove + and country code
     const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 
-    // Assign the new number to our Voice API app + enable HD voice.
-    // AWAITED now (used to be fire-and-forget) so the number is actually
-    // ready to place/receive calls by the time we return success. Without
-    // this, users who call immediately after purchase hit a Telnyx
-    // "connection not found" rejection and see "Call ended 00:00".
-    let voiceConfigStatus: "ok" | "failed" | "skipped" = "skipped";
-    let voiceConfigDetail: string | null = null;
-    try {
-      const r = await configureVoiceOnNumber(numberToBuy);
-      if (r.ok) {
-        voiceConfigStatus = "ok";
-      } else {
-        voiceConfigStatus = "failed";
-        voiceConfigDetail = `${r.reason}${"detail" in r && r.detail ? ` — ${r.detail}` : ""}`;
-        console.warn(`[buy-number] voice config failed for ${numberToBuy}: ${voiceConfigDetail}`);
-      }
-    } catch (err) {
-      voiceConfigStatus = "failed";
-      voiceConfigDetail = err instanceof Error ? err.message : "unknown";
-      console.warn(`[buy-number] voice config threw for ${numberToBuy}:`, err);
-    }
+    // Voice / HD voice provisioning intentionally skipped — this app
+    // sells SMS-only numbers. configureVoiceOnNumber() is still in the
+    // file in case we reintroduce click-to-call later, but the call site
+    // is removed so we don't pay for voice features nobody uses.
+    const voiceConfigStatus: "ok" | "failed" | "skipped" = "skipped";
+    const voiceConfigDetail: string | null = null;
 
     // Register the number in owned_phone_numbers so inbound SMS routing
     // (and anything else that needs a fast "who owns this?" lookup) finds it
