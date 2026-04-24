@@ -10709,13 +10709,16 @@ export default function DashboardPage() {
                   >
                     $50
                   </button>
+                  {/* $100 and $250 used to show fake "Pay $X — Save $Y"
+                      badges, but getDiscount only actually applies 10% off
+                      at $500+. Only $500 shows the discount badge now so
+                      the UI matches what actually gets charged. */}
                   <button
                     onClick={() => handleAddFunds(100)}
                     disabled={!isSubscribed}
-                    className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>$100</span>
-                    <span className="text-[10px] text-emerald-400">Pay $90</span>
+                    $100
                   </button>
                 </div>
 
@@ -10723,10 +10726,9 @@ export default function DashboardPage() {
                   <button
                     onClick={() => handleAddFunds(250)}
                     disabled={!isSubscribed}
-                    className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="rounded-2xl border border-zinc-700 px-4 py-4 font-medium hover:bg-zinc-800 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>$250</span>
-                    <span className="text-[10px] text-emerald-400">Pay $225 — Save $25</span>
+                    $250
                   </button>
                   <button
                     onClick={() => handleAddFunds(500)}
@@ -10734,7 +10736,7 @@ export default function DashboardPage() {
                     className="flex flex-col items-center rounded-2xl border border-emerald-700/50 bg-emerald-950/20 px-4 py-4 font-medium hover:bg-emerald-900/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <span>$500</span>
-                    <span className="text-[10px] text-emerald-400">Pay $425 — Save $75</span>
+                    <span className="text-[10px] text-emerald-400">Pay $450 — Save $50</span>
                   </button>
                 </div>
 
