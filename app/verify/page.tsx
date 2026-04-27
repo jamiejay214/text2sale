@@ -14,6 +14,12 @@ export default function VerifyPage() {
   const [einFileName, setEinFileName] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(true);
+  // emailConfirmedAt = null means they signed up but never clicked the
+  // confirmation link in the email Supabase sent. We show a "verify
+  // your email" banner + resend button at the top in that case.
+  const [emailConfirmedAt, setEmailConfirmedAt] = useState<string | null>(null);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [userEmail, setUserEmail] = useState("");
 
   useEffect(() => {
     (async () => {
@@ -22,6 +28,9 @@ export default function VerifyPage() {
         router.push("/");
         return;
       }
+
+      setEmailConfirmedAt(session.user.email_confirmed_at || null);
+      setUserEmail(session.user.email || "");
 
       const p = await fetchProfile(session.user.id);
       if (!p) {
@@ -33,6 +42,30 @@ export default function VerifyPage() {
       setLoading(false);
     })();
   }, [router]);
+
+  // Trigger Supabase to resend the signup confirmation email. Rate-limited
+  // by Supabase (~once per minute per user) — if they spam the button
+  // Supabase returns a 429 which we surface in the message bar.
+  const handleResendConfirmation = async () => {
+    if (!userEmail) return;
+    setResendingEmail(true);
+    setMessage("");
+    try {
+      const { error } = await supabase.auth.resend({
+        type: "signup",
+        email: userEmail,
+      });
+      if (error) {
+        setMessage(`❌ ${error.message}`);
+      } else {
+        setMessage(`✅ Confirmation email sent to ${userEmail}. Check your inbox (and spam folder).`);
+      }
+    } catch (err) {
+      setMessage(`❌ ${err instanceof Error ? err.message : "Could not resend"}`);
+    } finally {
+      setResendingEmail(false);
+    }
+  };
 
   const creditDiscountPreview = useMemo(() => {
     // Bulk discount: 10% off at $500+.
@@ -130,12 +163,59 @@ export default function VerifyPage() {
             </button>
             <button
               onClick={() => router.push("/dashboard")}
-              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition"
+              disabled={!emailConfirmedAt}
+              className="rounded-xl bg-violet-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-violet-700 transition disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500"
+              title={!emailConfirmedAt ? "Verify your email first" : "Go to dashboard"}
             >
               Go to Dashboard
             </button>
           </div>
         </div>
+
+        {/* Email-verification banner — shows up top whenever the user
+            hasn't clicked the Supabase confirmation link yet. Without
+            this, anyone could sign up with a junk email and burn 10DLC
+            registration attempts / Stripe charges on a fake address. */}
+        {!emailConfirmedAt && (
+          <div className="mb-8 rounded-3xl border border-amber-700/60 bg-amber-950/30 p-6">
+            <div className="flex items-start gap-4">
+              <div className="text-3xl">📧</div>
+              <div className="flex-1">
+                <div className="text-lg font-semibold text-amber-200">Verify your email to continue</div>
+                <div className="mt-1 text-sm text-amber-100/80">
+                  We sent a confirmation link to <strong className="text-white">{userEmail}</strong>. Click it to unlock your dashboard.
+                  Don&apos;t see it? Check spam, or resend below.
+                </div>
+                <div className="mt-4 flex flex-wrap gap-3">
+                  <button
+                    onClick={handleResendConfirmation}
+                    disabled={resendingEmail}
+                    className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-500 disabled:opacity-50"
+                  >
+                    {resendingEmail ? "Sending…" : "Resend confirmation email"}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      // Force a session refresh — Supabase populates
+                      // email_confirmed_at on the session once the user
+                      // clicks the link, but only after the next refresh.
+                      const { data } = await supabase.auth.refreshSession();
+                      setEmailConfirmedAt(data.user?.email_confirmed_at || null);
+                      if (data.user?.email_confirmed_at) {
+                        setMessage("✅ Email verified — you can now go to the dashboard.");
+                      } else {
+                        setMessage("Still waiting on the click. Check your inbox.");
+                      }
+                    }}
+                    className="rounded-xl border border-amber-700/60 bg-transparent px-4 py-2 text-sm font-semibold text-amber-200 hover:bg-amber-900/30"
+                  >
+                    I clicked the link — refresh
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="grid gap-8 lg:grid-cols-[1fr_0.9fr]">
           {/* Left column — Info + EIN */}

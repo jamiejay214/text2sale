@@ -838,6 +838,12 @@ export default function DashboardPage() {
     businessName: "", businessType: "llc" as "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit",
     ein: "", businessAddress: "", businessCity: "", businessState: "", businessZip: "", businessCountry: "US",
     website: "", hasWebsite: "yes" as "yes" | "no", buildPage: false, businessDescription: "",
+    // Custom TLD the user owns (e.g. "northernlegacyia.info"). Saved to
+    // profiles.custom_domain so middleware routes it to /biz/<slug>. Lets
+    // them serve the auto-built compliance page from THEIR own brand
+    // instead of a text2sale.com/biz/X subdomain — MNOs are far more
+    // likely to approve campaigns hosted on a real owned TLD.
+    customDomain: "",
     contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
     useCase: "MIXED", description: "", sampleMessage1: "", sampleMessage2: "",
     messageFlow: "End users opt-in by signing up on our website and providing their phone number. They can opt out at any time by replying STOP.",
@@ -884,6 +890,20 @@ export default function DashboardPage() {
       if (!session?.user) {
         router.replace("/");
         return;
+      }
+
+      // Email verification gate — Supabase populates email_confirmed_at
+      // on the auth user once they click the confirmation link. If null,
+      // they signed up but never verified, so we send them to /verify
+      // where they can resend the confirmation email instead of letting
+      // them spend money / hit Stripe / submit 10DLC with a junk address.
+      // Admins are exempt so we don't lock ourselves out during testing.
+      if (!session.user.email_confirmed_at) {
+        const meta = session.user.app_metadata as { role?: string } | undefined;
+        if (meta?.role !== "admin") {
+          router.replace("/verify");
+          return;
+        }
       }
 
       const realUid = session.user.id;
@@ -3177,6 +3197,34 @@ export default function DashboardPage() {
   // 10DLC automated registration via Telnyx
   const handleA2pRegister = async () => {
     if (!currentUser) return;
+
+    // If they don't have a website, they MUST give us their owned TLD —
+    // we no longer offer a text2sale.com/biz/<slug> subdomain because
+    // MNOs reject subdomained compliance pages. Validate the format
+    // before we hit Telnyx (cheap to fail here, expensive to fail at
+    // the brand-registration call).
+    if (a2pForm.hasWebsite === "no") {
+      const domain = a2pForm.customDomain.trim();
+      if (!domain) {
+        setMessage("❌ Enter the domain you bought (e.g. yourbusiness.com) — we no longer offer subdomains.");
+        window.setTimeout(() => setMessage(""), 5000);
+        return;
+      }
+      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain) || domain.includes("text2sale.")) {
+        setMessage("❌ That doesn't look like a valid domain. Use the format yourbusiness.com — no subdomains of text2sale.");
+        window.setTimeout(() => setMessage(""), 5000);
+        return;
+      }
+      // Persist the domain on the profile right away so middleware can
+      // route requests to /biz/<slug> as soon as the user finishes DNS
+      // setup. RLS allows users to update their own custom_domain.
+      try {
+        await supabase.from("profiles").update({ custom_domain: domain }).eq("id", currentUser.id);
+      } catch (err) {
+        console.error("[10DLC] custom_domain save failed:", err);
+      }
+    }
+
     setA2pLoading(true);
     try {
       const res = await authFetch("/api/register-10dlc", {
@@ -3192,10 +3240,20 @@ export default function DashboardPage() {
           businessCity: a2pForm.businessCity,
           businessState: a2pForm.businessState,
           businessZip: a2pForm.businessZip,
-          website: a2pForm.website,
+          // If they entered a custom domain we route Telnyx's "website"
+          // field to it (with https:// prefix) — TCR/MNO bots will load
+          // it during the brand review and check it advertises the same
+          // business name. The auto-built /biz/<slug> page on that
+          // domain handles that.
+          website: a2pForm.hasWebsite === "yes"
+            ? a2pForm.website
+            : a2pForm.customDomain
+              ? `https://${a2pForm.customDomain}`
+              : "",
           hasWebsite: a2pForm.hasWebsite,
-          buildPage: a2pForm.buildPage,
+          buildPage: a2pForm.hasWebsite === "no", // always build when no website
           businessDescription: a2pForm.businessDescription,
+          customDomain: a2pForm.customDomain,
           contactEmail: a2pForm.contactEmail || currentUser.email,
           contactPhone: a2pForm.contactPhone || currentUser.phone,
         }),
@@ -11803,9 +11861,25 @@ export default function DashboardPage() {
                       <option value="llc">LLC</option>
                       <option value="corporation">Corporation</option>
                       <option value="partnership">Partnership</option>
-                      <option value="sole_proprietor">Sole Proprietor</option>
                       <option value="non_profit">Non-Profit</option>
+                      {/* Sole Proprietor is intentionally only shown when the
+                          user has NOT entered an EIN. SP brands are capped at
+                          ~75-200 msgs/day per area code by carriers and TCR
+                          forbids vetting them — picking SP when you have an
+                          EIN is the single biggest deliverability mistake we
+                          see (we just spent debugging time fixing it for two
+                          users). If they have an EIN, force them into
+                          PRIVATE_PROFIT-equivalent options. */}
+                      {!a2pForm.ein.trim() && (
+                        <option value="sole_proprietor">Sole Proprietor (no EIN)</option>
+                      )}
                     </select>
+                    {a2pForm.businessType === "sole_proprietor" && (
+                      <div className="mt-2 rounded-lg border border-amber-800/40 bg-amber-950/20 p-3 text-xs text-amber-200/80">
+                        ⚠️ Sole Proprietor brands are capped at ~75–200 messages/day per area code by carriers and cannot be vetted.
+                        If your business has an EIN, enter it above and pick LLC / Corporation instead — your throughput will be 10x+ higher.
+                      </div>
+                    )}
                   </div>
                   <div className="md:col-span-2">
                     <label className="mb-2 block text-sm text-zinc-400">
@@ -11853,48 +11927,53 @@ export default function DashboardPage() {
                   )}
 
                   {a2pForm.hasWebsite === "no" && (
-                    <div className="md:col-span-2 rounded-2xl border border-violet-800/40 bg-violet-950/20 p-4">
-                      <label className="flex items-start gap-3 cursor-pointer">
+                    <div className="md:col-span-2 space-y-4">
+                      {/* MNOs (the big 3 carriers) reject 10DLC campaigns
+                          hosted on shared subdomains because they look like
+                          generic SaaS landing pages, not real businesses.
+                          We previously offered a text2sale.com/biz/<slug>
+                          subdomain here — that's now removed. The user must
+                          supply their OWN TLD. We auto-build the compliance
+                          content; they just need to point a domain at it. */}
+                      <div className="rounded-2xl border border-violet-800/40 bg-violet-950/20 p-4">
+                        <div className="font-medium text-violet-300">We&apos;ll build your compliance site for free</div>
+                        <p className="mt-1 text-sm text-zinc-400">
+                          We auto-generate a branded business page (homepage, opt-in form, privacy policy, terms) using your business info. Carriers
+                          require this for 10DLC approval — but it must live on a <strong className="text-violet-300">real domain you own</strong>, not
+                          a subdomain. Buy one from <a href="https://www.namecheap.com" target="_blank" rel="noopener noreferrer" className="underline">Namecheap</a> (~$3–12/yr for .info / .com)
+                          or any registrar, then enter it below.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm text-zinc-400">Your custom domain *</label>
                         <input
-                          type="checkbox"
-                          checked={a2pForm.buildPage}
-                          onChange={(e) => setA2pForm({ ...a2pForm, buildPage: e.target.checked })}
-                          className="mt-1 h-5 w-5 flex-shrink-0 accent-violet-600"
+                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                          placeholder="yourbusinessname.com"
+                          value={a2pForm.customDomain}
+                          onChange={(e) => setA2pForm({ ...a2pForm, customDomain: e.target.value.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/$/, "") })}
                         />
-                        <div>
-                          <div className="font-medium text-violet-300">
-                            Build me a free business page
-                          </div>
-                          <div className="mt-1 text-sm text-zinc-400">
-                            We&apos;ll auto-generate a professional business page at{" "}
-                            <code className="rounded bg-zinc-800 px-1.5 py-0.5 text-xs text-violet-300">
-                              text2sale.com/biz/
-                              {a2pForm.businessName
-                                ? a2pForm.businessName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-                                : "your-business"}
-                            </code>{" "}
-                            with your business info, contact details, and SMS opt-in disclosures. Required for 10DLC
-                            approval — takes a few seconds.
-                          </div>
-                        </div>
-                      </label>
-                      {a2pForm.buildPage && (
-                        <div className="mt-4">
-                          <label className="mb-1 block text-sm text-zinc-400">
-                            Short description of your business (optional)
-                          </label>
-                          <textarea
-                            className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                            rows={3}
-                            placeholder="We help families find affordable health insurance plans tailored to their needs..."
-                            value={a2pForm.businessDescription}
-                            onChange={(e) => setA2pForm({ ...a2pForm, businessDescription: e.target.value })}
-                          />
-                          <p className="mt-1 text-xs text-zinc-500">
-                            Leave blank to use a default description. You can edit your page anytime.
-                          </p>
-                        </div>
-                      )}
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Just the domain — no <code className="rounded bg-zinc-800 px-1 text-zinc-400">https://</code> or trailing slashes.
+                          After 10DLC submission we&apos;ll show you the exact DNS records to paste into your registrar.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="mb-1 block text-sm text-zinc-400">
+                          Short description of your business (optional)
+                        </label>
+                        <textarea
+                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
+                          rows={3}
+                          placeholder="We help families find affordable health insurance plans tailored to their needs..."
+                          value={a2pForm.businessDescription}
+                          onChange={(e) => setA2pForm({ ...a2pForm, businessDescription: e.target.value })}
+                        />
+                        <p className="mt-1 text-xs text-zinc-500">
+                          Leave blank to use a default description. You can edit your page anytime.
+                        </p>
+                      </div>
                     </div>
                   )}
                 </div>

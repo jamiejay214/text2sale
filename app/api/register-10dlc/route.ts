@@ -96,17 +96,38 @@ export async function POST(req: NextRequest) {
       const {
         businessName, businessType, ein, businessAddress, businessCity,
         businessState, businessZip, website, contactEmail, contactPhone,
-        hasWebsite, buildPage, businessDescription,
+        hasWebsite, buildPage, businessDescription, customDomain,
       } = body;
 
       if (!ein || !businessName) {
         return NextResponse.json({ success: false, error: "EIN and business name are required" }, { status: 400 });
       }
 
-      // If the user has no website and opted to auto-generate one, create a public biz page
-      // and use that URL for the 10DLC brand registration.
+      // Decide the website URL to register the brand under.
+      //
+      // Three paths:
+      //   1. User has their own existing website → use it as-is
+      //   2. User has no website but bought a TLD they want us to host →
+      //      auto-build the /biz/<slug> compliance page AND save their
+      //      custom_domain so middleware routes their TLD to it. Brand
+      //      registration uses https://<customDomain>.
+      //   3. User has no website and no custom domain → reject. We used
+      //      to fall back to text2sale.com/biz/<slug>, but MNOs reject
+      //      shared-subdomain compliance pages so that path is gone.
       let finalWebsite = website;
-      if (hasWebsite === "no" && buildPage) {
+      const cleanCustomDomain = typeof customDomain === "string"
+        ? customDomain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/$/, "")
+        : "";
+
+      if (hasWebsite === "no") {
+        if (!cleanCustomDomain) {
+          return NextResponse.json(
+            { success: false, error: "A custom domain is required when you don't have a website. Buy one (e.g. yourbusiness.com) and try again." },
+            { status: 400 }
+          );
+        }
+        // Build/refresh the auto-generated /biz/<slug> page that the
+        // custom domain will route to via middleware.
         const base = toSlug(businessName);
         if (!base) {
           return NextResponse.json(
@@ -115,16 +136,25 @@ export async function POST(req: NextRequest) {
           );
         }
         const slug = await getUniqueSlug(supabase, base, userId);
-        const origin = req.headers.get("origin") || "https://text2sale.com";
-        finalWebsite = `${origin.replace(/\/$/, "")}/biz/${slug}`;
+        finalWebsite = `https://${cleanCustomDomain}`;
 
         await supabase
           .from("profiles")
           .update({
             business_slug: slug,
             business_description: businessDescription || null,
+            custom_domain: cleanCustomDomain,
           })
           .eq("id", userId);
+      } else if (buildPage) {
+        // Legacy fallback for existing flows that still pass buildPage:
+        // build the auto-page but DO NOT publish a text2sale.com/biz URL
+        // as the brand's website (MNOs reject those). Without a custom
+        // domain we have nothing safe to register, so error.
+        return NextResponse.json(
+          { success: false, error: "buildPage requires a customDomain — text2sale.com/biz subdomains are no longer accepted by carriers." },
+          { status: 400 }
+        );
       }
 
       const entityType = toEntityType(businessType);
