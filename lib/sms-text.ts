@@ -63,6 +63,33 @@ export function hasNonGsmChars(body: string): boolean {
   return /[^\x00-\x7F]/.test(body);
 }
 
+/**
+ * Count SMS segments for billing. Mirrors how Telnyx (and every carrier)
+ * splits a message:
+ *   • GSM-7 single segment: 160 chars
+ *   • GSM-7 concatenated:    153 chars/segment (7 chars/seg = UDH header)
+ *   • UCS-2 single segment:  70 chars
+ *   • UCS-2 concatenated:    67 chars/segment
+ * We charge messageCost × segments so a 200-char campaign blast (2 GSM-7
+ * segments → Telnyx bills us 2× carrier fees) actually pays for itself.
+ *
+ * NOTE: the send pipeline blocks UCS-2 outright, so in practice this
+ * function will only ever return GSM-7 counts in production. The UCS-2
+ * branch is kept for completeness and so the dashboard preview is honest
+ * if a draft hasn't been sanitized yet.
+ */
+export function countSegments(body: string): number {
+  if (!body) return 0;
+  const len = body.length;
+  const ucs2 = hasNonGsmChars(body);
+  if (ucs2) {
+    if (len <= 70) return 1;
+    return Math.ceil(len / 67);
+  }
+  if (len <= 160) return 1;
+  return Math.ceil(len / 153);
+}
+
 // ------------------------------------------------------------
 // Chain-of-thought / reasoning-leak defense
 // ------------------------------------------------------------

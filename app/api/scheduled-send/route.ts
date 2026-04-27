@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
-import { sanitizeForSms } from "@/lib/sms-text";
+import { sanitizeForSms, countSegments } from "@/lib/sms-text";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header for POST
@@ -161,13 +161,21 @@ export async function GET() {
         const toNumber = normalizePhone(contact.phone);
         const fromNumber = normalizePhone(msg.from_number);
 
+        // Sanitize typographic characters (smart quotes, em-dash, ellipsis)
+        // before Telnyx sees the body. A single curly apostrophe forces
+        // UCS-2 encoding (70 chars/seg instead of 160) and silently doubles
+        // the bill on any drip that was drafted in macOS/iOS.
+        const sanitizedBody = sanitizeForSms(msg.body);
+
         // Debit the wallet atomically BEFORE we actually send so we never
         // over-deliver. If the user's balance is too low, park the message
-        // in 'failed' with a clear reason.
+        // in 'failed' with a clear reason. Charge per segment because a
+        // 200-char drip is 2 GSM-7 segments and Telnyx bills us twice.
         const cost = await getMessageCost(msg.user_id);
+        const segments = Math.max(1, countSegments(sanitizedBody));
         const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
           p_user_id: msg.user_id,
-          p_amount: Number(cost.toFixed(4)),
+          p_amount: Number((cost * segments).toFixed(4)),
         });
         if (decErr || newBal === null) {
           skippedNoFunds++;
@@ -177,12 +185,6 @@ export async function GET() {
             .eq("id", msg.id);
           continue;
         }
-
-        // Sanitize typographic characters (smart quotes, em-dash, ellipsis)
-        // before Telnyx sees the body. A single curly apostrophe forces
-        // UCS-2 encoding (70 chars/seg instead of 160) and silently doubles
-        // the bill on any drip that was drafted in macOS/iOS.
-        const sanitizedBody = sanitizeForSms(msg.body);
 
         // Send via Telnyx (include messaging_profile_id for 10DLC).
         const telnyxPayload: Record<string, string> = {

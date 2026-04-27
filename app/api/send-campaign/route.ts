@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
-import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
+import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
@@ -451,7 +451,13 @@ export async function POST(req: NextRequest) {
 
       // Atomic wallet decrement — safe to call in parallel across chunks
       // because the RPC is SECURITY DEFINER + Postgres row-locked.
-      const chunkCost = Number((chunkSentCount * messageCost).toFixed(4));
+      // Charge per segment so a 200-char personalized message (2 GSM-7
+      // segments → 2× Telnyx carrier fee) actually gets billed for two.
+      const chunkSegments = successful.reduce(
+        (sum, r) => sum + Math.max(1, countSegments(r.personalized)),
+        0
+      );
+      const chunkCost = Number((chunkSegments * messageCost).toFixed(4));
       const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
         p_user_id: userId,
         p_amount: chunkCost,

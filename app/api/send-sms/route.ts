@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
-import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
+import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -188,9 +188,14 @@ export async function POST(req: NextRequest) {
         .single();
       const planObj = (planRow?.plan as Record<string, unknown> | null) || null;
       const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
+      // Charge per segment, not per message. A 200-char reply is 2
+      // GSM-7 segments and Telnyx bills us twice; charging once would
+      // erode margin on long sends.
+      const segments = countSegments(sanitizedBody);
+      const totalCost = Number((messageCost * Math.max(1, segments)).toFixed(4));
       await adminSupabase.rpc("decrement_wallet", {
         p_user_id: userId,
-        p_amount: messageCost,
+        p_amount: totalCost,
       });
     } catch (e) {
       console.error("[send-sms] wallet decrement failed:", e);

@@ -7040,16 +7040,14 @@ export default function DashboardPage() {
                       const segLimit = hasUnicode ? 70 : 160;
                       const segments = Math.max(1, Math.ceil(len / segLimit));
                       const remaining = segments * segLimit - len;
-                      const cost = segments * (currentUser.plan.messageCost || 0.012);
                       return (
                         <div className="mb-2">
                           <div className="flex items-center gap-5 text-xs text-zinc-500">
                             <span>{len} / {segments * segLimit} chars</span>
-                            <span className={segments > 3 ? "text-amber-400 font-medium" : segments > 1 ? "text-zinc-400" : ""}>
-                              {segments} segment{segments > 1 ? "s" : ""}
+                            <span className={segments > 3 ? "text-amber-400 font-medium" : segments > 1 ? "text-amber-300" : ""}>
+                              {segments > 1 ? `Will charge for ${segments} segments` : `1 segment`}
                             </span>
                             <span>{remaining} chars left in segment</span>
-                            <span>Cost: {formatCurrency(cost)}</span>
                             {hasUnicode && <span className="text-amber-400">Unicode detected (70 char/seg)</span>}
                           </div>
                           <div className="mt-1.5 h-1 w-full rounded-full bg-zinc-800">
@@ -8280,7 +8278,9 @@ export default function DashboardPage() {
                           <div className="text-xs text-zinc-500 space-y-1">
                             <div className="flex gap-4">
                               <span>{len} chars</span>
-                              <span className={segments > 3 ? "text-amber-400 font-medium" : ""}>{segments} segment{segments > 1 ? "s" : ""}</span>
+                              <span className={segments > 3 ? "text-amber-400 font-medium" : segments > 1 ? "text-amber-300" : ""}>
+                                {segments > 1 ? `Will charge for ${segments} segments per recipient` : `1 segment per recipient`}
+                              </span>
                               <span>{remaining} remaining</span>
                               {hasUnicode && <span className="text-amber-400">Unicode (70/seg)</span>}
                             </div>
