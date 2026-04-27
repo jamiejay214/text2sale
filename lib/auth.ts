@@ -49,16 +49,20 @@ export async function loginUser(email: string, password: string) {
 }
 
 export async function checkDuplicatePhone(phone: string): Promise<boolean> {
+  // The previous version queried profiles directly. RLS lets unauthenticated
+  // (anon) callers see only their own row — which during signup is none —
+  // so the count always came back 0 and the precheck silently passed,
+  // letting the request hit Supabase's signup endpoint where the
+  // handle_new_user trigger would catch the duplicate and bury the real
+  // error under "Database error saving new user" (a HTTP 500 that breaks
+  // the UX badly). We now call a SECURITY DEFINER RPC that runs at the
+  // function's owner (postgres), so the lookup actually finds the row
+  // regardless of who's calling.
   const digits = phone.replace(/\D/g, "");
   if (digits.length < 10) return false;
-  const { count, error } = await supabase
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .filter("phone", "neq", "")
-    // Use ilike with the formatted pattern to catch formatting variations
-    .or(`phone.ilike.%${digits.slice(-10)}%`);
+  const { data, error } = await supabase.rpc("phone_in_use", { check_phone: digits });
   if (error) return false;
-  return (count ?? 0) > 0;
+  return data === true;
 }
 
 export async function signupUser(input: {
@@ -92,10 +96,22 @@ export async function signupUser(input: {
   });
 
   if (error) {
-    // Friendly duplicate email message
+    // Friendly translation of Supabase's terse error messages. Supabase
+    // wraps the trigger's "phone already exists" exception in a generic
+    // "Database error saving new user" 500 — without this mapping the
+    // user just sees that opaque sentence and assumes the app is broken.
     const msg = error.message.toLowerCase();
-    if (msg.includes("already registered") || msg.includes("already been registered") || msg.includes("unique")) {
+    if (msg.includes("already registered") || msg.includes("already been registered") || (msg.includes("unique") && msg.includes("email"))) {
       return { success: false as const, message: "An account with this email already exists. Please log in instead." };
+    }
+    if (msg.includes("phone")) {
+      return { success: false as const, message: "An account with this phone number already exists. Please log in instead." };
+    }
+    if (msg.includes("database error saving new user") || msg.includes("unexpected_failure")) {
+      // Trigger fired and rejected the row — most common cause is a
+      // duplicate phone that slipped past the client-side check (e.g.
+      // race on simultaneous tabs). Surface the most likely culprit.
+      return { success: false as const, message: "An account with this phone number or email already exists. Please log in instead." };
     }
     return { success: false as const, message: error.message };
   }
