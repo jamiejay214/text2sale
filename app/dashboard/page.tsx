@@ -5719,7 +5719,7 @@ export default function DashboardPage() {
                     <div className="text-[10px] font-medium uppercase tracking-widest text-zinc-500">Current Plan</div>
                     <div className="mt-1 text-lg font-bold">{currentUser.plan.name}</div>
                     <div className="text-xs text-zinc-500">
-                      {formatCurrency(currentUser.plan.price)}/mo · {formatCurrency(currentUser.plan.messageCost)}/msg
+                      {formatCurrency(currentUser.plan.price)}/mo
                     </div>
                   </div>
                   <button
