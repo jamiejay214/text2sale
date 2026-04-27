@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
-import { sanitizeForSms } from "@/lib/sms-text";
+import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -123,6 +123,21 @@ export async function POST(req: NextRequest) {
     // 2-3× the bill. macOS, iOS keyboards, and LLM-generated replies all
     // introduce these substitutions by default — this normalizes them.
     const sanitizedBody = sanitizeForSms(body);
+
+    // Hard block UCS-2: after sanitization, if any non-GSM-7 character
+    // remains (emoji, accented letters, exotic punctuation), refuse the
+    // send. UCS-2 cuts segment size from 160 → 70 chars, so a single
+    // emoji can 2-3× the Telnyx + carrier-fee cost of a campaign. The
+    // dashboard composer warns users beforehand; this is the backstop.
+    if (hasNonGsmChars(sanitizedBody)) {
+      return NextResponse.json(
+        {
+          error:
+            "Message contains characters (emoji or special symbols) that would more than double the per-message cost. Please remove emojis and accented characters and try again.",
+        },
+        { status: 400 }
+      );
+    }
 
     // Build Telnyx payload — include messaging_profile_id when available
     // so messages route through the correct 10DLC campaign.

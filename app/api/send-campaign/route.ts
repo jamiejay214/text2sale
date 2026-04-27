@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
-import { sanitizeForSms } from "@/lib/sms-text";
+import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
@@ -69,6 +69,22 @@ export async function POST(req: NextRequest) {
     if (!campaignId || numbers.length === 0 || !messageTemplate) {
       return NextResponse.json(
         { success: false, error: "Missing required fields" },
+        { status: 400 }
+      );
+    }
+
+    // Hard block UCS-2 at the campaign level. A single emoji or accented
+    // character in the template forces every personalized message into
+    // UCS-2 (70 chars/segment vs 160), which can 2-3× the Telnyx + carrier
+    // cost across a 10k blast. Sanitize first to catch smart quotes etc.,
+    // then reject if anything non-GSM-7 remains.
+    if (hasNonGsmChars(sanitizeForSms(messageTemplate))) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Message contains characters (emoji or special symbols) that would more than double the per-message cost. Please remove emojis and accented characters before launching this campaign.",
+        },
         { status: 400 }
       );
     }
