@@ -21,6 +21,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/text2sale-vs-twilio",
     "/best-onlysales-alternative",
     "/best-textdrip-alternative",
+    "/best-salesmsg-alternative",
+    "/best-gohighlevel-alternative",
+    "/best-twilio-alternative",
   ];
 
   const nichePages = [
@@ -30,6 +33,16 @@ export default function sitemap(): MetadataRoute.Sitemap {
     "/medicare-agent-texting-crm",
     "/recruiting-texting-crm",
     "/sales-team-texting-crm",
+    "/auto-insurance-texting-crm",
+    "/real-estate-texting-crm",
+    "/mortgage-broker-texting-crm",
+    "/solar-sales-texting-crm",
+    "/best-sms-crm-for-insurance-agents",
+  ];
+
+  const articlePages = [
+    "/how-to-text-insurance-leads",
+    "/sms-follow-up-for-sales-teams",
   ];
 
   return [
@@ -50,6 +63,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: today,
       changeFrequency: "weekly" as const,
       priority: 0.82,
+    })),
+    ...articlePages.map((path) => ({
+      url: `${baseUrl}${path}`,
+      lastModified: today,
+      changeFrequency: "weekly" as const,
+      priority: 0.78,
     })),
     {
       url: `${baseUrl}/privacy-policy`,
