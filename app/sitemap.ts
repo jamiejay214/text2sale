@@ -43,6 +43,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const articlePages = [
     "/how-to-text-insurance-leads",
     "/sms-follow-up-for-sales-teams",
+    "/private-health-insurance-vs-marketplace-insurance",
   ];
 
   return [
