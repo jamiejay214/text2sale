@@ -71,7 +71,7 @@ async function getAvailableSlots(
   const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
   const slots: { date: string; time: string; display: string }[] = [];
 
-  for (let d = 1; d <= hours.maxDaysOut && slots.length < limit; d++) {
+  for (let d = 0; d <= hours.maxDaysOut && slots.length < limit; d++) {
     const date = new Date(today);
     date.setDate(date.getDate() + d);
     const dayName = dayNames[date.getDay()];
@@ -85,10 +85,15 @@ async function getAvailableSlots(
     const step = hours.slotDuration + hours.bufferMinutes;
     const dateStr = date.toISOString().split("T")[0];
 
+    const nowMinutes = today.getHours() * 60 + today.getMinutes();
+
     for (let m = startMin; m + hours.slotDuration <= endMin && slots.length < limit; m += step) {
       const h = Math.floor(m / 60);
       const min = m % 60;
       const timeStr = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`;
+
+      // For today, skip slots that have already passed (add 30-min buffer)
+      if (d === 0 && m < nowMinutes + 30) continue;
 
       if (!bookedSet.has(`${dateStr}_${timeStr}`)) {
         slots.push({
@@ -288,6 +293,8 @@ ${availableSlots.map((s, i) => `${i + 1}. ${s.display}`).join("\n")}
 Slot duration: ${hours.slotDuration} minutes.
 
 BOOKING RULES — follow exactly:
+- ALWAYS try to book today or tomorrow first. The slots are listed earliest first — default to slot #1 unless the customer asks for something later.
+- If the customer is flexible or says "whenever works", book the very first available slot (today if possible, tomorrow if not).
 - ONLY book from the exact slots listed above. Never book a time not on this list even if the customer requests it.
 - If the customer asks for a time NOT on the list, tell them it's not available and offer the closest slot from the list.
 - Use the book_appointment tool first, then write your SMS reply.
