@@ -5010,6 +5010,9 @@ export default function DashboardPage() {
 
         setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
 
+        const WAVE_SIZE = 700;
+        const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes between waves
+
         try {
           let totalSent = 0;
           let totalFailed = 0;
@@ -5021,33 +5024,68 @@ export default function DashboardPage() {
               await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
             }
 
-            setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length} to ${totalImported} contacts...`);
+            // Send this step in waves of 700, waiting 3 minutes between each.
+            let waveOffset = 0;
+            let waveNum = 1;
+            let stepDone = false;
 
-            const res = await authFetch("/api/send-campaign", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                campaignId: csvCampaignId,
-                userId,
-                fromNumbers,
-                messageTemplate: step.message,
-                campaignName: campaign.name,
-                stepIndex: stepIdx,
-                totalSteps: steps.length,
-                // Scope the send to contacts imported in THIS upload only —
-                // otherwise the server re-texts every historical contact
-                // with the same campaign name, causing the CSV-double-send.
-                importedSinceIso,
-              }),
-            });
+            while (!stepDone) {
+              const remaining = totalImported - waveOffset;
+              setMessage(`📤 Step ${stepIdx + 1}/${steps.length} — wave ${waveNum}: sending ${Math.min(WAVE_SIZE, remaining)} of ${totalImported} contacts (${waveOffset} sent so far)...`);
 
-            const data = await res.json();
-            if (data.success) {
-              totalSent += data.sent;
-              totalFailed += data.failed;
-            } else {
-              setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
-              break;
+              const res = await authFetch("/api/send-campaign", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  campaignId: csvCampaignId,
+                  userId,
+                  fromNumbers,
+                  messageTemplate: step.message,
+                  campaignName: campaign.name,
+                  stepIndex: stepIdx,
+                  totalSteps: steps.length,
+                  importedSinceIso,
+                  waveOffset,
+                  waveSize: WAVE_SIZE,
+                }),
+              });
+
+              const data = await res.json();
+              if (data.success) {
+                totalSent += data.sent;
+                totalFailed += data.failed;
+
+                if (data.paused || data.outOfFunds) {
+                  const msg = data.paused
+                    ? `⏸ Campaign paused — ${totalSent} sent`
+                    : `💸 Wallet ran out — ${totalSent} sent`;
+                  setMessage(msg);
+                  setCampaigns((prev) => prev.map((c) =>
+                    c.id === csvCampaignId ? {
+                      ...c,
+                      status: data.paused ? "Paused" as const : "Completed" as const,
+                      sent: totalSent, failed: totalFailed,
+                    } : c
+                  ));
+                  window.setTimeout(() => setMessage(""), 5000);
+                  csvUploadingRef.current = false;
+                  setCsvUploading(false);
+                  resetCSVWizard();
+                  return;
+                }
+
+                if (data.nextOffset !== null && data.nextOffset !== undefined) {
+                  waveOffset = data.nextOffset;
+                  waveNum++;
+                  setMessage(`⏳ Wave ${waveNum - 1} done (${totalSent} sent total) — waiting 3 min before next ${Math.min(WAVE_SIZE, totalImported - waveOffset)} contacts...`);
+                  await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
+                } else {
+                  stepDone = true;
+                }
+              } else {
+                setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
+                stepDone = true;
+              }
             }
           }
 
@@ -5058,9 +5096,7 @@ export default function DashboardPage() {
             } : c
           ));
           await dbUpdateCampaign(csvCampaignId, { status: "Completed", sent: totalSent, failed: totalFailed, audience: totalImported });
-          setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
-          // Re-read the latest wallet (send-campaign has been debiting it
-          // chunk by chunk) and trigger auto-recharge if it's below threshold.
+          setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed`);
           const { data: fresh } = await supabase
             .from("profiles")
             .select("wallet_balance")
