@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const auth = await authenticate(req);
     if (!auth.ok) return auth.response;
 
-    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1, importedSinceIso } = await req.json();
+    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1, importedSinceIso, waveOffset = 0, waveSize = 700 } = await req.json();
 
     const forbid = requireSameUser(auth.user.id, bodyUserId);
     if (forbid) return forbid;
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
     // For subsequent steps (stepIndex > 0): the campaign is already "Sending"
     // (first step flipped it). Just verify that status so we don't allow a
     // duplicate first-step call to sneak through as a "step 2" re-send.
-    if (stepIndex === 0) {
+    if (stepIndex === 0 && waveOffset === 0) {
       const { data: lockResult, error: lockError } = await supabase
         .from("campaigns")
         .update({ status: "Sending" })
@@ -217,6 +217,14 @@ export async function POST(req: NextRequest) {
         { status: 404 }
       );
     }
+
+    const totalContacts = contacts.length;
+
+    // Slice to this wave's window. The dashboard calls us once per wave,
+    // waiting 3 minutes between calls, so each API invocation stays well
+    // under Vercel's 300s timeout even for very large lists.
+    const waveContacts = contacts.slice(waveOffset, waveOffset + waveSize);
+    contacts = waveContacts;
 
     // O(1) lookup by contact id — used later for campaign-assign checks.
     // Without this, a 10k send was doing 10k linear scans inside the loop
@@ -695,6 +703,9 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", campaignId);
 
+    const nextOffset = waveOffset + contacts.length;
+    const hasMore = nextOffset < totalContacts;
+
     return NextResponse.json({
       success: true,
       paused,
@@ -703,6 +714,8 @@ export async function POST(req: NextRequest) {
       failed,
       deferred,
       total: contacts.length,
+      totalContacts,
+      nextOffset: hasMore ? nextOffset : null,
       walletBalance,
       errors: errors.slice(0, 10),
       message: paused

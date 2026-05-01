@@ -4310,44 +4310,87 @@ export default function DashboardPage() {
           await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
         }
 
-        setMessage(`📤 Sending step ${stepIdx + 1}/${steps.length}...`);
+        // Send this step in waves of 700, waiting 3 minutes between each wave
+        // to stay within Telnyx 10DLC throughput guidelines and avoid
+        // carrier filtering on high-volume blasts.
+        const WAVE_SIZE = 700;
+        const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes
+        let waveOffset = 0;
+        let waveNum = 1;
+        let stepDone = false;
 
-        const res = await authFetch("/api/send-campaign", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            campaignId,
-            userId,
-            fromNumbers,
-            messageTemplate: step.message,
-            campaignName: hasCampaignContacts ? campaign.name : undefined,
-            stepIndex: stepIdx,
-            totalSteps: steps.length,
-          }),
-        });
-
-        const data = await res.json();
-        if (data.success) {
-          totalSent += data.sent;
-          totalFailed += data.failed;
-          if (data.paused) {
-            // User hit pause mid-step — stop the outer loop too.
-            setMessage(`⏸ Campaign paused — ${totalSent} sent before stop`);
+        while (!stepDone) {
+          // Re-check pause status before each wave
+          const { data: liveCampaign } = await supabase
+            .from("campaigns")
+            .select("status")
+            .eq("id", campaignId)
+            .single();
+          if (liveCampaign?.status === "Paused") {
+            setMessage(`⏸ Campaign paused — ${totalSent} sent`);
             setCampaigns((prev) => prev.map((c) =>
-              c.id === campaignId ? {
-                ...c, status: "Paused" as const,
-                sent: totalSent, failed: totalFailed, audience,
-              } : c
+              c.id === campaignId ? { ...c, status: "Paused" as const, sent: totalSent, failed: totalFailed } : c
             ));
             setLaunchingCampaignId(null);
             window.setTimeout(() => setMessage(""), 4000);
             return;
           }
-        } else {
-          setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
-          break;
-        }
-      }
+
+          setMessage(`📤 Step ${stepIdx + 1}/${steps.length} — wave ${waveNum} (contacts ${waveOffset + 1}–${waveOffset + WAVE_SIZE})...`);
+
+          const res = await authFetch("/api/send-campaign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              campaignId,
+              userId,
+              fromNumbers,
+              messageTemplate: step.message,
+              campaignName: hasCampaignContacts ? campaign.name : undefined,
+              stepIndex: stepIdx,
+              totalSteps: steps.length,
+              waveOffset,
+              waveSize: WAVE_SIZE,
+            }),
+          });
+
+          const data = await res.json();
+          if (data.success) {
+            totalSent += data.sent;
+            totalFailed += data.failed;
+
+            if (data.paused || data.outOfFunds) {
+              const msg = data.paused
+                ? `⏸ Campaign paused — ${totalSent} sent`
+                : `💸 Wallet ran out — ${totalSent} sent`;
+              setMessage(msg);
+              setCampaigns((prev) => prev.map((c) =>
+                c.id === campaignId ? {
+                  ...c, status: data.paused ? "Paused" as const : "Completed" as const,
+                  sent: totalSent, failed: totalFailed, audience,
+                } : c
+              ));
+              setLaunchingCampaignId(null);
+              window.setTimeout(() => setMessage(""), 4000);
+              return;
+            }
+
+            // If there are more contacts, wait 3 minutes then send next wave
+            if (data.nextOffset !== null && data.nextOffset !== undefined) {
+              waveOffset = data.nextOffset;
+              waveNum++;
+              const remaining = (data.totalContacts || audience) - waveOffset;
+              setMessage(`⏳ Wave ${waveNum - 1} done (${totalSent} sent) — waiting 3 min before next ${Math.min(WAVE_SIZE, remaining)} contacts...`);
+              await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
+            } else {
+              stepDone = true;
+            }
+          } else {
+            setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
+            stepDone = true;
+          }
+        } // end wave while loop
+      } // end step for loop
 
       // If the outer loop broke on pause, reflect that status instead of Completed.
       const { data: finalCampaign } = await supabase
