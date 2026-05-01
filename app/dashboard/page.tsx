@@ -4209,10 +4209,29 @@ export default function DashboardPage() {
     if (launchingCampaignId === campaignId) return;
     const campaign = campaigns.find((c) => c.id === campaignId);
     if (!campaign || !currentUser || !userId) return;
-    if (campaign.status === "Sending" || campaign.status === "Completed") {
-      setMessage(`❌ Campaign is already ${campaign.status.toLowerCase()}`);
+    if (campaign.status === "Sending") {
+      setMessage("❌ Campaign is already sending — wait for it to finish");
       window.setTimeout(() => setMessage(""), 3000);
       return;
+    }
+
+    // If the campaign already completed, automatically reset it to Draft so
+    // the user can re-launch with newly uploaded contacts. Without this, the
+    // API returns a 409 and the send silently never fires — a very confusing
+    // experience when someone uploads a fresh CSV to an existing campaign.
+    if (campaign.status === "Completed") {
+      const { error: resetErr } = await supabase
+        .from("campaigns")
+        .update({ status: "Draft", sent: 0, failed: 0 })
+        .eq("id", campaignId);
+      if (resetErr) {
+        setMessage("❌ Could not reset campaign — please try again");
+        window.setTimeout(() => setMessage(""), 3000);
+        return;
+      }
+      setCampaigns((prev) =>
+        prev.map((c) => c.id === campaignId ? { ...c, status: "Draft" as const, sent: 0, failed: 0 } : c)
+      );
     }
 
     const ownedNumbers = currentUser.ownedNumbers || [];
@@ -4920,6 +4939,17 @@ export default function DashboardPage() {
           setCsvUploading(false);
           resetCSVWizard();
           return;
+        }
+
+        // If the campaign previously completed, reset it to Draft before
+        // relaunching. Without this the server-side lock rejects the send
+        // (Draft/Scheduled/Paused only) and the whole import appears to work
+        // but nothing gets delivered — a silent failure that's very confusing.
+        if (campaign.status === "Completed") {
+          await supabase
+            .from("campaigns")
+            .update({ status: "Draft", sent: 0, failed: 0 })
+            .eq("id", csvCampaignId);
         }
 
         // NOTE: We no longer charge the wallet up front. send-campaign now
