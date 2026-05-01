@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
-import { createCalendarEvent } from "@/lib/google-calendar";
+import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
 import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
@@ -287,12 +287,12 @@ You can book appointments for the customer. Available slots (${hours.timezone}):
 ${availableSlots.map((s, i) => `${i + 1}. ${s.display}`).join("\n")}
 Slot duration: ${hours.slotDuration} minutes.
 
-When the customer wants to schedule/book/meet/talk/call:
-- Use the book_appointment tool to create the appointment
-- Then confirm the booking in your reply message
-- If they pick a specific day/time, match it to the closest available slot
-- If they're vague ("sometime this week"), suggest 2-3 specific options
-- Always confirm the date and time in your SMS reply after booking\n`;
+BOOKING RULES — follow exactly:
+- ONLY book from the exact slots listed above. Never book a time not on this list even if the customer requests it.
+- If the customer asks for a time NOT on the list, tell them it's not available and offer the closest slot from the list.
+- Use the book_appointment tool first, then write your SMS reply.
+- Your reply must be ONLY the SMS text to send to the customer — no planning, no narration, no "looking at the conversation", no reasoning out loud.
+- After booking, confirm the EXACT date and time from the list in your reply.\n`;
       }
     }
 
@@ -388,7 +388,14 @@ When the customer wants to schedule/book/meet/talk/call:
       // Verify the slot is valid
       const slotValid = availableSlots.some((s) => s.date === input.date && s.time === input.time);
 
-      if (slotValid) {
+      // Double-check against Google Calendar to catch conflicts with
+      // manually-added events that aren't in the local appointments table.
+      const tz = inferTimezone(contact?.state) || "America/New_York";
+      const calendarConflict = slotValid
+        ? await checkCalendarConflict(userId, input.date, input.time, hours.slotDuration, tz)
+        : false;
+
+      if (slotValid && !calendarConflict) {
         // Book the appointment
         const { error: aptError } = await supabase.from("appointments").insert({
           user_id: userId,
@@ -479,8 +486,10 @@ When the customer wants to schedule/book/meet/talk/call:
                     type: "tool_result",
                     tool_use_id: toolUse.id,
                     content: appointmentBooked
-                      ? `Appointment booked successfully for ${formatDateNice(input.date)} at ${formatTime12(input.time)}. Confirm this with the customer in your reply.`
-                      : "Failed to book — that time slot is no longer available. Suggest alternative times.",
+                      ? `Appointment booked successfully for ${formatDateNice(input.date)} at ${formatTime12(input.time)}. Confirm this with the customer in your reply. Write ONLY the SMS text to send — no planning, no narration.`
+                      : calendarConflict
+                        ? `That time is already booked on the calendar. Tell the customer that slot isn't available and offer one of the other available times from the list.`
+                        : "Failed to book — that time slot is no longer available. Suggest alternative times from the list.",
                   },
                 ],
               },

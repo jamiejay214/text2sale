@@ -106,13 +106,18 @@ export function countSegments(body: string): number {
 // We scan the start of the string (case-insensitive) and strip up to the
 // next sentence boundary when we find one.
 const REASONING_PREFIXES = [
-  /^looking at (the|this) (conversation|thread|chat|history|message)[^.!?]*[.!?]\s*/i,
-  /^based on (the|this) (conversation|thread|chat|history|message)[^.!?]*[.!?]\s*/i,
-  /^(ok|okay|alright|so|well),?\s*(looking at|based on|given)[^.!?]*[.!?]\s*/i,
+  /^looking at (the|this|our|my) (conversation|thread|chat|history|message|situation|context)[^.!?]*[.!?]\s*/i,
+  /^based on (the|this|our|my) (conversation|thread|chat|history|message|context)[^.!?]*[.!?]\s*/i,
+  /^re-?reading (the|this|our) (conversation|thread|chat|history|message|situation)[^.!?]*[.!?]\s*/i,
+  /^(ok|okay|alright|so|well),?\s*(looking at|based on|given|re-reading)[^.!?]*[.!?]\s*/i,
   /^(before i|first,? i|i('|\s)ll need to|i need to|let me|i('|\s)m going to|i will)[^.!?]*[.!?]\s*/i,
   /^(here('|\s)s (what|my|the)|i('|\s)ll (send|reply|respond|text))[^.!?]*[.!?]\s*/i,
   /^(my (response|reply|message|plan|approach) (is|will be|should be))[^.!?]*[.!?:]\s*/i,
   /^(i should|i would|i'd)[^.!?]*[.!?]\s*/i,
+  /^since [a-z]+ (confirmed|said|agreed|responded|replied)[^.!?]*[.!?]\s*/i,
+  /^(however|given that|that said|with that said|that being said),?\s*re-?reading[^.!?]*[.!?]\s*/i,
+  /^the (next|natural|right|best) (step|move|thing|interaction|action)[^.!?]*[.!?]\s*/i,
+  /^(nothing more to say|the conversation (has|naturally))[^.!?]*[.!?]\s*/i,
 ];
 
 // Lines that are purely meta-commentary and can be dropped entirely.
@@ -155,6 +160,13 @@ const REFUSAL_PATTERNS: RegExp[] = [
   /\b(pushy|repetitive|inappropriate) (and|to)\b/i,
   /\bIf they'?ve responded and I missed it\b/i,
   /\bwould be (pushy|spammy|inappropriate)\b/i,
+  /\bthe conversation (has|naturally) (ended|concluded|wrapped)\b/i,
+  /\bnothing more to (say|send|text|do)\b/i,
+  /\bthe next interaction will be\b/i,
+  /\bhe'?s been told (he'?s|they'?re)\b/i,
+  /\balready sent (a |the )?confirmation\b/i,
+  /\bre-?reading the (conversation|situation|thread)\b/i,
+  /\bavailable slots (I have|we have|are only)\b/i,
 ];
 
 /**

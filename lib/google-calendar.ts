@@ -286,3 +286,72 @@ export async function deleteCalendarEvent(
     throw new Error(`Failed to delete Google Calendar event: ${res.status}`);
   }
 }
+
+/**
+ * Returns true if the user's Google Calendar already has an event that
+ * overlaps the proposed appointment window. Used to prevent double-booking
+ * when the local appointments table hasn't been synced or when the user
+ * has manually-added calendar events outside of text2sale.
+ *
+ * Falls back to false (no conflict detected) if Google Calendar is not
+ * connected or the API call fails — we don't want to block booking entirely
+ * just because calendar isn't wired up.
+ */
+export async function checkCalendarConflict(
+  userId: string,
+  date: string,       // "YYYY-MM-DD"
+  time: string,       // "HH:MM:SS"
+  durationMinutes: number,
+  timeZone: string
+): Promise<boolean> {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("google_calendar_tokens")
+      .eq("id", userId)
+      .single();
+
+    if (!profile?.google_calendar_tokens) return false; // not connected, can't check
+
+    const tokens = await refreshTokensIfNeeded(
+      userId,
+      profile.google_calendar_tokens as GoogleTokens
+    );
+
+    // Build the window in the user's timezone using wall-clock strings
+    const startWall = `${date}T${time.slice(0, 5)}:00`;
+    const endWall = addMinutesToWallClock(date, time, durationMinutes);
+
+    // Google's freebusy API is the cleanest way to check for conflicts —
+    // it collapses all calendar events into busy windows without leaking
+    // event details. We query primary calendar only.
+    const freebusyRes = await fetch(
+      "https://www.googleapis.com/calendar/v3/freeBusy",
+      {
+        method: "POST",
+        headers: {
+          ...authHeaders(tokens.access_token),
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          timeMin: new Date(`${startWall} ${timeZone}`).toISOString().replace("Invalid Date", `${date}T${time.slice(0,5)}:00Z`),
+          timeMax: new Date(`${endWall} ${timeZone}`).toISOString().replace("Invalid Date", `${date}T${endWall.slice(11,16)}:00Z`),
+          timeZone,
+          items: [{ id: "primary" }],
+        }),
+      }
+    );
+
+    if (!freebusyRes.ok) return false;
+
+    const fbData = await freebusyRes.json();
+    const busy: Array<{ start: string; end: string }> =
+      fbData?.calendars?.primary?.busy || [];
+
+    return busy.length > 0;
+  } catch (e) {
+    console.error("[google-calendar] checkCalendarConflict failed:", e);
+    return false; // fail open — don't block booking if calendar check errors
+  }
+}
