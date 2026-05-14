@@ -5096,6 +5096,18 @@ export default function DashboardPage() {
             } : c
           ));
           await dbUpdateCampaign(csvCampaignId, { status: "Completed", sent: totalSent, failed: totalFailed, audience: totalImported });
+
+          // Update the csv_uploads record with the actual charged amount so
+          // the CHARGED column shows the real cost instead of N/A.
+          const charged = Number((totalSent * (currentUser.plan.messageCost || 0.012)).toFixed(2));
+          await supabase
+            .from("csv_uploads")
+            .update({ charged })
+            .eq("id", record.id);
+          setCsvUploadHistory((prev) =>
+            prev.map((r) => r.id === record.id ? { ...r, charged } : r)
+          );
+
           setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed`);
           const { data: fresh } = await supabase
             .from("profiles")
