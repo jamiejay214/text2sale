@@ -703,6 +703,35 @@ export async function POST(req: NextRequest) {
       })
       .eq("id", campaignId);
 
+    // Append a charge entry to usage_history so the billing tab shows
+    // campaign sends. The wallet decrement already happened atomically
+    // inside processChunk — this is just the audit log.
+    if (sent > 0) {
+      try {
+        const { data: prof } = await supabase
+          .from("profiles")
+          .select("usage_history")
+          .eq("id", userId)
+          .single();
+        const existingHistory = Array.isArray(prof?.usage_history) ? prof.usage_history : [];
+        const waveCost = Number((sent * messageCost).toFixed(2));
+        const entry = {
+          id: `charge_${Date.now()}`,
+          type: "charge",
+          amount: waveCost,
+          status: "succeeded",
+          createdAt: new Date().toISOString(),
+          description: `Campaign "${campaignName || "Blast"}" — ${sent} messages`,
+        };
+        await supabase
+          .from("profiles")
+          .update({ usage_history: [entry, ...existingHistory] })
+          .eq("id", userId);
+      } catch (e) {
+        console.warn("[send-campaign] usage_history append failed (non-fatal):", e);
+      }
+    }
+
     const nextOffset = waveOffset + contacts.length;
     const hasMore = nextOffset < totalContacts;
 
