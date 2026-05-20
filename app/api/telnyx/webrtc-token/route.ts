@@ -33,8 +33,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-
 async function getAuthedUserId(req: NextRequest): Promise<string | null> {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
@@ -48,6 +46,7 @@ async function getAuthedUserId(req: NextRequest): Promise<string | null> {
 }
 
 export async function GET(req: NextRequest) {
+  const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
   try {
     const userId = await getAuthedUserId(req);
     if (!userId) {

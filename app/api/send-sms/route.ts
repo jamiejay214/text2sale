@@ -9,8 +9,8 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Admin client (service role) for ownership lookups + quiet-hours config.
-const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+// Admin client is created inside the handler to avoid build-time evaluation
+// of env vars (NEXT_PUBLIC_SUPABASE_URL is not available during next build).
 
 // Validate the caller's Supabase session. Previously this endpoint was
 // unauthenticated — anyone who guessed a user's 10DLC number could send
@@ -33,6 +33,7 @@ async function getAuthedUserId(req: NextRequest): Promise<string | null> {
 }
 
 export async function POST(req: NextRequest) {
+  const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
   try {
     const userId = await getAuthedUserId(req);
     if (!userId) {
