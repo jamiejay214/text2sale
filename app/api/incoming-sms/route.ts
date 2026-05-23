@@ -6,13 +6,12 @@ import { countSegments } from "@/lib/sms-text";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
-
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 
 // Telnyx sends inbound SMS as POST webhook
 export async function POST(req: NextRequest) {
+  const supabase = createClient(supabaseUrl, supabaseKey);
   try {
     // Verify Telnyx signature before trusting any payload field. Without this,
     // anyone can POST to /api/incoming-sms and spoof inbound messages (creating
@@ -491,6 +490,7 @@ async function sendTelnyxReply(from: string, to: string, text: string) {
 
 // Handle Telnyx delivery receipts (message.finalized)
 async function handleDeliveryReceipt(eventPayload: Record<string, unknown>) {
+  const supabase = createClient(supabaseUrl, supabaseKey);
   try {
     const toArr = eventPayload?.to as Array<{ phone_number?: string; status?: string }> | undefined;
     const to = toArr?.[0]?.phone_number || "";

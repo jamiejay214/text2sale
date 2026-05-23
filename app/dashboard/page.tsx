@@ -861,6 +861,10 @@ export default function DashboardPage() {
   // Onboarding wizard state
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
+  const [onboardingBiz, setOnboardingBiz] = useState({
+    businessName: "", ein: "", website: "", hasWebsite: "yes" as "yes" | "no",
+  });
+  const [onboardingBizSaving, setOnboardingBizSaving] = useState(false);
 
   // Notification permission
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
@@ -1129,11 +1133,15 @@ export default function DashboardPage() {
       if (!impersonateId) {
         const sub = profile.subscription_status;
         const hasSubscription = sub === "active" || sub === "canceling";
+        const hasBizInfo = !!(profile.a2p_registration?.ein);
         const hasNumbers = (profile.owned_numbers || []).length > 0;
         const hasContacts = dbContacts.length > 0;
-        if (!hasSubscription || !hasNumbers || !hasContacts) {
+        if (!hasSubscription || !hasBizInfo || !hasNumbers || !hasContacts) {
           setShowOnboarding(true);
-          setOnboardingStep(hasSubscription ? (hasNumbers ? 3 : 2) : 0);
+          if (!hasSubscription) setOnboardingStep(0);
+          else if (!hasBizInfo) setOnboardingStep(1);
+          else if (!hasNumbers) setOnboardingStep(2);
+          else if (!hasContacts) setOnboardingStep(3);
         }
       }
 
@@ -4946,7 +4954,25 @@ export default function DashboardPage() {
       setContacts((prev) => [...importedAll, ...prev]);
     }
 
-    const record = await persistUploadRecord({ success: totalImported, charged: null });
+    // ── Charge wallet per lead imported ──────────────────────────────────────
+    // Cost per lead = plan.messageCost (same rate as per-message cost).
+    // Dave Brazell's plan has messageCost $0.017; everyone else $0.012.
+    // We charge AFTER a successful insert so a failed upload doesn't bill.
+    let leadChargeAmount: number | null = null;
+    if (totalImported > 0 && currentUser) {
+      const costPerLead = currentUser.plan.messageCost || 0.012;
+      leadChargeAmount = Number((totalImported * costPerLead).toFixed(4));
+      try {
+        await supabase.rpc("decrement_wallet", {
+          p_user_id: userId,
+          p_amount: leadChargeAmount,
+        });
+      } catch (e) {
+        console.error("[csv-upload] wallet deduction failed:", e);
+      }
+    }
+
+    const record = await persistUploadRecord({ success: totalImported, charged: leadChargeAmount });
     setCsvUploadHistory((prev) => [record, ...prev]);
 
     // If a campaign was selected, send it to the imported contacts
@@ -5127,7 +5153,7 @@ export default function DashboardPage() {
       }
     }
 
-    setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}${dncRemoved > 0 ? ` (${dncRemoved} on DNC)` : ""}`);
+    setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts${leadChargeAmount ? ` — $${leadChargeAmount.toFixed(2)} charged` : ""}${dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : ""}${invalidCount > 0 ? ` (${invalidCount} invalid)` : ""}${dncRemoved > 0 ? ` (${dncRemoved} on DNC)` : ""}`);
     window.setTimeout(() => setMessage(""), 4000);
     csvUploadingRef.current = false;
     setCsvUploading(false);
@@ -14182,14 +14208,25 @@ export default function DashboardPage() {
 
       {/* Onboarding Wizard Modal */}
       {showOnboarding && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-lg rounded-3xl border border-zinc-700 bg-zinc-900 p-8 shadow-2xl">
-            {/* Progress bar */}
-            <div className="mb-6 flex gap-2">
-              {["Subscribe", "Buy Number", "Import Contacts", "Send First Campaign"].map((label, i) => (
-                <div key={label} className="flex-1">
-                  <div className={`h-1.5 rounded-full transition ${i <= onboardingStep ? "bg-violet-500" : "bg-zinc-700"}`} />
-                  <div className={`mt-1.5 text-center text-[10px] ${i <= onboardingStep ? "text-violet-400" : "text-zinc-600"}`}>{label}</div>
+
+            {/* Progress steps */}
+            <div className="mb-8 flex items-center gap-0">
+              {["Subscribe", "Business Info", "Get Number", "Contacts", "Launch"].map((label, i) => (
+                <div key={label} className="flex flex-1 flex-col items-center">
+                  <div className="flex w-full items-center">
+                    {i > 0 && <div className={`h-0.5 flex-1 ${i <= onboardingStep ? "bg-violet-500" : "bg-zinc-700"}`} />}
+                    <div className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                      i < onboardingStep ? "bg-violet-600 text-white" :
+                      i === onboardingStep ? "bg-violet-500 text-white ring-4 ring-violet-500/30" :
+                      "bg-zinc-700 text-zinc-400"
+                    }`}>
+                      {i < onboardingStep ? "✓" : i + 1}
+                    </div>
+                    {i < 4 && <div className={`h-0.5 flex-1 ${i < onboardingStep ? "bg-violet-500" : "bg-zinc-700"}`} />}
+                  </div>
+                  <div className={`mt-1.5 text-center text-[9px] font-medium ${i <= onboardingStep ? "text-violet-400" : "text-zinc-600"}`}>{label}</div>
                 </div>
               ))}
             </div>
@@ -14197,35 +14234,116 @@ export default function DashboardPage() {
             {/* Step 0 — Subscribe */}
             {onboardingStep === 0 && (
               <div className="text-center">
-                <div className="mb-2 text-3xl">🚀</div>
-                <h3 className="mb-2 text-xl font-bold">Welcome to Text2Sale!</h3>
-                <p className="mb-6 text-sm text-zinc-400">Start with a subscription to unlock all messaging features.</p>
+                <div className="mb-3 text-4xl">🚀</div>
+                <h3 className="mb-1 text-2xl font-bold">Welcome to Text2Sale!</h3>
+                <p className="mb-6 text-sm text-zinc-400">The SMS CRM built for insurance agents and sales teams. Let's get you set up in minutes.</p>
+                <div className="mb-4 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left">
+                  <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Your Plan</div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold">${currentUser.plan.price}</span>
+                    <span className="text-sm text-zinc-400">/month</span>
+                  </div>
+                  <div className="mt-2 space-y-1 text-xs text-zinc-400">
+                    <div>✓ Unlimited contacts</div>
+                    <div>✓ AI-powered replies</div>
+                    <div>✓ Campaign broadcasting</div>
+                  </div>
+                </div>
                 <button
-                  onClick={() => { handleSubscribe(); setShowOnboarding(false); }}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                  onClick={() => { handleSubscribe(); setOnboardingStep(1); }}
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 transition"
                 >
-                  Subscribe — ${currentUser.plan.price}/mo
+                  Subscribe &amp; Continue →
                 </button>
-                <button onClick={() => setShowOnboarding(false)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip for now
+                <button onClick={() => setOnboardingStep(1)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — already subscribed
                 </button>
               </div>
             )}
 
-            {/* Step 1 — EIN / 10DLC (informational) */}
+            {/* Step 1 — Business Info (inline) */}
             {onboardingStep === 1 && (
-              <div className="text-center">
-                <div className="mb-2 text-3xl">📋</div>
-                <h3 className="mb-2 text-xl font-bold">Register Your Business</h3>
-                <p className="mb-6 text-sm text-zinc-400">Register your brand with your EIN for higher sending limits. You can do this from the 10DLC tab anytime.</p>
+              <div>
+                <div className="mb-1 text-center text-3xl">🏢</div>
+                <h3 className="mb-1 text-center text-xl font-bold">Your Business Info</h3>
+                <p className="mb-5 text-center text-sm text-zinc-400">Required for 10DLC compliance so carriers approve your messages.</p>
+                <div className="space-y-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Legal Business Name *</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Johnson Health Insurance LLC"
+                      value={onboardingBiz.businessName}
+                      onChange={e => setOnboardingBiz(b => ({ ...b, businessName: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">EIN (Tax ID) *</label>
+                    <input
+                      type="text"
+                      placeholder="XX-XXXXXXX"
+                      value={onboardingBiz.ein}
+                      onChange={e => setOnboardingBiz(b => ({ ...b, ein: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                    />
+                    <p className="mt-1 text-[10px] text-zinc-600">Found on your IRS EIN letter or SS-4 form.</p>
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-zinc-400">Do you have a business website? *</label>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => setOnboardingBiz(b => ({ ...b, hasWebsite: "yes" }))}
+                        className={`flex-1 rounded-xl border px-4 py-2 text-xs font-medium transition ${onboardingBiz.hasWebsite === "yes" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
+                      >Yes, I have one</button>
+                      <button
+                        onClick={() => setOnboardingBiz(b => ({ ...b, hasWebsite: "no", website: "" }))}
+                        className={`flex-1 rounded-xl border px-4 py-2 text-xs font-medium transition ${onboardingBiz.hasWebsite === "no" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
+                      >No website yet</button>
+                    </div>
+                  </div>
+                  {onboardingBiz.hasWebsite === "yes" && (
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">Website URL *</label>
+                      <input
+                        type="url"
+                        placeholder="https://yoursite.com"
+                        value={onboardingBiz.website}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, website: e.target.value }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  )}
+                  {onboardingBiz.hasWebsite === "no" && (
+                    <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3 text-xs text-amber-300">
+                      💡 We'll create a free compliance page for your business at text2sale.com — carriers require one to approve your messages.
+                    </div>
+                  )}
+                </div>
                 <button
-                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); setShowOnboarding(false); }}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                  disabled={!onboardingBiz.businessName.trim() || !onboardingBiz.ein.trim() || (onboardingBiz.hasWebsite === "yes" && !onboardingBiz.website.trim()) || onboardingBizSaving}
+                  onClick={async () => {
+                    setOnboardingBizSaving(true);
+                    try {
+                      // Pre-fill the a2pForm so Settings → 10DLC is already populated
+                      setA2pForm(f => ({
+                        ...f,
+                        businessName: onboardingBiz.businessName,
+                        ein: onboardingBiz.ein,
+                        website: onboardingBiz.website,
+                        hasWebsite: onboardingBiz.hasWebsite,
+                      }));
+                    } finally {
+                      setOnboardingBizSaving(false);
+                      setOnboardingStep(2);
+                    }
+                  }}
+                  className="mt-5 w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition"
                 >
-                  Go to 10DLC Registration
+                  {onboardingBizSaving ? "Saving…" : "Save & Continue →"}
                 </button>
-                <button onClick={() => setOnboardingStep(2)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — do this later
+                <button onClick={() => setOnboardingStep(2)} className="mt-3 w-full text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — fill this in later
                 </button>
               </div>
             )}
@@ -14233,17 +14351,28 @@ export default function DashboardPage() {
             {/* Step 2 — Buy a Number */}
             {onboardingStep === 2 && (
               <div className="text-center">
-                <div className="mb-2 text-3xl">📱</div>
-                <h3 className="mb-2 text-xl font-bold">Buy a Phone Number</h3>
-                <p className="mb-6 text-sm text-zinc-400">You need at least one phone number to send messages. Numbers cost $1.50 to purchase + $1/mo.</p>
+                <div className="mb-3 text-4xl">📱</div>
+                <h3 className="mb-1 text-xl font-bold">Get a Phone Number</h3>
+                <p className="mb-5 text-sm text-zinc-400">You need at least one 10DLC number to send messages to your contacts.</p>
+                <div className="mb-5 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">One-time purchase</span>
+                    <span className="font-semibold">$1.50</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">Monthly fee</span>
+                    <span className="font-semibold">$1.00/mo</span>
+                  </div>
+                  <div className="border-t border-zinc-700 pt-2 text-xs text-zinc-500">Numbers are local 10-digit long codes (10DLC) — required for business SMS.</div>
+                </div>
                 <button
                   onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); setShowOnboarding(false); }}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 transition"
                 >
-                  Buy a Number
+                  Buy a Number →
                 </button>
                 <button onClick={() => setOnboardingStep(3)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — do this later
+                  Skip — I already have one
                 </button>
               </div>
             )}
@@ -14251,38 +14380,45 @@ export default function DashboardPage() {
             {/* Step 3 — Import Contacts */}
             {onboardingStep === 3 && (
               <div className="text-center">
-                <div className="mb-2 text-3xl">👥</div>
-                <h3 className="mb-2 text-xl font-bold">Import Your Contacts</h3>
-                <p className="mb-6 text-sm text-zinc-400">Upload a CSV with your contacts or add them manually from the Contacts tab.</p>
-                <button
-                  onClick={() => { setActiveTab("contacts"); setShowOnboarding(false); }}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
-                >
-                  Import Contacts
-                </button>
-                <button onClick={() => setOnboardingStep(4)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — do this later
+                <div className="mb-3 text-4xl">👥</div>
+                <h3 className="mb-1 text-xl font-bold">Import Your Contacts</h3>
+                <p className="mb-5 text-sm text-zinc-400">Upload a CSV of your leads — name, phone, state, and any custom fields.</p>
+                <div className="mb-5 rounded-2xl border border-dashed border-zinc-600 bg-zinc-800/50 p-6">
+                  <div className="mb-2 text-sm text-zinc-400">CSV format: <span className="font-mono text-xs text-zinc-300">name, phone, email, state</span></div>
+                  <button
+                    onClick={() => { setActiveTab("contacts"); setShowOnboarding(false); }}
+                    className="mt-2 rounded-xl border border-zinc-600 px-5 py-2 text-sm text-zinc-300 hover:border-violet-500 hover:text-violet-300 transition"
+                  >
+                    Open Contacts & Upload CSV
+                  </button>
+                </div>
+                <button onClick={() => setOnboardingStep(4)} className="mt-1 text-xs text-zinc-500 hover:text-zinc-300">
+                  Skip — I'll add contacts later
                 </button>
               </div>
             )}
 
-            {/* Step 4 — Send First Campaign */}
+            {/* Step 4 — All set */}
             {onboardingStep === 4 && (
               <div className="text-center">
-                <div className="mb-2 text-3xl">🎯</div>
-                <h3 className="mb-2 text-xl font-bold">Launch Your First Campaign</h3>
-                <p className="mb-6 text-sm text-zinc-400">Create a campaign, pick your contacts, write your message, and hit send!</p>
+                <div className="mb-3 text-5xl">🎉</div>
+                <h3 className="mb-1 text-2xl font-bold">You're all set!</h3>
+                <p className="mb-6 text-sm text-zinc-400">Your account is ready. Launch your first campaign and start closing more deals with SMS.</p>
                 <button
                   onClick={() => { setActiveTab("campaigns"); setShowOnboarding(false); }}
-                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700"
+                  className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 transition"
                 >
-                  Create a Campaign
+                  🚀 Launch First Campaign
                 </button>
-                <button onClick={() => setShowOnboarding(false)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Close — I'll explore on my own
+                <button
+                  onClick={() => setShowOnboarding(false)}
+                  className="mt-3 w-full rounded-2xl border border-zinc-700 px-6 py-3 text-sm text-zinc-400 hover:border-zinc-500 hover:text-zinc-200 transition"
+                >
+                  Explore Dashboard
                 </button>
               </div>
             )}
+
           </div>
         </div>
       )}
