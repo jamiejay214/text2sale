@@ -62,13 +62,15 @@ export async function POST(req: NextRequest) {
 
     // Verify the caller actually owns this from-number. Anyone can spoof
     // `from` over HTTP, but they can't fake the ownership row in the DB.
-    const { data: ownership } = await adminSupabase
+    // We filter by both user_id AND digits so shared numbers (multiple users
+    // on the same Telnyx number) don't cause maybeSingle() to throw.
+    const { data: ownershipRows } = await adminSupabase
       .from("owned_phone_numbers")
       .select("user_id")
       .eq("digits", fromNormalized)
-      .maybeSingle();
+      .eq("user_id", userId);
 
-    if (!ownership?.user_id || ownership.user_id !== userId) {
+    if (!ownershipRows || ownershipRows.length === 0) {
       return NextResponse.json(
         { success: false, error: "You do not own this number." },
         { status: 403 }
