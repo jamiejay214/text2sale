@@ -12,7 +12,6 @@ const apiKey = process.env.TELNYX_API_KEY!;
 // legs, read TELNYX_CREDENTIAL_CONNECTION_ID instead.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
 
 // ─── Telnyx Call Control webhook ─────────────────────────────────────────
 // Every call event Telnyx emits (call.initiated / answered / hangup /
@@ -64,6 +63,7 @@ function encodeClientState(state: ClientState): string {
 }
 
 export async function POST(req: NextRequest) {
+  const supabase = createClient(supabaseUrl, supabaseKey);
   try {
     const rawBody = await req.text();
     const sig = req.headers.get("telnyx-signature-ed25519") || "";

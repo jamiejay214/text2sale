@@ -6,8 +6,6 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-
 async function getAuthedUserId(req: NextRequest): Promise<string | null> {
   const authHeader = req.headers.get("authorization") || "";
   const token = authHeader.startsWith("Bearer ")
@@ -25,6 +23,7 @@ async function getAuthedUserId(req: NextRequest): Promise<string | null> {
 // Let the UI hang up a live call. Verifies the row belongs to the caller
 // before hitting Telnyx so nobody can drop another tenant's line.
 export async function POST(req: NextRequest) {
+  const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
   const userId = await getAuthedUserId(req);
   if (!userId) {
     return NextResponse.json(
