@@ -4269,9 +4269,10 @@ export default function DashboardPage() {
     const totalMessages = audience * steps.length;
     const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
     const walletBalance = currentUser.walletBalance || 0;
+    const minWaveCost = 1000 * (currentUser.plan.messageCost || 0.012);
 
-    if (walletBalance < cost) {
-      setMessage(`❌ Insufficient funds. Need ${formatCurrency(cost)} for ${totalMessages} messages (${audience} contacts × ${steps.length} step${steps.length > 1 ? "s" : ""})`);
+    if (walletBalance < minWaveCost) {
+      setMessage(`❌ Insufficient funds. Need at least ${formatCurrency(minWaveCost)} to start sending (you have ${formatCurrency(walletBalance)})`);
       window.setTimeout(() => setMessage(""), 3500);
       return;
     }
@@ -4321,7 +4322,7 @@ export default function DashboardPage() {
         // Send this step in waves of 700, waiting 3 minutes between each wave
         // to stay within Telnyx 10DLC throughput guidelines and avoid
         // carrier filtering on high-volume blasts.
-        const WAVE_SIZE = 700;
+        const WAVE_SIZE = 1000;
         const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes
         let waveOffset = 0;
         let waveNum = 1;
@@ -5000,9 +5001,10 @@ export default function DashboardPage() {
         const totalMessages = totalImported * steps.length;
         const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
         const walletBalance = currentUser.walletBalance || 0;
+        const minWaveCostCsv = 1000 * (currentUser.plan.messageCost || 0.012);
 
-        if (walletBalance < cost) {
-          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need ${formatCurrency(cost)} for ${totalMessages} messages.`);
+        if (walletBalance < minWaveCostCsv) {
+          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need at least ${formatCurrency(minWaveCostCsv)} to start (you have ${formatCurrency(walletBalance)}).`);
           window.setTimeout(() => setMessage(""), 5000);
           csvUploadingRef.current = false;
           setCsvUploading(false);
@@ -5036,7 +5038,7 @@ export default function DashboardPage() {
 
         setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
 
-        const WAVE_SIZE = 700;
+        const WAVE_SIZE = 1000;
         const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes between waves
 
         try {
@@ -10074,7 +10076,6 @@ export default function DashboardPage() {
                           <th className="px-5 py-4">Date</th>
                           <th className="px-5 py-4">File Name</th>
                           <th className="px-5 py-4">Validation<br />Used</th>
-                          <th className="px-5 py-4">Charged</th>
                           <th className="px-5 py-4 text-right">Count</th>
                           <th className="px-5 py-4">Status</th>
                           <th className="px-5 py-4 text-right">Action</th>
@@ -10083,7 +10084,7 @@ export default function DashboardPage() {
                       <tbody className="divide-y divide-zinc-800">
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-5 py-10 text-center text-sm text-zinc-500">
+                            <td colSpan={6} className="px-5 py-10 text-center text-sm text-zinc-500">
                               No uploads match &quot;{csvHistorySearch}&quot;.
                             </td>
                           </tr>
@@ -10109,11 +10110,6 @@ export default function DashboardPage() {
                               <td className="px-5 py-4">
                                 <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
                                   {rec.validationUsed || "N/A"}
-                                </span>
-                              </td>
-                              <td className="px-5 py-4">
-                                <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
-                                  {rec.charged == null ? "N/A" : `$${rec.charged.toFixed(2)}`}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-5 py-4 text-right text-zinc-200">
