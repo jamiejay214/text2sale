@@ -244,7 +244,7 @@ export async function POST(req: NextRequest) {
     }
 
     const snapshot = {
-      overview: overview.businesses.map((b) => ({ name: b.name, live: b.live, kpis: b.kpis, topPages: b.topPages?.slice(0, 5) })),
+      overview: overview.businesses.map((b) => ({ name: b.name, online: b.online, kpis: b.kpis, topPages: b.topPages?.slice(0, 5) })),
       channels,
       referrers,
       engagement,

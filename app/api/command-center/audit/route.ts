@@ -120,7 +120,11 @@ function offlineAudit(overview: Awaited<ReturnType<typeof buildOverview>>, engag
       });
     }
   }
-  return findings;
+  return {
+    text2sale: { findings: findings.text2sale },
+    abg: { findings: findings.abg },
+    tq: { findings: findings.tq },
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -153,10 +157,10 @@ export async function POST(req: NextRequest) {
         combined: overview.combined,
         businesses: overview.businesses.map((b) => ({
           name: b.name,
-          live: b.live,
+          online: b.online,
           kpis: b.kpis,
           topPages: b.topPages?.slice(0, 6),
-          topSources: b.topSources?.slice(0, 6),
+          sources: b.sources?.slice(0, 6),
         })),
       },
       intelligence: { channels, referrers, exits, engagement },
