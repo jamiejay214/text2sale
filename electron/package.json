@@ -1,0 +1,35 @@
+{
+  "name": "command-center-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Native desktop shell for the Command Center dashboard",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "start:local": "CC_URL=http://localhost:3000/command electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.text2sale.commandcenter",
+    "productName": "Command Center",
+    "directories": { "output": "dist" },
+    "files": ["main.js", "preload.js", "package.json"],
+    "mac": {
+      "category": "public.app-category.business",
+      "target": ["dmg"]
+    },
+    "win": {
+      "target": ["nsis"]
+    },
+    "linux": {
+      "target": ["AppImage"],
+      "category": "Office"
+    }
+  }
+}

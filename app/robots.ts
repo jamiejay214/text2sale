@@ -6,7 +6,7 @@ export default function robots(): MetadataRoute.Robots {
       {
         userAgent: "*",
         allow: "/",
-        disallow: ["/api/", "/admin", "/dashboard", "/verify"],
+        disallow: ["/api/", "/admin", "/dashboard", "/verify", "/command"],
       },
     ],
     sitemap: "https://text2sale.com/sitemap.xml",
