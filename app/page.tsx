@@ -9,14 +9,8 @@ import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } fr
 export default function HomePage() {
   const router = useRouter();
 
-  // Track page view (fire-and-forget)
-  useEffect(() => {
-    fetch("/api/track-view", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ path: "/", referrer: document.referrer }),
-    }).catch(() => {});
-  }, []);
+  // Page-view tracking is handled by the universal <Tracker /> in app/layout.tsx
+  // (visitor_id, session_id, UTMs, channel, device, exit clicks, form intents).
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [loading, setLoading] = useState(false);

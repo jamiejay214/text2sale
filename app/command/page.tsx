@@ -14,6 +14,7 @@ import { supabase } from "@/lib/supabase";
 import type { Overview, BusinessMetrics, Series, FeedItem } from "@/lib/command-center";
 import { Panel, StatTile, AreaChart, BarList, Donut, Funnel } from "@/components/command/CommandKit";
 import CommandVoice from "@/components/command/CommandVoice";
+import Intelligence from "@/components/command/Intelligence";
 import USMapChart from "@/components/USMapChart";
 
 type Scope = "all" | BusinessMetrics["id"];
@@ -417,8 +418,11 @@ export default function CommandCenterPage() {
           </div>
         </div>
 
+        {/* Rich visitor intelligence + AI panels */}
+        <Intelligence token={token} accent={vm.accent} demo={demo} />
+
         <footer className="mt-8 flex items-center justify-between border-t border-white/5 pt-4 text-[11px] text-white/30">
-          <span>Command Center · text2sale · aibusinessgrowth · trustedquotes</span>
+          <span>Command Center · text2sale · aibusinessgrowth · trustedquotes · <a href="/command/install" className="hover:text-white/60">Install tracker on other sites →</a></span>
           <span className="flex items-center gap-1"><Radio className="h-3 w-3" /> Auto-refresh 45s</span>
         </footer>
       </div>

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Script from "next/script";
 import { headers } from "next/headers";
 import { isCustomComplianceHost } from "@/lib/custom-domains";
+import Tracker from "@/components/Tracker";
 import "./globals.css";
 
 const META_PIXEL_ID = "959512910266492";
@@ -265,6 +266,7 @@ fbq('track', 'PageView');
             />
           </noscript>
         )}
+        {!isComplianceSite && <Tracker />}
         {children}
       </body>
     </html>
