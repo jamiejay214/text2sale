@@ -11,6 +11,7 @@ import {
   ShoppingBag, FileText, Wifi, WifiOff,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
+import { loginUser } from "@/lib/auth";
 import type { Overview, BusinessMetrics, Series, FeedItem } from "@/lib/command-center";
 import { Panel, StatTile, AreaChart, BarList, Donut, Funnel } from "@/components/command/CommandKit";
 import CommandVoice from "@/components/command/CommandVoice";
@@ -120,6 +121,7 @@ export default function CommandCenterPage() {
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [clock, setClock] = useState(new Date());
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
+  const [authState, setAuthState] = useState<"checking" | "needs-login" | "not-admin" | "ok">("checking");
   const tokenRef = useRef<string | null>(null);
 
   // clock
@@ -167,27 +169,34 @@ export default function CommandCenterPage() {
     }
   };
 
-  // auth gate + initial load
+  // auth gate + initial load — NEVER redirects off /command (was the bug
+  // that sent the installed PWA / Electron app to the marketing homepage).
+  // Instead we show an inline sign-in OR not-admin screen and stay put.
+  const initAuth = async () => {
+    if (demo) {
+      setAuthState("ok");
+      await load(null);
+      return;
+    }
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      setAuthState("needs-login");
+      setLoading(false);
+      return;
+    }
+    const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
+    if (!profile || profile.role !== "admin") {
+      setAuthState("not-admin");
+      setLoading(false);
+      return;
+    }
+    tokenRef.current = session.access_token;
+    setToken(session.access_token);
+    setAuthState("ok");
+    await load(session.access_token);
+  };
   useEffect(() => {
-    (async () => {
-      if (demo) {
-        await load(null);
-        return;
-      }
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        router.replace("/");
-        return;
-      }
-      const { data: profile } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
-      if (!profile || profile.role !== "admin") {
-        router.replace("/dashboard");
-        return;
-      }
-      tokenRef.current = session.access_token;
-      setToken(session.access_token);
-      await load(session.access_token);
-    })();
+    initAuth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -243,7 +252,9 @@ export default function CommandCenterPage() {
     };
   }, [overview, scope]);
 
-  if (loading) return <BootScreen />;
+  if (authState === "needs-login") return <SignInScreen onSignedIn={initAuth} />;
+  if (authState === "not-admin") return <NotAdminScreen onSignOut={async () => { await supabase.auth.signOut(); setAuthState("needs-login"); }} />;
+  if (loading || authState === "checking") return <BootScreen />;
   if (err) return <ErrorScreen msg={err} onRetry={() => { setLoading(true); load(tokenRef.current); }} />;
   if (!overview || !vm) return <BootScreen />;
 
@@ -446,6 +457,92 @@ function Backdrop() {
       <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: "linear-gradient(rgba(168,85,247,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.5) 1px,transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(circle at 50% 0%, black, transparent 70%)" }} />
       <motion.div className="absolute -left-40 top-10 h-96 w-96 rounded-full" style={{ background: "radial-gradient(circle,#a855f7,transparent 70%)", filter: "blur(60px)", opacity: 0.25 }} animate={{ x: [0, 60, 0], y: [0, 30, 0] }} transition={{ repeat: Infinity, duration: 18 }} />
       <motion.div className="absolute right-0 top-40 h-96 w-96 rounded-full" style={{ background: "radial-gradient(circle,#22d3ee,transparent 70%)", filter: "blur(70px)", opacity: 0.2 }} animate={{ x: [0, -50, 0], y: [0, 40, 0] }} transition={{ repeat: Infinity, duration: 22 }} />
+    </div>
+  );
+}
+
+function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    setErr(null);
+    const r = await loginUser(email, password);
+    setBusy(false);
+    if (!r.success) {
+      setErr(r.message);
+      return;
+    }
+    onSignedIn();
+  };
+
+  return (
+    <div className="relative flex min-h-screen items-center justify-center bg-[#07060d] text-white">
+      <Backdrop />
+      <div className="relative z-10 w-full max-w-sm px-6">
+        <div className="mb-6 text-center">
+          <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl" style={{ background: "linear-gradient(135deg,#a855f7,#22d3ee)", boxShadow: "0 0 40px #a855f780" }}>
+            <Globe className="h-7 w-7 text-white" />
+          </div>
+          <h1 className="text-xl font-bold tracking-tight">COMMAND CENTER</h1>
+          <p className="mt-1 text-xs text-white/40">Sign in as admin to continue</p>
+        </div>
+        <form onSubmit={submit} className="space-y-3 rounded-2xl border border-white/10 bg-white/[0.03] p-5 backdrop-blur">
+          <div>
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-white/50">Email</label>
+            <input
+              type="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-violet-400/60"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-white/50">Password</label>
+            <input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              className="w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none transition focus:border-violet-400/60"
+            />
+          </div>
+          {err && <div className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{err}</div>}
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-lg bg-gradient-to-r from-violet-600 to-cyan-500 py-2.5 text-sm font-semibold text-white transition disabled:opacity-50"
+          >
+            {busy ? "Signing in…" : "Sign in"}
+          </button>
+        </form>
+        <p className="mt-4 text-center text-[11px] text-white/35">Admin only · text2sale.com / aibusinessgrowth / trustedquotes</p>
+      </div>
+    </div>
+  );
+}
+
+function NotAdminScreen({ onSignOut }: { onSignOut: () => void }) {
+  return (
+    <div className="relative flex min-h-screen items-center justify-center bg-[#07060d] text-white">
+      <Backdrop />
+      <div className="relative z-10 w-full max-w-sm px-6 text-center">
+        <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-500/20 text-rose-300">
+          <WifiOff className="h-7 w-7" />
+        </div>
+        <h1 className="text-lg font-semibold">Admin access required</h1>
+        <p className="mt-1 mb-5 text-sm text-white/55">This account is signed in but doesn&apos;t have admin role on the Command Center.</p>
+        <button onClick={onSignOut} className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-white/85 hover:bg-white/10">
+          Sign out & try another account
+        </button>
+      </div>
     </div>
   );
 }

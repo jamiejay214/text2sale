@@ -27,9 +27,12 @@ export default function InstallTrackerPage() {
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) return router.replace("/");
+      // Don't redirect off /command/* — the installed PWA/Electron app stays
+      // here. If not signed in or not admin, bounce to /command which renders
+      // the inline sign-in / not-admin screens.
+      if (!session) return router.replace("/command");
       const { data: p } = await supabase.from("profiles").select("role").eq("id", session.user.id).single();
-      if (!p || p.role !== "admin") return router.replace("/dashboard");
+      if (!p || p.role !== "admin") return router.replace("/command");
       setAuthed(true);
     })();
   }, [router]);
