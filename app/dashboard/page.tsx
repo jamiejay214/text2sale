@@ -4319,11 +4319,8 @@ export default function DashboardPage() {
           await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
         }
 
-        // Send this step in waves of 700, waiting 3 minutes between each wave
-        // to stay within Telnyx 10DLC throughput guidelines and avoid
-        // carrier filtering on high-volume blasts.
-        const WAVE_SIZE = 1000;
-        const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes
+        const WAVE_SIZE = 5000;
+        const WAVE_DELAY_MS = 0;
         let waveOffset = 0;
         let waveNum = 1;
         let stepDone = false;
@@ -4345,7 +4342,7 @@ export default function DashboardPage() {
             return;
           }
 
-          setMessage(`📤 Step ${stepIdx + 1}/${steps.length} — wave ${waveNum} (contacts ${waveOffset + 1}–${waveOffset + WAVE_SIZE})...`);
+          setMessage(`📤 Sending${steps.length > 1 ? ` step ${stepIdx + 1}/${steps.length}` : ""} — ${totalSent} sent so far...`);
 
           const res = await authFetch("/api/send-campaign", {
             method: "POST",
@@ -4384,13 +4381,11 @@ export default function DashboardPage() {
               return;
             }
 
-            // If there are more contacts, wait 3 minutes then send next wave
+            // If there are more contacts, continue immediately
             if (data.nextOffset !== null && data.nextOffset !== undefined) {
               waveOffset = data.nextOffset;
               waveNum++;
-              const remaining = (data.totalContacts || audience) - waveOffset;
-              setMessage(`⏳ Wave ${waveNum - 1} done (${totalSent} sent) — waiting 3 min before next ${Math.min(WAVE_SIZE, remaining)} contacts...`);
-              await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
+              if (WAVE_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
             } else {
               stepDone = true;
             }
@@ -5038,8 +5033,8 @@ export default function DashboardPage() {
 
         setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
 
-        const WAVE_SIZE = 1000;
-        const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes between waves
+        const WAVE_SIZE = 5000;
+        const WAVE_DELAY_MS = 0;
 
         try {
           let totalSent = 0;
@@ -5052,14 +5047,12 @@ export default function DashboardPage() {
               await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
             }
 
-            // Send this step in waves of 700, waiting 3 minutes between each.
             let waveOffset = 0;
             let waveNum = 1;
             let stepDone = false;
 
             while (!stepDone) {
-              const remaining = totalImported - waveOffset;
-              setMessage(`📤 Step ${stepIdx + 1}/${steps.length} — wave ${waveNum}: sending ${Math.min(WAVE_SIZE, remaining)} of ${totalImported} contacts (${waveOffset} sent so far)...`);
+              setMessage(`📤 Sending${steps.length > 1 ? ` step ${stepIdx + 1}/${steps.length}` : ""} — ${totalSent} of ${totalImported} sent so far...`);
 
               const res = await authFetch("/api/send-campaign", {
                 method: "POST",
@@ -5105,8 +5098,7 @@ export default function DashboardPage() {
                 if (data.nextOffset !== null && data.nextOffset !== undefined) {
                   waveOffset = data.nextOffset;
                   waveNum++;
-                  setMessage(`⏳ Wave ${waveNum - 1} done (${totalSent} sent total) — waiting 3 min before next ${Math.min(WAVE_SIZE, totalImported - waveOffset)} contacts...`);
-                  await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
+                  if (WAVE_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
                 } else {
                   stepDone = true;
                 }
