@@ -10074,7 +10074,6 @@ export default function DashboardPage() {
                           <th className="px-5 py-4">Date</th>
                           <th className="px-5 py-4">File Name</th>
                           <th className="px-5 py-4">Validation<br />Used</th>
-                          <th className="px-5 py-4">Charged</th>
                           <th className="px-5 py-4 text-right">Count</th>
                           <th className="px-5 py-4">Status</th>
                           <th className="px-5 py-4 text-right">Action</th>
@@ -10083,7 +10082,7 @@ export default function DashboardPage() {
                       <tbody className="divide-y divide-zinc-800">
                         {filtered.length === 0 ? (
                           <tr>
-                            <td colSpan={7} className="px-5 py-10 text-center text-sm text-zinc-500">
+                            <td colSpan={6} className="px-5 py-10 text-center text-sm text-zinc-500">
                               No uploads match &quot;{csvHistorySearch}&quot;.
                             </td>
                           </tr>
@@ -10109,11 +10108,6 @@ export default function DashboardPage() {
                               <td className="px-5 py-4">
                                 <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
                                   {rec.validationUsed || "N/A"}
-                                </span>
-                              </td>
-                              <td className="px-5 py-4">
-                                <span className="inline-flex items-center rounded-md bg-zinc-700/80 px-2 py-0.5 text-xs font-medium text-zinc-200">
-                                  {rec.charged == null ? "N/A" : `$${rec.charged.toFixed(2)}`}
                                 </span>
                               </td>
                               <td className="whitespace-nowrap px-5 py-4 text-right text-zinc-200">
