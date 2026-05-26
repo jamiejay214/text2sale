@@ -4321,7 +4321,7 @@ export default function DashboardPage() {
         // Send this step in waves of 700, waiting 3 minutes between each wave
         // to stay within Telnyx 10DLC throughput guidelines and avoid
         // carrier filtering on high-volume blasts.
-        const WAVE_SIZE = 700;
+        const WAVE_SIZE = 1000;
         const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes
         let waveOffset = 0;
         let waveNum = 1;
@@ -5036,7 +5036,7 @@ export default function DashboardPage() {
 
         setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
 
-        const WAVE_SIZE = 700;
+        const WAVE_SIZE = 1000;
         const WAVE_DELAY_MS = 3 * 60 * 1000; // 3 minutes between waves
 
         try {
