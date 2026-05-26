@@ -4269,9 +4269,10 @@ export default function DashboardPage() {
     const totalMessages = audience * steps.length;
     const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
     const walletBalance = currentUser.walletBalance || 0;
+    const minWaveCost = 1000 * (currentUser.plan.messageCost || 0.012);
 
-    if (walletBalance < cost) {
-      setMessage(`❌ Insufficient funds. Need ${formatCurrency(cost)} for ${totalMessages} messages (${audience} contacts × ${steps.length} step${steps.length > 1 ? "s" : ""})`);
+    if (walletBalance < minWaveCost) {
+      setMessage(`❌ Insufficient funds. Need at least ${formatCurrency(minWaveCost)} to start sending (you have ${formatCurrency(walletBalance)})`);
       window.setTimeout(() => setMessage(""), 3500);
       return;
     }
@@ -5000,9 +5001,10 @@ export default function DashboardPage() {
         const totalMessages = totalImported * steps.length;
         const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
         const walletBalance = currentUser.walletBalance || 0;
+        const minWaveCostCsv = 1000 * (currentUser.plan.messageCost || 0.012);
 
-        if (walletBalance < cost) {
-          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need ${formatCurrency(cost)} for ${totalMessages} messages.`);
+        if (walletBalance < minWaveCostCsv) {
+          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need at least ${formatCurrency(minWaveCostCsv)} to start (you have ${formatCurrency(walletBalance)}).`);
           window.setTimeout(() => setMessage(""), 5000);
           csvUploadingRef.current = false;
           setCsvUploading(false);
