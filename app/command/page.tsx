@@ -471,13 +471,22 @@ function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
     e.preventDefault();
     setBusy(true);
     setErr(null);
-    const r = await loginUser(email, password);
-    setBusy(false);
-    if (!r.success) {
-      setErr(r.message);
-      return;
+    try {
+      // Hard 15s ceiling so a hung Supabase call doesn't trap the spinner forever
+      const r = (await Promise.race([
+        loginUser(email, password),
+        new Promise((_, rej) => setTimeout(() => rej(new Error("Sign-in timed out. Check your connection and try again.")), 15000)),
+      ])) as Awaited<ReturnType<typeof loginUser>>;
+      if (!r.success) {
+        setErr(r.message);
+        return;
+      }
+      onSignedIn();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Sign-in failed. Please try again.");
+    } finally {
+      setBusy(false);
     }
-    onSignedIn();
   };
 
   return (
