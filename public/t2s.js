@@ -92,8 +92,10 @@
   }
 
   function init() {
-    var v = getVid(), s = getSid();
     var ua = navigator.userAgent || "";
+    // Skip bots/crawlers — saves DB writes
+    if (/bot|crawl|spider|slurp|bing|google|yahoo|duckduck|baidu|yandex|facebookexternalhit|whatsapp|telegram|discord|preview|lighthouse|pagespeed|headless/i.test(ua)) return;
+    var v = getVid(), s = getSid();
     var info = parseUA(ua);
     var qp = new URLSearchParams(location.search);
     var utm = {
@@ -122,6 +124,15 @@
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     });
 
+    // Buffer ALL non-exit intents and fire one batch on pagehide.
+    var buf = [];
+    function queue(kind, detail, value) {
+      var key = kind + "::" + (detail || "");
+      for (var i = 0; i < buf.length; i++) if (buf[i]._key === key) return;
+      buf.push({ kind: kind, detail: detail, value: value, _key: key });
+    }
+
+    var seenCtas = {};
     document.addEventListener("click", function (e) {
       var t = e.target && e.target.closest ? e.target.closest("a") : null;
       if (!t || !t.href) return;
@@ -134,43 +145,48 @@
       var cta = t.getAttribute("data-cta") || "";
       var text = (t.textContent || "").trim().toLowerCase();
       if (cta || /sign up|get started|start free|try free|buy now|book a call|contact|demo/i.test(text)) {
-        beacon("/api/track-intent", { visitor_id: v.id, session_id: s.id, path: location.pathname, kind: "cta_click", detail: (cta || text).slice(0, 80) });
+        var label = (cta || text).slice(0, 80);
+        if (!seenCtas[label]) { seenCtas[label] = 1; queue("cta_click", label); }
       }
     }, true);
 
-    var seen = {};
+    var formStarted = false;
     document.addEventListener("focus", function (e) {
+      if (formStarted) return;
       var t = e.target;
       if (!t) return;
       var tag = (t.tagName || "").toLowerCase();
       if (tag !== "input" && tag !== "textarea" && tag !== "select") return;
       if (t.type === "hidden" || t.type === "submit" || t.type === "button") return;
+      formStarted = true;
       var name = t.name || t.id || t.placeholder || t.type || "field";
-      var key = location.pathname + "::" + name;
-      if (seen[key]) return;
-      seen[key] = true;
-      var n = Object.keys(seen).length;
-      beacon("/api/track-intent", { visitor_id: v.id, session_id: s.id, path: location.pathname, kind: n === 1 ? "form_start" : "form_field", detail: name.slice(0, 60) });
+      queue("form_start", name.slice(0, 60));
     }, true);
 
-    var fired = {};
-    function checkScroll() {
+    var scroll90 = false;
+    addEventListener("scroll", function () {
+      if (scroll90) return;
       var doc = document.documentElement;
       var pct = Math.round(((scrollY + innerHeight) / (doc.scrollHeight || 1)) * 100);
-      [50, 90].forEach(function (m) {
-        if (pct >= m && !fired[m]) { fired[m] = true; beacon("/api/track-intent", { visitor_id: v.id, session_id: s.id, path: location.pathname, kind: "scroll_" + m, detail: String(pct) }); }
-      });
-    }
-    addEventListener("scroll", checkScroll, { passive: true });
+      if (pct >= 90) { scroll90 = true; queue("scroll_90", String(pct)); }
+    }, { passive: true });
 
     var startedAt = Date.now();
-    function leave() {
+    var flushed = false;
+    function flush() {
+      if (flushed) return;
+      flushed = true;
+      var ms = Date.now() - startedAt;
       var doc = document.documentElement;
       var maxScroll = Math.min(100, Math.round(((scrollY + innerHeight) / (doc.scrollHeight || 1)) * 100));
-      beacon("/api/track-intent", { visitor_id: v.id, session_id: s.id, path: location.pathname, kind: "engagement", detail: String(maxScroll), value: String(Date.now() - startedAt) });
+      if (ms >= 2000) queue("engagement", String(maxScroll), String(ms));
+      if (buf.length === 0) return;
+      // strip internal keys
+      var events = buf.map(function (e) { return { kind: e.kind, detail: e.detail, value: e.value }; });
+      beacon("/api/track-intent", { visitor_id: v.id, session_id: s.id, path: location.pathname, events: events });
     }
-    addEventListener("pagehide", leave);
-    addEventListener("beforeunload", leave);
+    addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") flush(); });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

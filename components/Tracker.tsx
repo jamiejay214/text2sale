@@ -100,15 +100,20 @@ function beacon(url: string, body: object) {
   fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), keepalive: true }).catch(() => {});
 }
 
+// Skip bot/crawler traffic — they don't convert and they 10x our write load
+const BOT_RE = /bot|crawl|spider|slurp|bing|google|yahoo|duckduck|baidu|yandex|facebookexternalhit|whatsapp|telegram|discord|preview|lighthouse|pagespeed|headless/i;
+
 export default function Tracker() {
   useEffect(() => {
     // Skip on admin/internal routes to keep the dashboard out of the data
     const path = window.location.pathname;
     if (path.startsWith("/admin") || path.startsWith("/command") || path.startsWith("/dashboard") || path.startsWith("/api/")) return;
 
+    const ua = navigator.userAgent || "";
+    if (BOT_RE.test(ua)) return; // bots: no tracking writes at all
+
     const visitor = getOrCreateVisitorId();
     const session = getOrCreateSessionId();
-    const ua = navigator.userAgent || "";
     const { device, browser, os } = parseUA(ua);
 
     const params = new URLSearchParams(window.location.search);
@@ -145,7 +150,21 @@ export default function Tracker() {
       body: JSON.stringify(payload),
     }).catch(() => {});
 
-    // ─── Outbound click capture ─────────────────────────────────────────
+    // ─── Intent BUFFER ─────────────────────────────────────────────────
+    // All non-exit signals (form_start, scroll, CTA, engagement) buffer
+    // here and fire ONCE as a single batch beacon on pagehide. Used to
+    // be 4-10 separate inserts per page — now it's one batch insert.
+    type IntentEvent = { kind: string; detail?: string; value?: string };
+    const intentBuf: IntentEvent[] = [];
+    const queueIntent = (ev: IntentEvent) => {
+      // de-dup by kind+detail (so repeated CTA clicks on same button don't bloat)
+      const key = `${ev.kind}::${ev.detail || ""}`;
+      if (intentBuf.some((x) => `${x.kind}::${x.detail || ""}` === key)) return;
+      intentBuf.push(ev);
+    };
+
+    // ─── Outbound click capture (immediate — rare event, ordering matters) ─
+    const seenCtas = new Set<string>();
     const onClick = (e: MouseEvent) => {
       const target = (e.target as HTMLElement | null)?.closest("a") as HTMLAnchorElement | null;
       if (!target) return;
@@ -171,92 +190,81 @@ export default function Tracker() {
         });
       }
 
-      // CTA click intent — buttons/links tagged with [data-cta] or with
-      // recognizable CTA copy (lower-cased substring match).
+      // CTA click → buffer (not immediate)
       const cta = target.getAttribute("data-cta") || "";
       const text = (target.textContent || "").trim().toLowerCase();
       const isCta = cta || /sign up|get started|start free|try free|buy now|book a call|contact|demo/i.test(text);
       if (isCta) {
-        beacon("/api/track-intent", {
-          visitor_id: visitor.id,
-          session_id: session.id,
-          path: window.location.pathname,
-          kind: "cta_click",
-          detail: (cta || text).slice(0, 80),
-        });
+        const label = (cta || text).slice(0, 80);
+        if (!seenCtas.has(label)) {
+          seenCtas.add(label);
+          queueIntent({ kind: "cta_click", detail: label });
+        }
       }
     };
     document.addEventListener("click", onClick, true);
 
-    // ─── Form-field focus = lead intent ─────────────────────────────────
-    const seenFields = new Set<string>();
+    // ─── Form-field focus → buffer ONLY first focus per page (form_start) ─
+    // We dropped form_field tracking per-input — it's 80% of write volume for
+    // little extra insight. form_start is the signal that matters.
+    let formStarted = false;
     const onFocus = (e: FocusEvent) => {
+      if (formStarted) return;
       const t = e.target as HTMLElement | null;
       if (!t) return;
       const tag = t.tagName.toLowerCase();
       if (tag !== "input" && tag !== "textarea" && tag !== "select") return;
       const input = t as HTMLInputElement;
       if (input.type === "hidden" || input.type === "submit" || input.type === "button") return;
+      formStarted = true;
       const name = input.name || input.id || input.placeholder || input.type || "field";
-      const key = `${window.location.pathname}::${name}`;
-      if (seenFields.has(key)) return;
-      seenFields.add(key);
-      beacon("/api/track-intent", {
-        visitor_id: visitor.id,
-        session_id: session.id,
-        path: window.location.pathname,
-        kind: seenFields.size === 1 ? "form_start" : "form_field",
-        detail: name.slice(0, 60),
-      });
+      queueIntent({ kind: "form_start", detail: name.slice(0, 60) });
     };
     document.addEventListener("focus", onFocus, true);
 
-    // ─── Scroll milestones ──────────────────────────────────────────────
-    const milestones = [50, 90];
-    const fired = new Set<number>();
+    // ─── Scroll milestones → buffer (kept only deep-scroll, dropped 50%) ─
+    let scroll90Fired = false;
     const onScroll = () => {
+      if (scroll90Fired) return;
       const doc = document.documentElement;
-      const scrolled = (window.scrollY + window.innerHeight) / (doc.scrollHeight || 1);
-      const pct = Math.round(scrolled * 100);
-      for (const m of milestones) {
-        if (pct >= m && !fired.has(m)) {
-          fired.add(m);
-          beacon("/api/track-intent", {
-            visitor_id: visitor.id,
-            session_id: session.id,
-            path: window.location.pathname,
-            kind: `scroll_${m}`,
-            detail: String(pct),
-          });
-        }
+      const pct = Math.round(((window.scrollY + window.innerHeight) / (doc.scrollHeight || 1)) * 100);
+      if (pct >= 90) {
+        scroll90Fired = true;
+        queueIntent({ kind: "scroll_90", detail: String(pct) });
       }
     };
     window.addEventListener("scroll", onScroll, { passive: true });
 
-    // ─── Engagement time on pagehide ────────────────────────────────────
+    // ─── Engagement time + final flush on pagehide ────────────────────────
     const startedAt = Date.now();
-    const onLeave = () => {
+    let flushed = false;
+    const flush = () => {
+      if (flushed) return;
+      flushed = true;
       const engagement_ms = Date.now() - startedAt;
       const doc = document.documentElement;
       const maxScroll = Math.min(100, Math.round(((window.scrollY + window.innerHeight) / (doc.scrollHeight || 1)) * 100));
+      // Always include engagement; skip if < 2s (bot/instant-close)
+      if (engagement_ms >= 2000) {
+        queueIntent({ kind: "engagement", detail: String(maxScroll), value: String(engagement_ms) });
+      }
+      if (intentBuf.length === 0) return;
+      // ONE batch beacon for every buffered event
       beacon("/api/track-intent", {
         visitor_id: visitor.id,
         session_id: session.id,
         path: window.location.pathname,
-        kind: "engagement",
-        detail: String(maxScroll),
-        value: String(engagement_ms),
+        events: intentBuf,
       });
     };
-    window.addEventListener("pagehide", onLeave);
-    window.addEventListener("beforeunload", onLeave);
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
 
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("focus", onFocus, true);
       window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("pagehide", onLeave);
-      window.removeEventListener("beforeunload", onLeave);
+      window.removeEventListener("pagehide", flush);
     };
   }, []);
 

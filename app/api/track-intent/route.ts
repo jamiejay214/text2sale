@@ -34,24 +34,32 @@ export async function OPTIONS() {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { visitor_id, session_id, path, kind, detail, value } = body || {};
-    if (!kind || !ALLOWED_KINDS.has(String(kind))) {
-      return NextResponse.json({ ok: false, error: "bad kind" }, { status: 400 });
-    }
+    const { visitor_id, session_id, path } = body || {};
+
+    // Two body shapes accepted:
+    //  A. SINGLE:   { kind, detail, value }                 (legacy)
+    //  B. BATCH:    { events: [{kind, detail, value}, ...] } (new — one insert)
+    const eventsRaw: Array<{ kind?: string; detail?: string; value?: string }> =
+      Array.isArray(body?.events) ? body.events : [{ kind: body?.kind, detail: body?.detail, value: body?.value }];
+
+    const rows = eventsRaw
+      .filter((e) => e?.kind && ALLOWED_KINDS.has(String(e.kind)))
+      .slice(0, 20) // hard cap so a misbehaving client can't insert 500 rows
+      .map((e) => ({
+        visitor_id: visitor_id || null,
+        session_id: session_id || null,
+        path: (path || "").slice(0, 500),
+        kind: String(e.kind),
+        detail: e.detail ? String(e.detail).slice(0, 200) : null,
+        value: e.value !== undefined && e.value !== null ? String(e.value).slice(0, 60) : null,
+      }));
+
+    if (rows.length === 0) return NextResponse.json({ ok: false, error: "no valid events" }, { status: 400 });
 
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    await supabase.from("lead_intents").insert({
-      visitor_id: visitor_id || null,
-      session_id: session_id || null,
-      path: (path || "").slice(0, 500),
-      kind: String(kind),
-      detail: detail ? String(detail).slice(0, 200) : null,
-      // For 'engagement' kind, value = engagement_ms; for others, optional.
-      // Never accept arbitrary text that might contain PII (numbers/short strings only).
-      value: value !== undefined && value !== null ? String(value).slice(0, 60) : null,
-    });
+    await supabase.from("lead_intents").insert(rows); // single bulk insert
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, inserted: rows.length });
   } catch (e) {
     console.error("track-intent error:", e);
     return NextResponse.json({ ok: false }, { status: 500 });
