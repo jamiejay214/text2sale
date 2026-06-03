@@ -5,6 +5,9 @@ export const metadata: Metadata = {
   title: "Command Center — All Businesses",
   robots: { index: false, follow: false },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Command Center" },
+  // Belt-and-suspenders: newer Next emits `mobile-web-app-capable`; also emit
+  // the legacy `apple-mobile-web-app-capable` so older iOS launches fullscreen.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {
