@@ -126,6 +126,10 @@ export async function GET() {
     let deferred = 0;
 
     for (const msg of pendingMessages) {
+      // Track what we actually debited for this row so that if the send
+      // later throws (Telnyx error/network), the catch block can refund the
+      // exact amount instead of leaving the user over-charged.
+      let chargedAmount = 0;
       try {
         const { data: contact } = await supabase
           .from("contacts").select("id, phone, dnc, state").eq("id", msg.contact_id).single();
@@ -173,9 +177,10 @@ export async function GET() {
         // 200-char drip is 2 GSM-7 segments and Telnyx bills us twice.
         const cost = await getMessageCost(msg.user_id);
         const segments = Math.max(1, countSegments(sanitizedBody));
+        const debitAmount = Number((cost * segments).toFixed(4));
         const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
           p_user_id: msg.user_id,
-          p_amount: Number((cost * segments).toFixed(4)),
+          p_amount: debitAmount,
         });
         if (decErr || newBal === null) {
           skippedNoFunds++;
@@ -185,6 +190,8 @@ export async function GET() {
             .eq("id", msg.id);
           continue;
         }
+        // Debit succeeded — remember it so a later send failure can refund.
+        chargedAmount = debitAmount;
 
         // Send via Telnyx (include messaging_profile_id for 10DLC).
         const telnyxPayload: Record<string, string> = {
@@ -273,6 +280,18 @@ export async function GET() {
       } catch (err: unknown) {
         failed++;
         console.error(`Scheduled send failed for ${msg.id}:`, err instanceof Error ? err.message : err);
+        // If we already debited the wallet for this message but the send
+        // never completed (Telnyx error or thrown fetch), refund the exact
+        // amount so the user is never charged for an unsent message. The
+        // idempotency key keyed on the row id makes a double-run a no-op.
+        if (chargedAmount > 0) {
+          await supabase.rpc("credit_wallet", {
+            p_user_id: msg.user_id,
+            p_amount: chargedAmount,
+            p_idempotency_key: `refund_sched_${msg.id}`,
+            p_description: "Refund — scheduled message failed to send",
+          });
+        }
         await supabase.from("scheduled_messages").update({ status: "failed" }).eq("id", msg.id);
       }
     }

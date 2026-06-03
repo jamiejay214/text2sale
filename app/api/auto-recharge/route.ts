@@ -55,6 +55,21 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false, error: "Auto recharge is not enabled" }, { status: 400 });
     }
 
+    // Atomic cooldown claim — only ONE recharge can be initiated per window,
+    // no matter how many callers race (two tabs, a send crossing the old
+    // 60s idempotency bucket, etc.). If we can't claim, a recharge already
+    // fired recently; don't charge the card again.
+    const { data: claimed } = await supabase.rpc("claim_auto_recharge", {
+      p_user_id: userId,
+      p_cooldown_seconds: 120,
+    });
+    if (!claimed) {
+      return NextResponse.json(
+        { success: false, error: "A recent auto-recharge is already in progress." },
+        { status: 409 }
+      );
+    }
+
     // Get the customer's default payment method
     const customer = await stripe.customers.retrieve(profile.stripe_customer_id) as Stripe.Customer;
 

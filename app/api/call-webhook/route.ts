@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
       // Avoid double-charging: only the FIRST hangup event closes the row.
       const { data: existing } = await supabase
         .from("calls")
-        .select("id, status, started_at, answered_at, direction, user_id, cost_per_min")
+        .select("id, status, started_at, answered_at, direction, user_id, cost_per_min, outcome")
         .eq("id", rowId)
         .maybeSingle();
 
@@ -219,7 +219,9 @@ export async function POST(req: NextRequest) {
       }
 
       const direction = (existing.direction as "inbound" | "outbound") || "outbound";
-      const charge = calcCallCharge(direction, durationSec);
+      let charge = calcCallCharge(direction, durationSec);
+      // Don't bill calls answered by voicemail.
+      if (existing.outcome === "voicemail") charge = 0;
 
       await supabase
         .from("calls")
@@ -232,20 +234,10 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", rowId);
 
-      // Debit the wallet atomically. We do a single-field RPC-style update
-      // by reading-then-writing; negative balances are allowed (admin will
-      // see the card go red) rather than failing the accounting.
+      // Debit the wallet atomically via RPC to avoid lost updates from
+      // concurrent charges racing on a read-then-write.
       if (charge > 0) {
-        const { data: prof } = await supabase
-          .from("profiles")
-          .select("wallet_balance")
-          .eq("id", existing.user_id)
-          .single();
-        const current = Number(prof?.wallet_balance || 0);
-        await supabase
-          .from("profiles")
-          .update({ wallet_balance: +(current - charge).toFixed(4) })
-          .eq("id", existing.user_id);
+        await supabase.rpc("decrement_wallet", { p_user_id: existing.user_id, p_amount: charge });
       }
 
       return NextResponse.json({ status: "ok" });
