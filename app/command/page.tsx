@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import {
   DollarSign, Users, Target, Zap, Activity, Radio, Globe, TrendingUp,
   Download, RefreshCw, MessageSquare, UserPlus, CreditCard,
-  ShoppingBag, FileText, Wifi, WifiOff,
+  ShoppingBag, FileText, Wifi, WifiOff, ChevronRight,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { loginUser } from "@/lib/auth";
@@ -301,36 +301,45 @@ export default function CommandCenterPage() {
 
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#07060d] text-white">
-      <Backdrop />
+      <Backdrop accent={vm.accent} />
       <CommandVoice token={token} snapshot={overview} accent={vm.accent} />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
         {/* Header */}
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ background: "linear-gradient(135deg,#a855f7,#22d3ee)", boxShadow: "0 0 30px #a855f780" }}>
+            <motion.div
+              className="relative flex h-11 w-11 items-center justify-center rounded-xl"
+              style={{ background: `linear-gradient(135deg,${vm.accent},#22d3ee)`, boxShadow: `0 0 30px ${vm.accent}80` }}
+              animate={{ boxShadow: [`0 0 18px ${vm.accent}66`, `0 0 34px ${vm.accent}aa`, `0 0 18px ${vm.accent}66`] }}
+              transition={{ repeat: Infinity, duration: 3 }}
+            >
               <Globe className="h-6 w-6 text-white" />
-            </div>
+            </motion.div>
             <div>
-              <h1 className="text-lg font-bold leading-tight tracking-tight sm:text-xl">COMMAND CENTER</h1>
-              <p className="text-[11px] text-white/40">Unified intelligence · 3 businesses {demo && <span className="text-amber-400">· DEMO</span>}</p>
+              <h1 className="text-lg font-bold leading-tight tracking-[0.12em] sm:text-xl">COMMAND CENTER</h1>
+              <p className="flex items-center gap-1.5 text-[11px] text-white/40">
+                <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
+                {scope === "all" ? "All systems · 3 businesses" : <span style={{ color: vm.accent }}>▸ {vm.biz?.name}</span>}
+                {demo && <span className="text-amber-400">· DEMO</span>}
+              </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <div className="hidden text-right sm:block">
-              <div className="font-mono text-sm text-white/80">{clock.toLocaleTimeString("en-US")}</div>
+              <div className="font-mono text-sm tabular-nums text-white/80">{clock.toLocaleTimeString("en-US")}</div>
               <div className="text-[10px] text-white/35">{updatedAt ? `synced ${timeAgo(updatedAt.toISOString())}` : ""}</div>
             </div>
-            <button onClick={() => { setLoading(false); load(tokenRef.current); }} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 hover:text-white" aria-label="Refresh">
+            <button onClick={() => { setLoading(false); load(tokenRef.current); }} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 transition hover:text-white" aria-label="Refresh">
               <RefreshCw className="h-4 w-4" />
             </button>
-            <button onClick={install} className="flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/80 hover:bg-white/10">
+            <button onClick={install} className="flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/80 transition hover:bg-white/10">
               <Download className="h-4 w-4" /> Install app
             </button>
           </div>
         </header>
 
-        {/* Business tabs */}
+        {/* Business selector */}
         <div className="mb-6 flex flex-wrap gap-2">
           {tabs.map((t) => {
             const activeTab = scope === t.id;
@@ -339,20 +348,30 @@ export default function CommandCenterPage() {
               <button
                 key={t.id}
                 onClick={() => setScope(t.id)}
-                className="group relative flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-medium transition"
+                className="group relative flex items-center gap-2 overflow-hidden rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
                 style={{
-                  borderColor: activeTab ? `${t.color}80` : "rgba(255,255,255,0.08)",
-                  background: activeTab ? `${t.color}1a` : "rgba(255,255,255,0.02)",
-                  color: activeTab ? "#fff" : "rgba(255,255,255,0.55)",
-                  boxShadow: activeTab ? `0 0 20px ${t.color}40` : "none",
+                  borderColor: activeTab ? `${t.color}` : "rgba(255,255,255,0.08)",
+                  background: activeTab ? `linear-gradient(180deg, ${t.color}26, ${t.color}0d)` : "rgba(255,255,255,0.02)",
+                  color: activeTab ? "#fff" : "rgba(255,255,255,0.5)",
+                  boxShadow: activeTab ? `0 0 22px ${t.color}55, inset 0 0 16px ${t.color}1a` : "none",
                 }}
               >
-                <span className="h-2 w-2 rounded-full" style={{ background: t.color }} />
-                {t.label}
+                <span
+                  className="h-2 w-2 rounded-full transition"
+                  style={{ background: t.color, boxShadow: activeTab ? `0 0 8px ${t.color}` : "none" }}
+                />
+                {t.id === "all" ? "All Businesses" : t.label}
                 {b && (
-                  <span className="ml-1 flex items-center" title={b.online ? "Live" : "Offline"}>
+                  <span className="ml-0.5 flex items-center" title={b.online ? "Live" : "Offline"}>
                     {b.online ? <Wifi className="h-3 w-3 text-emerald-400" /> : <WifiOff className="h-3 w-3 text-white/30" />}
                   </span>
+                )}
+                {activeTab && (
+                  <motion.span
+                    layoutId="tab-underline"
+                    className="absolute inset-x-2 -bottom-px h-px"
+                    style={{ background: `linear-gradient(90deg, transparent, ${t.color}, transparent)` }}
+                  />
                 )}
               </button>
             );
@@ -383,32 +402,40 @@ export default function CommandCenterPage() {
             </Panel>
           </div>
 
-          {/* Businesses leaderboard */}
+          {/* All view → leaderboard · Single business → focused spotlight */}
           <div className="lg:col-span-4">
-            <Panel title="All Businesses" glow="#a855f7">
-              <div className="space-y-2">
-                {overview.businesses.map((b) => (
-                  <button
-                    key={b.id}
-                    onClick={() => setScope(b.id)}
-                    className="w-full rounded-xl border border-white/5 bg-white/[0.02] p-3 text-left transition hover:bg-white/[0.05]"
-                  >
-                    <div className="mb-1.5 flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="h-2.5 w-2.5 rounded-full" style={{ background: b.color, boxShadow: `0 0 8px ${b.color}` }} />
-                        <span className="text-sm font-semibold text-white">{b.name}</span>
+            {scope === "all" ? (
+              <Panel title="All Businesses" glow="#a855f7">
+                <div className="space-y-2">
+                  {overview.businesses.map((b) => (
+                    <button
+                      key={b.id}
+                      onClick={() => setScope(b.id)}
+                      className="group/lb w-full rounded-xl border border-white/5 bg-white/[0.02] p-3 text-left transition hover:border-white/15 hover:bg-white/[0.05]"
+                      style={{ boxShadow: `inset 3px 0 0 ${b.color}` }}
+                    >
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="h-2.5 w-2.5 rounded-full" style={{ background: b.color, boxShadow: `0 0 8px ${b.color}` }} />
+                          <span className="text-sm font-semibold text-white">{b.name}</span>
+                        </div>
+                        <span className="flex items-center gap-1.5">
+                          {b.online ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <span title={b.note} className="text-[9px] text-amber-400">setup</span>}
+                          <ChevronRight className="h-3.5 w-3.5 text-white/25 transition group-hover/lb:translate-x-0.5 group-hover/lb:text-white/60" />
+                        </span>
                       </div>
-                      {b.online ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <span title={b.note} className="text-[9px] text-amber-400">setup</span>}
-                    </div>
-                    <div className="grid grid-cols-3 gap-1 text-center">
-                      <Mini label="Rev" value={`$${Math.round(b.kpis.revenue).toLocaleString()}`} />
-                      <Mini label="Visits" value={b.kpis.visitors.toLocaleString()} />
-                      <Mini label="Leads" value={b.kpis.leads.toLocaleString()} />
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </Panel>
+                      <div className="grid grid-cols-3 gap-1 text-center">
+                        <Mini label="Rev" value={`$${Math.round(b.kpis.revenue).toLocaleString()}`} />
+                        <Mini label="Visits" value={b.kpis.visitors.toLocaleString()} />
+                        <Mini label="Leads" value={b.kpis.leads.toLocaleString()} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </Panel>
+            ) : (
+              vm.biz && <BusinessSpotlight biz={vm.biz} accent={vm.accent} />
+            )}
           </div>
 
           {/* Map */}
@@ -457,8 +484,8 @@ export default function CommandCenterPage() {
           </div>
         </div>
 
-        {/* Rich visitor intelligence + AI panels */}
-        <Intelligence token={token} accent={vm.accent} demo={demo} />
+        {/* Rich visitor intelligence + AI panels (scoped to the selected business) */}
+        <Intelligence token={token} accent={vm.accent} demo={demo} scope={scope} bizName={vm.biz?.name} />
 
         <footer className="mt-8 flex items-center justify-between border-t border-white/5 pt-4 text-[11px] text-white/30">
           <span>Command Center · text2sale · aibusinessgrowth · trustedquotes · <a href="/command/install" className="hover:text-white/60">Install tracker on other sites →</a></span>
@@ -478,13 +505,96 @@ function Mini({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Backdrop() {
+// Focused identity + secondary-stats card shown when ONE business is selected
+// (replaces the all-businesses leaderboard so views never bleed together).
+function BusinessSpotlight({ biz, accent }: { biz: BusinessMetrics; accent: string }) {
+  const e = biz.extra;
+  const n = (k: string) => Number(e[k] || 0);
+  const money = (v: number) => `$${Math.round(v).toLocaleString()}`;
+  let stats: { label: string; value: string }[];
+  if (biz.id === "text2sale") {
+    stats = [
+      { label: "MRR", value: money(n("mrr")) },
+      { label: "This mo.", value: money(n("collectedThisMonth")) },
+      { label: "Active subs", value: String(n("activeSubscribers")) },
+      { label: "Contacts", value: n("contacts").toLocaleString() },
+      { label: "Messages", value: n("messages").toLocaleString() },
+      { label: "Calls", value: n("calls").toLocaleString() },
+    ];
+  } else if (biz.id === "aibusinessgrowth") {
+    stats = [
+      { label: "Subscribers", value: n("subscribers").toLocaleString() },
+      { label: "Purchases", value: n("purchases").toLocaleString() },
+      { label: "Conv. rate", value: `${biz.kpis.conversionRate.toFixed(1)}%` },
+    ];
+  } else {
+    stats = [
+      { label: "Partial leads", value: n("partialLeads").toLocaleString() },
+      { label: "Completed", value: n("completedLeads").toLocaleString() },
+      { label: "Conv. rate", value: `${biz.kpis.conversionRate.toFixed(1)}%` },
+    ];
+  }
   return (
-    <div className="pointer-events-none fixed inset-0 z-0">
-      <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 50% -10%, #1a0a2e 0%, #0a0712 45%, #050309 100%)" }} />
-      <div className="absolute inset-0 opacity-[0.18]" style={{ backgroundImage: "linear-gradient(rgba(168,85,247,0.5) 1px,transparent 1px),linear-gradient(90deg,rgba(168,85,247,0.5) 1px,transparent 1px)", backgroundSize: "44px 44px", maskImage: "radial-gradient(circle at 50% 0%, black, transparent 70%)" }} />
-      <motion.div className="absolute -left-40 top-10 h-96 w-96 rounded-full" style={{ background: "radial-gradient(circle,#a855f7,transparent 70%)", filter: "blur(60px)", opacity: 0.25 }} animate={{ x: [0, 60, 0], y: [0, 30, 0] }} transition={{ repeat: Infinity, duration: 18 }} />
-      <motion.div className="absolute right-0 top-40 h-96 w-96 rounded-full" style={{ background: "radial-gradient(circle,#22d3ee,transparent 70%)", filter: "blur(70px)", opacity: 0.2 }} animate={{ x: [0, -50, 0], y: [0, 40, 0] }} transition={{ repeat: Infinity, duration: 22 }} />
+    <Panel title="Business spotlight" glow={accent}>
+      <div className="mb-3 flex items-center gap-3">
+        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-lg font-bold" style={{ background: `${accent}22`, color: accent, boxShadow: `0 0 22px ${accent}44` }}>
+          {biz.name.slice(0, 1)}
+        </div>
+        <div className="min-w-0">
+          <div className="truncate text-base font-bold text-white">{biz.name}</div>
+          <div className="flex items-center gap-1.5 text-[11px] text-white/45">
+            <span className="truncate">{biz.domain}</span>
+            <span>·</span>
+            {biz.online ? (
+              <span className="flex shrink-0 items-center gap-1 text-emerald-400"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />Live</span>
+            ) : (
+              <span className="shrink-0 text-amber-400">Setup</span>
+            )}
+          </div>
+        </div>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        {stats.map((s) => (
+          <div key={s.label} className="rounded-lg border border-white/5 bg-white/[0.02] p-2 text-center">
+            <div className="font-mono text-sm font-bold text-white">{s.value}</div>
+            <div className="mt-0.5 text-[9px] uppercase tracking-wide text-white/35">{s.label}</div>
+          </div>
+        ))}
+      </div>
+    </Panel>
+  );
+}
+
+function Backdrop({ accent = "#a855f7" }: { accent?: string }) {
+  return (
+    <div className="pointer-events-none fixed inset-0 z-0 overflow-hidden">
+      {/* deep space base */}
+      <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 50% -10%, #160a26 0%, #0a0712 48%, #040207 100%)" }} />
+      {/* drifting tech grid */}
+      <motion.div
+        className="absolute inset-0 opacity-[0.16]"
+        style={{
+          backgroundImage:
+            `linear-gradient(${accent}55 1px,transparent 1px),linear-gradient(90deg,${accent}55 1px,transparent 1px)`,
+          backgroundSize: "46px 46px",
+          maskImage: "radial-gradient(circle at 50% 0%, black, transparent 72%)",
+          WebkitMaskImage: "radial-gradient(circle at 50% 0%, black, transparent 72%)",
+        }}
+        animate={{ backgroundPositionY: ["0px", "46px"] }}
+        transition={{ repeat: Infinity, duration: 6, ease: "linear" }}
+      />
+      {/* horizontal scan sweep */}
+      <motion.div
+        className="absolute inset-x-0 h-40"
+        style={{ background: `linear-gradient(to bottom, transparent, ${accent}14, transparent)` }}
+        animate={{ top: ["-10%", "110%"] }}
+        transition={{ repeat: Infinity, duration: 7, ease: "easeInOut" }}
+      />
+      {/* ambient orbs (accent + cyan) */}
+      <motion.div className="absolute -left-40 top-10 h-96 w-96 rounded-full" style={{ background: `radial-gradient(circle,${accent},transparent 70%)`, filter: "blur(70px)", opacity: 0.28 }} animate={{ x: [0, 60, 0], y: [0, 30, 0] }} transition={{ repeat: Infinity, duration: 18 }} />
+      <motion.div className="absolute right-0 top-40 h-96 w-96 rounded-full" style={{ background: "radial-gradient(circle,#22d3ee,transparent 70%)", filter: "blur(80px)", opacity: 0.18 }} animate={{ x: [0, -50, 0], y: [0, 40, 0] }} transition={{ repeat: Infinity, duration: 22 }} />
+      {/* vignette */}
+      <div className="absolute inset-0" style={{ boxShadow: "inset 0 0 220px 60px rgba(0,0,0,0.65)" }} />
     </div>
   );
 }

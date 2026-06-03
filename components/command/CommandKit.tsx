@@ -51,29 +51,44 @@ export function Panel({
   glow = "#a855f7",
   title,
   right,
+  corners = true,
 }: {
   children: React.ReactNode;
   className?: string;
   glow?: string;
   title?: string;
   right?: React.ReactNode;
+  corners?: boolean;
 }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, ease: "easeOut" }}
-      className={`relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03] p-4 backdrop-blur-xl ${className}`}
-      style={{ boxShadow: `0 0 0 1px rgba(255,255,255,0.02), 0 18px 50px -20px ${glow}40` }}
+      className={`group/panel relative overflow-hidden rounded-2xl border border-white/10 bg-white/[0.035] p-4 backdrop-blur-xl ${className}`}
+      style={{ boxShadow: `inset 0 1px 0 rgba(255,255,255,0.06), 0 0 0 1px rgba(255,255,255,0.02), 0 18px 50px -20px ${glow}55` }}
     >
+      {/* top energy line */}
       <div
         className="pointer-events-none absolute -top-px left-6 right-6 h-px"
         style={{ background: `linear-gradient(90deg, transparent, ${glow}, transparent)` }}
       />
+      {/* HUD corner brackets */}
+      {corners && (
+        <>
+          <span className="pointer-events-none absolute left-1 top-1 h-2.5 w-2.5 rounded-tl-md border-l border-t" style={{ borderColor: `${glow}aa` }} />
+          <span className="pointer-events-none absolute right-1 top-1 h-2.5 w-2.5 rounded-tr-md border-r border-t" style={{ borderColor: `${glow}aa` }} />
+          <span className="pointer-events-none absolute bottom-1 left-1 h-2.5 w-2.5 rounded-bl-md border-b border-l" style={{ borderColor: `${glow}55` }} />
+          <span className="pointer-events-none absolute bottom-1 right-1 h-2.5 w-2.5 rounded-br-md border-b border-r" style={{ borderColor: `${glow}55` }} />
+        </>
+      )}
       {(title || right) && (
         <div className="mb-3 flex items-center justify-between">
           {title && (
-            <h3 className="text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">{title}</h3>
+            <h3 className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/45">
+              <span className="inline-block h-1.5 w-1.5 rounded-full" style={{ background: glow, boxShadow: `0 0 6px ${glow}` }} />
+              {title}
+            </h3>
           )}
           {right}
         </div>
@@ -299,7 +314,7 @@ export function StatTile({
   icon?: React.ReactNode;
 }) {
   return (
-    <Panel glow={color} className="!p-4">
+    <Panel glow={color} className="!p-4" corners={false}>
       <div className="flex items-start justify-between">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">{label}</div>

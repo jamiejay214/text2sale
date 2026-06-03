@@ -134,7 +134,16 @@ const SEV: Record<Finding["severity"], { color: string; bg: string }> = {
 };
 const IMPACT: Record<Idea["effort"], string> = { low: "#34d399", medium: "#fbbf24", high: "#fb7185" };
 
-export default function Intelligence({ token, accent, demo }: { token: string | null; accent: string; demo: boolean }) {
+type Scope = "all" | "text2sale" | "aibusinessgrowth" | "trustedquotes";
+
+export default function Intelligence({ token, accent, demo, scope = "all", bizName }: { token: string | null; accent: string; demo: boolean; scope?: Scope; bizName?: string }) {
+  const isAll = scope === "all";
+  // audit/marketing endpoints key businesses as text2sale|abg|tq (short ids)
+  const shortKey: "text2sale" | "abg" | "tq" | null =
+    scope === "aibusinessgrowth" ? "abg" : scope === "trustedquotes" ? "tq" : scope === "text2sale" ? "text2sale" : null;
+  // The rich website-traffic panels (Acquisition/Visitors/Engagement) are
+  // sourced from text2sale's tracker only, so only show them for All or T2S.
+  const showTraffic = isAll || scope === "text2sale";
   const [data, setData] = useState<IntelData | null>(null);
   const [intelLoading, setIntelLoading] = useState(true);
   const [intelErr, setIntelErr] = useState<string | null>(null);
@@ -258,8 +267,10 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
     triggerDownload(await res.text(), `leads_${business || "all"}_${kind || "all"}.csv`);
   };
 
+  // When a single business is selected, lock the inbox to that business.
+  const effectiveLeadFilter: "all" | "recoverable" | LeadRow["business"] = isAll ? leadFilter : (scope as LeadRow["business"]);
   const filteredLeads = (leadsData?.leads || []).filter((l) =>
-    leadFilter === "all" ? true : leadFilter === "recoverable" ? l.kind === "partial" && l.hot : l.business === leadFilter
+    effectiveLeadFilter === "all" ? true : effectiveLeadFilter === "recoverable" ? l.kind === "partial" && l.hot : l.business === effectiveLeadFilter
   );
 
   return (
@@ -268,7 +279,7 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
       <SectionHeader
         icon={<Inbox className="h-5 w-5" />}
         title="Leads & Recovery"
-        subtitle="Every lead across all 3 businesses — click to text, call, or email"
+        subtitle={isAll ? "Every lead across all 3 businesses — click to text, call, or email" : `${bizName || "Business"} leads — click to text, call, or email`}
         accent="#fbbf24"
         action={
           <div className="flex items-center gap-2">
@@ -288,7 +299,7 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
           </div>
         }
       />
-      {leadsData && leadsData.counts.recoverable > 0 && (
+      {(isAll || scope === "trustedquotes") && leadsData && leadsData.counts.recoverable > 0 && (
         <button
           onClick={() => setLeadFilter("recoverable")}
           className="flex w-full items-center gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-rose-500/10 p-4 text-left transition hover:from-amber-500/20"
@@ -302,34 +313,39 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
         </button>
       )}
       <Panel title="Lead inbox" glow="#fbbf24">
-        {/* filter chips */}
-        <div className="mb-3 flex flex-wrap gap-1.5">
-          {([
-            { id: "all", label: `All${leadsData ? ` (${leadsData.leads.length})` : ""}` },
-            { id: "recoverable", label: `🔥 Recoverable${leadsData ? ` (${leadsData.counts.recoverable})` : ""}` },
-            { id: "text2sale", label: `Text2Sale${leadsData ? ` (${leadsData.counts.text2sale})` : ""}` },
-            { id: "aibusinessgrowth", label: `AI Biz Growth${leadsData ? ` (${leadsData.counts.aibusinessgrowth})` : ""}` },
-            { id: "trustedquotes", label: `Trusted Quotes${leadsData ? ` (${leadsData.counts.trustedquotes})` : ""}` },
-          ] as const).map((f) => (
-            <button
-              key={f.id}
-              onClick={() => setLeadFilter(f.id as typeof leadFilter)}
-              className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition"
-              style={{
-                borderColor: leadFilter === f.id ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.08)",
-                background: leadFilter === f.id ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.02)",
-                color: leadFilter === f.id ? "#fff" : "rgba(255,255,255,0.55)",
-              }}
-            >
-              {f.label}
-            </button>
-          ))}
-        </div>
+        {/* filter chips — only in the combined (All) view */}
+        {isAll && (
+          <div className="mb-3 flex flex-wrap gap-1.5">
+            {([
+              { id: "all", label: `All${leadsData ? ` (${leadsData.leads.length})` : ""}` },
+              { id: "recoverable", label: `🔥 Recoverable${leadsData ? ` (${leadsData.counts.recoverable})` : ""}` },
+              { id: "text2sale", label: `Text2Sale${leadsData ? ` (${leadsData.counts.text2sale})` : ""}` },
+              { id: "aibusinessgrowth", label: `AI Biz Growth${leadsData ? ` (${leadsData.counts.aibusinessgrowth})` : ""}` },
+              { id: "trustedquotes", label: `Trusted Quotes${leadsData ? ` (${leadsData.counts.trustedquotes})` : ""}` },
+            ] as const).map((f) => (
+              <button
+                key={f.id}
+                onClick={() => setLeadFilter(f.id as typeof leadFilter)}
+                className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition"
+                style={{
+                  borderColor: leadFilter === f.id ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.08)",
+                  background: leadFilter === f.id ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.02)",
+                  color: leadFilter === f.id ? "#fff" : "rgba(255,255,255,0.55)",
+                }}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
         {leadsLoading && !leadsData ? <SkeletonRows n={8} /> : <LeadInbox leads={filteredLeads} />}
       </Panel>
 
+      {/* ─── WEBSITE TRAFFIC INTELLIGENCE (Text2Sale tracker) — All / Text2Sale only ─── */}
+      {showTraffic && (
+      <>
       {/* ─── ACQUISITION ─── */}
-      <SectionHeader icon={<Send className="h-5 w-5" />} title="Acquisition" subtitle="How visitors are finding you" accent={accent} action={<RefreshButton onClick={loadIntel} loading={intelLoading} />} />
+      <SectionHeader icon={<Send className="h-5 w-5" />} title="Acquisition" subtitle={isAll ? "How visitors find you · Text2Sale tracker" : "How visitors are finding you"} accent={accent} action={<RefreshButton onClick={loadIntel} loading={intelLoading} />} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
         <Panel title="Channel mix (14d)" glow={accent}>
           {data ? <ChannelMix channels={data.channels} /> : <SkeletonRows n={5} />}
@@ -361,6 +377,8 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
       <Panel title="Where they go AFTER you (outbound exits)" glow={accent}>
         {data ? <ExitsTable rows={data.exits} /> : <SkeletonRows n={5} />}
       </Panel>
+      </>
+      )}
 
       {/* ─── OPTIMIZATION AUDIT ─── */}
       <SectionHeader
@@ -381,13 +399,13 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
         }
       />
       {!audit && !auditLoading && (
-        <Panel title="Tap “Run AI audit” to scan all 3 businesses" glow="#fb7185">
-          <p className="text-sm text-white/50">Claude will read every metric (channels, bounce, exits, conversions) and return 3-5 specific tighten-up actions per business, ordered by severity.</p>
+        <Panel title={isAll ? "Tap “Run AI audit” to scan all 3 businesses" : `Tap “Run AI audit” to scan ${bizName || "this business"}`} glow="#fb7185">
+          <p className="text-sm text-white/50">Claude reads every live metric (channels, bounce, exits, conversions) and returns specific tighten-up actions, ordered by severity.</p>
         </Panel>
       )}
       {audit && (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-          {(["text2sale", "abg", "tq"] as const).map((k) => (
+        <div className={`grid grid-cols-1 gap-4 ${isAll ? "lg:grid-cols-3" : ""}`}>
+          {(isAll ? (["text2sale", "abg", "tq"] as const) : (shortKey ? [shortKey] : [])).map((k) => (
             <Panel key={k} title={BIZ_LABEL[k]} glow={BIZ_COLOR[k]}>
               <div className="space-y-3">
                 {(audit.businesses[k]?.findings || []).map((f, i) => <FindingCard key={i} f={f} />)}
@@ -417,6 +435,7 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
       />
       {marketing && (
         <div>
+          {isAll && (
           <div className="mb-3 flex flex-wrap gap-2">
             {(["text2sale", "abg", "tq"] as const).map((k) => (
               <button
@@ -434,8 +453,9 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
               </button>
             ))}
           </div>
+          )}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {(marketing.businesses[openBiz]?.ideas || []).map((idea, i) => <IdeaCard key={i} idea={idea} />)}
+            {(marketing.businesses[isAll ? openBiz : (shortKey || "text2sale")]?.ideas || []).map((idea, i) => <IdeaCard key={i} idea={idea} />)}
           </div>
         </div>
       )}
