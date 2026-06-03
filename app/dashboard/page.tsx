@@ -20,7 +20,7 @@ import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentimen
 import { supabase } from "@/lib/supabase";
 import { logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
-import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
+import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import {
   fetchProfile, updateProfile,
   fetchContacts as dbFetchContacts, insertContact as dbInsertContact,
@@ -3761,36 +3761,27 @@ export default function DashboardPage() {
         await dbUpdateConversation(selectedConversation.id, convUpdate);
       }
 
-      // ── Atomic wallet decrement ────────────────────────────────────────
-      // Before: read `currentUser.walletBalance` from React state, subtract
-      // `cost`, write via `persistProfile({ wallet_balance })`. Two Sends
-      // fired back-to-back (or a Send + an incoming top-off webhook) would
-      // both read the same starting balance and the second write would
-      // silently CLOBBER any concurrent balance changes. Now: decrement_wallet
-      // is an atomic Postgres RPC that can't over-debit or lose updates.
+      // ── Balance refresh — NO client-side charge ────────────────────────
+      // /api/send-sms already debited the wallet atomically, per-segment,
+      // server-side. The old code ALSO decremented here on the client, which
+      // double-charged every manual send (and ignored segment count). We no
+      // longer touch wallet_balance from the client — we only append the
+      // audit entry and let persistProfile re-read the server's authoritative
+      // balance (so a concurrent server debit can't be clobbered).
+      const segments = Math.max(1, countSegments(sanitizeForSms(body)));
+      const chargedAmt = Number((cost * segments).toFixed(4));
       const chargeEntry: UsageHistoryItem = {
-        id: `msg_${Date.now()}`, type: "charge", amount: cost,
+        id: `msg_${Date.now()}`, type: "charge", amount: chargedAmt,
         description: `SMS to ${contact.phone}`,
         createdAt: now, status: "succeeded",
       };
-      const { data: newBalData, error: decErr } = await supabase.rpc("decrement_wallet", {
-        p_user_id: userId,
-        p_amount: cost,
-      });
-      const newBal = decErr || newBalData === null
-        ? Math.max(0, Number(((currentUser.walletBalance || 0) - cost).toFixed(2)))
-        : Number(newBalData);
-      if (decErr) {
-        console.warn("decrement_wallet failed, falling back to local estimate:", decErr.message);
-      }
-
-      // Audit-log append. This isn't atomic with the decrement above, but
-      // the wallet is correct regardless — log entries are recoverable from
-      // messages/contacts if one ever gets clobbered.
-      await persistProfile({
-        wallet_balance: newBal,
+      const updatedProfile = await persistProfile({
         usage_history: addUsageEntry(currentUser.usageHistory || [], chargeEntry),
       });
+      const newBal = Number(
+        (updatedProfile as { wallet_balance?: number } | null)?.wallet_balance
+        ?? Math.max(0, ((currentUser.walletBalance || 0) - chargedAmt))
+      );
 
       // Check if auto-recharge should trigger
       checkAutoRecharge(newBal);
@@ -4950,21 +4941,30 @@ export default function DashboardPage() {
       setContacts((prev) => [...importedAll, ...prev]);
     }
 
-    // ── Charge wallet per lead imported ──────────────────────────────────────
-    // Cost per lead = plan.messageCost (same rate as per-message cost).
-    // Dave Brazell's plan has messageCost $0.017; everyone else $0.012.
-    // We charge AFTER a successful insert so a failed upload doesn't bill.
+    // ── Charge wallet per lead imported (SERVER-SIDE) ────────────────────────
+    // Cost per lead = the user's real plan.messageCost, computed and debited on
+    // the server so the amount can't be tampered and a failed/insufficient
+    // debit is surfaced instead of silently swallowed. We record the charge
+    // only if the server confirms it actually took the money.
     let leadChargeAmount: number | null = null;
     if (totalImported > 0 && currentUser) {
-      const costPerLead = currentUser.plan.messageCost || 0.012;
-      leadChargeAmount = Number((totalImported * costPerLead).toFixed(4));
       try {
-        await supabase.rpc("decrement_wallet", {
-          p_user_id: userId,
-          p_amount: leadChargeAmount,
+        const res = await authFetch("/api/charge-leads", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ userId, count: totalImported }),
         });
+        const data = await res.json();
+        if (data.success && data.charged > 0) {
+          leadChargeAmount = Number(data.charged);
+          if (typeof data.walletBalance === "number") {
+            setCurrentUser((prev) => prev ? { ...prev, walletBalance: data.walletBalance } : prev);
+          }
+        } else if (data.insufficient) {
+          setMessage("⚠️ Imported, but your wallet had insufficient funds for the lead charge.");
+        }
       } catch (e) {
-        console.error("[csv-upload] wallet deduction failed:", e);
+        console.error("[csv-upload] lead charge failed:", e);
       }
     }
 

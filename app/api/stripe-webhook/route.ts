@@ -70,10 +70,18 @@ export async function POST(req: NextRequest) {
         // Just log it
         console.log("Subscription checkout completed for user:", userId);
       } else {
-        // Wallet top-up
-        const amount = parseFloat(session.metadata?.amount || "0");
+        // Wallet top-up — only credit a SETTLED payment, and credit the amount
+        // Stripe actually collected (amount_total), using client metadata only
+        // as a fallback. Prevents crediting on unpaid/async sessions or trusting
+        // a tampered metadata amount over the real charge.
+        const paid = !session.payment_status || session.payment_status === "paid";
+        const metaAmount = parseFloat(session.metadata?.amount || "0");
+        const amount =
+          typeof session.amount_total === "number"
+            ? session.amount_total / 100
+            : metaAmount;
 
-        if (userId && amount) {
+        if (userId && amount && paid) {
           // ── Atomic, idempotent wallet credit ───────────────────────────
           // Previously this read wallet_balance, added `amount`, and wrote
           // back — a classic read-modify-write race. A checkout.session.
@@ -287,9 +295,10 @@ export async function POST(req: NextRequest) {
             const now = new Date().toISOString();
             const entries = [];
 
-            // Log subscription charge
+            // Log subscription charge (stable id keyed on the invoice so a
+            // webhook retry can't create a duplicate audit entry).
             entries.push({
-              id: `sub_${Date.now()}`,
+              id: `sub_${invoice.id}`,
               type: "charge",
               amount: (invoice.amount_paid || 0) / 100,
               description: "Monthly subscription — Text2Sale Plan",
@@ -297,39 +306,39 @@ export async function POST(req: NextRequest) {
               status: "succeeded",
             });
 
-            // Charge $1/month per owned phone number
+            // Charge $1/month per owned phone number — via the SAME atomic,
+            // period-claimed RPC the /api/billing/numbers cron uses, keyed on
+            // the invoice's billing month. This prevents BOTH (a) double
+            // billing when this webhook and the monthly cron both run, and
+            // (b) a Stripe webhook retry re-charging the fee. Whichever path
+            // claims the month first wins; the others become no-ops.
             const ownedNumbers = profile.owned_numbers || [];
             const numberCount = ownedNumbers.length;
-            let numberCharge = 0;
 
             if (numberCount > 0) {
-              numberCharge = numberCount * 1;
-              entries.push({
-                id: `numfee_${Date.now()}`,
-                type: "charge",
-                amount: numberCharge,
-                description: `Monthly phone number fee — ${numberCount} number${numberCount > 1 ? "s" : ""} × $1.00`,
-                createdAt: now,
-                status: "succeeded",
-              });
-            }
-
-            const updatedHistory = [...entries, ...(profile.usage_history || [])];
-
-            // Atomic decrement — avoids the read/modify/write race where a
-            // parallel top-up would clobber this write (or vice-versa).
-            // Only fires if there's actually a fee to debit; the audit log
-            // update is a separate best-effort write.
-            if (numberCharge > 0) {
-              const { error: decErr } = await supabase.rpc("decrement_wallet", {
+              const numberCharge = numberCount * 1;
+              const period = now.slice(0, 7); // "YYYY-MM"
+              const { data: billed, error: billErr } = await supabase.rpc("bill_number_fee", {
                 p_user_id: userId,
                 p_amount: numberCharge,
+                p_period: period,
               });
-              if (decErr) {
-                console.error("[stripe-webhook] decrement_wallet (number fee) failed:", decErr);
+              if (billErr) {
+                console.error("[stripe-webhook] bill_number_fee failed:", billErr);
+              } else if (billed !== null && billed !== undefined) {
+                // Only log the fee if it actually charged this month.
+                entries.push({
+                  id: `numfee_${invoice.id}`,
+                  type: "charge",
+                  amount: numberCharge,
+                  description: `Monthly phone number fee — ${numberCount} number${numberCount > 1 ? "s" : ""} × $1.00`,
+                  createdAt: now,
+                  status: "succeeded",
+                });
               }
             }
 
+            const updatedHistory = [...entries, ...(profile.usage_history || [])];
             await supabase
               .from("profiles")
               .update({ usage_history: updatedHistory })

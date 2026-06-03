@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { countSegments } from "@/lib/sms-text";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -53,7 +54,7 @@ export async function GET(req: NextRequest) {
       // Get user's reminder settings and from number
       const { data: profile } = await supabase
         .from("profiles")
-        .select("appointment_reminders, owned_numbers, wallet_balance, usage_history")
+        .select("appointment_reminders, owned_numbers, wallet_balance, usage_history, plan")
         .eq("id", apt.user_id)
         .single();
 
@@ -111,11 +112,16 @@ export async function GET(req: NextRequest) {
         // Mark as reminded and charge
         await supabase.from("appointments").update({ reminder_sent: true }).eq("id", apt.id);
 
-        const newBalance = Number((balance - 0.012).toFixed(2));
+        // Charge atomically at the user's real per-message rate × segment count.
+        const messageCost = Number((profile as { plan?: { messageCost?: number } })?.plan?.messageCost ?? 0.012);
+        const segments = Math.max(1, countSegments(msg));
+        const cost = Number((messageCost * segments).toFixed(4));
+        await supabase.rpc("decrement_wallet", { p_user_id: apt.user_id, p_amount: cost });
+
         const entry = {
           id: `reminder_${Date.now()}_${apt.id.slice(0, 8)}`,
           type: "charge",
-          amount: 0.012,
+          amount: cost,
           description: `Appointment reminder — ${contact.first_name || "Unknown"}`,
           createdAt: new Date().toISOString(),
           status: "succeeded",
@@ -123,7 +129,6 @@ export async function GET(req: NextRequest) {
         await supabase
           .from("profiles")
           .update({
-            wallet_balance: newBalance,
             usage_history: [entry, ...(profile.usage_history || [])],
           })
           .eq("id", apt.user_id);
