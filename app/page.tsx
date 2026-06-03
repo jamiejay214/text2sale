@@ -147,6 +147,12 @@ export default function HomePage() {
         <nav className="relative z-10 mx-auto flex max-w-7xl items-center justify-between px-6 py-6">
           <Logo size="md" />
           <div className="flex items-center gap-3">
+            <a
+              href="/blog"
+              className="hidden text-sm font-medium text-zinc-300 hover:text-white sm:block"
+            >
+              Blog
+            </a>
             <button
               onClick={() => { setMode("login"); scrollToAuth(); }}
               className="text-sm font-medium text-zinc-300 hover:text-white"
