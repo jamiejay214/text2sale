@@ -1,8 +1,11 @@
 import type { MetadataRoute } from "next";
+import { getAllPosts } from "@/lib/blog-posts";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://text2sale.com";
   const today = new Date();
+
+  const blogPosts = getAllPosts();
 
   const corePages = [
     { path: "", priority: 1.0 },
@@ -70,6 +73,18 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: today,
       changeFrequency: "weekly" as const,
       priority: 0.78,
+    })),
+    {
+      url: `${baseUrl}/blog`,
+      lastModified: today,
+      changeFrequency: "weekly" as const,
+      priority: 0.8,
+    },
+    ...blogPosts.map((post) => ({
+      url: `${baseUrl}/blog/${post.slug}`,
+      lastModified: new Date(post.dateModified),
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
     })),
     {
       url: `${baseUrl}/privacy-policy`,
