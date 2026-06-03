@@ -827,6 +827,7 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
           <div className="text-sm text-zinc-500">© {new Date().getFullYear()} Text2Sale. All rights reserved.</div>
           <nav className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm">
+            <a href="/blog" className="text-zinc-400 hover:text-white transition">Blog</a>
             <a href="/terms" className="text-zinc-400 hover:text-white transition">Terms</a>
             <a href="/privacy-policy" className="text-zinc-400 hover:text-white transition">Privacy</a>
             <a href="mailto:support@text2sale.com" className="text-zinc-400 hover:text-white transition">Support</a>
