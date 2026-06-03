@@ -209,12 +209,38 @@ export default function CommandCenterPage() {
   }, [demo]);
 
   const install = async () => {
-    if (!installPrompt) {
-      alert("To install: open this page in Chrome/Edge and use the install icon in the address bar, or 'Add to Dock' in Safari.");
+    // Chrome/Edge/Android: native install prompt is available.
+    if (installPrompt) {
+      await installPrompt.prompt();
+      setInstallPrompt(null);
       return;
     }
-    await installPrompt.prompt();
-    setInstallPrompt(null);
+    const ua = navigator.userAgent || "";
+    const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+    const standalone =
+      window.matchMedia?.("(display-mode: standalone)")?.matches ||
+      (window.navigator as unknown as { standalone?: boolean }).standalone === true;
+    if (standalone) {
+      alert("Command Center is already installed — you're running it as an app. 🎉");
+      return;
+    }
+    if (isIOS) {
+      alert(
+        "📲 Add Command Center to your iPhone:\n\n" +
+          "1. Tap the Share button (□ with an ↑) in Safari's toolbar.\n" +
+          "2. Scroll down and tap “Add to Home Screen”.\n" +
+          "3. Tap “Add”.\n\n" +
+          "It'll appear on your home screen with its own icon and open fullscreen like a real app.\n\n" +
+          "(Must be done in Safari — not Chrome — on iPhone.)"
+      );
+      return;
+    }
+    alert(
+      "Install the Command Center app:\n\n" +
+        "• iPhone/iPad: open in Safari → Share → Add to Home Screen\n" +
+        "• Android: Chrome → ⋮ → Install app\n" +
+        "• Desktop: click the install icon in the Chrome/Edge address bar"
+    );
   };
 
   // ── view model based on scope ──
