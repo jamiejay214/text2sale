@@ -166,11 +166,16 @@ export async function POST(req: NextRequest) {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
     // ─── Cross-site routing ────────────────────────────────────────────
-    // site = "abg" routes to website_visits (AI Business Growth).
-    // site = "tq"  routes to the separate Trusted Quotes Supabase project.
-    // default → page_views (text2sale).
+    // site = "abg" → AI Business Growth's OWN project (falls back to the
+    //               legacy website_visits in text2sale's project until ABG_*
+    //               env is configured).
+    // site = "tq"  → the separate Trusted Quotes Supabase project.
+    // default      → page_views (text2sale).
     if (site === "abg") {
-      await supabase.from("website_visits").insert({
+      const abgUrl = process.env.ABG_SUPABASE_URL;
+      const abgKey = process.env.ABG_SERVICE_ROLE_KEY;
+      const abg = abgUrl && abgKey ? createClient(abgUrl, abgKey, { auth: { persistSession: false } }) : supabase;
+      await abg.from("website_visits").insert({
         page: (path || "/").slice(0, 500),
         device_type: device || null,
         source: utm?.source || referrer_domain || null,

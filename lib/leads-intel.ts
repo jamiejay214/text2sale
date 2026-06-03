@@ -23,6 +23,14 @@ function tqClient(): SupabaseClient | null {
   if (!url || !key) return null;
   return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
+// AI Business Growth's own project (falls back to the main project's legacy
+// website_* tables until ABG_* env is configured).
+function abgClient(): SupabaseClient {
+  const url = process.env.ABG_SUPABASE_URL;
+  const key = process.env.ABG_SERVICE_ROLE_KEY;
+  if (url && key) return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+  return mainClient();
+}
 
 export type LeadRow = {
   business: "text2sale" | "aibusinessgrowth" | "trustedquotes";
@@ -80,9 +88,9 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
     }
   } catch { /* skip */ }
 
-  // ── aibusinessgrowth website_leads ───────────────────────────────────────
+  // ── aibusinessgrowth website_leads (own project, or legacy fallback) ──────
   try {
-    const { data } = await main
+    const { data } = await abgClient()
       .from("website_leads")
       .select("name, email, phone, company, industry, struggling_with, source, status, created_at")
       .order("created_at", { ascending: false })

@@ -83,6 +83,18 @@ function tqClient(): SupabaseClient | null {
   });
 }
 
+// AI Business Growth now lives in its OWN Supabase project. If its env is set,
+// read from there; otherwise fall back to text2sale's legacy website_* tables
+// so the dashboard never breaks during the cutover.
+function abgClient(): SupabaseClient | null {
+  const url = process.env.ABG_SUPABASE_URL;
+  const key = process.env.ABG_SERVICE_ROLE_KEY;
+  if (!url || !key) return null;
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 // ── time helpers ─────────────────────────────────────────────────────────────
 const DAY = 86400000;
 const startOfToday = () => {
@@ -340,10 +352,11 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
   return biz;
 }
 
-// ── aibusinessgrowth (website_* tables, same project) ────────────────────────
+// ── aibusinessgrowth (its own Supabase project; falls back to text2sale's
+//    legacy website_* tables until ABG_* env is set) ─────────────────────────
 async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
-  const sb = mainClient();
-  const biz = emptyBiz("aibusinessgrowth", "AI Business Growth", "aibusinessgrowth.com", "#22d3ee", true);
+  const sb = abgClient() || mainClient();
+  const biz = emptyBiz("aibusinessgrowth", "AI Business Growth", "aibusinessgrowth.net", "#22d3ee", true);
   try {
     const [visToday, visWeek, visTotal, leads, leadsWeek, subs, purchases] = await Promise.all([
       countSince(sb, "website_visits", "created_at", startOfToday()),
