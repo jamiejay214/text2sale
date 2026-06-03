@@ -249,6 +249,8 @@ export default function CommandCenterPage() {
       sources, devices, funnel, feed,
       messages: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.messages || 0),
       calls: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.calls || 0),
+      mrr: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.mrr || 0),
+      activeSubscribers: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.activeSubscribers || 0),
     };
   }, [overview, scope]);
 
@@ -333,11 +335,11 @@ export default function CommandCenterPage() {
 
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <StatTile label="Revenue" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={`$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
+          <StatTile label="Revenue collected" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
           <StatTile label="Visitors" value={vm.visitors} color="#22d3ee" icon={<Users className="h-4 w-4" />} sub={`${vm.visitorsWeek.toLocaleString()} this week`} spark={vm.traffic} />
           <StatTile label="Visitors Today" value={vm.visitorsToday} color="#38bdf8" icon={<TrendingUp className="h-4 w-4" />} spark={vm.traffic} />
           <StatTile label="Leads" value={vm.leads} color="#a855f7" icon={<Target className="h-4 w-4" />} />
-          <StatTile label="Customers" value={vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} />
+          <StatTile label="Paying customers" value={vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} sub={(scope === "all" || scope === "text2sale") && vm.activeSubscribers > vm.customers ? `+${vm.activeSubscribers - vm.customers} comped` : undefined} />
           <StatTile label={ctx.label} value={ctx.value} color={ctx.color} icon={ctx.icon} />
         </div>
 

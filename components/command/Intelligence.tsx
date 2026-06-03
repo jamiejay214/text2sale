@@ -11,8 +11,9 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  RefreshCw, Sparkles, AlertTriangle, ArrowUpRight, MapPin, Monitor, Smartphone, Tablet,
-  Megaphone, Search, Mail, Globe, Send, Target, Zap, Cpu, Users, ChevronDown,
+  RefreshCw, Sparkles, AlertTriangle, ArrowUpRight, Monitor, Smartphone, Tablet,
+  Megaphone, Search, Mail, Globe, Send, Zap, Cpu, Users, ChevronDown,
+  Phone, MessageSquare, Download, Flame, Inbox, BellRing, Check,
 } from "lucide-react";
 import { Panel, BarList, Donut, type Bar } from "./CommandKit";
 
@@ -89,6 +90,28 @@ const CHANNEL_ICON: Record<string, React.ReactNode> = {
 const BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", abg: "AI Business Growth", tq: "Trusted Quotes" };
 const BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", abg: "#22d3ee", tq: "#34d399" };
 
+// Leads inbox uses full business ids from the API
+const LEAD_BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", aibusinessgrowth: "#22d3ee", trustedquotes: "#34d399" };
+const LEAD_BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", aibusinessgrowth: "AI Biz Growth", trustedquotes: "Trusted Quotes" };
+
+type LeadRow = {
+  business: "text2sale" | "aibusinessgrowth" | "trustedquotes";
+  kind: "signup" | "lead" | "partial";
+  name: string;
+  email: string | null;
+  phone: string | null;
+  detail: string;
+  location: string | null;
+  source: string | null;
+  status: string | null;
+  hot: boolean;
+  at: string;
+};
+type LeadsResult = {
+  counts: { text2sale: number; aibusinessgrowth: number; trustedquotes: number; recoverable: number };
+  leads: LeadRow[];
+};
+
 function timeAgo(s: string) {
   if (!s) return "—";
   const t = new Date(s).getTime();
@@ -122,6 +145,11 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
   const [marketingLoading, setMarketingLoading] = useState(false);
   const [openBiz, setOpenBiz] = useState<"text2sale" | "abg" | "tq">("text2sale");
   const [openVisitor, setOpenVisitor] = useState<string | null>(null);
+
+  const [leadsData, setLeadsData] = useState<LeadsResult | null>(null);
+  const [leadsLoading, setLeadsLoading] = useState(true);
+  const [leadFilter, setLeadFilter] = useState<"all" | "recoverable" | LeadRow["business"]>("all");
+  const [digestState, setDigestState] = useState<"idle" | "sending" | "sent">("idle");
 
   const headers = useMemo(() => (token ? { authorization: `Bearer ${token}` } : undefined), [token]);
 
@@ -175,12 +203,131 @@ export default function Intelligence({ token, accent, demo }: { token: string | 
     }
   }, [demo, token, headers]);
 
+  const loadLeads = useCallback(async () => {
+    if (demo) {
+      setLeadsData(demoLeads());
+      setLeadsLoading(false);
+      return;
+    }
+    if (!token) return;
+    setLeadsLoading(true);
+    try {
+      const res = await fetch("/api/command-center/leads", { headers });
+      if (res.ok) setLeadsData(await res.json());
+    } finally {
+      setLeadsLoading(false);
+    }
+  }, [demo, token, headers]);
+
+  const sendDigest = useCallback(async () => {
+    if (demo) {
+      setDigestState("sent");
+      setTimeout(() => setDigestState("idle"), 2500);
+      return;
+    }
+    if (!token) return;
+    setDigestState("sending");
+    try {
+      const res = await fetch("/api/command-center/digest", { headers });
+      setDigestState(res.ok ? "sent" : "idle");
+    } catch {
+      setDigestState("idle");
+    }
+    setTimeout(() => setDigestState("idle"), 4000);
+  }, [demo, token, headers]);
+
   useEffect(() => {
     loadIntel();
-  }, [loadIntel]);
+    loadLeads();
+  }, [loadIntel, loadLeads]);
+
+  const exportCsv = async (business?: string, kind?: string) => {
+    const qs = new URLSearchParams();
+    if (business) qs.set("business", business);
+    if (kind) qs.set("kind", kind);
+    if (demo) {
+      const rows = (leadsData?.leads || []).filter((l) => (!business || l.business === business) && (!kind || l.kind === kind));
+      const header = ["business", "kind", "name", "email", "phone", "detail", "location", "source", "status", "created_at"];
+      const csv = [header.join(","), ...rows.map((l) => [l.business, l.kind, l.name, l.email, l.phone, l.detail, l.location, l.source, l.status, l.at].map((v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
+      triggerDownload(csv, `leads_${business || "all"}_${kind || "all"}.csv`);
+      return;
+    }
+    if (!token) return;
+    const res = await fetch(`/api/command-center/export?${qs.toString()}`, { headers });
+    if (!res.ok) return;
+    triggerDownload(await res.text(), `leads_${business || "all"}_${kind || "all"}.csv`);
+  };
+
+  const filteredLeads = (leadsData?.leads || []).filter((l) =>
+    leadFilter === "all" ? true : leadFilter === "recoverable" ? l.kind === "partial" && l.hot : l.business === leadFilter
+  );
 
   return (
     <div className="mt-8 space-y-6">
+      {/* ─── LEADS & RECOVERY ─── */}
+      <SectionHeader
+        icon={<Inbox className="h-5 w-5" />}
+        title="Leads & Recovery"
+        subtitle="Every lead across all 3 businesses — click to text, call, or email"
+        accent="#fbbf24"
+        action={
+          <div className="flex items-center gap-2">
+            <button
+              onClick={sendDigest}
+              disabled={digestState === "sending"}
+              className="flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/80 hover:bg-white/10 disabled:opacity-50"
+              title="Text a summary of all 3 businesses to your phone right now"
+            >
+              {digestState === "sent" ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <BellRing className="h-3.5 w-3.5" />}
+              {digestState === "sending" ? "Sending…" : digestState === "sent" ? "Texted you!" : "Text me a digest"}
+            </button>
+            <button onClick={() => exportCsv()} className="flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/80 hover:bg-white/10" title="Export all leads as CSV">
+              <Download className="h-3.5 w-3.5" /> CSV
+            </button>
+            <RefreshButton onClick={loadLeads} loading={leadsLoading} />
+          </div>
+        }
+      />
+      {leadsData && leadsData.counts.recoverable > 0 && (
+        <button
+          onClick={() => setLeadFilter("recoverable")}
+          className="flex w-full items-center gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-rose-500/10 p-4 text-left transition hover:from-amber-500/20"
+        >
+          <Flame className="h-6 w-6 shrink-0 text-amber-400" />
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-white">{leadsData.counts.recoverable} abandoned quotes you can recover right now</div>
+            <div className="text-[11px] text-white/55">Trusted Quotes visitors who started a quote and left contact info but didn&apos;t finish. Text or call them — this is the cheapest revenue you&apos;ll make today.</div>
+          </div>
+          <ArrowUpRight className="h-4 w-4 text-amber-400" />
+        </button>
+      )}
+      <Panel title="Lead inbox" glow="#fbbf24">
+        {/* filter chips */}
+        <div className="mb-3 flex flex-wrap gap-1.5">
+          {([
+            { id: "all", label: `All${leadsData ? ` (${leadsData.leads.length})` : ""}` },
+            { id: "recoverable", label: `🔥 Recoverable${leadsData ? ` (${leadsData.counts.recoverable})` : ""}` },
+            { id: "text2sale", label: `Text2Sale${leadsData ? ` (${leadsData.counts.text2sale})` : ""}` },
+            { id: "aibusinessgrowth", label: `AI Biz Growth${leadsData ? ` (${leadsData.counts.aibusinessgrowth})` : ""}` },
+            { id: "trustedquotes", label: `Trusted Quotes${leadsData ? ` (${leadsData.counts.trustedquotes})` : ""}` },
+          ] as const).map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setLeadFilter(f.id as typeof leadFilter)}
+              className="rounded-lg border px-2.5 py-1 text-[11px] font-medium transition"
+              style={{
+                borderColor: leadFilter === f.id ? "rgba(251,191,36,0.5)" : "rgba(255,255,255,0.08)",
+                background: leadFilter === f.id ? "rgba(251,191,36,0.12)" : "rgba(255,255,255,0.02)",
+                color: leadFilter === f.id ? "#fff" : "rgba(255,255,255,0.55)",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+        {leadsLoading && !leadsData ? <SkeletonRows n={8} /> : <LeadInbox leads={filteredLeads} />}
+      </Panel>
+
       {/* ─── ACQUISITION ─── */}
       <SectionHeader icon={<Send className="h-5 w-5" />} title="Acquisition" subtitle="How visitors are finding you" accent={accent} action={<RefreshButton onClick={loadIntel} loading={intelLoading} />} />
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
@@ -483,6 +630,61 @@ function ExitsTable({ rows }: { rows: ExitRow[] }) {
   );
 }
 
+function triggerDownload(content: string, filename: string) {
+  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function LeadInbox({ leads }: { leads: LeadRow[] }) {
+  if (!leads.length) return <p className="text-xs text-white/40">No leads in this view yet. As your sites capture leads, they appear here instantly.</p>;
+  const kindBadge: Record<LeadRow["kind"], { label: string; color: string }> = {
+    signup: { label: "SIGNUP", color: "#a78bfa" },
+    lead: { label: "LEAD", color: "#34d399" },
+    partial: { label: "ABANDONED", color: "#fbbf24" },
+  };
+  return (
+    <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
+      {leads.map((l, i) => {
+        const b = kindBadge[l.kind];
+        const sms = l.phone ? `sms:${l.phone.replace(/[^\d+]/g, "")}` : null;
+        const tel = l.phone ? `tel:${l.phone.replace(/[^\d+]/g, "")}` : null;
+        const mail = l.email ? `mailto:${l.email}` : null;
+        return (
+          <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 transition hover:border-white/10">
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              {l.hot && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-400" />}
+              <span className="font-semibold text-white/95">{l.name}</span>
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wider" style={{ background: `${b.color}22`, color: b.color }}>{b.label}</span>
+              <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ background: `${LEAD_BIZ_COLOR[l.business]}18`, color: LEAD_BIZ_COLOR[l.business] }}>{LEAD_BIZ_LABEL[l.business]}</span>
+              <span className="ml-auto text-[10px] text-white/35">{timeAgo(l.at)}</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/50">
+              <span>{l.detail}</span>
+              {l.location && <span>📍 {l.location}</span>}
+              {l.source && <span>🔗 {l.source}</span>}
+            </div>
+            {(sms || tel || mail) && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {sms && <a href={sms} className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20"><MessageSquare className="h-3 w-3" /> Text</a>}
+                {tel && <a href={tel} className="flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-medium text-cyan-300 hover:bg-cyan-500/20"><Phone className="h-3 w-3" /> Call</a>}
+                {mail && <a href={mail} className="flex items-center gap-1 rounded-md border border-violet-500/30 bg-violet-500/10 px-2 py-1 text-[11px] font-medium text-violet-300 hover:bg-violet-500/20"><Mail className="h-3 w-3" /> Email</a>}
+                <span className="flex items-center text-[10px] text-white/30">{l.phone || l.email}</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function MiniStat({ label, value, color, sub }: { label: string; value: string; color: string; sub?: string }) {
   return (
     <div className="rounded-2xl border border-white/5 bg-white/[0.02] p-3" style={{ boxShadow: `inset 0 0 30px ${color}10` }}>
@@ -535,6 +737,21 @@ function IdeaCard({ idea }: { idea: Idea }) {
 }
 
 // ─── Demo data (for /command?demo=1) ─────────────────────────────────────
+
+function demoLeads(): LeadsResult {
+  const now = Date.now();
+  return {
+    counts: { text2sale: 2, aibusinessgrowth: 1, trustedquotes: 4, recoverable: 3 },
+    leads: [
+      { business: "trustedquotes", kind: "partial", name: "Maria Gomez", email: "maria.g@gmail.com", phone: "+18135550142", detail: "ACA / Marketplace · stopped at step 4", location: "Tampa, FL", source: "facebook", status: "abandoned", hot: true, at: new Date(now - 9 * 60_000).toISOString() },
+      { business: "text2sale", kind: "signup", name: "Derek Yount", email: "derek@northernlegacyia.com", phone: "+15155550199", detail: "Paying subscriber", location: null, source: null, status: "active", hot: false, at: new Date(now - 40 * 60_000).toISOString() },
+      { business: "trustedquotes", kind: "partial", name: "James Whitfield", email: null, phone: "+19045550173", detail: "Medicare · stopped at step 2", location: "Jacksonville, FL", source: "google", status: "abandoned", hot: true, at: new Date(now - 2 * 3600_000).toISOString() },
+      { business: "aibusinessgrowth", kind: "lead", name: "Priya Nair", email: "priya@claritydental.co", phone: "+14155550121", detail: "Clarity Dental · Dental · wants AI front desk", location: null, source: "linkedin", status: "new", hot: true, at: new Date(now - 5 * 3600_000).toISOString() },
+      { business: "trustedquotes", kind: "partial", name: "Abandoned quote", email: "shopper8842@yahoo.com", phone: null, detail: "ACA / Marketplace · stopped at step 3", location: "Orlando, FL", source: "tiktok", status: "abandoned", hot: true, at: new Date(now - 8 * 3600_000).toISOString() },
+      { business: "trustedquotes", kind: "lead", name: "Robert Chen", email: "rchen@outlook.com", phone: "+13055550188", detail: "Medicare · qualified", location: "33101", source: "referral", status: "qualified", hot: true, at: new Date(now - 26 * 3600_000).toISOString() },
+    ],
+  };
+}
 
 function demoIntel(): IntelData {
   return {

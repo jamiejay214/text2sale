@@ -11,6 +11,7 @@
 // it reports `online:false` instead of taking the whole dashboard with it.
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { getStripeRevenue } from "./stripe-revenue";
 
 export type Series = { label: string; value: number }[];
 export type DayPoint = { date: string; value: number };
@@ -200,12 +201,11 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
   try {
     const [
       visToday, visWeek, visTotal,
-      customers, messages, callsCount,
+      messages, callsCount,
     ] = await Promise.all([
       countSince(sb, "page_views", "created_at", startOfToday()),
       countSince(sb, "page_views", "created_at", daysAgo(7)),
       countSince(sb, "page_views", "created_at"),
-      countSince(sb, "profiles", "created_at"),
       countSince(sb, "messages", "created_at"),
       countSince(sb, "calls", "created_at"),
     ]);
@@ -223,55 +223,92 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
     biz.devices = tally(v.map((r) => classifyDevice(r.user_agent as string)));
     for (const r of v) if ((r.country as string) === "US") addGeo(biz.geo, r.region as string);
 
-    // revenue: actual money collected (wallet top-ups) + recurring MRR
+    // Wallet top-ups (prepaid SMS credit) — kept for reference, but real
+    // collected cash now comes from Stripe (which also includes these).
     const { data: topups } = await sb
       .from("wallet_topups")
       .select("amount, created_at, description")
       .limit(10000);
     const tu = topups || [];
-    const revenue = tu.reduce((s, t) => s + Number(t.amount || 0), 0);
+    const walletLifetime = tu.reduce((s, t) => s + Number(t.amount || 0), 0);
     const todayIso = startOfToday();
-    const revenueToday = tu
+    const walletToday = tu
       .filter((t) => (t.created_at as string) >= todayIso)
       .reduce((s, t) => s + Number(t.amount || 0), 0);
 
     const { data: profs } = await sb
       .from("profiles")
-      .select("plan, subscription_status, role, total_deposited, created_at, first_name, last_name, email")
+      .select("plan, subscription_status, role, free_subscription, total_deposited, created_at, first_name, last_name, email")
       .limit(10000);
     const p = profs || [];
+
+    // ── Honest subscriber math ────────────────────────────────────────────
+    // active subscribers = anyone with an active/canceling sub (incl. comped)
     const activeSubs = p.filter((x) =>
       ["active", "canceling"].includes((x.subscription_status as string) || "")
     );
-    const mrr = activeSubs.reduce((s, x) => {
+    // PAYING customers = active AND not comped (free_subscription) AND not the
+    // owner/admin account. This is what actually generates revenue.
+    const payingSubs = activeSubs.filter(
+      (x) => !(x.free_subscription as boolean) && (x.role as string) !== "admin"
+    );
+    // DB-derived MRR from paying subs only (no comped/owner inflation)
+    const dbMrr = payingSubs.reduce((s, x) => {
       const price = (x.plan as { price?: number })?.price;
       return s + (typeof price === "number" ? price : 0);
     }, 0);
-    const lifetimeDeposited = p.reduce((s, x) => s + Number(x.total_deposited || 0), 0);
+
+    // Real COLLECTED cash from Stripe (net of refunds — source of truth).
+    // Guard: only trust Stripe when it actually returns money. A test-mode key
+    // or an empty/restricted key returns $0 — in that case fall back to the
+    // wallet top-up total so we NEVER show $0 when real revenue exists.
+    const stripeRev = await getStripeRevenue();
+    const useStripe = stripeRev.ok && stripeRev.collectedLifetime > 0;
+    const revenue = useStripe ? stripeRev.collectedLifetime : walletLifetime;
+    const revenueToday = useStripe ? stripeRev.collectedToday : walletToday;
+    // MRR run-rate: use DB paying-subs MRR. It honors the owner's
+    // free_subscription comp flag, which Stripe's raw unit_amount (pre-coupon)
+    // does NOT — so dbMrr is the accurate recurring figure. stripeMrr is kept
+    // in `extra` only as a cross-check.
+    const mrr = dbMrr;
+
+    // Real signups (exclude the owner/admin account) + signups this week
+    const nonAdmin = p.filter((x) => (x.role as string) !== "admin");
+    const signups = nonAdmin.length;
+    const weekIso = daysAgo(7);
+    const signupsWeek = nonAdmin.filter((x) => (x.created_at as string) >= weekIso).length;
 
     biz.kpis = {
-      revenue: Math.max(revenue, lifetimeDeposited),
+      revenue,
       revenueToday,
       visitors: visTotal,
       visitorsToday: visToday,
       visitorsWeek: visWeek,
-      leads: customers, // signups are this business's "leads"
-      leadsWeek: 0,
-      customers: activeSubs.length,
-      conversionRate: visTotal ? (customers / visTotal) * 100 : 0,
+      leads: signups, // signups (excl. owner) are this business's "leads"
+      leadsWeek: signupsWeek,
+      customers: payingSubs.length, // PAYING customers only
+      conversionRate: visTotal ? (payingSubs.length / visTotal) * 100 : 0,
     };
     biz.extra = {
       mrr: Math.round(mrr * 100) / 100,
+      collectedThisMonth: useStripe ? stripeRev.collectedThisMonth : walletLifetime,
+      walletTopupsLifetime: Math.round(walletLifetime * 100) / 100,
+      revenueSourceLive: useStripe ? 1 : 0,
+      payingCustomers: payingSubs.length,
+      activeSubscribers: activeSubs.length, // incl. comped
+      compedSubscribers: activeSubs.length - payingSubs.length,
+      stripeMrrRaw: stripeRev.ok ? stripeRev.stripeMrr : 0, // cross-check (pre-coupon)
+      stripeActiveSubs: stripeRev.ok ? stripeRev.activeSubscriptions : 0,
       contacts: await countSince(sb, "contacts", "created_at"),
       conversations: await countSince(sb, "conversations", "created_at"),
       messages,
       calls: callsCount,
-      activeSubscribers: activeSubs.length,
+      revenueSource: stripeRev.ok ? "stripe" : "wallet_fallback",
     };
     biz.funnel = [
       { label: "Visitors", value: visTotal },
-      { label: "Signups", value: customers },
-      { label: "Active", value: activeSubs.length },
+      { label: "Signups", value: signups },
+      { label: "Paying", value: payingSubs.length },
     ];
 
     // live feed: recent signups + recent payments
@@ -424,15 +461,21 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
       { label: "Leads", value: leads },
     ];
 
+    // NOTE: the `leads` table has NO `state` column (it has zip/who/
+    // current_status). Selecting `state` here silently errored before, which
+    // left the Trusted Quotes live feed permanently empty. Fixed columns:
     const { data: recentLeads } = await sb
       .from("leads")
-      .select("created_at, first_name, last_name, coverage_type, state, source")
+      .select("created_at, first_name, last_name, coverage_type, current_status, zip, source")
       .order("created_at", { ascending: false })
       .limit(8);
     biz.recent = (recentLeads || []).map((l) => ({
       kind: "lead",
       title: `${(l.first_name as string) || ""} ${(l.last_name as string) || ""}`.trim() || "New lead",
-      subtitle: [l.coverage_type, l.state].filter(Boolean).join(" · ") || (l.source as string) || "Quote request",
+      subtitle:
+        [l.coverage_type, l.current_status].filter(Boolean).join(" · ") ||
+        [l.zip, l.source].filter(Boolean).join(" · ") ||
+        "Quote request",
       at: l.created_at as string,
     }));
   } catch (e) {
