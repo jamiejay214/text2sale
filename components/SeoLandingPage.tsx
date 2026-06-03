@@ -145,7 +145,7 @@ export default function SeoLandingPage({
       )}
 
       {relatedPages.length > 0 && (
-        <section className="mx-auto max-w-5xl px-6 pb-20">
+        <section className="mx-auto max-w-5xl px-6 pb-10">
           <h2 className="text-xl font-bold text-zinc-300">More Text2Sale comparisons</h2>
           <div className="mt-4 flex flex-wrap gap-3">
             {relatedPages.map((page) => (
@@ -160,6 +160,38 @@ export default function SeoLandingPage({
           </div>
         </section>
       )}
+
+      {/* Cornerstone guides — links every landing page into the blog so link
+          equity and crawl paths flow between the two. */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <h2 className="text-xl font-bold text-zinc-300">Guides from the Text2Sale blog</h2>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {CORNERSTONE_POSTS.map((post) => (
+            <Link
+              key={post.href}
+              href={post.href}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-emerald-300 hover:text-emerald-300"
+            >
+              {post.label}
+            </Link>
+          ))}
+          <Link
+            href="/blog"
+            className="rounded-xl border border-emerald-400/40 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-400/10"
+          >
+            All guides →
+          </Link>
+        </div>
+      </section>
     </main>
   );
 }
+
+// Cornerstone blog posts surfaced on every SEO landing page for internal linking.
+const CORNERSTONE_POSTS: { href: string; label: string }[] = [
+  { href: "/blog/how-fast-to-text-insurance-leads", label: "How fast to text a new lead" },
+  { href: "/blog/sms-drip-templates-for-insurance-agents", label: "9 SMS drip templates" },
+  { href: "/blog/10dlc-registration-guide-for-agents", label: "10DLC registration guide" },
+  { href: "/blog/tcpa-compliance-texting-leads", label: "TCPA compliance for texting" },
+  { href: "/blog/what-is-a-texting-crm", label: "What is a texting CRM?" },
+];
