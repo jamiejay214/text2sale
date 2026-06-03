@@ -308,10 +308,21 @@ export async function POST(req: NextRequest) {
       error?: string;
     };
 
-    const sendOne = async (
-      contact: CampaignContact,
-      idx: number
-    ): Promise<ChunkResult> => {
+    // Build the personalized body + decide deferral WITHOUT sending. Splitting
+    // "prepare" from "dispatch" lets us authorize the wallet charge for a whole
+    // chunk BEFORE any message hits Telnyx — closing the leak where messages
+    // went out first and only then got a charge that could be rejected,
+    // leaving them sent-but-unbilled.
+    type Prepared = {
+      contactId: string;
+      personalized: string;
+      fromNumber: string;
+      toE164: string;
+      deferred: boolean;
+      segments: number;
+    };
+
+    const prepareOne = (contact: CampaignContact, idx: number): Prepared => {
       const fromNumber = fromList[idx % fromList.length];
       // Sanitize smart quotes / em-dash / ellipsis AFTER template substitution
       // so typographic characters from contact fields also get normalized. A
@@ -337,26 +348,31 @@ export async function POST(req: NextRequest) {
           .replace(/\{notes\}/gi, contact.notes || "")
       );
 
+      const toDigits = contact.phone.replace(/\D/g, "");
+      const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
+
       // Quiet hours check — if this contact is inside their local TCPA-blocked
-      // window right now, defer by marking the send as "deferred" and writing
-      // a scheduled_messages row for the next legal window. The cron will pick
-      // it up later. If quiet hours are disabled by the user, send immediately.
+      // window right now, mark deferred. The chunk processor queues deferred
+      // rows into scheduled_messages for the next legal window (and does NOT
+      // charge for them — the cron charges when it actually sends them).
+      let deferred = false;
       if (quietEnabled) {
         const tz = inferTimezone(contact.state || undefined);
-        if (isQuietHours(tz, quietStart, quietEnd)) {
-          return {
-            contactId: contact.id,
-            personalized: personalizedBody,
-            success: false,
-            deferred: true,
-          };
-        }
+        if (isQuietHours(tz, quietStart, quietEnd)) deferred = true;
       }
 
-      try {
-        const toDigits = contact.phone.replace(/\D/g, "");
-        const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
+      return {
+        contactId: contact.id,
+        personalized: personalizedBody,
+        fromNumber,
+        toE164,
+        deferred,
+        segments: Math.max(1, countSegments(personalizedBody)),
+      };
+    };
 
+    const dispatchOne = async (prep: Prepared): Promise<ChunkResult> => {
+      try {
         const res = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
           headers: {
@@ -364,9 +380,9 @@ export async function POST(req: NextRequest) {
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            from: fromNumber,
-            to: toE164,
-            text: personalizedBody,
+            from: prep.fromNumber,
+            to: prep.toE164,
+            text: prep.personalized,
             type: "SMS",
             ...(messagingProfileId ? { messaging_profile_id: messagingProfileId } : {}),
           }),
@@ -375,17 +391,17 @@ export async function POST(req: NextRequest) {
         const data = await res.json();
         if (data.errors) {
           return {
-            contactId: contact.id,
-            personalized: personalizedBody,
+            contactId: prep.contactId,
+            personalized: prep.personalized,
             success: false,
             error: data.errors[0]?.detail || "Send failed",
           };
         }
-        return { contactId: contact.id, personalized: personalizedBody, success: true };
+        return { contactId: prep.contactId, personalized: prep.personalized, success: true };
       } catch (err: unknown) {
         return {
-          contactId: contact.id,
-          personalized: personalizedBody,
+          contactId: prep.contactId,
+          personalized: prep.personalized,
           success: false,
           error: err instanceof Error ? err.message : "Send failed",
         };
@@ -415,26 +431,20 @@ export async function POST(req: NextRequest) {
       newBalance: number | null;
     }> => {
       const slice = contacts.slice(chunkOffset, chunkOffset + CHUNK);
-      const results = await Promise.all(slice.map((c, j) => sendOne(c, chunkOffset + j)));
+      const preps = slice.map((c, j) => prepareOne(c, chunkOffset + j));
 
-      const successful = results.filter((r) => r.success);
-      const deferredResults = results.filter((r) => r.deferred);
-      const chunkSentCount = successful.length;
-      const chunkDeferred = deferredResults.length;
-      const chunkFailed = results.length - chunkSentCount - chunkDeferred;
-      const chunkErrors: string[] = [];
-      for (const r of results) {
-        if (!r.success && !r.deferred && r.error) chunkErrors.push(`${r.contactId}: ${r.error}`);
-      }
+      const deferredPreps = preps.filter((p) => p.deferred);
+      const sendablePreps = preps.filter((p) => !p.deferred);
+      const chunkDeferred = deferredPreps.length;
 
       // Queue quiet-hours deferrals into scheduled_messages so the cron
-      // retries them once the window opens. Fire-and-forget — a failed
-      // insert here just means the contact gets skipped this run.
+      // retries them once the window opens. These are NOT charged here — the
+      // scheduled-send cron charges when it actually delivers them.
       if (chunkDeferred > 0) {
-        const rows = deferredResults.map((r) => ({
+        const rows = deferredPreps.map((p) => ({
           user_id: userId,
-          contact_id: r.contactId,
-          body: r.personalized,
+          contact_id: p.contactId,
+          body: p.personalized,
           from_number: fromList[0],
           scheduled_at: deferScheduleAt,
           status: "pending",
@@ -446,6 +456,73 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      if (sendablePreps.length === 0) {
+        return {
+          sentCount: 0,
+          failedCount: 0,
+          deferredCount: chunkDeferred,
+          chunkErrors: [],
+          ranOutOfFunds: false,
+          newBalance: null,
+        };
+      }
+
+      // ── Pay BEFORE we send ────────────────────────────────────────────────
+      // Authorize the full per-segment cost of this chunk up front. The RPC is
+      // atomic + row-locked, so concurrent PIPE chunks can't race. If the
+      // wallet can't cover the chunk, we send NOTHING and report out-of-funds —
+      // a message can never go to Telnyx without payment secured first.
+      const estSegments = sendablePreps.reduce((s, p) => s + p.segments, 0);
+      const estCost = Number((estSegments * messageCost).toFixed(4));
+      const { data: postDebitBal, error: decErr } = await supabase.rpc("decrement_wallet", {
+        p_user_id: userId,
+        p_amount: estCost,
+      });
+      if (decErr || postDebitBal === null || postDebitBal === undefined) {
+        return {
+          sentCount: 0,
+          failedCount: 0,
+          deferredCount: chunkDeferred,
+          chunkErrors: [],
+          ranOutOfFunds: true,
+          newBalance: null,
+        };
+      }
+
+      // Now actually dispatch to Telnyx.
+      const results = await Promise.all(sendablePreps.map((p) => dispatchOne(p)));
+      const sendableByContact = new Map(sendablePreps.map((p) => [p.contactId, p]));
+      const successful = results.filter((r) => r.success);
+      const failedResults = results.filter((r) => !r.success);
+      const chunkSentCount = successful.length;
+      const chunkFailed = failedResults.length;
+      const chunkErrors: string[] = [];
+      for (const r of failedResults) {
+        if (r.error) chunkErrors.push(`${r.contactId}: ${r.error}`);
+      }
+
+      // Refund the segments we pre-charged but couldn't actually send (Telnyx
+      // errors / network throws), so a failed send never over-charges. Keyed
+      // for idempotency so a retried chunk can't double-refund.
+      let chunkBalance: number = Number(postDebitBal);
+      const failedSegments = failedResults.reduce(
+        (s, r) => s + (sendableByContact.get(r.contactId)?.segments ?? 1),
+        0
+      );
+      if (failedSegments > 0) {
+        const refund = Number((failedSegments * messageCost).toFixed(4));
+        const { data: refundedBal } = await supabase.rpc("credit_wallet", {
+          p_user_id: userId,
+          p_amount: refund,
+          p_idempotency_key: `refund_${campaignId}_w${waveOffset}_c${chunkOffset}`,
+          p_description: `Refund — ${failedResults.length} unsent campaign message(s)`,
+        });
+        chunkBalance =
+          refundedBal !== null && refundedBal !== undefined
+            ? Number(refundedBal)
+            : Number((Number(postDebitBal) + refund).toFixed(4));
+      }
+
       if (chunkSentCount === 0) {
         return {
           sentCount: 0,
@@ -453,24 +530,9 @@ export async function POST(req: NextRequest) {
           deferredCount: chunkDeferred,
           chunkErrors,
           ranOutOfFunds: false,
-          newBalance: null,
+          newBalance: chunkBalance,
         };
       }
-
-      // Atomic wallet decrement — safe to call in parallel across chunks
-      // because the RPC is SECURITY DEFINER + Postgres row-locked.
-      // Charge per segment so a 200-char personalized message (2 GSM-7
-      // segments → 2× Telnyx carrier fee) actually gets billed for two.
-      const chunkSegments = successful.reduce(
-        (sum, r) => sum + Math.max(1, countSegments(r.personalized)),
-        0
-      );
-      const chunkCost = Number((chunkSegments * messageCost).toFixed(4));
-      const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
-        p_user_id: userId,
-        p_amount: chunkCost,
-      });
-      const ranOutOfFunds = !!decErr || newBal === null;
 
       // Batch DB writes for successful sends.
       const existingConvMsgs: Array<Record<string, unknown>> = [];
@@ -574,8 +636,8 @@ export async function POST(req: NextRequest) {
         failedCount: chunkFailed,
         deferredCount: chunkDeferred,
         chunkErrors,
-        ranOutOfFunds,
-        newBalance: ranOutOfFunds ? null : Number(newBal),
+        ranOutOfFunds: false,
+        newBalance: chunkBalance,
       };
     };
 
