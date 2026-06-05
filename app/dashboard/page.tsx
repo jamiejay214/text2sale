@@ -862,7 +862,11 @@ export default function DashboardPage() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
   const [onboardingBiz, setOnboardingBiz] = useState({
-    businessName: "", ein: "", website: "", hasWebsite: "yes" as "yes" | "no",
+    businessName: "", ein: "",
+    businessType: "llc" as "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit",
+    businessAddress: "", businessCity: "", businessState: "", businessZip: "",
+    contactPhone: "", businessDescription: "",
+    website: "", customDomain: "", hasWebsite: "yes" as "yes" | "no",
   });
   const [onboardingBizSaving, setOnboardingBizSaving] = useState(false);
 
@@ -3203,16 +3207,19 @@ export default function DashboardPage() {
   }, [currentUser?.a2pRegistration?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 10DLC automated registration via Telnyx
-  const handleA2pRegister = async () => {
+  const handleA2pRegister = async (formOverride?: typeof a2pForm) => {
     if (!currentUser) return;
+    // Onboarding passes its values directly (React state set just before this
+    // call would still be stale), Settings calls with no arg and uses a2pForm.
+    const form = formOverride ?? a2pForm;
 
     // If they don't have a website, they MUST give us their owned TLD —
     // we no longer offer a text2sale.com/biz/<slug> subdomain because
     // MNOs reject subdomained compliance pages. Validate the format
     // before we hit Telnyx (cheap to fail here, expensive to fail at
     // the brand-registration call).
-    if (a2pForm.hasWebsite === "no") {
-      const domain = a2pForm.customDomain.trim();
+    if (form.hasWebsite === "no") {
+      const domain = form.customDomain.trim();
       if (!domain) {
         setMessage("❌ Enter the domain you bought (e.g. yourbusiness.com) — we no longer offer subdomains.");
         window.setTimeout(() => setMessage(""), 5000);
@@ -3241,29 +3248,29 @@ export default function DashboardPage() {
         body: JSON.stringify({
           userId: currentUser.id,
           action: "register_brand",
-          businessName: a2pForm.businessName,
-          businessType: a2pForm.businessType,
-          ein: a2pForm.ein,
-          businessAddress: a2pForm.businessAddress,
-          businessCity: a2pForm.businessCity,
-          businessState: a2pForm.businessState,
-          businessZip: a2pForm.businessZip,
+          businessName: form.businessName,
+          businessType: form.businessType,
+          ein: form.ein,
+          businessAddress: form.businessAddress,
+          businessCity: form.businessCity,
+          businessState: form.businessState,
+          businessZip: form.businessZip,
           // If they entered a custom domain we route Telnyx's "website"
           // field to it (with https:// prefix) — TCR/MNO bots will load
           // it during the brand review and check it advertises the same
           // business name. The auto-built /biz/<slug> page on that
           // domain handles that.
-          website: a2pForm.hasWebsite === "yes"
-            ? a2pForm.website
-            : a2pForm.customDomain
-              ? `https://${a2pForm.customDomain}`
+          website: form.hasWebsite === "yes"
+            ? form.website
+            : form.customDomain
+              ? `https://${form.customDomain}`
               : "",
-          hasWebsite: a2pForm.hasWebsite,
-          buildPage: a2pForm.hasWebsite === "no", // always build when no website
-          businessDescription: a2pForm.businessDescription,
-          customDomain: a2pForm.customDomain,
-          contactEmail: a2pForm.contactEmail || currentUser.email,
-          contactPhone: a2pForm.contactPhone || currentUser.phone,
+          hasWebsite: form.hasWebsite,
+          buildPage: form.hasWebsite === "no", // always build when no website
+          businessDescription: form.businessDescription,
+          customDomain: form.customDomain,
+          contactEmail: form.contactEmail || currentUser.email,
+          contactPhone: form.contactPhone || currentUser.phone,
         }),
       });
       const data = await res.json();
@@ -12176,7 +12183,7 @@ export default function DashboardPage() {
                 </div>
 
                 <button
-                  onClick={handleA2pRegister}
+                  onClick={() => handleA2pRegister()}
                   disabled={
                     a2pLoading ||
                     !a2pForm.businessName ||
@@ -14253,9 +14260,9 @@ export default function DashboardPage() {
             {onboardingStep === 1 && (
               <div>
                 <div className="mb-1 text-center text-3xl">🏢</div>
-                <h3 className="mb-1 text-center text-xl font-bold">Your Business Info</h3>
-                <p className="mb-5 text-center text-sm text-zinc-400">Required for 10DLC compliance so carriers approve your messages.</p>
-                <div className="space-y-3">
+                <h3 className="mb-1 text-center text-xl font-bold">Register Your Business (10DLC)</h3>
+                <p className="mb-4 text-center text-sm text-zinc-400">We submit your brand &amp; campaign straight to Telnyx — carriers require this before your texts can send.</p>
+                <div className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
                   <div>
                     <label className="mb-1 block text-xs font-medium text-zinc-400">Legal Business Name *</label>
                     <input
@@ -14266,16 +14273,82 @@ export default function DashboardPage() {
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">Business Type *</label>
+                      <select
+                        value={onboardingBiz.businessType}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, businessType: e.target.value as typeof b.businessType }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
+                      >
+                        <option value="llc">LLC</option>
+                        <option value="corporation">Corporation</option>
+                        <option value="partnership">Partnership</option>
+                        <option value="non_profit">Non-Profit</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">EIN (Tax ID) *</label>
+                      <input
+                        type="text"
+                        placeholder="XX-XXXXXXX"
+                        value={onboardingBiz.ein}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, ein: e.target.value }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
                   <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-400">EIN (Tax ID) *</label>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Business Address *</label>
                     <input
                       type="text"
-                      placeholder="XX-XXXXXXX"
-                      value={onboardingBiz.ein}
-                      onChange={e => setOnboardingBiz(b => ({ ...b, ein: e.target.value }))}
+                      placeholder="123 Main St, Suite 100"
+                      value={onboardingBiz.businessAddress}
+                      onChange={e => setOnboardingBiz(b => ({ ...b, businessAddress: e.target.value }))}
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
                     />
-                    <p className="mt-1 text-[10px] text-zinc-600">Found on your IRS EIN letter or SS-4 form.</p>
+                    <p className="mt-1 text-[10px] text-zinc-600">Must match your IRS records exactly, or carriers reject the brand.</p>
+                  </div>
+                  <div className="grid grid-cols-6 gap-2">
+                    <div className="col-span-3">
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">City *</label>
+                      <input
+                        type="text"
+                        value={onboardingBiz.businessCity}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, businessCity: e.target.value }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div className="col-span-1">
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">State *</label>
+                      <input
+                        type="text"
+                        placeholder="FL"
+                        maxLength={2}
+                        value={onboardingBiz.businessState}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, businessState: e.target.value.toUpperCase() }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-2 py-2.5 text-sm uppercase outline-none focus:border-violet-500"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <label className="mb-1 block text-xs font-medium text-zinc-400">ZIP *</label>
+                      <input
+                        type="text"
+                        value={onboardingBiz.businessZip}
+                        onChange={e => setOnboardingBiz(b => ({ ...b, businessZip: e.target.value }))}
+                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-medium text-zinc-400">Business Phone *</label>
+                    <input
+                      type="tel"
+                      placeholder="(555) 555-5555"
+                      value={onboardingBiz.contactPhone}
+                      onChange={e => setOnboardingBiz(b => ({ ...b, contactPhone: e.target.value }))}
+                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                    />
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-zinc-400">Do you have a business website? *</label>
@@ -14303,35 +14376,68 @@ export default function DashboardPage() {
                     </div>
                   )}
                   {onboardingBiz.hasWebsite === "no" && (
-                    <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3 text-xs text-amber-300">
-                      💡 We'll create a free compliance page for your business at text2sale.com — carriers require one to approve your messages.
+                    <div className="space-y-2">
+                      <div>
+                        <label className="mb-1 block text-xs font-medium text-zinc-400">Domain you own *</label>
+                        <input
+                          type="text"
+                          placeholder="yourbusiness.com"
+                          value={onboardingBiz.customDomain}
+                          onChange={e => setOnboardingBiz(b => ({ ...b, customDomain: e.target.value }))}
+                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                        />
+                      </div>
+                      <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3 text-xs text-amber-300">
+                        💡 We&apos;ll auto-build a compliant business page on your domain — carriers require one. You point its DNS to us afterward.
+                      </div>
                     </div>
                   )}
                 </div>
                 <button
-                  disabled={!onboardingBiz.businessName.trim() || !onboardingBiz.ein.trim() || (onboardingBiz.hasWebsite === "yes" && !onboardingBiz.website.trim()) || onboardingBizSaving}
+                  disabled={
+                    !onboardingBiz.businessName.trim() || !onboardingBiz.ein.trim() ||
+                    !onboardingBiz.businessAddress.trim() || !onboardingBiz.businessCity.trim() ||
+                    !onboardingBiz.businessState.trim() || !onboardingBiz.businessZip.trim() ||
+                    !onboardingBiz.contactPhone.trim() ||
+                    (onboardingBiz.hasWebsite === "yes" && !onboardingBiz.website.trim()) ||
+                    (onboardingBiz.hasWebsite === "no" && !onboardingBiz.customDomain.trim()) ||
+                    onboardingBizSaving
+                  }
                   onClick={async () => {
+                    if (!currentUser) return;
                     setOnboardingBizSaving(true);
+                    // Build the full registration form from onboarding values and
+                    // pass it directly (React state set here would be stale).
+                    const form = {
+                      ...a2pForm,
+                      businessName: onboardingBiz.businessName,
+                      businessType: onboardingBiz.businessType,
+                      ein: onboardingBiz.ein,
+                      businessAddress: onboardingBiz.businessAddress,
+                      businessCity: onboardingBiz.businessCity,
+                      businessState: onboardingBiz.businessState,
+                      businessZip: onboardingBiz.businessZip,
+                      contactPhone: onboardingBiz.contactPhone,
+                      businessDescription: onboardingBiz.businessDescription,
+                      website: onboardingBiz.website,
+                      customDomain: onboardingBiz.customDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, ""),
+                      hasWebsite: onboardingBiz.hasWebsite,
+                      contactEmail: a2pForm.contactEmail || currentUser.email || "",
+                    };
+                    setA2pForm(form); // keep Settings → 10DLC in sync
                     try {
-                      // Pre-fill the a2pForm so Settings → 10DLC is already populated
-                      setA2pForm(f => ({
-                        ...f,
-                        businessName: onboardingBiz.businessName,
-                        ein: onboardingBiz.ein,
-                        website: onboardingBiz.website,
-                        hasWebsite: onboardingBiz.hasWebsite,
-                      }));
+                      await handleA2pRegister(form);
                     } finally {
                       setOnboardingBizSaving(false);
                       setOnboardingStep(2);
                     }
                   }}
-                  className="mt-5 w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition"
+                  className="mt-4 w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition"
                 >
-                  {onboardingBizSaving ? "Saving…" : "Save & Continue →"}
+                  {onboardingBizSaving ? "Registering with Telnyx…" : "Register with Telnyx →"}
                 </button>
                 <button onClick={() => setOnboardingStep(2)} className="mt-3 w-full text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — fill this in later
+                  Skip — I&apos;ll register later in Settings
                 </button>
               </div>
             )}
