@@ -18,7 +18,7 @@ import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
 import { supabase } from "@/lib/supabase";
-import { logoutUser } from "@/lib/auth";
+import { logoutUser, formatPhoneNumber } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import {
@@ -544,6 +544,19 @@ const SALES_QUOTES = [
   "Go the extra mile. It's never crowded there.",
   "Outwork everyone. Out-care everyone. Outlast everyone.",
 ];
+
+// Format an EIN as the IRS XX-XXXXXXX shape while the user types (digits only,
+// hyphen after the first two, capped at 9 digits).
+function formatEin(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 9);
+  if (digits.length <= 2) return digits;
+  return `${digits.slice(0, 2)}-${digits.slice(2)}`;
+}
+
+// A valid US EIN is exactly 9 digits.
+function isValidEin(value: string): boolean {
+  return value.replace(/\D/g, "").length === 9;
+}
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -12008,7 +12021,7 @@ export default function DashboardPage() {
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
                       placeholder="12-3456789"
                       value={a2pForm.ein}
-                      onChange={(e) => setA2pForm({ ...a2pForm, ein: e.target.value })}
+                      onChange={(e) => setA2pForm({ ...a2pForm, ein: formatEin(e.target.value) })}
                     />
                   </div>
                   <div className="md:col-span-2">
@@ -12234,7 +12247,7 @@ export default function DashboardPage() {
                       className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
                       placeholder="(555) 123-4567"
                       value={a2pForm.contactPhone}
-                      onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: e.target.value })}
+                      onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: formatPhoneNumber(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -14348,11 +14361,15 @@ export default function DashboardPage() {
                       <label className="mb-1 block text-xs font-medium text-zinc-400">EIN (Tax ID) *</label>
                       <input
                         type="text"
+                        inputMode="numeric"
                         placeholder="XX-XXXXXXX"
                         value={onboardingBiz.ein}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, ein: e.target.value }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                        onChange={e => setOnboardingBiz(b => ({ ...b, ein: formatEin(e.target.value) }))}
+                        className={`w-full rounded-xl border bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500 ${onboardingBiz.ein && !isValidEin(onboardingBiz.ein) ? "border-red-500/60" : "border-zinc-700"}`}
                       />
+                      {onboardingBiz.ein && !isValidEin(onboardingBiz.ein) && (
+                        <p className="mt-1 text-[10px] text-red-400">EIN must be 9 digits (XX-XXXXXXX).</p>
+                      )}
                     </div>
                   </div>
                   <div>
@@ -14401,11 +14418,15 @@ export default function DashboardPage() {
                     <label className="mb-1 block text-xs font-medium text-zinc-400">Business Phone *</label>
                     <input
                       type="tel"
+                      inputMode="tel"
                       placeholder="(555) 555-5555"
                       value={onboardingBiz.contactPhone}
-                      onChange={e => setOnboardingBiz(b => ({ ...b, contactPhone: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
+                      onChange={e => setOnboardingBiz(b => ({ ...b, contactPhone: formatPhoneNumber(e.target.value) }))}
+                      className={`w-full rounded-xl border bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500 ${onboardingBiz.contactPhone && onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 ? "border-red-500/60" : "border-zinc-700"}`}
                     />
+                    {onboardingBiz.contactPhone && onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 && (
+                      <p className="mt-1 text-[10px] text-red-400">Enter a 10-digit US phone number.</p>
+                    )}
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-zinc-400">Do you have a business website? *</label>
@@ -14452,10 +14473,10 @@ export default function DashboardPage() {
                 </div>
                 <button
                   disabled={
-                    !onboardingBiz.businessName.trim() || !onboardingBiz.ein.trim() ||
+                    !onboardingBiz.businessName.trim() || !isValidEin(onboardingBiz.ein) ||
                     !onboardingBiz.businessAddress.trim() || !onboardingBiz.businessCity.trim() ||
                     !onboardingBiz.businessState.trim() || !onboardingBiz.businessZip.trim() ||
-                    !onboardingBiz.contactPhone.trim() ||
+                    onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 ||
                     (onboardingBiz.hasWebsite === "yes" && !onboardingBiz.website.trim()) ||
                     (onboardingBiz.hasWebsite === "no" && !onboardingBiz.customDomain.trim()) ||
                     onboardingBizSaving
