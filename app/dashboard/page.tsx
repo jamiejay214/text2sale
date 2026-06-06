@@ -558,6 +558,24 @@ function isValidEin(value: string): boolean {
   return value.replace(/\D/g, "").length === 9;
 }
 
+// Deterministic avatar gradient from a name, so each contact keeps a stable,
+// recognizable color in the conversation list.
+const AVATAR_GRADIENTS = [
+  "from-violet-500 to-fuchsia-600",
+  "from-sky-500 to-blue-600",
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+  "from-indigo-500 to-violet-600",
+  "from-cyan-500 to-sky-600",
+  "from-lime-500 to-emerald-600",
+];
+function avatarGradientFor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+  return AVATAR_GRADIENTS[h % AVATAR_GRADIENTS.length];
+}
+
 export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -6377,26 +6395,26 @@ export default function DashboardPage() {
                         <>
                           <button
                             onClick={() => selectTab("all")}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "all" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${activeTab === "all" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                           >
                             All
                           </button>
                           <button
                             onClick={() => selectTab("unread")}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "unread" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${activeTab === "unread" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                             title="Conversations with unopened inbound messages"
                           >
                             Unread
                           </button>
                           <button
                             onClick={() => selectTab("recents")}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "recents" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${activeTab === "recents" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                           >
                             Recents
                           </button>
                           <button
                             onClick={() => selectTab("working")}
-                            className={`flex items-center gap-1 rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "working" ? "bg-emerald-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`flex items-center gap-1 rounded-full px-3.5 py-1.5 text-xs font-semibold ${activeTab === "working" ? "bg-emerald-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                             title="Show only leads you're actively working"
                           >
                             Working
@@ -6408,13 +6426,13 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={() => { setConvSelectMode((v) => !v); setSelectedConvIds(new Set()); }}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${convSelectMode ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                           >
                             {convSelectMode ? "Cancel" : "Select"}
                           </button>
                           <button
                             onClick={() => selectTab("archived")}
-                            className={`rounded-xl px-3 py-1.5 text-xs font-medium ${activeTab === "archived" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
+                            className={`rounded-full px-3.5 py-1.5 text-xs font-semibold ${activeTab === "archived" ? "bg-violet-600 text-white" : "border border-zinc-700 text-zinc-400 hover:text-white"}`}
                           >
                             {activeTab === "archived" ? "Active" : "Archived"}
                           </button>
@@ -6496,12 +6514,22 @@ export default function DashboardPage() {
                 )}
               </div>
 
-              <input
-                value={conversationSearch}
-                onChange={(e) => setConversationSearch(e.target.value)}
-                placeholder={convShowAll ? "Search messages..." : "Search conversations..."}
-                className="mb-4 w-full rounded-2xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm outline-none placeholder:text-zinc-500"
-              />
+              <div className="relative mb-4">
+                <svg className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+                <input
+                  value={conversationSearch}
+                  onChange={(e) => setConversationSearch(e.target.value)}
+                  placeholder={convShowAll ? "Search messages..." : "Search conversations..."}
+                  className="w-full rounded-2xl border border-zinc-700 bg-zinc-800 py-3 pl-10 pr-9 text-sm outline-none transition focus:border-violet-500 placeholder:text-zinc-500"
+                />
+                {conversationSearch && (
+                  <button
+                    onClick={() => setConversationSearch("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-500 hover:text-zinc-300"
+                    aria-label="Clear search"
+                  >✕</button>
+                )}
+              </div>
 
               {/* Quick actions for the Working tab — lets the user reset
                   the whole pinned set if they over-pinned by mistake,
@@ -6619,6 +6647,13 @@ export default function DashboardPage() {
                   const active = conversation.id === selectedConversation?.id;
                   const isSelected = selectedConvIds.has(conversation.id);
                   const temp = computeTemperature(conversation.messages, contact?.dnc);
+                  const name = contact ? `${contact.firstName} ${contact.lastName}`.trim() : "Unknown Contact";
+                  const pinned = workingLeadConvIds.has(conversation.id);
+                  const initials = getInitials(contact?.firstName, contact?.lastName);
+                  const unread = conversation.unread > 0;
+                  const lineColor = conversation.fromNumber
+                    ? (getNumberColor(conversation.fromNumber).split(/\s+/).find((c) => c.startsWith("text-")) || "text-zinc-400").replace("text-", "bg-")
+                    : "";
 
                   return (
                     <div
@@ -6634,89 +6669,82 @@ export default function DashboardPage() {
                           handleSelectConversation(conversation.id);
                         }
                       }}
-                      className={`w-full cursor-pointer rounded-2xl p-4 text-left transition ${
+                      className={`group w-full cursor-pointer rounded-2xl p-2.5 text-left transition ${
                         isSelected
-                          ? "bg-violet-600/40 ring-1 ring-violet-400"
+                          ? "bg-violet-600/25 ring-1 ring-violet-400"
                           : active
-                          ? "bg-violet-600/30 ring-1 ring-violet-500"
-                          : "bg-zinc-800/70 hover:bg-zinc-800"
+                          ? "bg-zinc-800 ring-1 ring-violet-500/60"
+                          : "hover:bg-zinc-800/60"
                       }`}
                     >
-                      <div className="flex items-start gap-3">
-                        <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-sm font-bold text-white ${isSelected ? "bg-violet-600" : "bg-zinc-700"}`}>
-                          {convSelectMode ? (isSelected ? "✓" : "") : getInitials(contact?.firstName, contact?.lastName)}
+                      <div className="flex items-center gap-3">
+                        {/* Avatar with unread badge */}
+                        <div className="relative shrink-0">
+                          <div className={`flex h-11 w-11 items-center justify-center rounded-full text-sm font-bold text-white ${
+                            convSelectMode && isSelected ? "bg-violet-600 ring-2 ring-violet-300" : `bg-gradient-to-br ${avatarGradientFor(name)}`
+                          }`}>
+                            {convSelectMode && isSelected ? "✓" : initials}
+                          </div>
+                          {unread && !convSelectMode && (
+                            <span className="absolute -right-1 -top-1 flex h-5 min-w-[20px] items-center justify-center rounded-full border-2 border-zinc-900 bg-violet-500 px-1 text-[10px] font-bold text-white">
+                              {conversation.unread > 9 ? "9+" : conversation.unread}
+                            </span>
+                          )}
                         </div>
 
+                        {/* Name + preview */}
                         <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="flex min-w-0 items-center gap-1.5">
-                              {/* Clickable pin toggle — tap the star to pin
-                                  or unpin right from the sidebar, no need
-                                  to open the conversation. stopPropagation
-                                  prevents the row click from also firing. */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setWorkingLeadConvIds((prev) => {
-                                    const next = new Set(prev);
-                                    if (next.has(conversation.id)) next.delete(conversation.id);
-                                    else next.add(conversation.id);
-                                    return next;
-                                  });
-                                }}
-                                className={`text-sm transition ${
-                                  workingLeadConvIds.has(conversation.id)
-                                    ? "text-emerald-400 hover:text-emerald-300"
-                                    : "text-zinc-600 hover:text-emerald-400"
-                                }`}
-                                title={workingLeadConvIds.has(conversation.id) ? "Pinned as Working Lead — click to unpin" : "Pin as Working Lead"}
-                                aria-label="Toggle Working Lead"
+                          <div className="flex items-center gap-1.5">
+                            <span className={`truncate text-[15px] ${unread ? "font-bold text-white" : "font-semibold text-zinc-100"}`}>
+                              {name}
+                            </span>
+                            {(temp.tier === "hot" || temp.tier === "blazing" || temp.tier === "warm") && (
+                              <span
+                                title={`Lead Temperature: ${temp.label} (${temp.score}/100)`}
+                                className={`shrink-0 text-xs ${temp.tier === "blazing" ? "animate-pulse" : ""}`}
                               >
-                                {workingLeadConvIds.has(conversation.id) ? "★" : "☆"}
-                              </button>
-                              <div className="truncate font-semibold text-white">
-                                {contact
-                                  ? `${contact.firstName} ${contact.lastName}`
-                                  : "Unknown Contact"}
-                              </div>
-                              {/* Lead temperature — warm/hot/blazing indicator */}
-                              {(temp.tier === "hot" || temp.tier === "blazing" || temp.tier === "warm") && (
-                                <span
-                                  title={`Lead Temperature: ${temp.label} (${temp.score}/100)`}
-                                  className={`shrink-0 ${temp.tier === "blazing" ? "animate-pulse" : ""}`}
-                                >
-                                  {temp.emoji}
-                                </span>
-                              )}
-                              {/* Colored star — identifies which of the user's
-                                  lines this thread is on. Color matches the
-                                  line's chip in the number picker. */}
-                              {conversation.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
-                                <span
-                                  className={`shrink-0 text-sm leading-none ${getNumberColor(conversation.fromNumber).replace(/bg-[^\s]+|ring-[^\s]+/g, "").trim()}`}
-                                  title={`On ${conversation.fromNumber}`}
-                                  aria-label={`On ${conversation.fromNumber}`}
-                                >
-                                  ★
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-xs text-zinc-400">
+                                {temp.emoji}
+                              </span>
+                            )}
+                            {conversation.fromNumber && (currentUser?.ownedNumbers?.length || 0) > 1 && (
+                              <span
+                                className={`h-2 w-2 shrink-0 rounded-full ${lineColor}`}
+                                title={`On ${conversation.fromNumber}`}
+                                aria-label={`On ${conversation.fromNumber}`}
+                              />
+                            )}
+                            <span className="ml-auto shrink-0 text-[11px] text-zinc-500">
                               {formatTime(conversation.lastMessageAt)}
-                            </div>
+                            </span>
                           </div>
-
-                          <div className="mt-1 truncate text-sm text-zinc-400">
-                            {conversation.preview}
-                          </div>
-
+                          <p className={`mt-0.5 truncate text-[13px] ${unread ? "text-zinc-200" : "text-zinc-500"}`}>
+                            {conversation.preview || "No messages yet"}
+                          </p>
                         </div>
 
-                        {conversation.unread > 0 && (
-                          <div className="flex h-6 min-w-[24px] items-center justify-center rounded-full bg-violet-500 px-2 text-xs font-semibold text-white">
-                            {conversation.unread}
-                          </div>
+                        {/* Pin toggle — subtle, appears on hover (or stays if pinned) */}
+                        {!convSelectMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWorkingLeadConvIds((prev) => {
+                                const next = new Set(prev);
+                                if (next.has(conversation.id)) next.delete(conversation.id);
+                                else next.add(conversation.id);
+                                return next;
+                              });
+                            }}
+                            className={`shrink-0 self-start text-sm transition ${
+                              pinned
+                                ? "text-emerald-400 hover:text-emerald-300"
+                                : "text-zinc-600 opacity-0 hover:text-emerald-400 group-hover:opacity-100"
+                            }`}
+                            title={pinned ? "Pinned as Working Lead — click to unpin" : "Pin as Working Lead"}
+                            aria-label="Toggle Working Lead"
+                          >
+                            {pinned ? "★" : "☆"}
+                          </button>
                         )}
                       </div>
                     </div>
@@ -10335,7 +10363,7 @@ export default function DashboardPage() {
                       {isEditing && (
                         <button
                           onClick={handleCancelEditTemplate}
-                          className="rounded-xl px-3 py-1.5 text-xs font-medium text-zinc-400 hover:bg-zinc-800 hover:text-white"
+                          className="rounded-full px-3.5 py-1.5 text-xs font-semibold text-zinc-400 hover:bg-zinc-800 hover:text-white"
                         >
                           Cancel
                         </button>
@@ -10475,7 +10503,7 @@ export default function DashboardPage() {
                     <div className="flex gap-1 overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900 p-1">
                       <button
                         onClick={() => setTemplateCategoryFilter("all")}
-                        className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                        className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                           templateCategoryFilter === "all"
                             ? "bg-zinc-700 text-white"
                             : "text-zinc-500 hover:text-zinc-300"
@@ -10487,7 +10515,7 @@ export default function DashboardPage() {
                         <button
                           key={cat.value}
                           onClick={() => setTemplateCategoryFilter(cat.value)}
-                          className={`shrink-0 rounded-xl px-3 py-1.5 text-xs font-medium transition ${
+                          className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
                             templateCategoryFilter === cat.value
                               ? "bg-zinc-700 text-white"
                               : "text-zinc-500 hover:text-zinc-300"
