@@ -147,7 +147,10 @@ const REFUSAL_PATTERNS: RegExp[] = [
   /\bwhat would you like me to do\b/i,
   /\bif you want me to\b/i,
   /\blet me know what (they|he|she) said\b/i,
-  /\bthe (best|natural|right) (next )?move is\b/i,
+  // Tightened: only treat "the best move is…" as operator-narration when it's
+  // followed by meta-reasoning (ask/wait/hold/do nothing/acknowledge), NOT
+  // customer-facing copy like "the best move is to lock in your rate."
+  /\bthe (best|natural|right) (next )?move (here )?is to (ask|wait|hold|not |do nothing|acknowledge|stay|pause|hold off|let)\b/i,
   /\bsince I don'?t have (their|his|her) (response|reply|answer)\b/i,
   /\bwithout (their|his|her) (response|reply|answer)\b/i,
   /\bI('| a)m (the|an?) (AI|bot|assistant|language model)\b/i,

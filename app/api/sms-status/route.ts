@@ -61,7 +61,8 @@ export async function POST(req: NextRequest) {
     const contact = contacts[0];
 
     const { data: conversation } = await supabase
-      .from("conversations").select("id").eq("contact_id", contact.id).single();
+      .from("conversations").select("id").eq("contact_id", contact.id)
+      .order("last_message_at", { ascending: false }).limit(1).maybeSingle();
 
     if (!conversation) return NextResponse.json({ success: true });
 
@@ -72,7 +73,7 @@ export async function POST(req: NextRequest) {
       .eq("direction", "outbound")
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (!message) return NextResponse.json({ success: true });
 

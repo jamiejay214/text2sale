@@ -126,7 +126,7 @@ export async function POST(
     // the intro message from their AI settings.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("owned_numbers, ai_instructions, first_name, last_name")
+      .select("owned_numbers, ai_instructions, industry, first_name, last_name")
       .eq("id", integration.user_id)
       .single();
 
@@ -138,10 +138,36 @@ export async function POST(
 
     if (fromNumber && telnyxKey) {
       const agentName = [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Agent";
-      const introMsg = `Hey ${contact.first_name}, this is ${agentName}! I saw you were looking for coverage options — happy to help you find the best plan for your situation. Do you need coverage for just yourself or your whole family?`;
+      const instructions = ((profile?.ai_instructions as string) || "").trim();
+      const industry = ((profile?.industry as string) || "other").replace(/_/g, " ");
 
-      // Fire the SMS via Telnyx
-      fetch("https://api.telnyx.com/v2/messages", {
+      // First-touch intro. Honor the agent's AI instructions + industry via the
+      // model when available; fall back to a NEUTRAL (not insurance-specific)
+      // default so non-insurance accounts don't send wrong copy.
+      let introMsg = `Hey ${contact.first_name}, this is ${agentName}! Thanks for reaching out — happy to help. What are you looking for?`;
+      const anthropicKey = process.env.ANTHROPIC_API_KEY;
+      if (anthropicKey) {
+        try {
+          const sys = `You are ${agentName}, a real person texting a brand-new lead who just submitted their info${industry && industry !== "other" ? ` about ${industry}` : ""}. Write ONLY the first SMS to send them — 1-2 short, warm, casual sentences like a real text, ending with a question. Output just the message text, nothing else.${instructions ? `\n\nFOLLOW THESE INSTRUCTIONS FROM ${agentName.toUpperCase()} — they are your highest priority and override the guidance above:\n${instructions}` : ""}`;
+          const aiRes = await fetch("https://api.anthropic.com/v1/messages", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "x-api-key": anthropicKey, "anthropic-version": "2023-06-01" },
+            body: JSON.stringify({
+              model: "claude-haiku-4-5-20251001",
+              max_tokens: 200,
+              system: sys,
+              messages: [{ role: "user", content: `Write the first text to ${contact.first_name || "this lead"}.` }],
+            }),
+          });
+          const aiData = await aiRes.json();
+          const text = (aiData?.content?.[0]?.text || "").trim();
+          if (text) introMsg = text;
+        } catch (e) {
+          console.error("[integrations/inbound] AI intro generation failed, using default:", e);
+        }
+      }
+
+      await fetch("https://api.telnyx.com/v2/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

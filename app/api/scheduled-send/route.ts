@@ -66,7 +66,20 @@ const CLAIM_BATCH = 200;
 // GET - Cron entrypoint. Fires due scheduled messages. Called every minute
 // from vercel.json. Debits the wallet per message (same atomic RPC as
 // send-campaign) so follow-up drips stay honest with the live balance.
-export async function GET() {
+export async function GET(req: NextRequest) {
+  // Gate behind CRON_SECRET like the other cron routes so a random caller can't
+  // drive the send loop. Fail closed if the secret isn't configured.
+  const cronSecret = process.env.CRON_SECRET || "";
+  if (!cronSecret) {
+    console.error("[scheduled-send] CRON_SECRET not configured — refusing to run");
+    return NextResponse.json({ error: "Not configured" }, { status: 500 });
+  }
+  const auth = req.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (token !== cronSecret) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
   try {
     const supabase = createClient(supabaseUrl, supabaseKey);
 
@@ -215,6 +228,7 @@ export async function GET() {
         if (data.errors) {
           throw new Error(data.errors[0]?.detail || "Send failed");
         }
+        const telnyxId = data?.data?.id || null;
 
         await supabase.from("scheduled_messages").update({ status: "sent" }).eq("id", msg.id);
 
@@ -243,6 +257,7 @@ export async function GET() {
               body: sanitizedBody,
               status: "sent",
               from_number: msg.from_number,
+              telnyx_message_id: telnyxId,
             });
           }
         } else {
@@ -258,6 +273,7 @@ export async function GET() {
             body: msg.body,
             status: "sent",
             from_number: msg.from_number,
+            telnyx_message_id: telnyxId,
           });
         }
 
