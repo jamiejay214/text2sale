@@ -157,7 +157,7 @@ export async function POST(req: NextRequest) {
         .from("messages")
         .select("created_at")
         .eq("conversation_id", conversationId)
-        .eq("direction", "in")
+        .eq("direction", "inbound")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -170,7 +170,7 @@ export async function POST(req: NextRequest) {
         .from("messages")
         .select("created_at")
         .eq("conversation_id", conversationId)
-        .eq("direction", "in")
+        .eq("direction", "inbound")
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -303,7 +303,7 @@ BOOKING RULES — follow exactly:
       }
     }
 
-    const industry = profile.industry || "health_insurance";
+    const industry = profile.industry || "other";
 
     const systemPrompt = buildAiSystemPrompt({
       agentName,
@@ -590,6 +590,7 @@ BOOKING RULES — follow exactly:
         direction: "outbound",
         body: aiReply,
         status: "sent",
+        telnyx_message_id: smsData?.data?.id || null,
       });
 
       await supabase
