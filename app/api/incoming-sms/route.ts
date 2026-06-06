@@ -238,6 +238,41 @@ export async function POST(req: NextRequest) {
       !isOptOut && !isOptIn &&
       (MANDATORY_HELP.includes(bodyUpper) || MANDATORY_HELP.includes(firstToken));
 
+    // Record the inbound message into the contact's thread. The opt-out/opt-in
+    // branches return early, so without this the actual STOP/START text would
+    // never be saved — leaving no in-app compliance audit trail that we received
+    // and honored the request. Finds-or-creates the conversation and inserts the
+    // inbound row (mirrors the normal-message path below).
+    const recordInbound = async () => {
+      const { data: convs } = await supabase
+        .from("conversations").select("id, unread")
+        .eq("contact_id", contact.id)
+        .order("last_message_at", { ascending: false }).limit(1);
+      let convId = convs && convs.length > 0 ? convs[0].id : null;
+      if (!convId) {
+        const { data: nc } = await supabase
+          .from("conversations")
+          .insert({
+            user_id: contact.user_id, contact_id: contact.id,
+            preview: body.slice(0, 100), unread: 1,
+            last_message_at: new Date().toISOString(), from_number: toFormattedIn,
+          })
+          .select("id").single();
+        convId = nc?.id || null;
+      } else {
+        await supabase.from("conversations").update({
+          preview: body.slice(0, 100),
+          unread: (Number(convs?.[0]?.unread) || 0) + 1,
+          last_message_at: new Date().toISOString(),
+        }).eq("id", convId);
+      }
+      if (convId) {
+        await supabase.from("messages").insert({
+          conversation_id: convId, direction: "inbound", body, status: "received",
+        });
+      }
+    };
+
     // HELP is also carrier-mandated. Auto-reply with company + support info.
     // We do NOT mark DNC or change subscription state.
     if (isHelp) {
@@ -251,6 +286,7 @@ export async function POST(req: NextRequest) {
       // Always mark DNC on mandatory-opt-out keywords, regardless of the user's
       // autoMarkDnc toggle — that toggle can't override carrier rules.
       await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
+      await recordInbound();
       // Always send a confirmation reply so the carrier sees compliance.
       let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.";
       if (optSettings.includeCompanyName && optSettings.companyName) {
@@ -262,6 +298,7 @@ export async function POST(req: NextRequest) {
 
     if (isOptIn) {
       await supabase.from("contacts").update({ dnc: false }).eq("id", contact.id);
+      await recordInbound();
       if (optSettings.confirmOptOut) {
         let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed. Reply STOP to unsubscribe.";
         if (optSettings.includeCompanyName && optSettings.companyName) {
@@ -470,7 +507,17 @@ export async function POST(req: NextRequest) {
                   contactId: contact.id,
                   sendReply: true,
                 }),
-              }).catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
+              })
+                .then(async (res) => {
+                  // Surface non-OK responses (auth, missing ANTHROPIC_API_KEY,
+                  // scrubbed-empty reply) instead of failing silently, which
+                  // looked like "the AI just didn't respond."
+                  if (!res.ok) {
+                    const t = await res.text().catch(() => "");
+                    console.error(`[incoming-sms] AI auto-reply call failed (${res.status}): ${t.slice(0, 200)}`);
+                  }
+                })
+                .catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
             } else {
               console.warn(
                 "[incoming-sms] AI auto-reply skipped — set INTERNAL_WEBHOOK_SECRET env var to enable."

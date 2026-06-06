@@ -4348,7 +4348,7 @@ export default function DashboardPage() {
           await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
         }
 
-        const WAVE_SIZE = 5000;
+        const WAVE_SIZE = 1500;
         const WAVE_DELAY_MS = 0;
         let waveOffset = 0;
         let waveNum = 1;
@@ -4626,8 +4626,34 @@ export default function DashboardPage() {
           return;
         }
 
+        // DNC scrub (compliance): never re-import a phone the user has marked
+        // do-not-contact, even if it isn't in the currently-loaded contact list.
+        // The in-memory dedup above only covers loaded contacts; this is a
+        // DB-wide check so a prior opt-out can't be re-imported and re-texted.
+        const scrubPhones = deduped.map((r) => r.phone.replace(/\D/g, "")).filter(Boolean);
+        let dncSkipped = 0;
+        let toInsert = deduped;
+        if (scrubPhones.length > 0) {
+          const { data: dncRows } = await supabase
+            .from("contacts").select("phone").eq("user_id", userId).eq("dnc", true);
+          const dncSet = new Set((dncRows || []).map((r) => String(r.phone).replace(/\D/g, "")));
+          if (dncSet.size > 0) {
+            toInsert = deduped.filter((r) => {
+              const n = r.phone.replace(/\D/g, "");
+              if (n && dncSet.has(n)) { dncSkipped++; return false; }
+              return true;
+            });
+          }
+        }
+        if (toInsert.length === 0) {
+          await recordUpload(0);
+          setMessage(`❌ Nothing imported — ${dncSkipped} on do-not-contact, ${dupeCount} duplicate(s)`);
+          window.setTimeout(() => setMessage(""), 3500);
+          return;
+        }
+
         // Batch insert
-        const { data, error } = await supabase.from("contacts").insert(deduped).select();
+        const { data, error } = await supabase.from("contacts").insert(toInsert).select();
         if (error || !data) {
           await recordUpload(0);
           setMessage("❌ Failed to import contacts");
@@ -4638,9 +4664,29 @@ export default function DashboardPage() {
         const imported = (data as Contact[]).map(contactToRecord);
         setContacts((prev) => [...imported, ...prev]);
         await recordUpload(imported.length);
-        const dupeMsg = dupeCount > 0 ? ` (${dupeCount} duplicates skipped)` : "";
-        setMessage(`✅ Imported ${imported.length} contacts${dupeMsg}`);
-        window.setTimeout(() => setMessage(""), 3000);
+
+        // Charge per lead SERVER-SIDE — same as the import wizard — so the
+        // legacy button no longer imports for free.
+        if (imported.length > 0) {
+          try {
+            const chRes = await authFetch("/api/charge-leads", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ userId, count: imported.length }),
+            });
+            const chData = await chRes.json();
+            if (typeof chData?.walletBalance === "number") {
+              setCurrentUser((prev) => prev ? { ...prev, walletBalance: chData.walletBalance } : prev);
+            }
+          } catch (err) {
+            console.error("[csv-import] lead charge failed:", err);
+          }
+        }
+
+        const dncMsg = dncSkipped > 0 ? `, ${dncSkipped} on do-not-contact` : "";
+        const dupeMsg = dupeCount > 0 ? `, ${dupeCount} duplicate(s)` : "";
+        setMessage(`✅ Imported ${imported.length} contacts${dupeMsg}${dncMsg}`);
+        window.setTimeout(() => setMessage(""), 3500);
       },
       error: () => {
         setMessage("❌ Failed to parse CSV");
@@ -5071,7 +5117,7 @@ export default function DashboardPage() {
 
         setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
 
-        const WAVE_SIZE = 5000;
+        const WAVE_SIZE = 1500;
         const WAVE_DELAY_MS = 0;
 
         try {

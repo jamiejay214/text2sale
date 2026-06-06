@@ -307,6 +307,7 @@ export async function POST(req: NextRequest) {
       deferred?: boolean;
       error?: string;
       telnyxId?: string;
+      fromNumber?: string;
     };
 
     // Build the personalized body + decide deferral WITHOUT sending. Splitting
@@ -398,7 +399,7 @@ export async function POST(req: NextRequest) {
             error: data.errors[0]?.detail || "Send failed",
           };
         }
-        return { contactId: prep.contactId, personalized: prep.personalized, success: true, telnyxId: data?.data?.id || undefined };
+        return { contactId: prep.contactId, personalized: prep.personalized, success: true, telnyxId: data?.data?.id || undefined, fromNumber: prep.fromNumber };
       } catch (err: unknown) {
         return {
           contactId: prep.contactId,
@@ -446,15 +447,18 @@ export async function POST(req: NextRequest) {
           user_id: userId,
           contact_id: p.contactId,
           body: p.personalized,
-          from_number: fromList[0],
+          // Use THIS contact's rotated number (not always the first line) so the
+          // deferred send keeps number rotation and conversation continuity.
+          from_number: p.fromNumber,
           scheduled_at: deferScheduleAt,
           status: "pending",
           campaign_id: campaignId,
           cancel_on_reply: false,
         }));
-        supabase.from("scheduled_messages").insert(rows).then(({ error }) => {
-          if (error) console.error("quiet-hours defer insert failed:", error.message);
-        });
+        // Await the insert and surface failures — fire-and-forget silently
+        // dropped deferred contacts while still counting them as "queued".
+        const { error: deferErr } = await supabase.from("scheduled_messages").insert(rows);
+        if (deferErr) console.error("quiet-hours defer insert failed:", deferErr.message);
       }
 
       if (sendablePreps.length === 0) {
@@ -540,6 +544,7 @@ export async function POST(req: NextRequest) {
       const newConvRows: Array<Record<string, unknown>> = [];
       const newConvBodies = new Map<string, string>();
       const newConvTelnyxIds = new Map<string, string | undefined>();
+      const newConvFromNumbers = new Map<string, string | undefined>();
       const convIdsToTouch: string[] = [];
       const previewByConvId = new Map<string, string>();
       const campaignAssigns: string[] = [];
@@ -553,6 +558,7 @@ export async function POST(req: NextRequest) {
             body: r.personalized,
             status: "sent",
             telnyx_message_id: r.telnyxId || null,
+            from_number: r.fromNumber || null,
           });
           convIdsToTouch.push(existingConvId);
           previewByConvId.set(existingConvId, r.personalized.slice(0, 100));
@@ -563,9 +569,13 @@ export async function POST(req: NextRequest) {
             preview: r.personalized.slice(0, 100),
             unread: 0,
             last_message_at: new Date().toISOString(),
+            // Pin the rotated send-from line so later replies/AI go out on the
+            // same number that contacted the lead (was missing on 98% of convos).
+            from_number: r.fromNumber || null,
           });
           newConvBodies.set(r.contactId, r.personalized);
           newConvTelnyxIds.set(r.contactId, r.telnyxId);
+          newConvFromNumbers.set(r.contactId, r.fromNumber);
         }
 
         if (campaignName) {
@@ -594,6 +604,7 @@ export async function POST(req: NextRequest) {
         body: newConvBodies.get(c.contact_id) || "",
         status: "sent" as const,
         telnyx_message_id: newConvTelnyxIds.get(c.contact_id) || null,
+        from_number: newConvFromNumbers.get(c.contact_id) || null,
       }));
 
       const writes: Promise<unknown>[] = [];
