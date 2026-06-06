@@ -305,9 +305,13 @@ export async function GET(req: NextRequest) {
           })
           .eq("id", conv.id);
 
-        // Deduct cost from wallet
+        // Deduct cost ATOMICALLY. The previous code read `balance` once per
+        // account and wrote `balance - cost` directly, so multiple follow-ups
+        // to the same account in one run overwrote each other's debits (a
+        // revenue leak) and raced other money paths — the exact bug migrations
+        // 004/007 removed. Use the hardened RPC like every other path.
         const cost = AI_MESSAGE_COST + SMS_COST;
-        const newBalance = balance - cost;
+        await supabase.rpc("decrement_wallet", { p_user_id: account.id, p_amount: cost });
         const history_entry = {
           type: "agent_follow_up",
           amount: cost,
@@ -318,7 +322,6 @@ export async function GET(req: NextRequest) {
         await supabase
           .from("profiles")
           .update({
-            wallet_balance: newBalance,
             usage_history: [...usageHistory, history_entry],
           })
           .eq("id", account.id);

@@ -216,9 +216,27 @@ export async function POST(req: NextRequest) {
       new Set([...(optSettings.optInKeywords || []), ...MANDATORY_START].map((k) => String(k).toUpperCase()))
     );
 
-    const isOptOut = stopKeywords.includes(bodyUpper);
-    const isOptIn = startKeywords.includes(bodyUpper);
-    const isHelp = MANDATORY_HELP.includes(bodyUpper);
+    // Tolerant opt-out detection. Carriers (CTIA) require honoring STOP even
+    // when it arrives with surrounding text, punctuation, or emoji — "STOP.",
+    // "Please stop", "Stop texting me", "🛑 stop!!!" must all count. We strip
+    // punctuation/emoji, then match the mandatory STOP keywords as whole words
+    // anywhere in the message, plus the leading-token / exact match (which also
+    // covers the user's custom keywords). For opt-IN we stay stricter (exact /
+    // first-token only) because "YES" is too ambiguous to match mid-sentence.
+    const normalizedWords = bodyUpper.replace(/[^A-Z0-9\s]+/g, " ").replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+    const firstToken = normalizedWords[0] || "";
+    const wordSet = new Set(normalizedWords);
+
+    const isOptOut =
+      stopKeywords.includes(bodyUpper) ||
+      stopKeywords.includes(firstToken) ||
+      MANDATORY_STOP.some((k) => wordSet.has(k));
+    const isOptIn =
+      !isOptOut &&
+      (startKeywords.includes(bodyUpper) || startKeywords.includes(firstToken));
+    const isHelp =
+      !isOptOut && !isOptIn &&
+      (MANDATORY_HELP.includes(bodyUpper) || MANDATORY_HELP.includes(firstToken));
 
     // HELP is also carrier-mandated. Auto-reply with company + support info.
     // We do NOT mark DNC or change subscription state.
@@ -286,15 +304,17 @@ export async function POST(req: NextRequest) {
         .single();
       conversation = newConv;
     } else {
-      // Backfill from_number on older conversations that don't have it set yet.
+      // Backfill from_number on older conversations that don't have it set yet,
+      // and INCREMENT unread (not reset to 1) so a contact who fires several
+      // unanswered replies shows the true count instead of always 1.
       const { data: existing } = await supabase
         .from("conversations")
-        .select("from_number")
+        .select("from_number, unread")
         .eq("id", conversation.id)
         .single();
       const update: Record<string, unknown> = {
         preview: body.slice(0, 100),
-        unread: 1,
+        unread: (Number(existing?.unread) || 0) + 1,
         last_message_at: new Date().toISOString(),
       };
       if (!existing?.from_number) update.from_number = toFormattedIn;
@@ -502,19 +522,47 @@ async function handleDeliveryReceipt(eventPayload: Record<string, unknown>) {
       : (telnyxStatus === "sending_failed" || telnyxStatus === "delivery_failed") ? "failed"
       : "sent";
 
+    const errors = (eventPayload?.errors as Array<{ code?: string }>) || [];
+    const updateData: Record<string, unknown> = { status: mappedStatus };
+    if (errors.length > 0) updateData.error_code = errors[0]?.code || "";
+
+    // 1) Preferred match: the exact message by the Telnyx message id we store at
+    //    send time. Accurate even for contacts with many outbound messages.
+    const telnyxMessageId = (eventPayload?.id as string) || "";
+    if (telnyxMessageId) {
+      const { data: byId } = await supabase
+        .from("messages")
+        .select("id")
+        .eq("telnyx_message_id", telnyxMessageId)
+        .limit(1)
+        .maybeSingle();
+      if (byId) {
+        await supabase.from("messages").update(updateData).eq("id", byId.id);
+        return NextResponse.json({ status: "ok" });
+      }
+    }
+
+    // 2) Fallback (messages sent before the id was stored): match by recipient
+    //    phone. CRITICAL: include the BARE 10-digit form — that's how contacts
+    //    are actually stored — and use .in() (the old .or() both omitted the
+    //    bare form AND broke on the parentheses in the formatted variant, which
+    //    is why every message was stuck at "sent").
     const toDigits = to.replace(/\D/g, "");
     const toNormalized = toDigits.startsWith("1") ? toDigits.slice(1) : toDigits;
     const toFormatted = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
+    const phoneVariants = [toNormalized, toFormatted, `+1${toNormalized}`, `1${toNormalized}`, toDigits, to];
 
     const { data: contacts } = await supabase
       .from("contacts")
       .select("id")
-      .or(`phone.eq.${toFormatted},phone.eq.+1${toNormalized},phone.eq.${toDigits},phone.eq.${to}`);
+      .in("phone", phoneVariants)
+      .limit(1);
 
     if (!contacts || contacts.length === 0) return NextResponse.json({ status: "ok" });
 
     const { data: conversation } = await supabase
-      .from("conversations").select("id").eq("contact_id", contacts[0].id).single();
+      .from("conversations").select("id").eq("contact_id", contacts[0].id)
+      .order("last_message_at", { ascending: false }).limit(1).maybeSingle();
 
     if (!conversation) return NextResponse.json({ status: "ok" });
 
@@ -525,12 +573,9 @@ async function handleDeliveryReceipt(eventPayload: Record<string, unknown>) {
       .eq("direction", "outbound")
       .order("created_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (message) {
-      const errors = (eventPayload?.errors as Array<{ code?: string }>) || [];
-      const updateData: Record<string, unknown> = { status: mappedStatus };
-      if (errors.length > 0) updateData.error_code = errors[0]?.code || "";
       await supabase.from("messages").update(updateData).eq("id", message.id);
     }
 

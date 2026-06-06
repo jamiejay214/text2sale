@@ -306,6 +306,7 @@ export async function POST(req: NextRequest) {
       success: boolean;
       deferred?: boolean;
       error?: string;
+      telnyxId?: string;
     };
 
     // Build the personalized body + decide deferral WITHOUT sending. Splitting
@@ -397,7 +398,7 @@ export async function POST(req: NextRequest) {
             error: data.errors[0]?.detail || "Send failed",
           };
         }
-        return { contactId: prep.contactId, personalized: prep.personalized, success: true };
+        return { contactId: prep.contactId, personalized: prep.personalized, success: true, telnyxId: data?.data?.id || undefined };
       } catch (err: unknown) {
         return {
           contactId: prep.contactId,
@@ -538,6 +539,7 @@ export async function POST(req: NextRequest) {
       const existingConvMsgs: Array<Record<string, unknown>> = [];
       const newConvRows: Array<Record<string, unknown>> = [];
       const newConvBodies = new Map<string, string>();
+      const newConvTelnyxIds = new Map<string, string | undefined>();
       const convIdsToTouch: string[] = [];
       const previewByConvId = new Map<string, string>();
       const campaignAssigns: string[] = [];
@@ -550,6 +552,7 @@ export async function POST(req: NextRequest) {
             direction: "outbound",
             body: r.personalized,
             status: "sent",
+            telnyx_message_id: r.telnyxId || null,
           });
           convIdsToTouch.push(existingConvId);
           previewByConvId.set(existingConvId, r.personalized.slice(0, 100));
@@ -562,6 +565,7 @@ export async function POST(req: NextRequest) {
             last_message_at: new Date().toISOString(),
           });
           newConvBodies.set(r.contactId, r.personalized);
+          newConvTelnyxIds.set(r.contactId, r.telnyxId);
         }
 
         if (campaignName) {
@@ -589,6 +593,7 @@ export async function POST(req: NextRequest) {
         direction: "outbound" as const,
         body: newConvBodies.get(c.contact_id) || "",
         status: "sent" as const,
+        telnyx_message_id: newConvTelnyxIds.get(c.contact_id) || null,
       }));
 
       const writes: Promise<unknown>[] = [];
