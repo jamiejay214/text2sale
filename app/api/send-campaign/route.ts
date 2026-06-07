@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
     const auth = await authenticate(req);
     if (!auth.ok) return auth.response;
 
-    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1, importedSinceIso, waveOffset = 0, waveSize = 700 } = await req.json();
+    const { campaignId, userId: bodyUserId, fromNumbers, messageTemplate, campaignName, stepIndex = 0, totalSteps = 1, importedSinceIso, waveOffset = 0, waveSize = 700, priorSent = 0, priorFailed = 0 } = await req.json();
 
     const forbid = requireSameUser(auth.user.id, bodyUserId);
     if (forbid) return forbid;
@@ -722,7 +722,7 @@ export async function POST(req: NextRequest) {
       // request undercounted (e.g. contacts added mid-send).
       supabase
         .from("campaigns")
-        .update({ sent, failed, audience: contacts.length })
+        .update({ sent: priorSent + sent, failed: priorFailed + failed, audience: totalContacts })
         .eq("id", campaignId)
         .then(({ error }) => {
           if (error) console.error("progress update failed:", error.message);
@@ -764,18 +764,24 @@ export async function POST(req: NextRequest) {
 
     // If the user paused mid-send, leave the campaign in "Paused" status so
     // they can resume/relaunch. Out-of-funds halts the campaign too.
-    // For multi-step campaigns, only finalize to Completed on the LAST step —
-    // earlier steps leave the campaign as "Sending" so subsequent steps can
-    // pass the idempotency guard.
+    // CRITICAL: only mark "Completed" when this is the last step AND there are
+    // no more WAVES left. Otherwise the client's next wave (which requires the
+    // campaign to be "Sending") would be rejected — which made big lists stop
+    // after the first wave instead of sending the whole audience.
+    const moreWaves = waveOffset + contacts.length < totalContacts;
     const isLastStep = stepIndex >= totalSteps - 1;
-    const finalStatus = paused || outOfFunds ? "Paused" : isLastStep ? "Completed" : "Sending";
+    const finalStatus = paused || outOfFunds
+      ? "Paused"
+      : (isLastStep && !moreWaves)
+        ? "Completed"
+        : "Sending";
     await supabase
       .from("campaigns")
       .update({
         status: finalStatus,
-        audience: contacts.length,
-        sent,
-        failed,
+        audience: totalContacts,
+        sent: priorSent + sent,
+        failed: priorFailed + failed,
         replies,
         logs,
       })

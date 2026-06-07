@@ -4386,6 +4386,8 @@ export default function DashboardPage() {
               totalSteps: steps.length,
               waveOffset,
               waveSize: WAVE_SIZE,
+              priorSent: totalSent,
+              priorFailed: totalFailed,
             }),
           });
 
@@ -5152,6 +5154,8 @@ export default function DashboardPage() {
                   importedSinceIso,
                   waveOffset,
                   waveSize: WAVE_SIZE,
+                  priorSent: totalSent,
+                  priorFailed: totalFailed,
                 }),
               });
 
