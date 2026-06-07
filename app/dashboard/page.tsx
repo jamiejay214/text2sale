@@ -6482,7 +6482,7 @@ export default function DashboardPage() {
         )}
 
         {activeTab === "conversations" && (
-          <div className={`grid min-h-[85vh] gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
+          <div className={`grid gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
             {/* Master-detail on phones (below xl): show the chat LIST when no
                 thread is open, and swap to the THREAD when one is selected —
                 never both stacked (that was the "two different things" + the
@@ -6677,7 +6677,7 @@ export default function DashboardPage() {
               )}
 
               {convShowAll ? (
-                <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
+                <div className="max-h-[calc(100vh-35rem)] min-h-[14rem] space-y-2 overflow-y-auto pr-1">
                   {activeSendingCampaigns.length > 0 && (
                     <div className="rounded-2xl border border-amber-700/50 bg-amber-900/20 p-3">
                       <div className="flex items-center gap-2 text-xs font-semibold text-amber-300">
@@ -6762,7 +6762,7 @@ export default function DashboardPage() {
                   )}
                 </div>
               ) : (
-              <div className="max-h-[75vh] space-y-2 overflow-y-auto pr-1">
+              <div className="max-h-[calc(100vh-35rem)] min-h-[14rem] space-y-2 overflow-y-auto pr-1">
                 {filteredConversations.map((conversation) => {
                   const contact = conversation.contact;
                   const active = conversation.id === selectedConversation?.id;
@@ -6885,7 +6885,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className={`flex h-[90vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 ${selectedConversationId ? "" : "hidden xl:flex"}`}>
+            <div className={`flex h-[calc(100vh-22rem)] min-h-[28rem] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 ${selectedConversationId ? "" : "hidden xl:flex"}`}>
               {selectedConversation ? (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-y-2 border-b border-zinc-800 px-5 py-4">
