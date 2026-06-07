@@ -29,23 +29,44 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 }
 
 export async function loginUser(email: string, password: string) {
-  const { data, error } = await supabase.auth.signInWithPassword({
-    email: email.trim(),
-    password,
-  });
+  // Guard against a hung sign-in. supabase-js serializes auth calls behind a
+  // browser lock; a stale/corrupted session or another tab holding that lock
+  // can make signInWithPassword never resolve, leaving the UI stuck on
+  // "Signing in…" forever. Race the whole flow against a timeout so the user
+  // gets an actionable error and the button resets instead of spinning.
+  const timeout = new Promise<{ success: false; message: string }>((resolve) =>
+    setTimeout(
+      () =>
+        resolve({
+          success: false as const,
+          message:
+            "Login is taking too long — please refresh the page and try again. If it keeps happening, clear this site's data and reload.",
+        }),
+      20000
+    )
+  );
 
-  if (error) {
-    return { success: false as const, message: error.message };
-  }
+  const attempt = (async () => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    });
 
-  const profile = await fetchProfile(data.user.id);
+    if (error) {
+      return { success: false as const, message: error.message };
+    }
 
-  if (profile?.paused) {
-    await supabase.auth.signOut();
-    return { success: false as const, message: "This account is paused. Contact support." };
-  }
+    const profile = await fetchProfile(data.user.id);
 
-  return { success: true as const, user: profile };
+    if (profile?.paused) {
+      await supabase.auth.signOut();
+      return { success: false as const, message: "This account is paused. Contact support." };
+    }
+
+    return { success: true as const, user: profile };
+  })();
+
+  return Promise.race([attempt, timeout]);
 }
 
 export async function checkDuplicatePhone(phone: string): Promise<boolean> {
