@@ -130,15 +130,39 @@ export async function POST(req: NextRequest) {
       from,                                 // whatever Telnyx sent
     ].filter((v, i, arr) => v && arr.indexOf(v) === i);
 
-    let contactQuery = supabase
-      .from("contacts")
-      .select("id, user_id, first_name, last_name, phone, created_at")
-      .in("phone", phoneVariants);
-    if (ownerIds.length > 0) contactQuery = contactQuery.in("user_id", ownerIds);
-    const { data: contacts } = await contactQuery.order("created_at", { ascending: false }).limit(1);
+    const lookupContactByPhone = async () => {
+      let q = supabase
+        .from("contacts")
+        .select("id, user_id, first_name, last_name, phone, created_at")
+        .in("phone", phoneVariants);
+      if (ownerIds.length > 0) q = q.in("user_id", ownerIds);
+      return q.order("created_at", { ascending: false }).limit(1);
+    };
+    // Retry once if the lookup ERRORS. A transient DB failure that returns no
+    // rows would otherwise make us believe the lead doesn't exist and
+    // auto-create a DUPLICATE phone-only contact. That's not just inbox clutter
+    // ("Unknown Contact" threads) — it records STOP opt-outs on the wrong row,
+    // leaving the REAL lead textable (a compliance hole). So we only auto-create
+    // when the lookup DEFINITIVELY returned zero rows with no error.
+    let contactRes = await lookupContactByPhone();
+    if (contactRes.error) {
+      await new Promise((r) => setTimeout(r, 400));
+      contactRes = await lookupContactByPhone();
+    }
+    const contactRows = contactRes.data;
+    const contactLookupFailed = !!contactRes.error;
 
     let contact: { id: string; user_id: string; first_name?: string; last_name?: string; phone?: string } | null =
-      contacts && contacts.length > 0 ? contacts[0] : null;
+      contactRows && contactRows.length > 0 ? contactRows[0] : null;
+
+    // If the lookup is STILL erroring after a retry, don't guess. Ask Telnyx to
+    // re-deliver the webhook (503) once the DB recovers, rather than spawning a
+    // duplicate contact we'd have to merge back later.
+    if (!contact && contactLookupFailed) {
+      console.error("[incoming-sms] contact lookup failed after retry — requesting Telnyx redelivery instead of auto-creating. from=", from);
+      return NextResponse.json({ status: "retry" }, { status: 503 });
+    }
+
     // Route to the contact's owner; if no contact matched, default to the first
     // owner of the number (the auto-create below attaches the new contact there).
     const owningUserId: string | null = contact?.user_id || ownerIds[0] || null;

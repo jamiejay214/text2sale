@@ -104,32 +104,41 @@ async function configureVoiceOnNumber(e164: string) {
 
 export async function assignNumberToCampaign(e164: string, campaignId: string) {
   // Associate a phone number with an approved 10DLC campaign on Telnyx.
-  // We used to POST to /v2/10dlc/phone_number_campaigns with camelCase
-  // fields — that's the LEGACY endpoint, which Telnyx silently rejects
-  // on accounts provisioned after the TCR migration. The current
-  // endpoint is /v2/phone_number_campaigns with snake_case body. That's
-  // why David's 6 numbers ended up on the dashboard but never linked to
-  // his Northern Legacy campaign on Telnyx.
   //
-  // Retry a few times because Telnyx sometimes hasn't indexed a
-  // brand-new order yet (the number exists in the order response but
-  // isn't yet assignable for 1-3 seconds).
-  for (let attempt = 0; attempt < 4; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 2000));
-    const res = await fetch("https://api.telnyx.com/v2/phone_number_campaigns", {
+  // CORRECT ENDPOINT (verified live against this account, 2026-06):
+  //   POST /v2/10dlc/phone_number_campaigns   body: { phoneNumber, campaignId }
+  // The snake_case /v2/phone_number_campaigns route returns 404 (error
+  // 10005 "Resource not found") on this account — it does not exist here.
+  // An earlier comment had these two reversed, which is why every
+  // self-serve purchase silently failed to link to its campaign (David's
+  // numbers, and Jamie's, all "bought but never assigned"). The GET list
+  // and POST both only work under the /v2/10dlc/ prefix with camelCase.
+  //
+  // A successful POST returns 200 with { assignmentStatus: "PENDING_ASSIGNMENT" }
+  // (no `data` wrapper, `errors: null`). PENDING_ASSIGNMENT counts as
+  // assigned — Telnyx just propagates the T-Mobile/AT&T number mapping
+  // over the next few hours.
+  //
+  // Retry because a freshly-ordered number isn't assignable until it goes
+  // "active" (can lag ~30-60s); until then the API returns 10005.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+    const res = await fetch("https://api.telnyx.com/v2/10dlc/phone_number_campaigns", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
-      body: JSON.stringify({ phone_number: e164, campaign_id: campaignId }),
+      body: JSON.stringify({ phoneNumber: e164, campaignId }),
     });
     const data = await res.json().catch(() => ({}));
-    if (res.ok && !data?.errors) {
+    const errors = Array.isArray(data?.errors) ? data.errors : [];
+    // Success: 200 with an assignmentStatus and no error payload.
+    if (res.ok && errors.length === 0 && typeof data?.assignmentStatus === "string") {
       return { assigned: true as const };
     }
-    const detail = Array.isArray(data?.errors)
-      ? data.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title || "").join(", ")
+    const detail = errors.length
+      ? errors.map((e: { detail?: string; title?: string }) => e.detail || e.title || "").join(", ")
       : typeof data?.error === "string"
         ? data.error
         : "";
@@ -137,7 +146,9 @@ export async function assignNumberToCampaign(e164: string, campaignId: string) {
     if (/already/i.test(detail) && /assigned|exists/i.test(detail)) {
       return { assigned: true as const };
     }
-    const transient = /not found|provisioning|does not exist|not yet/i.test(detail);
+    // Number not active/indexed yet → transient, keep retrying. Telnyx
+    // phrases this as 10005 "could not be found" while the order settles.
+    const transient = /not found|could not be found|provisioning|does not exist|not yet|pending/i.test(detail);
     if (!transient) {
       return { assigned: false as const, error: detail || `HTTP ${res.status}` };
     }
@@ -296,18 +307,31 @@ export async function POST(req: NextRequest) {
     // Register the number in owned_phone_numbers so inbound SMS routing
     // (and anything else that needs a fast "who owns this?" lookup) finds it
     // immediately, without scanning every user's profile.
+    //
+    // NOTE: we deliberately do NOT use .upsert({onConflict:"digits"}) here.
+    // There is no unique constraint on `digits` (a number can be shared by
+    // more than one owner, so uniqueness is on the (user_id, digits) PAIR),
+    // and Postgres rejects an ON CONFLICT that doesn't match a constraint
+    // with 42P10 — which made the previous upsert silently fail on every
+    // purchase. Instead we check for the (user_id, digits) row and insert
+    // only if it's missing.
     if (userId) {
       try {
-        await walletClient
+        const { data: existing } = await walletClient
           .from("owned_phone_numbers")
-          .upsert(
-            { user_id: userId, digits, formatted: display },
-            { onConflict: "digits" }
-          );
+          .select("id")
+          .eq("user_id", userId)
+          .eq("digits", digits)
+          .maybeSingle();
+        if (!existing) {
+          await walletClient
+            .from("owned_phone_numbers")
+            .insert({ user_id: userId, digits, formatted: display });
+        }
       } catch (err) {
         // Non-fatal — the fallback path in the webhook still works until
         // the record catches up.
-        console.error("[buy-number] owned_phone_numbers upsert failed:", err);
+        console.error("[buy-number] owned_phone_numbers insert failed:", err);
       }
     }
 

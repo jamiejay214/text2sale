@@ -157,6 +157,30 @@ type ConversationRecord = {
   messages: ConversationMessage[];
 };
 
+// A conversation belongs in the "Unread" tab when the MOST RECENT message in
+// the thread is an inbound reply from the contact — i.e. they texted back and
+// neither you nor the AI has responded after it. We derive this from the
+// thread itself instead of the `unread` counter: that counter drifts (the AI
+// auto-reply clears it server-side while the client's copy stays stale), which
+// is why already-handled conversations — ones whose last message is your own
+// outbound reply — were leaking into Unread and made it look like "all
+// messages." Latest-message-inbound is self-correcting and always matches what
+// the preview shows.
+function latestMessageIsInbound(c: ConversationRecord): boolean {
+  const msgs = c.messages;
+  if (!msgs || msgs.length === 0) return false;
+  let newest = msgs[0];
+  let newestTs = new Date(newest.createdAt).getTime();
+  for (let i = 1; i < msgs.length; i++) {
+    const t = new Date(msgs[i].createdAt).getTime();
+    if (!isNaN(t) && t >= newestTs) {
+      newest = msgs[i];
+      newestTs = t;
+    }
+  }
+  return newest.direction === "inbound";
+}
+
 type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 
 // ─── FEATURE FLAG ────────────────────────────────────────────────────────
@@ -912,6 +936,12 @@ export default function DashboardPage() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   // Auto-scroll the main conversation messages to bottom on open + new message.
   const convMessagesEndRef = useRef<HTMLDivElement>(null);
+  // The scrollable message-thread container. We scroll THIS element to the
+  // bottom on new/selected messages instead of calling scrollIntoView on a
+  // child — scrollIntoView also scrolls every ancestor incl. the window,
+  // which is what yanked the whole page to the top when you opened a chat
+  // on mobile.
+  const convThreadScrollRef = useRef<HTMLDivElement>(null);
 
   const csvInputRef = useRef<HTMLInputElement>(null);
   const campaignTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -1373,7 +1403,11 @@ export default function DashboardPage() {
   const selectedConvMsgCount =
     conversations.find((c) => c.id === selectedConversationId)?.messages.length ?? 0;
   useEffect(() => {
-    convMessagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    // Scroll the thread CONTAINER to its bottom — never scrollIntoView, which
+    // bubbles up and scrolls the window (the "opening a chat jumps me to the
+    // top of the page" bug). This keeps the scroll inside the message pane.
+    const el = convThreadScrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [selectedConversationId, selectedConvMsgCount]);
 
   // Keep the wallet balance live. Two feeds, belt-and-suspenders:
@@ -1773,20 +1807,21 @@ export default function DashboardPage() {
       list = list.filter((c) => !archivedConvIds.has(c.id) && !c.contact?.dnc);
     }
 
-    // Unread filter — only conversations where a lead actually texted the
-    // user and the user hasn't opened it yet. Requires both (a) pending
-    // unread count and (b) at least one inbound message, so one-way
-    // campaign blasts with no replies never surface here. DNC contacts are
-    // already excluded above.
+    // Unread filter — only conversations where the contact's reply is the
+    // newest message in the thread (they texted back and you/the AI haven't
+    // responded after it). This is the "needs your attention" inbox: one-way
+    // blasts and already-answered threads (last message outbound) drop out,
+    // and the preview the user sees is always the contact's actual reply.
+    // We intentionally do NOT gate on the `unread` counter — it drifts when
+    // the AI auto-reply clears it server-side, which is what made handled
+    // conversations leak in here. DNC contacts are already excluded above.
     //
-    // We keep the currently-selected conversation visible even after its
-    // unread drops to 0 (auto-mark-as-read on click), otherwise it
-    // vanishes the instant you click it and there's no way back without
-    // switching tabs.
+    // We keep the currently-selected conversation visible even after you
+    // reply (its last message flips to outbound), otherwise it vanishes the
+    // instant you answer it with no way back except switching tabs.
     if (convShowUnread) {
       list = list.filter((c) =>
-        (c.unread > 0 && c.messages.some((m) => m.direction === "inbound"))
-        || c.id === selectedConversationId
+        latestMessageIsInbound(c) || c.id === selectedConversationId
       );
     }
 
@@ -3682,6 +3717,24 @@ export default function DashboardPage() {
     const conv = conversations.find((c) => c.id === conversationId);
     setConvFromNumber(conv?.fromNumber || "");
 
+    // On-demand contact load. If this thread's contact isn't in the browser's
+    // loaded list — which happens when an inbound reply auto-created the
+    // contact after the page loaded — fetch it now. Without this the header
+    // shows "Unknown Contact" and (on the old build) the Send button was dead
+    // because it couldn't find the recipient. Pulling it in fixes both.
+    if (conv?.contactId && !contacts.some((c) => c.id === conv.contactId)) {
+      const { data: cRow } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq("id", conv.contactId)
+        .maybeSingle();
+      if (cRow) {
+        setContacts((prev) =>
+          prev.some((c) => c.id === cRow.id) ? prev : [contactToRecord(cRow), ...prev]
+        );
+      }
+    }
+
     setConversations((prev) =>
       prev.map((c) => c.id === conversationId ? { ...c, unread: 0 } : c)
     );
@@ -3715,10 +3768,25 @@ export default function DashboardPage() {
       const now = new Date().toISOString();
 
       // Get the contact's phone and a from number
-      const contact = contacts.find((c) => c.id === selectedConversation.contactId);
+      // Resolve the recipient's phone robustly. Prefer the in-memory contacts
+      // list, but fall back to a direct lookup by the conversation's contactId.
+      // The full contacts array may not be loaded yet (slow first load, or a
+      // Supabase blip mid-load) — and that must NEVER block a reply. That was
+      // the bug: Send was gated on the contact being present in memory, so a
+      // typed message couldn't be sent at all.
+      const inMemContact = contacts.find((c) => c.id === selectedConversation.contactId) || null;
+      let contactPhone = inMemContact?.phone || "";
+      if (!contactPhone && selectedConversation.contactId) {
+        const { data: cRow } = await supabase
+          .from("contacts")
+          .select("phone")
+          .eq("id", selectedConversation.contactId)
+          .maybeSingle();
+        contactPhone = (cRow as { phone?: string } | null)?.phone || "";
+      }
       const fromNumber = convFromNumber || currentUser.ownedNumbers?.[0]?.number;
 
-      if (!contact?.phone) {
+      if (!contactPhone) {
         setMessage("❌ Contact has no phone number");
         window.setTimeout(() => setMessage(""), 2500);
         return;
@@ -3751,7 +3819,7 @@ export default function DashboardPage() {
             "Content-Type": "application/json",
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
-          body: JSON.stringify({ to: contact.phone, from: fromNumber, body }),
+          body: JSON.stringify({ to: contactPhone, from: fromNumber, body }),
         });
 
         const data = await res.json();
@@ -3810,7 +3878,7 @@ export default function DashboardPage() {
       const chargedAmt = Number((cost * segments).toFixed(4));
       const chargeEntry: UsageHistoryItem = {
         id: `msg_${Date.now()}`, type: "charge", amount: chargedAmt,
-        description: `SMS to ${contact.phone}`,
+        description: `SMS to ${contactPhone}`,
         createdAt: now, status: "succeeded",
       };
       const updatedProfile = await persistProfile({
@@ -5652,14 +5720,13 @@ export default function DashboardPage() {
 
         <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
           {(() => {
-            // Badge count must match the Unread tab filter — only count leads
-            // who actually texted back (inbound exists) and aren't DNC.
-            // Otherwise the badge shows "10" while the tab lists nothing.
+            // Badge count must match the Unread tab filter — count the
+            // conversations where the contact's reply is the newest message
+            // (and they aren't DNC). One badge unit per waiting conversation,
+            // so the number always equals the rows shown under the Unread tab.
             const totalUnread = conversationsWithContacts.reduce((sum, c) => {
-              if (!c.unread || c.unread <= 0) return sum;
               if (c.contact?.dnc) return sum;
-              if (!c.messages.some((m) => m.direction === "inbound")) return sum;
-              return sum + c.unread;
+              return latestMessageIsInbound(c) ? sum + 1 : sum;
             }, 0);
             return (([
               { id: "overview", label: "Overview" },
@@ -6416,7 +6483,11 @@ export default function DashboardPage() {
 
         {activeTab === "conversations" && (
           <div className={`grid min-h-[85vh] gap-4 ${showConvContactPanel ? "xl:grid-cols-[300px_minmax(0,1fr)_340px]" : "xl:grid-cols-[300px_minmax(0,1fr)]"}`}>
-            <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-4">
+            {/* Master-detail on phones (below xl): show the chat LIST when no
+                thread is open, and swap to the THREAD when one is selected —
+                never both stacked (that was the "two different things" + the
+                page-jump). Desktop (xl+) keeps both panes side by side. */}
+            <div className={`rounded-3xl border border-zinc-800 bg-zinc-900 p-4 ${selectedConversationId ? "hidden xl:block" : ""}`}>
               <div className="mb-4">
                 <div className="flex flex-col gap-3">
                   <h2 className="text-2xl font-bold">Chats</h2>
@@ -6814,18 +6885,29 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="flex h-[90vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900">
+            <div className={`flex h-[90vh] flex-col overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900 ${selectedConversationId ? "" : "hidden xl:flex"}`}>
               {selectedConversation ? (
                 <>
                   <div className="flex flex-wrap items-center justify-between gap-y-2 border-b border-zinc-800 px-5 py-4">
                     <div className="flex items-center gap-3">
+                      {/* Back to the chat list — phones only (master-detail). */}
+                      <button
+                        onClick={() => setSelectedConversationId("")}
+                        className="-ml-1 flex h-9 w-9 items-center justify-center rounded-full text-xl text-zinc-300 hover:bg-zinc-800 hover:text-white xl:hidden"
+                        title="Back to chats"
+                        aria-label="Back to chats"
+                      >
+                        ←
+                      </button>
                       <div className="flex h-11 w-11 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
                         {selectedContact ? getInitials(selectedContact.firstName, selectedContact.lastName) : "?"}
                       </div>
                       <div>
                         <div className="flex items-center gap-2">
                           <div className="font-semibold text-white">
-                            {selectedContact ? `${selectedContact.firstName} ${selectedContact.lastName}` : "Unknown Contact"}
+                            {selectedContact
+                              ? (`${selectedContact.firstName || ""} ${selectedContact.lastName || ""}`.trim() || selectedContact.phone || "Unknown Contact")
+                              : "Unknown Contact"}
                           </div>
                           {selectedConversation && (() => {
                             const temp = computeTemperature(selectedConversation.messages, selectedContact?.dnc);
@@ -7176,7 +7258,7 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
-                  <div className="flex-1 overflow-y-auto bg-zinc-950/40 px-5 py-6">
+                  <div ref={convThreadScrollRef} className="flex-1 overflow-y-auto bg-zinc-950/40 px-5 py-6">
                     <div className="mb-6 text-center text-sm text-zinc-500">
                       {formatConversationDay(selectedConversation.lastMessageAt)}
                     </div>
@@ -7392,8 +7474,8 @@ export default function DashboardPage() {
                           </button>
                           <button
                             onClick={handleSendConversationMessage}
-                            disabled={!selectedContact || sendingConvMsg}
-                            title={!selectedContact ? "No contact linked to this conversation" : undefined}
+                            disabled={!selectedConversation || sendingConvMsg}
+                            title={!selectedConversation ? "Open a conversation to send" : undefined}
                             className="rounded-2xl bg-violet-600 px-6 py-3 font-medium hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-40"
                           >
                             {sendingConvMsg ? "Sending…" : "Send"}
