@@ -67,15 +67,21 @@ export default function HomePage() {
     if (!loginPassword.trim()) return setError("Password is required.");
 
     setLoading(true);
-    const result = await loginUser(loginEmail, loginPassword);
-    setLoading(false);
-
-    if (!result.success) {
-      setError(result.message);
-      return;
+    // try/finally so the button ALWAYS resets — a thrown/rejected sign-in used
+    // to skip setLoading(false) and leave it stuck on "Signing in…".
+    try {
+      const result = await loginUser(loginEmail, loginPassword);
+      if (!result.success) {
+        setError(result.message);
+        return;
+      }
+      router.push("/dashboard");
+    } catch (e) {
+      console.error("[login] error:", e);
+      setError("Something went wrong signing in. Please refresh and try again.");
+    } finally {
+      setLoading(false);
     }
-
-    router.push("/dashboard");
   };
 
   const handleSignup = async () => {
