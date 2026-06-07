@@ -20,13 +20,14 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 // Supabase) ≈ 250 ms each, so serial would be 1 s/contact. Bursting 100
 // Telnyx sends in parallel per chunk is still well within 10DLC MPS
 // limits and roughly doubles throughput over the old 50.
-const CHUNK = 200;
+const CHUNK = 250;
 
 // How many chunks can have their Telnyx sends + DB writes in flight at
-// once. With PIPE=3 a 10k campaign finishes ~3× faster than strict
-// sequential chunks, and wallet decrements are still serialized inside
-// each chunk so we can't double-bill.
-const PIPE = 3;
+// once. CHUNK*PIPE = ~1,250 messages dispatched concurrently per wave for a
+// faster blast. Beyond this, throughput is capped by the carrier's 10DLC MPS
+// limit (Telnyx just queues), so more concurrency stops helping. Wallet
+// decrements are still serialized per chunk so we can't double-bill.
+const PIPE = 5;
 
 type CampaignContact = {
   id: string;

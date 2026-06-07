@@ -85,56 +85,41 @@ export async function POST(req: NextRequest) {
     const toNormalized = toDigitsRaw.startsWith("1") ? toDigitsRaw.slice(1) : toDigitsRaw;
     const toFormattedIn = `(${toNormalized.slice(0, 3)}) ${toNormalized.slice(3, 6)}-${toNormalized.slice(6)}`;
 
-    // Step 1: Identify which user owns the receiving number — indexed lookup
-    // on the denormalized owned_phone_numbers table. Previously we pulled
-    // every profile and did an O(n) scan in JS, which gets slower as users
-    // grow; this is a single index hit (~5ms).
-    let owningUserId: string | null = null;
-    const { data: ownership } = await supabase
+    // Step 1: Identify which user(s) own the receiving number. A number can be
+    // SHARED across accounts, so we collect ALL owners. The previous
+    // `.maybeSingle()` ERRORED whenever a number had more than one owner, which
+    // dropped or misrouted every reply to a shared line — the cause of replies
+    // landing in the wrong account / not showing up at all.
+    const { data: ownerRows } = await supabase
       .from("owned_phone_numbers")
       .select("user_id")
-      .eq("digits", toNormalized)
-      .maybeSingle();
-    if (ownership?.user_id) {
-      owningUserId = ownership.user_id as string;
-    } else {
-      // Fallback — older accounts might have numbers only on profiles.owned_numbers.
-      // This keeps routing working while the backfill catches up. Every time
-      // we hit this path we self-heal by inserting into owned_phone_numbers so
-      // the next inbound for this line takes the fast path. Without this the
-      // fallback quietly gets worse as user count grows.
-      console.warn(`[incoming-sms] slow-path lookup for ${toNormalized} — backfill triggered`);
+      .eq("digits", toNormalized);
+    const ownerIds: string[] = Array.from(new Set((ownerRows || []).map((o) => o.user_id as string)));
+
+    // Fallback for legacy numbers only present on profiles.owned_numbers.
+    if (ownerIds.length === 0) {
+      console.warn(`[incoming-sms] slow-path lookup for ${toNormalized}`);
       const { data: owners } = await supabase
         .from("profiles")
         .select("id, owned_numbers")
         .not("owned_numbers", "is", null);
-      if (owners) {
-        for (const p of owners) {
-          const nums = (p.owned_numbers as Array<{ number?: string }> | null) || [];
-          const match = nums.some((n) => {
-            const d = (n.number || "").replace(/\D/g, "");
-            const norm = d.startsWith("1") ? d.slice(1) : d;
-            return norm && norm === toNormalized;
-          });
-          if (match) {
-            owningUserId = p.id;
-            // Self-heal: push the denormalized row so next time we hit the
-            // fast path. Ignore duplicates (someone else may have just done it).
-            supabase
-              .from("owned_phone_numbers")
-              .upsert({ user_id: p.id, digits: toNormalized }, { onConflict: "digits" })
-              .then(({ error }) => {
-                if (error) console.error("[incoming-sms] backfill upsert failed:", error.message);
-              });
-            break;
-          }
-        }
+      for (const p of owners || []) {
+        const nums = (p.owned_numbers as Array<{ number?: string }> | null) || [];
+        const match = nums.some((n) => {
+          const d = (n.number || "").replace(/\D/g, "");
+          const norm = d.startsWith("1") ? d.slice(1) : d;
+          return norm && norm === toNormalized;
+        });
+        if (match) ownerIds.push(p.id);
       }
     }
 
-    // Step 2: Find an existing contact for the sender, scoped to the owning user when known.
-    // NOTE: Supabase's .or() filter treats parentheses as grouping syntax, so a phone like
-    // "(954) 805-7882" silently breaks the query. Use .in() with all common variants instead.
+    // Step 2: Find the contact for the sender, scoped to the number's owner(s).
+    // The contact's OWNER is the account this reply belongs to — this is how we
+    // route correctly on a SHARED number: the reply goes to whoever has this
+    // lead as a contact (i.e. whoever actually texted them). The most recently
+    // active matching contact wins if the same lead exists under two owners.
+    // NOTE: .or() mis-parses parentheses in phone values, so use .in().
     const phoneVariants = [
       fromFormatted,                        // (954) 805-7882
       fromNormalized,                       // 9548057882
@@ -147,13 +132,16 @@ export async function POST(req: NextRequest) {
 
     let contactQuery = supabase
       .from("contacts")
-      .select("id, user_id, first_name, last_name, phone")
+      .select("id, user_id, first_name, last_name, phone, created_at")
       .in("phone", phoneVariants);
-    if (owningUserId) contactQuery = contactQuery.eq("user_id", owningUserId);
-    const { data: contacts } = await contactQuery.limit(1);
+    if (ownerIds.length > 0) contactQuery = contactQuery.in("user_id", ownerIds);
+    const { data: contacts } = await contactQuery.order("created_at", { ascending: false }).limit(1);
 
     let contact: { id: string; user_id: string; first_name?: string; last_name?: string; phone?: string } | null =
       contacts && contacts.length > 0 ? contacts[0] : null;
+    // Route to the contact's owner; if no contact matched, default to the first
+    // owner of the number (the auto-create below attaches the new contact there).
+    const owningUserId: string | null = contact?.user_id || ownerIds[0] || null;
 
     // Step 3: If no contact exists but we know the owning user, auto-create one so the reply is captured.
     if (!contact && owningUserId) {
