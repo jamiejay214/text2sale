@@ -122,6 +122,40 @@ export interface WifiAlert {
   at: string;
 }
 
+/** Week-over-week trend for a service/category, for the weekly summary. */
+export interface WeeklyTrend {
+  label: string;
+  category: DomainCategory;
+  thisWeekMin: number;
+  lastWeekMin: number;
+  /** Percent change vs last week (rounded). Positive = more this week. */
+  deltaPct: number;
+  /** Seen for the very first time this week. */
+  firstTimeThisWeek: boolean;
+}
+
+/**
+ * Safety keyword watchlist. Flags when a watched term shows up in something the
+ * network can actually see — an unencrypted search query, a DNS lookup, or a
+ * domain name. Most search is HTTPS, so this catches what's visible, not
+ * everything; it's a safety tripwire, not a transcript.
+ */
+export interface WatchlistMatch {
+  id: string;
+  deviceId: string;
+  term: string;
+  category: "self-harm" | "drugs" | "violence" | "adult" | "bullying" | "custom";
+  /** Where the term was seen, e.g. "search query", "DNS lookup", "domain". */
+  source: string;
+  at: string;
+}
+
+export interface Watchlist {
+  /** Terms the parent is watching for. */
+  terms: string[];
+  matches: WatchlistMatch[];
+}
+
 export interface WifiSnapshot {
   generatedAt: string;
   devices: WifiDevice[];
@@ -132,6 +166,8 @@ export interface WifiSnapshot {
   timeControls: TimeControl[];
   filter: ContentFilter;
   alerts: WifiAlert[];
+  weeklyTrends: WeeklyTrend[];
+  watchlist: Watchlist;
 }
 
 export const CATEGORY_LABELS: Record<DomainCategory, string> = {
@@ -263,5 +299,19 @@ export function getWifiSnapshot(): WifiSnapshot {
       { id: "a2", kind: "after-bedtime", deviceId: "dev-liam-tablet", message: "Liam's iPad is online past its 8:00 PM bedtime", at: minutesAgo(20) },
       { id: "a3", kind: "adult-block", deviceId: "dev-ava-phone", message: "Blocked an adult-content site on Ava's iPhone", at: minutesAgo(52) },
     ],
+    weeklyTrends: [
+      { label: "TikTok", category: "social", thisWeekMin: 462, lastWeekMin: 330, deltaPct: 40, firstTimeThisWeek: false },
+      { label: "YouTube", category: "video", thisWeekMin: 690, lastWeekMin: 720, deltaPct: -4, firstTimeThisWeek: false },
+      { label: "Roblox", category: "gaming", thisWeekMin: 540, lastWeekMin: 505, deltaPct: 7, firstTimeThisWeek: false },
+      { label: "X (Twitter)", category: "social", thisWeekMin: 38, lastWeekMin: 0, deltaPct: 100, firstTimeThisWeek: true },
+      { label: "Khan Academy", category: "education", thisWeekMin: 120, lastWeekMin: 60, deltaPct: 100, firstTimeThisWeek: false },
+    ],
+    watchlist: {
+      terms: ["self harm", "vape", "weed", "kys", "ozempic"],
+      matches: [
+        { id: "w1", deviceId: "dev-ava-phone", term: "vape", category: "drugs", source: "search query", at: minutesAgo(140) },
+        { id: "w2", deviceId: "dev-liam-tablet", term: "kys", category: "bullying", source: "chat domain", at: minutesAgo(210) },
+      ],
+    },
   };
 }

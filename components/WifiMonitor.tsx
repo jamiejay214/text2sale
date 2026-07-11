@@ -11,6 +11,7 @@ import {
   CATEGORY_LABELS,
   KIND_EMOJI,
   type WifiDevice,
+  type DeviceKind,
   type DomainCategory,
   type DomainVisit,
   type CallSession,
@@ -18,6 +19,8 @@ import {
   type TimeControl,
   type ContentFilter,
   type WifiAlert,
+  type WeeklyTrend,
+  type Watchlist,
   type WifiSnapshot,
 } from "@/components/wifi/wifi-data";
 
@@ -36,6 +39,19 @@ const CATEGORY_CHIP: Record<DomainCategory, string> = {
 
 const CARD = "rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6";
 
+// Local, per-browser edits to the device roster (rename, reassign owner, fix
+// type). Persisted so changes survive refreshes without a backend.
+const OVERRIDES_KEY = "wifiDeviceOverrides.v1";
+type DeviceOverride = { label?: string; owner?: string; kind?: DeviceKind };
+type DeviceOverrides = Record<string, DeviceOverride>;
+
+const KIND_OPTIONS: DeviceKind[] = ["phone", "tablet", "laptop", "computer", "console", "tv", "watch", "iot", "other"];
+
+function applyOverrides(s: WifiSnapshot, o: DeviceOverrides): WifiSnapshot {
+  if (!o || Object.keys(o).length === 0) return s;
+  return { ...s, devices: s.devices.map((d) => (o[d.id] ? { ...d, ...o[d.id] } : d)) };
+}
+
 export default function WifiMonitor() {
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -43,7 +59,41 @@ export default function WifiMonitor() {
     return () => clearInterval(id);
   }, []);
 
-  const snapshot = useMemo<WifiSnapshot>(() => getWifiSnapshot(), []);
+  const base = useMemo<WifiSnapshot>(() => getWifiSnapshot(), []);
+
+  // Editable device roster — rename a device, fix who it belongs to, or correct
+  // its type. Persisted to localStorage so edits stick across refreshes.
+  const [overrides, setOverrides] = useState<DeviceOverrides>(() => {
+    if (typeof window === "undefined") return {};
+    try {
+      const raw = window.localStorage.getItem(OVERRIDES_KEY);
+      return raw ? (JSON.parse(raw) as DeviceOverrides) : {};
+    } catch {
+      return {};
+    }
+  });
+  const [editing, setEditing] = useState(false);
+  const patchDevice = (id: string, patch: DeviceOverride) => {
+    setOverrides((prev) => {
+      const next = { ...prev, [id]: { ...prev[id], ...patch } };
+      try {
+        localStorage.setItem(OVERRIDES_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+  const resetOverrides = () => {
+    setOverrides({});
+    try {
+      localStorage.removeItem(OVERRIDES_KEY);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const snapshot = useMemo<WifiSnapshot>(() => applyOverrides(base, overrides), [base, overrides]);
   const byId = useMemo(() => new Map(snapshot.devices.map((d) => [d.id, d])), [snapshot]);
   const people = useMemo(() => groupByPerson(snapshot.devices), [snapshot]);
   const timeline = useMemo(
@@ -57,11 +107,34 @@ export default function WifiMonitor() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h2 className="text-xl font-semibold text-white">📶 Home WiFi Monitor</h2>
-        <p className="mt-1 text-sm text-zinc-500">
-          Everything happening on your network · updated {relativeTime(snapshot.generatedAt)}
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-semibold text-white">📶 Home WiFi Monitor</h2>
+          <p className="mt-1 text-sm text-zinc-500">
+            Everything happening on your network · updated {relativeTime(snapshot.generatedAt)}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {editing && Object.keys(overrides).length > 0 && (
+            <button
+              onClick={resetOverrides}
+              className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/60 transition hover:text-white"
+            >
+              Reset edits
+            </button>
+          )}
+          <button
+            onClick={() => setEditing((e) => !e)}
+            className="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+            style={{
+              borderColor: editing ? "#38bdf8" : "rgba(255,255,255,0.1)",
+              background: editing ? "#38bdf826" : "rgba(255,255,255,0.05)",
+              color: editing ? "#fff" : "rgba(255,255,255,0.7)",
+            }}
+          >
+            {editing ? "✓ Done editing" : "✎ Edit devices"}
+          </button>
+        </div>
       </div>
 
       {/* KPI row */}
@@ -82,6 +155,16 @@ export default function WifiMonitor() {
       )}
 
       <section>
+        <SectionTitle>Safety keyword watchlist</SectionTitle>
+        <WatchlistPanel watchlist={snapshot.watchlist} byId={byId} />
+      </section>
+
+      <section>
+        <SectionTitle>Per-kid daily digest</SectionTitle>
+        <DailyDigest snapshot={snapshot} people={people} />
+      </section>
+
+      <section>
         <SectionTitle>Who&apos;s home right now</SectionTitle>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {people.map((p) => (
@@ -92,7 +175,12 @@ export default function WifiMonitor() {
 
       <section>
         <SectionTitle>Devices on your network</SectionTitle>
-        <DeviceInventory devices={snapshot.devices} />
+        {editing && (
+          <p className="mb-2 text-xs text-sky-300">
+            Editing on — rename a device, change who it belongs to, or fix its type. Saved on this device.
+          </p>
+        )}
+        <DeviceInventory devices={snapshot.devices} editing={editing} onPatch={patchDevice} />
       </section>
 
       <section>
@@ -124,6 +212,11 @@ export default function WifiMonitor() {
       <section>
         <SectionTitle>What they&apos;re spending time on</SectionTitle>
         <CategoryBreakdown domains={snapshot.domains} />
+      </section>
+
+      <section>
+        <SectionTitle>This week vs last</SectionTitle>
+        <WeeklyTrends trends={snapshot.weeklyTrends} />
       </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -291,7 +384,17 @@ function PersonCard({ name, devices }: { name: string; devices: WifiDevice[] }) 
   );
 }
 
-function DeviceInventory({ devices }: { devices: WifiDevice[] }) {
+function DeviceInventory({
+  devices,
+  editing,
+  onPatch,
+}: {
+  devices: WifiDevice[];
+  editing: boolean;
+  onPatch: (id: string, patch: DeviceOverride) => void;
+}) {
+  const inputCls =
+    "w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-sky-400";
   return (
     <div className="overflow-x-auto rounded-3xl border border-zinc-800 bg-zinc-900/50">
       <table className="w-full min-w-[720px] text-left text-sm">
@@ -312,27 +415,64 @@ function DeviceInventory({ devices }: { devices: WifiDevice[] }) {
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{KIND_EMOJI[d.kind]}</span>
-                  <div>
-                    <div className="font-medium text-white">
-                      {d.label}
-                      {d.isNew && (
-                        <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40">
-                          NEW
-                        </span>
-                      )}
-                    </div>
+                  <div className="min-w-[9rem]">
+                    {editing ? (
+                      <input
+                        className={inputCls}
+                        value={d.label}
+                        aria-label="Device name"
+                        onChange={(e) => onPatch(d.id, { label: e.target.value })}
+                      />
+                    ) : (
+                      <div className="font-medium text-white">
+                        {d.label}
+                        {d.isNew && (
+                          <span className="ml-2 rounded-full bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 ring-1 ring-amber-500/40">
+                            NEW
+                          </span>
+                        )}
+                      </div>
+                    )}
                     <div className="text-xs text-zinc-500">First seen {relativeTime(d.firstSeen)}</div>
                   </div>
                 </div>
               </td>
               <td className="px-4 py-3">
-                <div className="text-zinc-200">{d.typeLabel}</div>
-                <div className="text-xs text-zinc-500">
-                  {d.vendor}
-                  {d.os ? ` · ${d.os}` : ""}
-                </div>
+                {editing ? (
+                  <select
+                    className={inputCls}
+                    value={d.kind}
+                    aria-label="Device type"
+                    onChange={(e) => onPatch(d.id, { kind: e.target.value as DeviceKind })}
+                  >
+                    {KIND_OPTIONS.map((k) => (
+                      <option key={k} value={k} className="bg-zinc-900">
+                        {KIND_EMOJI[k]} {k}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <>
+                    <div className="text-zinc-200">{d.typeLabel}</div>
+                    <div className="text-xs text-zinc-500">
+                      {d.vendor}
+                      {d.os ? ` · ${d.os}` : ""}
+                    </div>
+                  </>
+                )}
               </td>
-              <td className="px-4 py-3 text-zinc-300">{d.owner}</td>
+              <td className="px-4 py-3 text-zinc-300">
+                {editing ? (
+                  <input
+                    className={inputCls}
+                    value={d.owner}
+                    aria-label="Owner"
+                    onChange={(e) => onPatch(d.id, { owner: e.target.value })}
+                  />
+                ) : (
+                  d.owner
+                )}
+              </td>
               <td className="px-4 py-3">
                 <div className="text-zinc-300">{d.band ?? "—"}</div>
                 <div className="text-xs text-zinc-500">
@@ -517,6 +657,136 @@ function ScreenTime({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<stri
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function WatchlistPanel({ watchlist, byId }: { watchlist: Watchlist; byId: Map<string, WifiDevice> }) {
+  const catStyle: Record<string, string> = {
+    "self-harm": "bg-red-500/20 text-red-200 ring-red-500/40",
+    drugs: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+    violence: "bg-red-500/15 text-red-300 ring-red-500/30",
+    adult: "bg-red-500/20 text-red-200 ring-red-500/40",
+    bullying: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
+    custom: "bg-zinc-500/15 text-zinc-300 ring-zinc-500/30",
+  };
+  return (
+    <div className={`${CARD} space-y-4`}>
+      <div>
+        <div className="mb-2 text-xs text-zinc-400">Watching for</div>
+        <div className="flex flex-wrap gap-1.5">
+          {watchlist.terms.map((t) => (
+            <span key={t} className="rounded-full bg-white/5 px-2.5 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
+              {t}
+            </span>
+          ))}
+        </div>
+      </div>
+      {watchlist.matches.length === 0 ? (
+        <p className="text-sm text-emerald-300">✓ No watched terms seen recently.</p>
+      ) : (
+        <div className="space-y-2">
+          {watchlist.matches.map((m) => {
+            const device = byId.get(m.deviceId);
+            return (
+              <div key={m.id} className="flex items-center gap-3 rounded-2xl border border-red-500/25 bg-red-500/10 px-4 py-3 text-sm">
+                <span className="text-lg">⚠️</span>
+                <span className="flex-1 text-red-100">
+                  Term <span className="font-semibold">&ldquo;{m.term}&rdquo;</span> seen in a {m.source}
+                  <span className="text-red-200/60"> · {device?.owner ?? "Unknown"} · {device?.label ?? m.deviceId}</span>
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${catStyle[m.category]}`}>{m.category}</span>
+                <time className="text-xs text-red-200/60">{relativeTime(m.at)}</time>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      <p className="text-xs text-zinc-600">
+        Flags watched terms where the network can see them — unencrypted searches, DNS lookups, domain names.
+        Most search is encrypted, so treat this as a tripwire, not a full record.
+      </p>
+    </div>
+  );
+}
+
+function DailyDigest({ snapshot, people }: { snapshot: WifiSnapshot; people: Person[] }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      {people.map((p) => {
+        const ids = new Set(p.devices.map((d) => d.id));
+        const activeMin = snapshot.usage.filter((u) => ids.has(u.deviceId)).reduce((s, u) => s + u.activeMinutesToday, 0);
+        const data = p.devices.reduce((s, d) => s + d.dataDownMb + d.dataUpMb, 0);
+        const calls = snapshot.calls.filter((c) => ids.has(c.deviceId));
+        const blocked = snapshot.domains.filter((v) => ids.has(v.deviceId) && v.blocked).length;
+        const flags = snapshot.watchlist.matches.filter((m) => ids.has(m.deviceId)).length;
+        const online = p.devices.some((d) => d.online);
+        const catTotals = new Map<DomainCategory, number>();
+        for (const v of snapshot.domains) if (ids.has(v.deviceId)) catTotals.set(v.category, (catTotals.get(v.category) ?? 0) + v.requests);
+        const topCats = [...catTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, 2).map(([c]) => c);
+        return (
+          <div key={p.name} className={CARD}>
+            <div className="flex items-center justify-between">
+              <span className="font-medium text-white">{p.name}</span>
+              <span className={`text-xs ${online ? "text-emerald-300" : "text-zinc-500"}`}>{online ? "home" : "away"}</span>
+            </div>
+            <p className="mt-2 text-sm text-zinc-300">
+              {humanDuration(activeMin)} active today · {humanData(data)} data
+              {calls.length > 0 ? ` · ${calls.length} call${calls.length > 1 ? "s" : ""}` : ""}.
+            </p>
+            {topCats.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1">
+                <span className="text-xs text-zinc-500">Mostly</span>
+                {topCats.map((c) => (
+                  <span key={c} className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${CATEGORY_CHIP[c]}`}>
+                    {CATEGORY_LABELS[c]}
+                  </span>
+                ))}
+              </div>
+            )}
+            {(blocked > 0 || flags > 0) && (
+              <div className="mt-2 flex flex-wrap gap-3 text-xs">
+                {blocked > 0 && <span className="text-red-300">🚫 {blocked} blocked</span>}
+                {flags > 0 && <span className="text-amber-300">⚠️ {flags} watchlist hit{flags > 1 ? "s" : ""}</span>}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function WeeklyTrends({ trends }: { trends: WeeklyTrend[] }) {
+  return (
+    <div className={`${CARD} space-y-3`}>
+      {trends.map((t) => {
+        const up = t.deltaPct >= 0;
+        return (
+          <div key={t.label} className="flex items-center gap-3 text-sm">
+            <span className="w-32 flex-shrink-0 truncate text-zinc-200">
+              {t.label}
+              {t.firstTimeThisWeek && (
+                <span className="ml-1.5 rounded-full bg-sky-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-sky-300 ring-1 ring-sky-500/40">
+                  NEW
+                </span>
+              )}
+            </span>
+            <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${CATEGORY_CHIP[t.category]}`}>
+              {CATEGORY_LABELS[t.category]}
+            </span>
+            <span className="flex-1 text-right text-xs text-zinc-500">
+              {humanDuration(t.lastWeekMin)} → {humanDuration(t.thisWeekMin)}
+            </span>
+            <span className={`w-16 text-right font-medium tabular-nums ${t.firstTimeThisWeek ? "text-sky-300" : up ? "text-red-300" : "text-emerald-300"}`}>
+              {t.firstTimeThisWeek ? "new" : `${up ? "▲" : "▼"} ${Math.abs(t.deltaPct)}%`}
+            </span>
+          </div>
+        );
+      })}
+      <p className="text-xs text-zinc-600">
+        Week-over-week change in time per app. A jump in social/video or a brand-new app is often what&apos;s worth a conversation.
+      </p>
     </div>
   );
 }
