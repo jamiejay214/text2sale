@@ -54,6 +54,10 @@ export interface WifiDevice {
   /** Data downloaded / uploaded today, in MB. */
   dataDownMb: number;
   dataUpMb: number;
+  /** Total DNS/connection requests seen today. */
+  requests: number;
+  /** Recent per-interval request counts, for the sidebar sparkline. */
+  spark: number[];
 }
 
 export interface PresenceEvent {
@@ -122,6 +126,107 @@ export interface WifiAlert {
   at: string;
 }
 
+/** Week-over-week trend for a service/category, for the weekly summary. */
+export interface WeeklyTrend {
+  label: string;
+  category: DomainCategory;
+  thisWeekMin: number;
+  lastWeekMin: number;
+  /** Percent change vs last week (rounded). Positive = more this week. */
+  deltaPct: number;
+  /** Seen for the very first time this week. */
+  firstTimeThisWeek: boolean;
+}
+
+/**
+ * Safety keyword watchlist. Flags when a watched term shows up in something the
+ * network can actually see — an unencrypted search query, a DNS lookup, or a
+ * domain name. Most search is HTTPS, so this catches what's visible, not
+ * everything; it's a safety tripwire, not a transcript.
+ */
+export interface WatchlistMatch {
+  id: string;
+  deviceId: string;
+  term: string;
+  category: "self-harm" | "drugs" | "violence" | "adult" | "bullying" | "custom";
+  /** Where the term was seen, e.g. "search query", "DNS lookup", "domain". */
+  source: string;
+  at: string;
+}
+
+export interface Watchlist {
+  /** Terms the parent is watching for. */
+  terms: string[];
+  matches: WatchlistMatch[];
+}
+
+/** Whole-network health snapshot. */
+export interface NetworkHealth {
+  throughputDownMbps: number;
+  throughputUpMbps: number;
+  clientsOnline: number;
+  dnsQueriesToday: number;
+  /** Ads / trackers / malware / adult queries blocked at the DNS layer today. */
+  blockedQueriesToday: number;
+}
+
+export type BlockCategory = "ads" | "trackers" | "malware" | "adult" | "custom";
+export interface BlockedDomainStat {
+  domain: string;
+  category: BlockCategory;
+  hits: number;
+}
+
+/** Where a device's traffic goes, by destination country (server locations). */
+export interface GeoPeer {
+  country: string;
+  code: string;
+  connections: number;
+}
+
+export type BypassMethod = "VPN" | "DNS-over-HTTPS" | "Tor" | "Proxy";
+/** A device trying to route around the home filter — legal to detect on your own network. */
+export interface BypassEvent {
+  id: string;
+  deviceId: string;
+  method: BypassMethod;
+  at: string;
+  note: string;
+}
+
+/** A daily time budget for a whole content category (e.g. Social ≤ 60 min). */
+export interface CategoryLimit {
+  category: DomainCategory;
+  limitMin: number;
+  usedMin: number;
+}
+
+/** Per-device internet schedule (allowed hours) + a manual pause switch. */
+export interface DeviceSchedule {
+  deviceId: string;
+  allowedFrom: string;
+  allowedTo: string;
+  paused: boolean;
+}
+
+export interface NotificationRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+/** Parent-managed block/allow lists layered on top of the DNS filter. */
+export interface FilterLists {
+  blocklist: string[];
+  allowlist: string[];
+}
+
+/** One day's hour-by-hour activity, for the weekly heatmap. */
+export interface DayActivity {
+  day: string;
+  hours: number[];
+}
+
 export interface WifiSnapshot {
   generatedAt: string;
   devices: WifiDevice[];
@@ -132,6 +237,17 @@ export interface WifiSnapshot {
   timeControls: TimeControl[];
   filter: ContentFilter;
   alerts: WifiAlert[];
+  weeklyTrends: WeeklyTrend[];
+  watchlist: Watchlist;
+  network: NetworkHealth;
+  blockedDomains: BlockedDomainStat[];
+  geoPeers: GeoPeer[];
+  bypass: BypassEvent[];
+  categoryLimits: CategoryLimit[];
+  schedules: DeviceSchedule[];
+  notificationRules: NotificationRule[];
+  lists: FilterLists;
+  weekHeatmap: DayActivity[];
 }
 
 export const CATEGORY_LABELS: Record<DomainCategory, string> = {
@@ -205,13 +321,13 @@ export function getWifiSnapshot(): WifiSnapshot {
   return {
     generatedAt: new Date().toISOString(),
     devices: [
-      { id: "dev-ava-phone", owner: "Ava", label: "Ava's iPhone", kind: "phone", typeLabel: "iPhone 14", vendor: "Apple", os: "iOS 17.4", mac: "A4:83:E7:11:2C:9F", ip: "192.168.1.42", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(412), band: "5GHz", signalDbm: -52, dataDownMb: 1840, dataUpMb: 210 },
-      { id: "dev-liam-tablet", owner: "Liam", label: "Liam's iPad", kind: "tablet", typeLabel: "iPad (10th gen)", vendor: "Apple", os: "iPadOS 17.4", mac: "F0:18:98:5A:71:0B", ip: "192.168.1.51", online: true, lastChangeAt: minutesAgo(158), firstSeen: daysAgo(230), band: "5GHz", signalDbm: -61, dataDownMb: 2960, dataUpMb: 145 },
-      { id: "dev-liam-switch", owner: "Liam", label: "Nintendo Switch", kind: "console", typeLabel: "Game console", vendor: "Nintendo", os: "Horizon OS", mac: "7C:BB:8A:3D:44:12", ip: "192.168.1.60", online: false, lastChangeAt: minutesAgo(75), firstSeen: daysAgo(88), band: "2.4GHz", signalDbm: -70, dataDownMb: 540, dataUpMb: 60 },
-      { id: "dev-ava-laptop", owner: "Ava", label: "Ava's school laptop", kind: "laptop", typeLabel: "Windows laptop", vendor: "Dell", os: "Windows 11", mac: "B8:27:EB:9C:1E:73", ip: "192.168.1.33", online: false, lastChangeAt: minutesAgo(410), firstSeen: daysAgo(365), band: "5GHz", signalDbm: -66, dataDownMb: 780, dataUpMb: 95 },
-      { id: "dev-family-tv", owner: "Family", label: "Living Room TV", kind: "tv", typeLabel: "Smart TV", vendor: "Samsung", os: "Tizen", mac: "5C:49:7D:22:88:AA", ip: "192.168.1.20", online: true, lastChangeAt: minutesAgo(300), firstSeen: daysAgo(500), band: "5GHz", signalDbm: -58, dataDownMb: 5120, dataUpMb: 40 },
-      { id: "dev-ava-watch", owner: "Ava", label: "Ava's Apple Watch", kind: "watch", typeLabel: "Apple Watch", vendor: "Apple", os: "watchOS 10", mac: "3A:BB:1C:44:9E:07", ip: "192.168.1.71", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(120), band: "2.4GHz", signalDbm: -64, dataDownMb: 60, dataUpMb: 25 },
-      { id: "dev-unknown", owner: "Unknown", label: "Unrecognized device", kind: "other", typeLabel: "Unknown", vendor: "Unknown (randomized MAC)", mac: "8E:2A:F1:00:3D:6B", ip: "192.168.1.88", online: true, lastChangeAt: minutesAgo(12), firstSeen: minutesAgo(12), isNew: true, band: "2.4GHz", signalDbm: -73, dataDownMb: 15, dataUpMb: 4 },
+      { id: "dev-ava-phone", owner: "Ava", label: "Ava's iPhone", kind: "phone", typeLabel: "iPhone 14", vendor: "Apple", os: "iOS 17.4", mac: "A4:83:E7:11:2C:9F", ip: "192.168.1.42", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(412), band: "5GHz", signalDbm: -52, dataDownMb: 1840, dataUpMb: 210, requests: 9184, spark: [4, 7, 3, 9, 6, 8, 5, 7, 4, 9] },
+      { id: "dev-liam-tablet", owner: "Liam", label: "Liam's iPad", kind: "tablet", typeLabel: "iPad (10th gen)", vendor: "Apple", os: "iPadOS 17.4", mac: "F0:18:98:5A:71:0B", ip: "192.168.1.51", online: true, lastChangeAt: minutesAgo(158), firstSeen: daysAgo(230), band: "5GHz", signalDbm: -61, dataDownMb: 2960, dataUpMb: 145, requests: 3859, spark: [2, 3, 5, 4, 6, 3, 7, 5, 4, 6] },
+      { id: "dev-liam-switch", owner: "Liam", label: "Nintendo Switch", kind: "console", typeLabel: "Game console", vendor: "Nintendo", os: "Horizon OS", mac: "7C:BB:8A:3D:44:12", ip: "192.168.1.60", online: false, lastChangeAt: minutesAgo(75), firstSeen: daysAgo(88), band: "2.4GHz", signalDbm: -70, dataDownMb: 540, dataUpMb: 60, requests: 1204, spark: [1, 0, 2, 3, 1, 4, 2, 1, 0, 2] },
+      { id: "dev-ava-laptop", owner: "Ava", label: "Ava's school laptop", kind: "laptop", typeLabel: "Windows laptop", vendor: "Dell", os: "Windows 11", mac: "B8:27:EB:9C:1E:73", ip: "192.168.1.33", online: false, lastChangeAt: minutesAgo(410), firstSeen: daysAgo(365), band: "5GHz", signalDbm: -66, dataDownMb: 780, dataUpMb: 95, requests: 3532, spark: [3, 4, 2, 5, 3, 4, 2, 3, 4, 2] },
+      { id: "dev-family-tv", owner: "Family", label: "Living Room TV", kind: "tv", typeLabel: "Smart TV", vendor: "Samsung", os: "Tizen", mac: "5C:49:7D:22:88:AA", ip: "192.168.1.20", online: true, lastChangeAt: minutesAgo(300), firstSeen: daysAgo(500), band: "5GHz", signalDbm: -58, dataDownMb: 5120, dataUpMb: 40, requests: 6721, spark: [6, 8, 5, 9, 7, 8, 6, 9, 7, 8] },
+      { id: "dev-ava-watch", owner: "Ava", label: "Ava's Apple Watch", kind: "watch", typeLabel: "Apple Watch", vendor: "Apple", os: "watchOS 10", mac: "3A:BB:1C:44:9E:07", ip: "192.168.1.71", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(120), band: "2.4GHz", signalDbm: -64, dataDownMb: 60, dataUpMb: 25, requests: 402, spark: [1, 1, 0, 1, 2, 1, 0, 1, 1, 0] },
+      { id: "dev-unknown", owner: "Unknown", label: "Unrecognized device", kind: "other", typeLabel: "Unknown", vendor: "Unknown (randomized MAC)", mac: "8E:2A:F1:00:3D:6B", ip: "192.168.1.88", online: true, lastChangeAt: minutesAgo(12), firstSeen: minutesAgo(12), isNew: true, band: "2.4GHz", signalDbm: -73, dataDownMb: 15, dataUpMb: 4, requests: 88, spark: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
     ],
     presence: [
       { id: "p1", deviceId: "dev-ava-laptop", type: "left", at: minutesAgo(475) },
@@ -263,5 +379,77 @@ export function getWifiSnapshot(): WifiSnapshot {
       { id: "a2", kind: "after-bedtime", deviceId: "dev-liam-tablet", message: "Liam's iPad is online past its 8:00 PM bedtime", at: minutesAgo(20) },
       { id: "a3", kind: "adult-block", deviceId: "dev-ava-phone", message: "Blocked an adult-content site on Ava's iPhone", at: minutesAgo(52) },
     ],
+    weeklyTrends: [
+      { label: "TikTok", category: "social", thisWeekMin: 462, lastWeekMin: 330, deltaPct: 40, firstTimeThisWeek: false },
+      { label: "YouTube", category: "video", thisWeekMin: 690, lastWeekMin: 720, deltaPct: -4, firstTimeThisWeek: false },
+      { label: "Roblox", category: "gaming", thisWeekMin: 540, lastWeekMin: 505, deltaPct: 7, firstTimeThisWeek: false },
+      { label: "X (Twitter)", category: "social", thisWeekMin: 38, lastWeekMin: 0, deltaPct: 100, firstTimeThisWeek: true },
+      { label: "Khan Academy", category: "education", thisWeekMin: 120, lastWeekMin: 60, deltaPct: 100, firstTimeThisWeek: false },
+    ],
+    watchlist: {
+      terms: ["self harm", "vape", "weed", "kys", "ozempic"],
+      matches: [
+        { id: "w1", deviceId: "dev-ava-phone", term: "vape", category: "drugs", source: "search query", at: minutesAgo(140) },
+        { id: "w2", deviceId: "dev-liam-tablet", term: "kys", category: "bullying", source: "chat domain", at: minutesAgo(210) },
+      ],
+    },
+    network: {
+      throughputDownMbps: 84.2,
+      throughputUpMbps: 11.6,
+      clientsOnline: 5,
+      dnsQueriesToday: 41890,
+      blockedQueriesToday: 6431,
+    },
+    blockedDomains: [
+      { domain: "doubleclick.net", category: "ads", hits: 1820 },
+      { domain: "googlesyndication.com", category: "ads", hits: 1440 },
+      { domain: "graph.facebook.com", category: "trackers", hits: 910 },
+      { domain: "analytics.tiktok.com", category: "trackers", hits: 604 },
+      { domain: "known-malware.example", category: "malware", hits: 42 },
+      { domain: "adult-content.example", category: "adult", hits: 6 },
+    ],
+    geoPeers: [
+      { country: "United States", code: "US", connections: 3120 },
+      { country: "Ireland", code: "IE", connections: 640 },
+      { country: "Netherlands", code: "NL", connections: 410 },
+      { country: "Germany", code: "DE", connections: 220 },
+      { country: "Singapore", code: "SG", connections: 98 },
+    ],
+    bypass: [
+      { id: "b1", deviceId: "dev-ava-laptop", method: "DNS-over-HTTPS", at: minutesAgo(180), note: "Browser tried encrypted DNS, bypassing the home filter (blocked)" },
+      { id: "b2", deviceId: "dev-ava-phone", method: "VPN", at: minutesAgo(300), note: "Outbound VPN handshake detected (WireGuard)" },
+    ],
+    categoryLimits: [
+      { category: "social", limitMin: 90, usedMin: 118 },
+      { category: "video", limitMin: 120, usedMin: 95 },
+      { category: "gaming", limitMin: 120, usedMin: 133 },
+    ],
+    schedules: [
+      { deviceId: "dev-ava-phone", allowedFrom: "07:00", allowedTo: "21:30", paused: false },
+      { deviceId: "dev-liam-tablet", allowedFrom: "08:00", allowedTo: "20:00", paused: false },
+      { deviceId: "dev-liam-switch", allowedFrom: "09:00", allowedTo: "19:00", paused: true },
+    ],
+    notificationRules: [
+      { id: "r1", label: "A new / unrecognized device joins the WiFi", enabled: true },
+      { id: "r2", label: "An adult or blocked site is attempted", enabled: true },
+      { id: "r3", label: "A device is online past its bedtime", enabled: true },
+      { id: "r4", label: "A watchlist keyword is seen", enabled: true },
+      { id: "r5", label: "A device uses a VPN or encrypted DNS to bypass the filter", enabled: true },
+      { id: "r6", label: "A brand-new app or service is used for the first time", enabled: false },
+      { id: "r7", label: "A device exceeds its daily data or time limit", enabled: false },
+    ],
+    lists: {
+      blocklist: ["tiktok.com", "omegle.com", "adult-content.example"],
+      allowlist: ["khanacademy.org", "classroom.google.com", "youtubekids.com"],
+    },
+    weekHeatmap: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, di) => ({
+      day,
+      hours: Array.from({ length: 24 }, (_, h) => {
+        const base = h >= 7 && h <= 22 ? 1 : 0.1;
+        const evening = h >= 15 && h <= 21 ? 1.7 : 1;
+        const weekend = di >= 5 ? 1.4 : 1;
+        return Math.round(((Math.sin(di * 3 + h) + 1) / 2) * 10 * base * evening * weekend);
+      }),
+    })),
   };
 }
