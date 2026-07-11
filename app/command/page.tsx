@@ -13,6 +13,7 @@ import {
 import { supabase } from "@/lib/supabase";
 import { loginUser } from "@/lib/auth";
 import type { Overview, BusinessMetrics, Series, FeedItem } from "@/lib/command-center";
+import WifiMonitor from "@/components/WifiMonitor";
 import { Panel, StatTile, AreaChart, BarList, Donut, Funnel } from "@/components/command/CommandKit";
 import CommandVoice from "@/components/command/CommandVoice";
 import Intelligence from "@/components/command/Intelligence";
@@ -118,6 +119,8 @@ export default function CommandCenterPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>("all");
+  // Which panel the body shows: the business analytics, or the home WiFi monitor.
+  const [panel, setPanel] = useState<"analytics" | "wifi">("analytics");
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [clock, setClock] = useState(new Date());
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
@@ -347,7 +350,7 @@ export default function CommandCenterPage() {
             return (
               <button
                 key={t.id}
-                onClick={() => setScope(t.id)}
+                onClick={() => { setScope(t.id); setPanel("analytics"); }}
                 className="group relative flex items-center gap-2 overflow-hidden rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
                 style={{
                   borderColor: activeTab ? `${t.color}` : "rgba(255,255,255,0.08)",
@@ -376,8 +379,25 @@ export default function CommandCenterPage() {
               </button>
             );
           })}
+          <button
+            onClick={() => setPanel("wifi")}
+            className="group relative flex items-center gap-2 overflow-hidden rounded-lg border px-4 py-2 text-sm font-medium transition-all duration-200"
+            style={{
+              borderColor: panel === "wifi" ? "#38bdf8" : "rgba(255,255,255,0.08)",
+              background: panel === "wifi" ? "linear-gradient(180deg,#38bdf826,#38bdf80d)" : "rgba(255,255,255,0.02)",
+              color: panel === "wifi" ? "#fff" : "rgba(255,255,255,0.5)",
+              boxShadow: panel === "wifi" ? "0 0 22px #38bdf855, inset 0 0 16px #38bdf81a" : "none",
+            }}
+          >
+            <Wifi className="h-3.5 w-3.5" style={{ color: panel === "wifi" ? "#38bdf8" : "rgba(255,255,255,0.4)" }} />
+            Home WiFi
+          </button>
         </div>
 
+        {panel === "wifi" ? (
+          <WifiMonitor />
+        ) : (
+        <>
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <StatTile label="Revenue collected" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
@@ -486,6 +506,8 @@ export default function CommandCenterPage() {
 
         {/* Rich visitor intelligence + AI panels (scoped to the selected business) */}
         <Intelligence token={token} accent={vm.accent} demo={demo} scope={scope} bizName={vm.biz?.name} />
+        </>
+        )}
 
         <footer className="mt-8 flex items-center justify-between border-t border-white/5 pt-4 text-[11px] text-white/30">
           <span>Command Center · text2sale · aibusinessgrowth · trustedquotes · <a href="/command/install" className="hover:text-white/60">Install tracker on other sites →</a></span>
