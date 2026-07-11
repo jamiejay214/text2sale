@@ -10,7 +10,6 @@ import Sparkline from "@/components/Sparkline";
 import TempBadge from "@/components/TempBadge";
 import SmartReplies from "@/components/SmartReplies";
 import CallHud, { type CallHudState } from "@/components/CallHud";
-import WifiMonitor from "@/components/WifiMonitor";
 import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "@/components/BrowserPhone";
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
@@ -182,7 +181,7 @@ function latestMessageIsInbound(c: ConversationRecord): boolean {
   return newest.direction === "inbound";
 }
 
-type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn" | "wifi";
+type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 
 // ─── FEATURE FLAG ────────────────────────────────────────────────────────
 // Calling is temporarily disabled while the Telnyx routing issue is open
@@ -1182,7 +1181,7 @@ export default function DashboardPage() {
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
-      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","campaigns","contacts","appointments","upload","templates","settings","learn","wifi"];
+      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","campaigns","contacts","appointments","upload","templates","settings","learn"];
       const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai","integrations"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
@@ -5523,7 +5522,6 @@ export default function DashboardPage() {
     { id: "nav-templates",     section: "Go to",    label: "Templates",       hint: "Quick replies & canned messages", onRun: () => setActiveTab("templates"),    icon: <span className="text-base">📝</span> },
     { id: "nav-settings",      section: "Go to",    label: "Settings",        hint: "Billing, numbers, AI, team",     onRun: () => setActiveTab("settings"),      icon: <span className="text-base">⚙️</span> },
     { id: "nav-learn",         section: "Go to",    label: "Learn",           hint: "Tutorials & tips",               onRun: () => setActiveTab("learn"),         icon: <span className="text-base">📖</span> },
-    { id: "nav-wifi",          section: "Go to",    label: "Home WiFi Monitor", hint: "Who's home & device activity",   onRun: () => setActiveTab("wifi"),          icon: <span className="text-base">📶</span> },
 
     // Settings sub-pages
     { id: "set-billing",    section: "Settings",  label: "Billing & Wallet",      onRun: () => { setActiveTab("settings"); setSettingsSubTab("billing"); },     icon: <span className="text-base">💳</span> },
@@ -5740,7 +5738,6 @@ export default function DashboardPage() {
               { id: "appointments", label: "Appointments" },
               { id: "upload", label: "Upload CSV" },
               { id: "templates", label: "Templates" },
-              { id: "wifi", label: "📶 WiFi" },
               { id: "settings", label: "Settings" },
               { id: "learn", label: "📖 Learn" },
             ] as { id: DashboardTab; label: string }[])).map((tab) => (
@@ -5763,8 +5760,6 @@ export default function DashboardPage() {
             ));
           })()}
         </div>
-
-        {activeTab === "wifi" && <WifiMonitor />}
 
         {activeTab === "overview" && (
           <div className="space-y-8">
