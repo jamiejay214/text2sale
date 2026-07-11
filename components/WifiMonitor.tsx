@@ -22,6 +22,15 @@ import {
   type WeeklyTrend,
   type Watchlist,
   type WifiSnapshot,
+  type NetworkHealth,
+  type BlockedDomainStat,
+  type GeoPeer,
+  type BypassEvent,
+  type CategoryLimit,
+  type DeviceSchedule,
+  type NotificationRule,
+  type FilterLists,
+  type DayActivity,
 } from "@/components/wifi/wifi-data";
 
 const CATEGORY_CHIP: Record<DomainCategory, string> = {
@@ -52,7 +61,7 @@ function applyOverrides(s: WifiSnapshot, o: DeviceOverrides): WifiSnapshot {
   return { ...s, devices: s.devices.map((d) => (o[d.id] ? { ...d, ...o[d.id] } : d)) };
 }
 
-type InnerTab = "everything" | "live" | "history" | "summary" | "settings";
+type InnerTab = "everything" | "live" | "history" | "network" | "controls" | "summary" | "settings";
 
 const PHONE_KINDS = new Set<DeviceKind>(["phone", "tablet", "watch"]);
 
@@ -199,7 +208,9 @@ export default function WifiMonitor() {
 
           <InnerTabs tab={tab} onTab={setTab} calls={snapshot.calls.length} />
 
-          {tab === "everything" && selected && <EverythingDossier device={selected} snapshot={snapshot} />}
+          {tab === "everything" && selected && (
+            <EverythingDossier key={selected.id} device={selected} snapshot={snapshot} onRename={(id, name) => patchDevice(id, { label: name })} />
+          )}
           {tab === "live" && <LiveFeed snapshot={snapshot} byId={byId} />}
           {tab === "history" && (
             <div className="space-y-6">
@@ -213,6 +224,8 @@ export default function WifiMonitor() {
               </section>
             </div>
           )}
+          {tab === "network" && <NetworkTab snapshot={snapshot} byId={byId} />}
+          {tab === "controls" && <ControlsTab snapshot={snapshot} byId={byId} />}
           {tab === "summary" && <SummaryTab snapshot={snapshot} people={people} byId={byId} />}
           {tab === "settings" && (
             <SettingsTab
@@ -423,6 +436,8 @@ const INNER_TABS: { id: InnerTab; label: string }[] = [
   { id: "everything", label: "⚡ Everything" },
   { id: "live", label: "📡 Live Feed" },
   { id: "history", label: "🗒️ History" },
+  { id: "network", label: "🌐 Network" },
+  { id: "controls", label: "🛡️ Controls" },
   { id: "summary", label: "📊 Summary" },
   { id: "settings", label: "⚙️ Settings" },
 ];
@@ -450,7 +465,24 @@ function InnerTabs({ tab, onTab, calls }: { tab: InnerTab; onTab: (t: InnerTab) 
 
 // --- Everything dossier -----------------------------------------------------
 
-function EverythingDossier({ device, snapshot }: { device: WifiDevice; snapshot: WifiSnapshot }) {
+function EverythingDossier({
+  device,
+  snapshot,
+  onRename,
+}: {
+  device: WifiDevice;
+  snapshot: WifiSnapshot;
+  onRename: (id: string, name: string) => void;
+}) {
+  // Local state resets when a different device is selected because the parent
+  // remounts this component with key={device.id}.
+  const [renaming, setRenaming] = useState(false);
+  const [draft, setDraft] = useState(device.label);
+  const saveName = () => {
+    onRename(device.id, draft.trim() || device.label);
+    setRenaming(false);
+  };
+
   const domains = snapshot.domains.filter((v) => v.deviceId === device.id);
   const calls = snapshot.calls.filter((c) => c.deviceId === device.id);
   const usage = snapshot.usage.find((u) => u.deviceId === device.id);
@@ -461,6 +493,20 @@ function EverythingDossier({ device, snapshot }: { device: WifiDevice; snapshot:
     .sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime())[0];
   const hours = deviceHours(device);
   const topApps = [...domains].sort((a, b) => b.requests - a.requests).slice(0, 6);
+  const recent = [...domains].sort((a, b) => new Date(b.lastSeenAt).getTime() - new Date(a.lastSeenAt).getTime()).slice(0, 8);
+
+  const info: [string, string][] = [
+    ["Type", device.typeLabel],
+    ["Vendor", device.vendor],
+    ["OS", device.os ?? "—"],
+    ["Owner", device.owner],
+    ["IP address", device.ip ?? "—"],
+    ["MAC", device.mac],
+    ["Band", device.band ?? "—"],
+    ["Signal", `${signalLabel(device.signalDbm)}${device.signalDbm != null ? ` (${device.signalDbm} dBm)` : ""}`],
+    ["First seen", relativeTime(device.firstSeen)],
+    ["Requests today", device.requests.toLocaleString()],
+  ];
 
   return (
     <div className="space-y-4">
@@ -469,9 +515,47 @@ function EverythingDossier({ device, snapshot }: { device: WifiDevice; snapshot:
           <div className="flex items-center gap-3">
             <span className="text-2xl">{KIND_EMOJI[device.kind]}</span>
             <div>
-              <h3 className="text-lg font-bold text-white">Everything Tracker</h3>
+              {renaming ? (
+                <div className="flex items-center gap-2">
+                  <input
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") saveName();
+                      if (e.key === "Escape") {
+                        setDraft(device.label);
+                        setRenaming(false);
+                      }
+                    }}
+                    aria-label="Device name"
+                    className="rounded-md border border-sky-400 bg-white/10 px-2 py-1 text-lg font-bold text-white outline-none"
+                  />
+                  <button onClick={saveName} className="rounded-md bg-sky-500/20 px-2.5 py-1 text-xs font-medium text-sky-200">Save</button>
+                  <button
+                    onClick={() => {
+                      setDraft(device.label);
+                      setRenaming(false);
+                    }}
+                    className="px-1 text-xs text-white/40 hover:text-white/70"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <h3 className="flex items-center gap-2 text-lg font-bold text-white">
+                  {device.label}
+                  <button
+                    onClick={() => setRenaming(true)}
+                    title="Rename this device"
+                    className="rounded-md border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] font-medium text-white/50 transition hover:text-white"
+                  >
+                    ✎ edit name
+                  </button>
+                </h3>
+              )}
               <p className="max-w-xl text-sm text-zinc-500">
-                A daily dossier for {device.label} — wake &amp; last-seen, screen time per app, domains, data, and flagged searches. Metadata only.
+                Everything Tracker — wake &amp; last-seen, screen time per app, domains, data, and flagged searches. Metadata only.
               </p>
             </div>
           </div>
@@ -481,6 +565,15 @@ function EverythingDossier({ device, snapshot }: { device: WifiDevice; snapshot:
           >
             ⬇ Export JSON
           </button>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 border-t border-white/10 pt-4 sm:grid-cols-3 lg:grid-cols-5">
+          {info.map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <div className="text-[10px] uppercase tracking-wide text-zinc-600">{k}</div>
+              <div className="truncate font-mono text-sm text-zinc-300" title={v}>{v}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -513,6 +606,28 @@ function EverythingDossier({ device, snapshot }: { device: WifiDevice; snapshot:
           <SectionTitle>Top apps by screen time</SectionTitle>
           <TopApps apps={topApps} />
         </div>
+      </div>
+
+      <div>
+        <SectionTitle>Recent activity</SectionTitle>
+        {recent.length ? (
+          <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/50">
+            {recent.map((v, i) => (
+              <div key={v.domain} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${i > 0 ? "border-t border-zinc-800/60" : ""}`}>
+                <span title={v.blocked ? "Blocked" : "Allowed"}>{v.blocked ? "🚫" : "🌐"}</span>
+                <span className="flex-1 truncate">
+                  <span className="font-medium text-zinc-200">{v.service}</span>
+                  <span className="text-zinc-500"> · {v.domain}</span>
+                </span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${CATEGORY_CHIP[v.category]}`}>{CATEGORY_LABELS[v.category]}</span>
+                <span className="w-14 text-right text-xs tabular-nums text-zinc-600">{v.requests} hits</span>
+                <time className="w-20 flex-shrink-0 text-right text-xs text-zinc-600">{relativeTime(v.lastSeenAt)}</time>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-zinc-500">No activity recorded for this device today.</p>
+        )}
       </div>
 
       {blockedHits > 0 && (
@@ -613,6 +728,334 @@ function LiveFeed({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<string
 
 // --- Summary + Settings tabs ------------------------------------------------
 
+// --- Network tab ------------------------------------------------------------
+
+const BLOCK_CHIP: Record<string, string> = {
+  ads: "bg-amber-500/15 text-amber-300 ring-amber-500/30",
+  trackers: "bg-fuchsia-500/15 text-fuchsia-300 ring-fuchsia-500/30",
+  malware: "bg-red-500/20 text-red-200 ring-red-500/40",
+  adult: "bg-red-500/20 text-red-200 ring-red-500/40",
+  custom: "bg-zinc-500/15 text-zinc-300 ring-zinc-500/30",
+};
+
+function NetworkTab({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<string, WifiDevice> }) {
+  const n: NetworkHealth = snapshot.network;
+  const blockedPct = n.dnsQueriesToday ? Math.round((n.blockedQueriesToday / n.dnsQueriesToday) * 100) : 0;
+  return (
+    <div className="space-y-8">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+        <StatTile label="Download" value={`${n.throughputDownMbps} Mbps`} accent="#38bdf8" />
+        <StatTile label="Upload" value={`${n.throughputUpMbps} Mbps`} accent="#38bdf8" />
+        <StatTile label="Clients online" value={`${n.clientsOnline}`} accent="#34d399" />
+        <StatTile label="DNS queries today" value={n.dnsQueriesToday.toLocaleString()} />
+        <StatTile label="Blocked" value={`${blockedPct}%`} accent="#fca5a5" />
+      </div>
+      <section>
+        <SectionTitle>Ads, trackers &amp; malware blocked</SectionTitle>
+        <BlockedDomains items={snapshot.blockedDomains} />
+      </section>
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section>
+          <SectionTitle>Where traffic goes (server locations)</SectionTitle>
+          <GeoList peers={snapshot.geoPeers} />
+        </section>
+        <section>
+          <SectionTitle>Filter-bypass attempts (VPN / encrypted DNS)</SectionTitle>
+          <BypassList events={snapshot.bypass} byId={byId} />
+        </section>
+      </div>
+    </div>
+  );
+}
+
+function BlockedDomains({ items }: { items: BlockedDomainStat[] }) {
+  const max = Math.max(1, ...items.map((i) => i.hits));
+  const total = items.reduce((s, i) => s + i.hits, 0);
+  return (
+    <div className={`${CARD} space-y-3`}>
+      <div className="text-sm text-zinc-400">{total.toLocaleString()} requests blocked today — ads, trackers, malware and adult domains.</div>
+      {items.map((i) => (
+        <div key={i.domain} className="flex items-center gap-3 text-sm">
+          <span className="w-48 flex-shrink-0 truncate font-mono text-zinc-300" title={i.domain}>{i.domain}</span>
+          <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${BLOCK_CHIP[i.category]}`}>{i.category}</span>
+          <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
+            <div className="h-full rounded-full bg-red-500/70" style={{ width: `${(i.hits / max) * 100}%` }} />
+          </div>
+          <span className="w-16 text-right tabular-nums text-zinc-400">{i.hits.toLocaleString()}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GeoList({ peers }: { peers: GeoPeer[] }) {
+  const max = Math.max(1, ...peers.map((p) => p.connections));
+  return (
+    <div className={`${CARD} space-y-3`}>
+      {peers.map((p) => (
+        <div key={p.code} className="flex items-center gap-3 text-sm">
+          <span className="w-40 flex-shrink-0 truncate text-zinc-300">{p.country}</span>
+          <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
+            <div className="h-full rounded-full bg-sky-500" style={{ width: `${(p.connections / max) * 100}%` }} />
+          </div>
+          <span className="w-16 text-right tabular-nums text-zinc-400">{p.connections.toLocaleString()}</span>
+        </div>
+      ))}
+      <p className="text-xs text-zinc-600">Destination countries of the servers your devices talk to — never the content of those connections.</p>
+    </div>
+  );
+}
+
+function BypassList({ events, byId }: { events: BypassEvent[]; byId: Map<string, WifiDevice> }) {
+  if (events.length === 0) {
+    return (
+      <div className={CARD}>
+        <p className="text-sm text-emerald-300">✓ No filter-bypass attempts detected.</p>
+      </div>
+    );
+  }
+  return (
+    <div className={`${CARD} space-y-2`}>
+      {events.map((e) => {
+        const d = byId.get(e.deviceId);
+        return (
+          <div key={e.id} className="flex items-start gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm">
+            <span className="text-lg">🕵️</span>
+            <div className="min-w-0 flex-1">
+              <div className="text-amber-100"><span className="font-semibold">{e.method}</span> · {d?.label ?? e.deviceId}</div>
+              <div className="text-xs text-amber-200/60">{e.note}</div>
+            </div>
+            <time className="flex-shrink-0 text-xs text-amber-200/60">{relativeTime(e.at)}</time>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// --- Controls tab -----------------------------------------------------------
+
+function ControlsTab({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<string, WifiDevice> }) {
+  return (
+    <div className="space-y-8">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <section>
+          <SectionTitle>Content filtering &amp; safe search</SectionTitle>
+          <FilterStatus filter={snapshot.filter} />
+        </section>
+        <section>
+          <SectionTitle>Daily time budgets by category</SectionTitle>
+          <CategoryLimits limits={snapshot.categoryLimits} />
+        </section>
+      </div>
+      <section>
+        <SectionTitle>Blocked &amp; allowed sites</SectionTitle>
+        <ListsEditor lists={snapshot.lists} />
+      </section>
+      <section>
+        <SectionTitle>Per-device internet schedule &amp; pause</SectionTitle>
+        <Schedules schedules={snapshot.schedules} byId={byId} />
+      </section>
+      <section>
+        <SectionTitle>Notifications</SectionTitle>
+        <RuleToggles rules={snapshot.notificationRules} />
+      </section>
+    </div>
+  );
+}
+
+function CategoryLimits({ limits }: { limits: CategoryLimit[] }) {
+  return (
+    <div className={`${CARD} space-y-3`}>
+      {limits.map((l) => {
+        const over = l.usedMin >= l.limitMin;
+        const pct = Math.min(100, (l.usedMin / l.limitMin) * 100);
+        return (
+          <div key={l.category}>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-zinc-200">{CATEGORY_LABELS[l.category]}</span>
+              <span className={over ? "text-red-300" : "text-zinc-500"}>
+                {humanDuration(l.usedMin)} / {humanDuration(l.limitMin)}{over ? " · over" : ""}
+              </span>
+            </div>
+            <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-zinc-800">
+              <div className={`h-full rounded-full ${over ? "bg-red-500" : "bg-emerald-500"}`} style={{ width: `${pct}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function ListsEditor({ lists }: { lists: FilterLists }) {
+  const [state, setState] = useState<FilterLists>(() => {
+    if (typeof window === "undefined") return lists;
+    try {
+      const raw = window.localStorage.getItem("wifiLists.v1");
+      return raw ? (JSON.parse(raw) as FilterLists) : lists;
+    } catch {
+      return lists;
+    }
+  });
+  const persist = (next: FilterLists) => {
+    setState(next);
+    try {
+      window.localStorage.setItem("wifiLists.v1", JSON.stringify(next));
+    } catch {
+      /* ignore */
+    }
+  };
+  const add = (key: keyof FilterLists, value: string) => {
+    const v = value.trim().toLowerCase();
+    if (!v || state[key].includes(v)) return;
+    persist({ ...state, [key]: [...state[key], v] });
+  };
+  const remove = (key: keyof FilterLists, value: string) => persist({ ...state, [key]: state[key].filter((x) => x !== value) });
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <ListColumn title="Blocked sites" tone="red" items={state.blocklist} onAdd={(v) => add("blocklist", v)} onRemove={(v) => remove("blocklist", v)} />
+      <ListColumn title="Always-allowed sites" tone="emerald" items={state.allowlist} onAdd={(v) => add("allowlist", v)} onRemove={(v) => remove("allowlist", v)} />
+    </div>
+  );
+}
+
+function ListColumn({ title, tone, items, onAdd, onRemove }: { title: string; tone: "red" | "emerald"; items: string[]; onAdd: (v: string) => void; onRemove: (v: string) => void }) {
+  const [val, setVal] = useState("");
+  const submit = () => {
+    onAdd(val);
+    setVal("");
+  };
+  return (
+    <div className={CARD}>
+      <div className="mb-2 text-sm font-medium" style={{ color: tone === "red" ? "#fca5a5" : "#86efac" }}>{title}</div>
+      <div className="flex gap-2">
+        <input
+          value={val}
+          onChange={(e) => setVal(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && submit()}
+          placeholder="example.com"
+          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-white placeholder-white/30 outline-none focus:border-sky-400"
+        />
+        <button onClick={submit} className="rounded-lg border border-white/10 bg-white/5 px-3 text-sm text-white/70 transition hover:text-white">Add</button>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-1.5">
+        {items.length === 0 && <span className="text-xs text-zinc-600">None yet.</span>}
+        {items.map((x) => (
+          <span key={x} className="flex items-center gap-1 rounded-full bg-white/5 px-2 py-0.5 text-xs text-zinc-300 ring-1 ring-white/10">
+            {x}
+            <button onClick={() => onRemove(x)} className="text-zinc-500 transition hover:text-white" aria-label={`Remove ${x}`}>×</button>
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Schedules({ schedules, byId }: { schedules: DeviceSchedule[]; byId: Map<string, WifiDevice> }) {
+  const [paused, setPaused] = useState<Record<string, boolean>>(() => Object.fromEntries(schedules.map((s) => [s.deviceId, s.paused])));
+  return (
+    <div className={`${CARD} space-y-3`}>
+      {schedules.map((s) => {
+        const d = byId.get(s.deviceId);
+        const isPaused = paused[s.deviceId];
+        return (
+          <div key={s.deviceId} className="flex flex-wrap items-center gap-3 text-sm">
+            <span className="flex-1 text-zinc-200">{d?.label ?? s.deviceId}</span>
+            <span className="text-xs text-zinc-500">Internet {s.allowedFrom}–{s.allowedTo}</span>
+            <button
+              onClick={() => setPaused((p) => ({ ...p, [s.deviceId]: !p[s.deviceId] }))}
+              className="rounded-lg border px-3 py-1 text-xs font-medium transition"
+              style={{
+                borderColor: isPaused ? "#22c55e40" : "#ef444440",
+                background: isPaused ? "#22c55e1a" : "#ef44441a",
+                color: isPaused ? "#86efac" : "#fca5a5",
+              }}
+            >
+              {isPaused ? "▶ Resume" : "⏸ Pause now"}
+            </button>
+          </div>
+        );
+      })}
+      <p className="text-xs text-zinc-600">Pausing cuts a device&apos;s internet at the router. Wiring this to your real router/DNS applies it for real.</p>
+    </div>
+  );
+}
+
+function RuleToggles({ rules }: { rules: NotificationRule[] }) {
+  const [state, setState] = useState<Record<string, boolean>>(() => {
+    const base = Object.fromEntries(rules.map((r) => [r.id, r.enabled]));
+    if (typeof window === "undefined") return base;
+    try {
+      const raw = window.localStorage.getItem("wifiRules.v1");
+      return raw ? { ...base, ...JSON.parse(raw) } : base;
+    } catch {
+      return base;
+    }
+  });
+  const toggle = (id: string) => {
+    setState((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        window.localStorage.setItem("wifiRules.v1", JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  };
+  return (
+    <div className={`${CARD} space-y-1`}>
+      {rules.map((r) => (
+        <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl px-2 py-2 text-sm hover:bg-white/5">
+          <span className="text-zinc-300">{r.label}</span>
+          <button
+            onClick={() => toggle(r.id)}
+            role="switch"
+            aria-checked={!!state[r.id]}
+            aria-label={r.label}
+            className="relative h-5 w-9 flex-shrink-0 rounded-full transition"
+            style={{ background: state[r.id] ? "#22c55e" : "#3f3f46" }}
+          >
+            <span className="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-all" style={{ left: state[r.id] ? "1.125rem" : "0.125rem" }} />
+          </button>
+        </div>
+      ))}
+      <p className="px-2 pt-1 text-xs text-zinc-600">Choose which events send you a push/email alert. Saved on this device.</p>
+    </div>
+  );
+}
+
+function WeekHeatmap({ data }: { data: DayActivity[] }) {
+  const max = Math.max(1, ...data.flatMap((d) => d.hours));
+  return (
+    <div className={`${CARD} overflow-x-auto`}>
+      <div className="min-w-[560px]">
+        {data.map((d) => (
+          <div key={d.day} className="mb-1 flex items-center gap-2">
+            <span className="w-8 text-xs text-zinc-500">{d.day}</span>
+            <div className="flex flex-1 gap-0.5">
+              {d.hours.map((v, h) => (
+                <div key={h} className="h-4 flex-1 rounded-sm" title={`${d.day} ${h}:00 — ${v}`} style={{ background: `rgba(139,92,246,${0.08 + 0.92 * (v / max)})` }} />
+              ))}
+            </div>
+          </div>
+        ))}
+        <div className="mt-1 flex gap-2">
+          <span className="w-8" />
+          <div className="flex flex-1 justify-between text-[10px] text-zinc-600">
+            <span>12a</span>
+            <span>6a</span>
+            <span>noon</span>
+            <span>6p</span>
+            <span>12a</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SummaryTab({ snapshot, people, byId }: { snapshot: WifiSnapshot; people: Person[]; byId: Map<string, WifiDevice> }) {
   const onlineCount = snapshot.devices.filter((d) => d.online).length;
   const peopleHome = people.filter((p) => p.name !== "Family" && p.devices.some((d) => d.online)).length;
@@ -689,6 +1132,11 @@ function SummaryTab({ snapshot, people, byId }: { snapshot: WifiSnapshot; people
           <ScreenTime snapshot={snapshot} byId={byId} />
         </section>
       </div>
+
+      <section>
+        <SectionTitle>Activity heatmap — this week</SectionTitle>
+        <WeekHeatmap data={snapshot.weekHeatmap} />
+      </section>
     </div>
   );
 }

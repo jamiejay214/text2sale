@@ -160,6 +160,73 @@ export interface Watchlist {
   matches: WatchlistMatch[];
 }
 
+/** Whole-network health snapshot. */
+export interface NetworkHealth {
+  throughputDownMbps: number;
+  throughputUpMbps: number;
+  clientsOnline: number;
+  dnsQueriesToday: number;
+  /** Ads / trackers / malware / adult queries blocked at the DNS layer today. */
+  blockedQueriesToday: number;
+}
+
+export type BlockCategory = "ads" | "trackers" | "malware" | "adult" | "custom";
+export interface BlockedDomainStat {
+  domain: string;
+  category: BlockCategory;
+  hits: number;
+}
+
+/** Where a device's traffic goes, by destination country (server locations). */
+export interface GeoPeer {
+  country: string;
+  code: string;
+  connections: number;
+}
+
+export type BypassMethod = "VPN" | "DNS-over-HTTPS" | "Tor" | "Proxy";
+/** A device trying to route around the home filter — legal to detect on your own network. */
+export interface BypassEvent {
+  id: string;
+  deviceId: string;
+  method: BypassMethod;
+  at: string;
+  note: string;
+}
+
+/** A daily time budget for a whole content category (e.g. Social ≤ 60 min). */
+export interface CategoryLimit {
+  category: DomainCategory;
+  limitMin: number;
+  usedMin: number;
+}
+
+/** Per-device internet schedule (allowed hours) + a manual pause switch. */
+export interface DeviceSchedule {
+  deviceId: string;
+  allowedFrom: string;
+  allowedTo: string;
+  paused: boolean;
+}
+
+export interface NotificationRule {
+  id: string;
+  label: string;
+  enabled: boolean;
+}
+
+/** Parent-managed block/allow lists layered on top of the DNS filter. */
+export interface FilterLists {
+  blocklist: string[];
+  allowlist: string[];
+}
+
+/** One day's hour-by-hour activity, for the weekly heatmap. */
+export interface DayActivity {
+  day: string;
+  hours: number[];
+}
+
 export interface WifiSnapshot {
   generatedAt: string;
   devices: WifiDevice[];
@@ -172,6 +239,15 @@ export interface WifiSnapshot {
   alerts: WifiAlert[];
   weeklyTrends: WeeklyTrend[];
   watchlist: Watchlist;
+  network: NetworkHealth;
+  blockedDomains: BlockedDomainStat[];
+  geoPeers: GeoPeer[];
+  bypass: BypassEvent[];
+  categoryLimits: CategoryLimit[];
+  schedules: DeviceSchedule[];
+  notificationRules: NotificationRule[];
+  lists: FilterLists;
+  weekHeatmap: DayActivity[];
 }
 
 export const CATEGORY_LABELS: Record<DomainCategory, string> = {
@@ -317,5 +393,63 @@ export function getWifiSnapshot(): WifiSnapshot {
         { id: "w2", deviceId: "dev-liam-tablet", term: "kys", category: "bullying", source: "chat domain", at: minutesAgo(210) },
       ],
     },
+    network: {
+      throughputDownMbps: 84.2,
+      throughputUpMbps: 11.6,
+      clientsOnline: 5,
+      dnsQueriesToday: 41890,
+      blockedQueriesToday: 6431,
+    },
+    blockedDomains: [
+      { domain: "doubleclick.net", category: "ads", hits: 1820 },
+      { domain: "googlesyndication.com", category: "ads", hits: 1440 },
+      { domain: "graph.facebook.com", category: "trackers", hits: 910 },
+      { domain: "analytics.tiktok.com", category: "trackers", hits: 604 },
+      { domain: "known-malware.example", category: "malware", hits: 42 },
+      { domain: "adult-content.example", category: "adult", hits: 6 },
+    ],
+    geoPeers: [
+      { country: "United States", code: "US", connections: 3120 },
+      { country: "Ireland", code: "IE", connections: 640 },
+      { country: "Netherlands", code: "NL", connections: 410 },
+      { country: "Germany", code: "DE", connections: 220 },
+      { country: "Singapore", code: "SG", connections: 98 },
+    ],
+    bypass: [
+      { id: "b1", deviceId: "dev-ava-laptop", method: "DNS-over-HTTPS", at: minutesAgo(180), note: "Browser tried encrypted DNS, bypassing the home filter (blocked)" },
+      { id: "b2", deviceId: "dev-ava-phone", method: "VPN", at: minutesAgo(300), note: "Outbound VPN handshake detected (WireGuard)" },
+    ],
+    categoryLimits: [
+      { category: "social", limitMin: 90, usedMin: 118 },
+      { category: "video", limitMin: 120, usedMin: 95 },
+      { category: "gaming", limitMin: 120, usedMin: 133 },
+    ],
+    schedules: [
+      { deviceId: "dev-ava-phone", allowedFrom: "07:00", allowedTo: "21:30", paused: false },
+      { deviceId: "dev-liam-tablet", allowedFrom: "08:00", allowedTo: "20:00", paused: false },
+      { deviceId: "dev-liam-switch", allowedFrom: "09:00", allowedTo: "19:00", paused: true },
+    ],
+    notificationRules: [
+      { id: "r1", label: "A new / unrecognized device joins the WiFi", enabled: true },
+      { id: "r2", label: "An adult or blocked site is attempted", enabled: true },
+      { id: "r3", label: "A device is online past its bedtime", enabled: true },
+      { id: "r4", label: "A watchlist keyword is seen", enabled: true },
+      { id: "r5", label: "A device uses a VPN or encrypted DNS to bypass the filter", enabled: true },
+      { id: "r6", label: "A brand-new app or service is used for the first time", enabled: false },
+      { id: "r7", label: "A device exceeds its daily data or time limit", enabled: false },
+    ],
+    lists: {
+      blocklist: ["tiktok.com", "omegle.com", "adult-content.example"],
+      allowlist: ["khanacademy.org", "classroom.google.com", "youtubekids.com"],
+    },
+    weekHeatmap: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day, di) => ({
+      day,
+      hours: Array.from({ length: 24 }, (_, h) => {
+        const base = h >= 7 && h <= 22 ? 1 : 0.1;
+        const evening = h >= 15 && h <= 21 ? 1.7 : 1;
+        const weekend = di >= 5 ? 1.4 : 1;
+        return Math.round(((Math.sin(di * 3 + h) + 1) / 2) * 10 * base * evening * weekend);
+      }),
+    })),
   };
 }
