@@ -54,6 +54,10 @@ export interface WifiDevice {
   /** Data downloaded / uploaded today, in MB. */
   dataDownMb: number;
   dataUpMb: number;
+  /** Total DNS/connection requests seen today. */
+  requests: number;
+  /** Recent per-interval request counts, for the sidebar sparkline. */
+  spark: number[];
 }
 
 export interface PresenceEvent {
@@ -241,13 +245,13 @@ export function getWifiSnapshot(): WifiSnapshot {
   return {
     generatedAt: new Date().toISOString(),
     devices: [
-      { id: "dev-ava-phone", owner: "Ava", label: "Ava's iPhone", kind: "phone", typeLabel: "iPhone 14", vendor: "Apple", os: "iOS 17.4", mac: "A4:83:E7:11:2C:9F", ip: "192.168.1.42", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(412), band: "5GHz", signalDbm: -52, dataDownMb: 1840, dataUpMb: 210 },
-      { id: "dev-liam-tablet", owner: "Liam", label: "Liam's iPad", kind: "tablet", typeLabel: "iPad (10th gen)", vendor: "Apple", os: "iPadOS 17.4", mac: "F0:18:98:5A:71:0B", ip: "192.168.1.51", online: true, lastChangeAt: minutesAgo(158), firstSeen: daysAgo(230), band: "5GHz", signalDbm: -61, dataDownMb: 2960, dataUpMb: 145 },
-      { id: "dev-liam-switch", owner: "Liam", label: "Nintendo Switch", kind: "console", typeLabel: "Game console", vendor: "Nintendo", os: "Horizon OS", mac: "7C:BB:8A:3D:44:12", ip: "192.168.1.60", online: false, lastChangeAt: minutesAgo(75), firstSeen: daysAgo(88), band: "2.4GHz", signalDbm: -70, dataDownMb: 540, dataUpMb: 60 },
-      { id: "dev-ava-laptop", owner: "Ava", label: "Ava's school laptop", kind: "laptop", typeLabel: "Windows laptop", vendor: "Dell", os: "Windows 11", mac: "B8:27:EB:9C:1E:73", ip: "192.168.1.33", online: false, lastChangeAt: minutesAgo(410), firstSeen: daysAgo(365), band: "5GHz", signalDbm: -66, dataDownMb: 780, dataUpMb: 95 },
-      { id: "dev-family-tv", owner: "Family", label: "Living Room TV", kind: "tv", typeLabel: "Smart TV", vendor: "Samsung", os: "Tizen", mac: "5C:49:7D:22:88:AA", ip: "192.168.1.20", online: true, lastChangeAt: minutesAgo(300), firstSeen: daysAgo(500), band: "5GHz", signalDbm: -58, dataDownMb: 5120, dataUpMb: 40 },
-      { id: "dev-ava-watch", owner: "Ava", label: "Ava's Apple Watch", kind: "watch", typeLabel: "Apple Watch", vendor: "Apple", os: "watchOS 10", mac: "3A:BB:1C:44:9E:07", ip: "192.168.1.71", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(120), band: "2.4GHz", signalDbm: -64, dataDownMb: 60, dataUpMb: 25 },
-      { id: "dev-unknown", owner: "Unknown", label: "Unrecognized device", kind: "other", typeLabel: "Unknown", vendor: "Unknown (randomized MAC)", mac: "8E:2A:F1:00:3D:6B", ip: "192.168.1.88", online: true, lastChangeAt: minutesAgo(12), firstSeen: minutesAgo(12), isNew: true, band: "2.4GHz", signalDbm: -73, dataDownMb: 15, dataUpMb: 4 },
+      { id: "dev-ava-phone", owner: "Ava", label: "Ava's iPhone", kind: "phone", typeLabel: "iPhone 14", vendor: "Apple", os: "iOS 17.4", mac: "A4:83:E7:11:2C:9F", ip: "192.168.1.42", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(412), band: "5GHz", signalDbm: -52, dataDownMb: 1840, dataUpMb: 210, requests: 9184, spark: [4, 7, 3, 9, 6, 8, 5, 7, 4, 9] },
+      { id: "dev-liam-tablet", owner: "Liam", label: "Liam's iPad", kind: "tablet", typeLabel: "iPad (10th gen)", vendor: "Apple", os: "iPadOS 17.4", mac: "F0:18:98:5A:71:0B", ip: "192.168.1.51", online: true, lastChangeAt: minutesAgo(158), firstSeen: daysAgo(230), band: "5GHz", signalDbm: -61, dataDownMb: 2960, dataUpMb: 145, requests: 3859, spark: [2, 3, 5, 4, 6, 3, 7, 5, 4, 6] },
+      { id: "dev-liam-switch", owner: "Liam", label: "Nintendo Switch", kind: "console", typeLabel: "Game console", vendor: "Nintendo", os: "Horizon OS", mac: "7C:BB:8A:3D:44:12", ip: "192.168.1.60", online: false, lastChangeAt: minutesAgo(75), firstSeen: daysAgo(88), band: "2.4GHz", signalDbm: -70, dataDownMb: 540, dataUpMb: 60, requests: 1204, spark: [1, 0, 2, 3, 1, 4, 2, 1, 0, 2] },
+      { id: "dev-ava-laptop", owner: "Ava", label: "Ava's school laptop", kind: "laptop", typeLabel: "Windows laptop", vendor: "Dell", os: "Windows 11", mac: "B8:27:EB:9C:1E:73", ip: "192.168.1.33", online: false, lastChangeAt: minutesAgo(410), firstSeen: daysAgo(365), band: "5GHz", signalDbm: -66, dataDownMb: 780, dataUpMb: 95, requests: 3532, spark: [3, 4, 2, 5, 3, 4, 2, 3, 4, 2] },
+      { id: "dev-family-tv", owner: "Family", label: "Living Room TV", kind: "tv", typeLabel: "Smart TV", vendor: "Samsung", os: "Tizen", mac: "5C:49:7D:22:88:AA", ip: "192.168.1.20", online: true, lastChangeAt: minutesAgo(300), firstSeen: daysAgo(500), band: "5GHz", signalDbm: -58, dataDownMb: 5120, dataUpMb: 40, requests: 6721, spark: [6, 8, 5, 9, 7, 8, 6, 9, 7, 8] },
+      { id: "dev-ava-watch", owner: "Ava", label: "Ava's Apple Watch", kind: "watch", typeLabel: "Apple Watch", vendor: "Apple", os: "watchOS 10", mac: "3A:BB:1C:44:9E:07", ip: "192.168.1.71", online: true, lastChangeAt: minutesAgo(34), firstSeen: daysAgo(120), band: "2.4GHz", signalDbm: -64, dataDownMb: 60, dataUpMb: 25, requests: 402, spark: [1, 1, 0, 1, 2, 1, 0, 1, 1, 0] },
+      { id: "dev-unknown", owner: "Unknown", label: "Unrecognized device", kind: "other", typeLabel: "Unknown", vendor: "Unknown (randomized MAC)", mac: "8E:2A:F1:00:3D:6B", ip: "192.168.1.88", online: true, lastChangeAt: minutesAgo(12), firstSeen: minutesAgo(12), isNew: true, band: "2.4GHz", signalDbm: -73, dataDownMb: 15, dataUpMb: 4, requests: 88, spark: [0, 1, 0, 0, 1, 0, 1, 0, 0, 1] },
     ],
     presence: [
       { id: "p1", deviceId: "dev-ava-laptop", type: "left", at: minutesAgo(475) },
