@@ -43,3 +43,7 @@ next-env.d.ts
 # Claude Code runtime lockfiles
 .claude/scheduled_tasks.lock
 .claude/worktrees/
+
+# home WiFi collector runtime output (state/logs from running collect.mjs)
+collector/.wifi-state.json
+collector/collector.log
