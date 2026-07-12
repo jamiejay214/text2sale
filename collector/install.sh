@@ -1,81 +1,105 @@
 #!/usr/bin/env bash
 # One-command installer for the Home WiFi Collector.
 #
-# Usage (from a machine on your home WiFi — Raspberry Pi, spare laptop, NAS):
+# BEST (no prompts, works with curl|bash reliably) — pass the two required
+# values inline so the script never has to read from the terminal:
+#
+#   SITE_URL="https://text2sale.com" WIFI_INGEST_SECRET="your-secret" \
+#     bash -c "$(curl -fsSL https://raw.githubusercontent.com/jamiejay214/text2sale/main/collector/install.sh)"
+#
+# Also fine (it will prompt on the terminal):
 #
 #   curl -fsSL https://raw.githubusercontent.com/jamiejay214/text2sale/main/collector/install.sh | bash
 #
-# or, if you've already cloned the repo:
-#
-#   bash collector/install.sh
-#
-# It installs the collector as a background service that keeps running and
-# restarts on reboot, so your dashboard stays LIVE without you doing anything.
-#
-# You can pre-set these to skip the prompts:
-#   SITE_URL, WIFI_INGEST_SECRET, PIHOLE_URL, PIHOLE_TOKEN, HOUSEHOLD, INTERVAL_SEC
+# Optional env: PIHOLE_URL, PIHOLE_TOKEN, HOUSEHOLD, INTERVAL_SEC, FORCE=1
 set -euo pipefail
 
 say() { printf "\033[1;36m▸ %s\033[0m\n" "$*"; }
 err() { printf "\033[1;31m✗ %s\033[0m\n" "$*" >&2; }
 
 REPO_URL="https://github.com/jamiejay214/text2sale"
-DEFAULT_DIR="$HOME/text2sale"
+CLONE_DIR="$HOME/text2sale"
 
-# --- locate the collector (use this checkout, or clone) ---------------------
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-}")" 2>/dev/null && pwd || true)"
-if [ -n "${SCRIPT_DIR}" ] && [ -f "${SCRIPT_DIR}/collect.mjs" ]; then
-  COLLECTOR_DIR="${SCRIPT_DIR}"
+# Read a value into a variable from the real terminal (/dev/tty), NOT stdin —
+# stdin is the piped script under `curl | bash`, and reading it would swallow
+# the script's own lines (the original bug). Falls back to the default.
+ask() { # ask VAR "prompt" "default"
+  local __var="$1" __msg="$2" __def="${3:-}" __val=""
+  if { exec 3</dev/tty; } 2>/dev/null; then
+    read -r -p "$__msg" __val <&3 || true
+    exec 3<&-
+  fi
+  [ -z "$__val" ] && __val="$__def"
+  printf -v "$__var" '%s' "$__val"
+}
+
+# --- locate the collector (a checkout next to this script, or clone) --------
+SRC="${BASH_SOURCE[0]:-}"
+if [ -n "$SRC" ] && [ -f "$(dirname "$SRC")/collect.mjs" ]; then
+  COLLECTOR_DIR="$(cd "$(dirname "$SRC")" && pwd)"
+elif [ -f "./collect.mjs" ]; then
+  COLLECTOR_DIR="$(pwd)"
 else
   if ! command -v git >/dev/null 2>&1; then err "git is required. Install git and re-run."; exit 1; fi
-  if [ ! -d "${DEFAULT_DIR}/.git" ]; then
-    say "Cloning ${REPO_URL} → ${DEFAULT_DIR}"
-    git clone --depth 1 "${REPO_URL}" "${DEFAULT_DIR}"
+  if [ -d "${CLONE_DIR}/.git" ]; then
+    say "Updating existing checkout at ${CLONE_DIR}"
+    git -C "${CLONE_DIR}" pull --ff-only || true
   else
-    say "Updating existing checkout at ${DEFAULT_DIR}"
-    git -C "${DEFAULT_DIR}" pull --ff-only || true
+    say "Cloning ${REPO_URL} → ${CLONE_DIR}"
+    git clone --depth 1 "${REPO_URL}" "${CLONE_DIR}"
   fi
-  COLLECTOR_DIR="${DEFAULT_DIR}/collector"
+  COLLECTOR_DIR="${CLONE_DIR}/collector"
 fi
 COLLECT_JS="${COLLECTOR_DIR}/collect.mjs"
 [ -f "${COLLECT_JS}" ] || { err "collect.mjs not found at ${COLLECT_JS}"; exit 1; }
+STATE_FILE="${COLLECTOR_DIR}/.wifi-state.json"
 
 # --- require Node 18+ -------------------------------------------------------
 if ! command -v node >/dev/null 2>&1; then
   err "Node.js 18+ is required and was not found."
   echo "  Debian/Raspberry Pi OS:  sudo apt-get update && sudo apt-get install -y nodejs"
   echo "  macOS (Homebrew):        brew install node"
-  echo "  Or install from https://nodejs.org  then re-run this script."
+  echo "  Or install from https://nodejs.org  then re-run."
   exit 1
 fi
-NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
-if [ "${NODE_MAJOR}" -lt 18 ]; then err "Node ${NODE_MAJOR} found; need 18+."; exit 1; fi
+if [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 18 ]; then err "Need Node 18+."; exit 1; fi
 NODE_BIN="$(command -v node)"
 
-# --- collect config ---------------------------------------------------------
+# --- config -----------------------------------------------------------------
 SITE_URL="${SITE_URL:-}"
 WIFI_INGEST_SECRET="${WIFI_INGEST_SECRET:-}"
-if [ -z "${SITE_URL}" ]; then read -r -p "Your site URL [https://text2sale.com]: " SITE_URL; fi
-SITE_URL="${SITE_URL:-https://text2sale.com}"
+[ -z "${SITE_URL}" ] && ask SITE_URL "Your site URL [https://text2sale.com]: " "https://text2sale.com"
+[ -z "${WIFI_INGEST_SECRET}" ] && ask WIFI_INGEST_SECRET "WIFI_INGEST_SECRET (the value you set on Vercel): " ""
+
+# sanitise + validate
+SITE_URL="$(printf '%s' "$SITE_URL" | tr -d '"'"'"' \t' | sed 's#/*$##')"
+case "$SITE_URL" in
+  http://*|https://*) : ;;
+  *) err "SITE_URL must start with http:// or https:// (got: '${SITE_URL}')."
+     err "Re-run with:  SITE_URL=\"https://text2sale.com\" WIFI_INGEST_SECRET=\"...\" bash -c \"\$(curl -fsSL ${REPO_URL}/raw/main/collector/install.sh)\""
+     exit 1 ;;
+esac
 if [ -z "${WIFI_INGEST_SECRET}" ]; then
-  read -r -p "WIFI_INGEST_SECRET (the same value you set on Vercel): " WIFI_INGEST_SECRET
+  err "WIFI_INGEST_SECRET is required (must match the value set on the server)."
+  exit 1
 fi
-[ -n "${WIFI_INGEST_SECRET}" ] || { err "WIFI_INGEST_SECRET is required."; exit 1; }
-PIHOLE_URL="${PIHOLE_URL:-}"
-PIHOLE_TOKEN="${PIHOLE_TOKEN:-}"
 HOUSEHOLD="${HOUSEHOLD:-home}"
 INTERVAL_SEC="${INTERVAL_SEC:-60}"
+PIHOLE_URL="${PIHOLE_URL:-}"
+PIHOLE_TOKEN="${PIHOLE_TOKEN:-}"
 
-# --- quick connectivity test ------------------------------------------------
-say "Testing one collection cycle…"
+# --- one test cycle (abort before installing a service if it fails) ---------
+say "Testing one collection cycle against ${SITE_URL} …"
 if SITE_URL="${SITE_URL}" WIFI_INGEST_SECRET="${WIFI_INGEST_SECRET}" \
    PIHOLE_URL="${PIHOLE_URL}" PIHOLE_TOKEN="${PIHOLE_TOKEN}" \
-   HOUSEHOLD="${HOUSEHOLD}" INTERVAL_SEC=0 \
-   STATE_FILE="${COLLECTOR_DIR}/.wifi-state.json" \
+   HOUSEHOLD="${HOUSEHOLD}" INTERVAL_SEC=0 STATE_FILE="${STATE_FILE}" \
    "${NODE_BIN}" "${COLLECT_JS}"; then
-  say "Test cycle sent. If it printed 'ingest 200', the site is receiving data."
+  say "Test cycle ran. If it printed 'ingest 200' you're good; 503/401 means finish steps ①/② (Supabase table + WIFI_INGEST_SECRET on Vercel)."
 else
-  err "Test cycle failed. Check SITE_URL, the secret, and that step ①/② are done. Setting up the service anyway."
+  err "Test cycle failed (see error above). NOT installing the background service."
+  err "Fix the issue and re-run. Nothing was installed."
+  [ "${FORCE:-0}" = "1" ] || exit 1
+  err "FORCE=1 set — installing anyway."
 fi
 
 # --- install as a background service ---------------------------------------
@@ -95,7 +119,7 @@ Environment=PIHOLE_URL=${PIHOLE_URL}
 Environment=PIHOLE_TOKEN=${PIHOLE_TOKEN}
 Environment=HOUSEHOLD=${HOUSEHOLD}
 Environment=INTERVAL_SEC=${INTERVAL_SEC}
-Environment=STATE_FILE=${COLLECTOR_DIR}/.wifi-state.json
+Environment=STATE_FILE=${STATE_FILE}
 ExecStart=${NODE_BIN} ${COLLECT_JS}
 Restart=always
 RestartSec=10
@@ -105,9 +129,9 @@ WantedBy=multi-user.target
 UNIT
   sudo systemctl daemon-reload
   sudo systemctl enable --now wifi-collector
-  say "Done. It runs in the background and starts on boot."
-  echo "  Watch logs:  journalctl -u wifi-collector -f"
-  echo "  Stop:        sudo systemctl disable --now wifi-collector"
+  say "Running in the background; starts on boot."
+  echo "  Logs:  journalctl -u wifi-collector -f"
+  echo "  Stop:  sudo systemctl disable --now wifi-collector"
 }
 
 install_launchd() {
@@ -127,7 +151,7 @@ install_launchd() {
     <key>PIHOLE_TOKEN</key><string>${PIHOLE_TOKEN}</string>
     <key>HOUSEHOLD</key><string>${HOUSEHOLD}</string>
     <key>INTERVAL_SEC</key><string>${INTERVAL_SEC}</string>
-    <key>STATE_FILE</key><string>${COLLECTOR_DIR}/.wifi-state.json</string>
+    <key>STATE_FILE</key><string>${STATE_FILE}</string>
   </dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
@@ -135,16 +159,15 @@ install_launchd() {
 PLIST
   launchctl unload "${plist}" 2>/dev/null || true
   launchctl load "${plist}"
-  say "Done. It runs in the background and starts on login."
-  echo "  Stop:  launchctl unload ${plist}"
+  say "Running in the background; starts on login."
+  echo "  Stop:  launchctl unload ${plist} && rm ${plist}"
 }
 
 install_nohup() {
   say "No systemd/launchd — starting with nohup (won't auto-start on reboot)."
   SITE_URL="${SITE_URL}" WIFI_INGEST_SECRET="${WIFI_INGEST_SECRET}" \
   PIHOLE_URL="${PIHOLE_URL}" PIHOLE_TOKEN="${PIHOLE_TOKEN}" \
-  HOUSEHOLD="${HOUSEHOLD}" INTERVAL_SEC="${INTERVAL_SEC}" \
-  STATE_FILE="${COLLECTOR_DIR}/.wifi-state.json" \
+  HOUSEHOLD="${HOUSEHOLD}" INTERVAL_SEC="${INTERVAL_SEC}" STATE_FILE="${STATE_FILE}" \
   nohup "${NODE_BIN}" "${COLLECT_JS}" > "${COLLECTOR_DIR}/collector.log" 2>&1 &
   say "Started (PID $!). Logs: ${COLLECTOR_DIR}/collector.log"
 }
@@ -158,4 +181,4 @@ else
 fi
 
 echo
-say "All set. Open ${SITE_URL}/command → Home WiFi. The badge turns LIVE within ~a minute."
+say "Done. Open ${SITE_URL}/command → Home WiFi. The badge turns LIVE within ~a minute (once steps ①/② are done)."
