@@ -107,19 +107,28 @@ async function arpTable() {
     if (!ip || !mac || /(00:){5}00|ff:ff:ff/i.test(mac) || mac === "incomplete") return;
     out.list.push({ ip, mac: mac.toLowerCase() });
   };
+  const parseArpA = (stdout) => {
+    for (const line of stdout.split("\n")) {
+      const m = line.match(/(\d+\.\d+\.\d+\.\d+).*?([0-9a-f]{1,2}(?:[:-][0-9a-f]{1,2}){5})/i);
+      if (m) push(m[1], m[2].replace(/-/g, ":").split(":").map((h) => h.padStart(2, "0")).join(":"));
+    }
+  };
   try {
     if (process.platform === "linux") {
-      const { stdout } = await exec("ip", ["neigh", "show"]);
-      for (const line of stdout.split("\n")) {
-        const m = line.match(/^(\d+\.\d+\.\d+\.\d+)\s.*\slladdr\s([0-9a-f:]{17})\s+(\w+)/i);
-        if (m && m[3].toUpperCase() !== "FAILED") push(m[1], m[2]);
+      try {
+        const { stdout } = await exec("ip", ["neigh", "show"]);
+        for (const line of stdout.split("\n")) {
+          const m = line.match(/^(\d+\.\d+\.\d+\.\d+)\s.*\slladdr\s([0-9a-f:]{17})\s+(\w+)/i);
+          if (m && m[3].toUpperCase() !== "FAILED") push(m[1], m[2]);
+        }
+      } catch {
+        // `ip` not present — fall back to arp
+        const { stdout } = await exec("arp", ["-an"]);
+        parseArpA(stdout);
       }
     } else {
       const { stdout } = await exec("arp", ["-a"]);
-      for (const line of stdout.split("\n")) {
-        const m = line.match(/(\d+\.\d+\.\d+\.\d+).*?([0-9a-f]{1,2}(?:[:-][0-9a-f]{1,2}){5})/i);
-        if (m) push(m[1], m[2].replace(/-/g, ":").split(":").map((h) => h.padStart(2, "0")).join(":"));
-      }
+      parseArpA(stdout);
     }
   } catch (e) {
     console.error("arp/ip neigh failed:", e.message);
@@ -140,32 +149,67 @@ async function hostnameFor(ip) {
 }
 
 // --- optional domain activity from Pi-hole / AdGuard ------------------------
+// Supports Pi-hole v6 (REST API) and v5 (admin/api.php). Returns normalized
+// rows { domain, client, blocked }. PIHOLE_TOKEN is the v6 app password OR the
+// v5 API token, whichever your Pi-hole uses.
+async function piholeV6(base, password) {
+  const auth = await fetch(`${base}/api/auth`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password }),
+  });
+  if (!auth.ok) throw new Error(`v6 auth ${auth.status}`);
+  const sid = (await auth.json())?.session?.sid;
+  if (!sid) throw new Error("v6 no sid");
+  try {
+    const res = await fetch(`${base}/api/queries?length=5000`, { headers: { "X-FTL-SID": sid } });
+    if (!res.ok) throw new Error(`v6 queries ${res.status}`);
+    const j = await res.json();
+    return (j?.queries ?? []).map((q) => ({
+      domain: q.domain,
+      client: q.client?.ip ?? q.client,
+      blocked: /GRAVITY|DENY|BLACK|BLOCK|REGEX/i.test(q.status || ""),
+    }));
+  } finally {
+    fetch(`${base}/api/auth`, { method: "DELETE", headers: { "X-FTL-SID": sid } }).catch(() => {});
+  }
+}
+
+async function piholeV5(base, token) {
+  const res = await fetch(`${base}/admin/api.php?getAllQueries&auth=${token}`);
+  if (!res.ok) throw new Error(`v5 ${res.status}`);
+  const rows = (await res.json())?.data;
+  if (!Array.isArray(rows)) throw new Error("v5 no data (bad token?)");
+  return rows.map((r) => ({ domain: r[2], client: r[3], blocked: String(r[4]) === "1" || String(r[4]) === "4" }));
+}
+
 async function piholeDomains(ipToDevice) {
   if (!process.env.PIHOLE_URL || !process.env.PIHOLE_TOKEN) return [];
+  const base = process.env.PIHOLE_URL.replace(/\/$/, "");
+  const token = process.env.PIHOLE_TOKEN;
+  let rows = null;
   try {
-    const url = `${process.env.PIHOLE_URL.replace(/\/$/, "")}/admin/api.php?getAllQueries&auth=${process.env.PIHOLE_TOKEN}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    const rows = json?.data ?? [];
-    const agg = new Map(); // key deviceId|domain
-    for (const r of rows) {
-      // [timestamp, type, domain, client, status, ...]
-      const domain = r[2];
-      const client = r[3];
-      const blocked = String(r[4]) === "1" || String(r[4]) === "4";
-      const dev = ipToDevice.get(client);
-      if (!dev || !domain) continue;
-      const key = `${dev.id}|${domain}`;
-      const cur = agg.get(key) ?? { deviceId: dev.id, domain, service: domain.split(".").slice(-2).join("."), category: "other", requests: 0, lastSeenAt: new Date().toISOString(), blocked };
-      cur.requests += 1;
-      cur.blocked = cur.blocked || blocked;
-      agg.set(key, cur);
+    rows = await piholeV6(base, token);
+  } catch (e6) {
+    try {
+      rows = await piholeV5(base, token);
+    } catch (e5) {
+      console.error(`Pi-hole fetch failed (v6: ${e6.message}; v5: ${e5.message})`);
+      return [];
     }
-    return [...agg.values()];
-  } catch (e) {
-    console.error("Pi-hole fetch failed:", e.message);
-    return [];
   }
+  const agg = new Map(); // key deviceId|domain
+  for (const r of rows) {
+    if (!r.domain || !r.client) continue;
+    const dev = ipToDevice.get(r.client);
+    if (!dev) continue;
+    const key = `${dev.id}|${r.domain}`;
+    const cur = agg.get(key) ?? { deviceId: dev.id, domain: r.domain, service: r.domain.split(".").slice(-2).join("."), category: "other", requests: 0, lastSeenAt: new Date().toISOString(), blocked: false };
+    cur.requests += 1;
+    cur.blocked = cur.blocked || r.blocked;
+    agg.set(key, cur);
+  }
+  return [...agg.values()];
 }
 
 // --- state (firstSeen + presence across runs) -------------------------------
