@@ -110,7 +110,32 @@ export default function WifiMonitor() {
     return () => clearInterval(id);
   }, []);
 
-  const base = useMemo<WifiSnapshot>(() => getWifiSnapshot(), []);
+  // Show the built-in sample immediately, then swap in live data from the home
+  // collector (via /api/wifi/snapshot) once it loads. `dataMode` badges which
+  // one is on screen. Re-fetches every 30s so the live view stays current.
+  const [base, setBase] = useState<WifiSnapshot>(() => getWifiSnapshot());
+  const [dataMode, setDataMode] = useState<"sample" | "live" | "stale">("sample");
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/wifi/snapshot", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { live?: boolean; stale?: boolean; snapshot?: WifiSnapshot };
+        if (cancelled || !data?.snapshot) return;
+        setBase(data.snapshot);
+        setDataMode(data.live ? (data.stale ? "stale" : "live") : "sample");
+      } catch {
+        /* keep sample */
+      }
+    };
+    load();
+    const id = setInterval(load, 30_000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, []);
 
   // Editable device roster — rename a device, fix who it belongs to, or correct
   // its type. Persisted to localStorage so edits stick across refreshes.
@@ -180,6 +205,7 @@ export default function WifiMonitor() {
         deviceCount={snapshot.devices.length}
         alerts={snapshot.alerts.length}
         generatedAt={snapshot.generatedAt}
+        dataMode={dataMode}
       />
 
       <div className="grid gap-4 lg:grid-cols-[300px_1fr]">
@@ -246,7 +272,7 @@ export default function WifiMonitor() {
 
 // --- shell ------------------------------------------------------------------
 
-function TopBar({ requests, deviceCount, alerts, generatedAt }: { requests: number; deviceCount: number; alerts: number; generatedAt: string }) {
+function TopBar({ requests, deviceCount, alerts, generatedAt, dataMode }: { requests: number; deviceCount: number; alerts: number; generatedAt: string; dataMode: "sample" | "live" | "stale" }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl border border-white/10 bg-gradient-to-br from-zinc-900 to-zinc-950 p-4">
       <div className="flex items-center gap-3">
@@ -254,7 +280,7 @@ function TopBar({ requests, deviceCount, alerts, generatedAt }: { requests: numb
         <div>
           <h2 className="text-lg font-bold text-white">Home WiFi Monitor</h2>
           <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-white/40">
-            <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live WiFi traffic · {relativeTime(generatedAt)}
+            <span className="inline-flex h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> {dataMode === "sample" ? "Sample data" : "Live WiFi traffic"} · {relativeTime(generatedAt)}
           </p>
         </div>
       </div>
@@ -262,9 +288,19 @@ function TopBar({ requests, deviceCount, alerts, generatedAt }: { requests: numb
         <StatPill icon="🌐" value={requests.toLocaleString()} label="Requests" />
         <StatPill icon="📱" value={`${deviceCount}`} label="Devices" />
         <StatPill icon="⚠️" value={`${alerts}`} label="Alerts" tone={alerts > 0 ? "amber" : undefined} />
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> LIVE
-        </span>
+        {dataMode === "live" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1.5 text-xs font-semibold text-emerald-300">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> LIVE
+          </span>
+        ) : dataMode === "stale" ? (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/40 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300" title="Collector hasn't reported recently">
+            <span className="h-1.5 w-1.5 rounded-full bg-amber-400" /> STALE
+          </span>
+        ) : (
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-white/20 bg-white/5 px-3 py-1.5 text-xs font-semibold text-white/60" title="Showing sample data — start the home collector to go live">
+            <span className="h-1.5 w-1.5 rounded-full bg-white/40" /> SAMPLE
+          </span>
+        )}
       </div>
     </div>
   );
