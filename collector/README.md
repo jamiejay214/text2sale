@@ -25,7 +25,25 @@ contents, call audio, or anything inside an encrypted connection.
 
 Until this is done the dashboard just shows sample data (badged **SAMPLE**).
 
-## Run the collector
+## Fastest: one-command install (recommended)
+
+On the home machine (Raspberry Pi / spare laptop / NAS), run:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jamiejay214/text2sale/main/collector/install.sh | bash
+```
+
+It clones the repo if needed, checks Node, asks for your `SITE_URL` and
+`WIFI_INGEST_SECRET` (and optional Pi-hole), runs one test cycle, then installs
+the collector as a **background service that auto-starts on boot** (systemd on
+Linux, launchd on macOS). Pre-set the env vars to skip the prompts:
+
+```bash
+SITE_URL="https://text2sale.com" WIFI_INGEST_SECRET="..." \
+  bash -c "$(curl -fsSL https://raw.githubusercontent.com/jamiejay214/text2sale/main/collector/install.sh)"
+```
+
+## Or run it manually
 
 ```bash
 cd collector
