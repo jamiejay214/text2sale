@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   getWifiSnapshot,
   relativeTime,
@@ -47,6 +47,18 @@ const CATEGORY_CHIP: Record<DomainCategory, string> = {
 };
 
 const CARD = "rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-zinc-950 p-6";
+
+// Click-to-drill-down: any leaf can open a detail drawer for an entity without
+// prop-threading, via this context.
+type Selection =
+  | { kind: "device"; id: string }
+  | { kind: "domain"; domain: string }
+  | { kind: "call"; id: string }
+  | { kind: "person"; name: string }
+  | null;
+
+const DrawerCtx = createContext<(s: Selection) => void>(() => {});
+const useDrawer = () => useContext(DrawerCtx);
 
 // Local, per-browser edits to the device roster (rename, reassign owner, fix
 // type). Persisted so changes survive refreshes without a backend.
@@ -198,7 +210,10 @@ export default function WifiMonitor() {
   const selected = byId.get(selectedId) ?? snapshot.devices[0];
   const totalRequests = snapshot.devices.reduce((s, d) => s + d.requests, 0);
 
+  const [selection, setSelection] = useState<Selection>(null);
+
   return (
+    <DrawerCtx.Provider value={setSelection}>
     <div className="space-y-4">
       <TopBar
         requests={totalRequests}
@@ -264,6 +279,251 @@ export default function WifiMonitor() {
               hasOverrides={Object.keys(overrides).length > 0}
             />
           )}
+        </div>
+      </div>
+
+      <DetailDrawer selection={selection} snapshot={snapshot} onClose={() => setSelection(null)} />
+    </div>
+    </DrawerCtx.Provider>
+  );
+}
+
+// --- detail drawer (click-to-drill-down) ------------------------------------
+
+function DetailDrawer({ selection, snapshot, onClose }: { selection: Selection; snapshot: WifiSnapshot; onClose: () => void }) {
+  const open = useDrawer();
+  useEffect(() => {
+    if (!selection) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selection, onClose]);
+
+  if (!selection) return null;
+  const byId = new Map(snapshot.devices.map((d) => [d.id, d]));
+
+  let title = "";
+  let body: React.ReactNode = null;
+  if (selection.kind === "device") {
+    const d = byId.get(selection.id);
+    if (d) {
+      title = `${KIND_EMOJI[d.kind]}  ${d.label}`;
+      body = <DeviceDetail device={d} snapshot={snapshot} open={open} />;
+    }
+  } else if (selection.kind === "domain") {
+    title = `🌐  ${selection.domain}`;
+    body = <DomainDetail domain={selection.domain} snapshot={snapshot} byId={byId} open={open} />;
+  } else if (selection.kind === "call") {
+    const c = snapshot.calls.find((x) => x.id === selection.id);
+    if (c) {
+      title = `${c.kind === "video" ? "📹" : "📞"}  ${c.service} call`;
+      body = <CallDetail call={c} device={byId.get(c.deviceId)} open={open} />;
+    }
+  } else if (selection.kind === "person") {
+    title = `👤  ${selection.name}`;
+    body = <PersonDetail name={selection.name} snapshot={snapshot} open={open} />;
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true">
+      <button className="absolute inset-0 bg-black/60 backdrop-blur-sm" aria-label="Close" onClick={onClose} />
+      <div className="relative h-full w-full max-w-xl overflow-y-auto border-l border-white/10 bg-[#0b0a12] p-6 shadow-2xl">
+        <div className="mb-4 flex items-start justify-between gap-4">
+          <h3 className="text-lg font-bold text-white">{title}</h3>
+          <button onClick={onClose} className="rounded-lg border border-white/10 bg-white/5 px-2.5 py-1 text-sm text-white/60 transition hover:text-white">✕ Close</button>
+        </div>
+        {body ?? <p className="text-sm text-zinc-500">Nothing to show.</p>}
+      </div>
+    </div>
+  );
+}
+
+function DrawerRow({ label, value, mono }: { label: string; value: React.ReactNode; mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 py-2 text-sm">
+      <span className="text-zinc-500">{label}</span>
+      <span className={`text-right text-zinc-200 ${mono ? "font-mono" : ""}`}>{value}</span>
+    </div>
+  );
+}
+
+function DeviceDetail({ device, snapshot, open }: { device: WifiDevice; snapshot: WifiSnapshot; open: (s: Selection) => void }) {
+  const domains = snapshot.domains.filter((v) => v.deviceId === device.id).sort((a, b) => b.requests - a.requests);
+  const calls = snapshot.calls.filter((c) => c.deviceId === device.id);
+  const usage = snapshot.usage.find((u) => u.deviceId === device.id);
+  const flags = snapshot.watchlist.matches.filter((m) => m.deviceId === device.id);
+  const schedule = snapshot.schedules.find((s) => s.deviceId === device.id);
+  const events = snapshot.presence.filter((p) => p.deviceId === device.id).sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium ${device.online ? "bg-emerald-500/15 text-emerald-300" : "bg-zinc-700/40 text-zinc-400"}`}>
+          <span className={`h-1.5 w-1.5 rounded-full ${device.online ? "bg-emerald-400" : "bg-zinc-500"}`} /> {device.online ? "On WiFi now" : "Off WiFi"}
+        </span>
+      </div>
+      <div>
+        <DrawerRow label="Owner" value={device.owner} />
+        <DrawerRow label="Type" value={device.typeLabel} />
+        <DrawerRow label="Vendor" value={device.vendor} />
+        <DrawerRow label="Operating system" value={device.os ?? "—"} />
+        <DrawerRow label="IP address" value={device.ip ?? "—"} mono />
+        <DrawerRow label="MAC address" value={device.mac} mono />
+        <DrawerRow label="Wi-Fi band" value={device.band ?? "—"} />
+        <DrawerRow label="Signal" value={`${signalLabel(device.signalDbm)}${device.signalDbm != null ? ` (${device.signalDbm} dBm)` : ""}`} />
+        <DrawerRow label="First seen" value={`${clockTime(device.firstSeen)} · ${relativeTime(device.firstSeen)}`} />
+        <DrawerRow label="Last change" value={relativeTime(device.lastChangeAt)} />
+        <DrawerRow label="Requests today" value={device.requests.toLocaleString()} mono />
+        <DrawerRow label="Data today" value={`↓ ${humanData(device.dataDownMb)} · ↑ ${humanData(device.dataUpMb)}`} />
+        <DrawerRow label="Active today" value={usage ? humanDuration(usage.activeMinutesToday) : "—"} />
+        {schedule && <DrawerRow label="Internet schedule" value={`${schedule.allowedFrom}–${schedule.allowedTo}${schedule.paused ? " · paused" : ""}`} />}
+      </div>
+
+      {flags.length > 0 && (
+        <div className="rounded-2xl border border-red-500/25 bg-red-500/10 p-3 text-sm text-red-100">
+          ⚠️ {flags.length} watchlist hit{flags.length > 1 ? "s" : ""}: {flags.map((f) => `“${f.term}”`).join(", ")}
+        </div>
+      )}
+
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Apps &amp; sites ({domains.length})</div>
+        <div className="space-y-1">
+          {domains.map((v) => (
+            <button key={v.domain} onClick={() => open({ kind: "domain", domain: v.domain })} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-white/5">
+              <span>{v.blocked ? "🚫" : "🌐"}</span>
+              <span className="flex-1 truncate"><span className="text-zinc-200">{v.service}</span><span className="text-zinc-600"> · {v.domain}</span></span>
+              <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${CATEGORY_CHIP[v.category]}`}>{CATEGORY_LABELS[v.category]}</span>
+              <span className="text-xs tabular-nums text-zinc-500">{v.requests}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {calls.length > 0 && (
+        <div>
+          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Calls</div>
+          <div className="space-y-1">
+            {calls.map((c) => (
+              <button key={c.id} onClick={() => open({ kind: "call", id: c.id })} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-white/5">
+                <span>{c.kind === "video" ? "📹" : "📞"}</span>
+                <span className="flex-1 text-zinc-200">{c.service} · {c.kind}</span>
+                <span className="text-xs text-zinc-500">{clockTime(c.startedAt)} · {humanDuration(c.durationMinutes)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Connection history</div>
+        <div className="space-y-1">
+          {events.length === 0 && <p className="text-sm text-zinc-600">No join/leave events today.</p>}
+          {events.map((e) => (
+            <div key={e.id} className="flex items-center gap-2 px-2 py-1 text-sm">
+              <span>{e.type === "arrived" ? "🟢" : "🚪"}</span>
+              <span className="flex-1 text-zinc-300">{e.type === "arrived" ? "Joined" : "Left"} the WiFi</span>
+              <span className="text-xs text-zinc-600">{clockTime(e.at)} · {relativeTime(e.at)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DomainDetail({ domain, snapshot, byId, open }: { domain: string; snapshot: WifiSnapshot; byId: Map<string, WifiDevice>; open: (s: Selection) => void }) {
+  const visits = snapshot.domains.filter((v) => v.domain === domain);
+  const totalReq = visits.reduce((s, v) => s + v.requests, 0);
+  const anyBlocked = visits.some((v) => v.blocked);
+  const cat = visits[0]?.category ?? "other";
+  const service = visits[0]?.service ?? domain;
+  const blockedStat = snapshot.blockedDomains.find((b) => b.domain === domain);
+  const registrable = domain.split(".").slice(-2).join(".");
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${CATEGORY_CHIP[cat]}`}>{CATEGORY_LABELS[cat]}</span>
+        {anyBlocked && <span className="ml-2 inline-flex items-center rounded-full bg-red-500/20 px-2.5 py-1 text-xs font-medium text-red-200 ring-1 ring-red-500/40">Blocked by filter</span>}
+      </div>
+      <div>
+        <DrawerRow label="Service / app" value={service} />
+        <DrawerRow label="Domain" value={domain} mono />
+        <DrawerRow label="Registrable domain" value={registrable} mono />
+        <DrawerRow label="Total requests today" value={totalReq.toLocaleString()} mono />
+        <DrawerRow label="Seen on devices" value={`${visits.length}`} />
+        {blockedStat && <DrawerRow label="Filter classification" value={blockedStat.category} />}
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Which devices talked to it</div>
+        <div className="space-y-1">
+          {visits.sort((a, b) => b.requests - a.requests).map((v) => {
+            const d = byId.get(v.deviceId);
+            return (
+              <button key={v.deviceId} onClick={() => open({ kind: "device", id: v.deviceId })} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-white/5">
+                <span>{d ? KIND_EMOJI[d.kind] : "📡"}</span>
+                <span className="flex-1 truncate text-zinc-200">{d?.label ?? v.deviceId}<span className="text-zinc-600"> · {d?.owner}</span></span>
+                <span className="text-xs text-zinc-500">last {relativeTime(v.lastSeenAt)}</span>
+                <span className="text-xs tabular-nums text-zinc-400">{v.requests} hits</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+      <p className="text-xs text-zinc-600">This is DNS/connection metadata — that a device contacted this domain, and how often. The tool never sees the pages, videos, or messages inside the connection (they&apos;re encrypted).</p>
+    </div>
+  );
+}
+
+function CallDetail({ call, device, open }: { call: CallSession; device?: WifiDevice; open: (s: Selection) => void }) {
+  return (
+    <div className="space-y-5">
+      <div>
+        <DrawerRow label="App / service" value={call.service} />
+        <DrawerRow label="Type" value={call.kind === "video" ? "Video call" : "Voice call"} />
+        <DrawerRow label="Started" value={`${clockTime(call.startedAt)} · ${relativeTime(call.startedAt)}`} />
+        <DrawerRow label="Duration" value={humanDuration(call.durationMinutes)} />
+        {device && (
+          <div className="flex items-baseline justify-between gap-4 border-b border-white/5 py-2 text-sm">
+            <span className="text-zinc-500">Device</span>
+            <button onClick={() => open({ kind: "device", id: device.id })} className="text-right text-sky-300 hover:underline">{device.label} · {device.owner}</button>
+          </div>
+        )}
+      </div>
+      <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-xs text-zinc-400">
+        Detected from network traffic to a calling service. This shows <span className="text-zinc-200">that</span> a call happened and how long it lasted — never who was on the other end, and never a second of the audio, which is end-to-end encrypted.
+      </div>
+    </div>
+  );
+}
+
+function PersonDetail({ name, snapshot, open }: { name: string; snapshot: WifiSnapshot; open: (s: Selection) => void }) {
+  const devices = snapshot.devices.filter((d) => d.owner === name);
+  const ids = new Set(devices.map((d) => d.id));
+  const activeMin = snapshot.usage.filter((u) => ids.has(u.deviceId)).reduce((s, u) => s + u.activeMinutesToday, 0);
+  const data = devices.reduce((s, d) => s + d.dataDownMb + d.dataUpMb, 0);
+  const calls = snapshot.calls.filter((c) => ids.has(c.deviceId));
+  const flags = snapshot.watchlist.matches.filter((m) => ids.has(m.deviceId));
+  const online = devices.some((d) => d.online);
+  return (
+    <div className="space-y-5">
+      <div>
+        <DrawerRow label="Status" value={online ? "Home" : "Away"} />
+        <DrawerRow label="Active today" value={humanDuration(activeMin)} />
+        <DrawerRow label="Data today" value={humanData(data)} />
+        <DrawerRow label="Calls today" value={`${calls.length}`} />
+        <DrawerRow label="Watchlist hits" value={`${flags.length}`} />
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Devices ({devices.length})</div>
+        <div className="space-y-1">
+          {devices.map((d) => (
+            <button key={d.id} onClick={() => open({ kind: "device", id: d.id })} className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm transition hover:bg-white/5">
+              <span>{KIND_EMOJI[d.kind]}</span>
+              <span className="flex-1 truncate text-zinc-200">{d.label}</span>
+              <span className={`h-2 w-2 rounded-full ${d.online ? "bg-emerald-400" : "bg-zinc-600"}`} />
+            </button>
+          ))}
         </div>
       </div>
     </div>
@@ -389,9 +649,11 @@ function DeviceCard({
   onSelect: () => void;
   onBlock: () => void;
 }) {
+  const open = useDrawer();
   return (
     <div
-      className="rounded-2xl border bg-white/[0.02] p-3 transition"
+      onClick={onSelect}
+      className="cursor-pointer rounded-2xl border bg-white/[0.02] p-3 transition hover:bg-white/[0.05]"
       style={{
         borderColor: selected ? "#38bdf8" : "rgba(255,255,255,0.08)",
         boxShadow: selected ? "0 0 18px rgba(56,189,248,0.25)" : "none",
@@ -436,11 +698,20 @@ function DeviceCard({
       </div>
 
       <div className="mt-2 flex gap-1.5">
-        <button onClick={onSelect} className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-medium text-white/70 transition hover:text-white">
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            open({ kind: "device", id: device.id });
+          }}
+          className="flex-1 rounded-lg border border-white/10 bg-white/5 px-2 py-1.5 text-[11px] font-medium text-white/70 transition hover:text-white"
+        >
           ▸ Details
         </button>
         <button
-          onClick={onBlock}
+          onClick={(e) => {
+            e.stopPropagation();
+            onBlock();
+          }}
           className="rounded-lg border px-2 py-1.5 text-[11px] font-medium transition"
           style={{
             borderColor: blocked ? "#22c55e40" : "#ef444440",
@@ -512,6 +783,7 @@ function EverythingDossier({
 }) {
   // Local state resets when a different device is selected because the parent
   // remounts this component with key={device.id}.
+  const open = useDrawer();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(device.label);
   const saveName = () => {
@@ -649,7 +921,7 @@ function EverythingDossier({
         {recent.length ? (
           <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/50">
             {recent.map((v, i) => (
-              <div key={v.domain} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${i > 0 ? "border-t border-zinc-800/60" : ""}`}>
+              <button key={v.domain} onClick={() => open({ kind: "domain", domain: v.domain })} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-white/5 ${i > 0 ? "border-t border-zinc-800/60" : ""}`}>
                 <span title={v.blocked ? "Blocked" : "Allowed"}>{v.blocked ? "🚫" : "🌐"}</span>
                 <span className="flex-1 truncate">
                   <span className="font-medium text-zinc-200">{v.service}</span>
@@ -658,7 +930,7 @@ function EverythingDossier({
                 <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${CATEGORY_CHIP[v.category]}`}>{CATEGORY_LABELS[v.category]}</span>
                 <span className="w-14 text-right text-xs tabular-nums text-zinc-600">{v.requests} hits</span>
                 <time className="w-20 flex-shrink-0 text-right text-xs text-zinc-600">{relativeTime(v.lastSeenAt)}</time>
-              </div>
+              </button>
             ))}
           </div>
         ) : (
@@ -708,18 +980,19 @@ function HourlyTimeline({ hours }: { hours: number[] }) {
 }
 
 function TopApps({ apps }: { apps: DomainVisit[] }) {
+  const open = useDrawer();
   if (apps.length === 0) return <p className="text-sm text-zinc-500">No app sessions yet.</p>;
   const max = Math.max(1, ...apps.map((a) => a.requests));
   return (
-    <div className="space-y-2 rounded-3xl border border-zinc-800 bg-zinc-900/50 p-4">
+    <div className="space-y-1 rounded-3xl border border-zinc-800 bg-zinc-900/50 p-4">
       {apps.map((a) => (
-        <div key={a.domain} className="flex items-center gap-3 text-sm">
+        <button key={a.domain} onClick={() => open({ kind: "domain", domain: a.domain })} className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left text-sm transition hover:bg-white/5">
           <span className="w-28 flex-shrink-0 truncate text-zinc-200">{a.service}</span>
           <div className="h-2.5 flex-1 overflow-hidden rounded-full bg-zinc-800">
             <div className="h-full rounded-full bg-violet-500" style={{ width: `${(a.requests / max) * 100}%` }} />
           </div>
           <span className="w-20 flex-shrink-0 text-right text-xs text-zinc-500">~{humanDuration(Math.max(1, Math.round(a.requests / 8)))}</span>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -731,31 +1004,32 @@ interface FeedEntry {
   at: string;
   icon: string;
   text: string;
-  who?: string;
   tone?: string;
+  sel: Selection;
 }
 
 function LiveFeed({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<string, WifiDevice> }) {
+  const open = useDrawer();
   const name = (id: string) => byId.get(id)?.label ?? id;
   const entries: FeedEntry[] = [
-    ...snapshot.domains.map((v) => ({ at: v.lastSeenAt, icon: v.blocked ? "🚫" : "🌐", text: `${name(v.deviceId)} → ${v.service} (${v.domain})`, tone: v.blocked ? "#fca5a5" : undefined })),
-    ...snapshot.calls.map((c) => ({ at: c.startedAt, icon: c.kind === "video" ? "📹" : "📞", text: `${name(c.deviceId)} — ${c.kind} call via ${c.service}` })),
-    ...snapshot.presence.map((p) => ({ at: p.at, icon: p.type === "arrived" ? "🟢" : "🚪", text: `${name(p.deviceId)} ${p.type === "arrived" ? "joined the WiFi" : "left the WiFi"}` })),
-    ...snapshot.watchlist.matches.map((m) => ({ at: m.at, icon: "⚠️", text: `${name(m.deviceId)} — watched term “${m.term}” in a ${m.source}`, tone: "#fca5a5" })),
+    ...snapshot.domains.map((v): FeedEntry => ({ at: v.lastSeenAt, icon: v.blocked ? "🚫" : "🌐", text: `${name(v.deviceId)} → ${v.service} (${v.domain})`, tone: v.blocked ? "#fca5a5" : undefined, sel: { kind: "domain", domain: v.domain } })),
+    ...snapshot.calls.map((c): FeedEntry => ({ at: c.startedAt, icon: c.kind === "video" ? "📹" : "📞", text: `${name(c.deviceId)} — ${c.kind} call via ${c.service}`, sel: { kind: "call", id: c.id } })),
+    ...snapshot.presence.map((p): FeedEntry => ({ at: p.at, icon: p.type === "arrived" ? "🟢" : "🚪", text: `${name(p.deviceId)} ${p.type === "arrived" ? "joined the WiFi" : "left the WiFi"}`, sel: { kind: "device", id: p.deviceId } })),
+    ...snapshot.watchlist.matches.map((m): FeedEntry => ({ at: m.at, icon: "⚠️", text: `${name(m.deviceId)} — watched term “${m.term}” in a ${m.source}`, tone: "#fca5a5", sel: { kind: "device", id: m.deviceId } })),
   ].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 
   return (
     <div className="overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/50">
       <div className="flex items-center gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live feed · newest first
+        <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" /> Live feed · newest first · click any row for detail
       </div>
       <div className="max-h-[560px] overflow-y-auto">
         {entries.map((e, i) => (
-          <div key={i} className={`flex items-center gap-3 px-4 py-2.5 text-sm ${i > 0 ? "border-t border-zinc-800/60" : ""}`}>
+          <button key={i} onClick={() => open(e.sel)} className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-white/5 ${i > 0 ? "border-t border-zinc-800/60" : ""}`}>
             <span>{e.icon}</span>
             <span className="flex-1 truncate" style={{ color: e.tone ?? "#d4d4d8" }}>{e.text}</span>
             <time className="flex-shrink-0 text-xs text-zinc-600">{relativeTime(e.at)}</time>
-          </div>
+          </button>
         ))}
       </div>
     </div>
@@ -805,20 +1079,21 @@ function NetworkTab({ snapshot, byId }: { snapshot: WifiSnapshot; byId: Map<stri
 }
 
 function BlockedDomains({ items }: { items: BlockedDomainStat[] }) {
+  const open = useDrawer();
   const max = Math.max(1, ...items.map((i) => i.hits));
   const total = items.reduce((s, i) => s + i.hits, 0);
   return (
-    <div className={`${CARD} space-y-3`}>
+    <div className={`${CARD} space-y-2`}>
       <div className="text-sm text-zinc-400">{total.toLocaleString()} requests blocked today — ads, trackers, malware and adult domains.</div>
       {items.map((i) => (
-        <div key={i.domain} className="flex items-center gap-3 text-sm">
+        <button key={i.domain} onClick={() => open({ kind: "domain", domain: i.domain })} className="flex w-full items-center gap-3 rounded-lg px-1 py-1 text-left text-sm transition hover:bg-white/5">
           <span className="w-48 flex-shrink-0 truncate font-mono text-zinc-300" title={i.domain}>{i.domain}</span>
           <span className={`rounded-full px-2 py-0.5 text-xs ring-1 ring-inset ${BLOCK_CHIP[i.category]}`}>{i.category}</span>
           <div className="h-2 flex-1 overflow-hidden rounded-full bg-zinc-800">
             <div className="h-full rounded-full bg-red-500/70" style={{ width: `${(i.hits / max) * 100}%` }} />
           </div>
           <span className="w-16 text-right tabular-nums text-zinc-400">{i.hits.toLocaleString()}</span>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -1304,15 +1579,17 @@ function ScopeNotice() {
 }
 
 function AlertList({ alerts, byId }: { alerts: WifiAlert[]; byId: Map<string, WifiDevice> }) {
+  const open = useDrawer();
   const ICON: Record<string, string> = { "new-device": "🆕", blocked: "🚫", "after-bedtime": "🌙", "adult-block": "⛔" };
   return (
     <div className="space-y-2">
       {alerts.map((a) => {
         const device = byId.get(a.deviceId);
         return (
-          <div
+          <button
             key={a.id}
-            className="flex items-center gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-sm"
+            onClick={() => open({ kind: "device", id: a.deviceId })}
+            className="flex w-full items-center gap-3 rounded-2xl border border-amber-500/25 bg-amber-500/10 px-4 py-3 text-left text-sm transition hover:bg-amber-500/20"
           >
             <span className="text-lg">{ICON[a.kind] ?? "⚠️"}</span>
             <span className="flex-1 text-amber-100">
@@ -1320,7 +1597,7 @@ function AlertList({ alerts, byId }: { alerts: WifiAlert[]; byId: Map<string, Wi
               {device && <span className="text-amber-200/60"> · {device.label}</span>}
             </span>
             <time className="text-xs text-amber-200/60">{relativeTime(a.at)}</time>
-          </div>
+          </button>
         );
       })}
     </div>
@@ -1343,6 +1620,7 @@ function groupByPerson(devices: WifiDevice[]): Person[] {
 }
 
 function PersonCard({ name, devices }: { name: string; devices: WifiDevice[] }) {
+  const open = useDrawer();
   const online = devices.filter((d) => d.online);
   const isHome = online.length > 0;
   const anchor = (isHome ? online : devices).reduce((latest, d) =>
@@ -1352,7 +1630,7 @@ function PersonCard({ name, devices }: { name: string; devices: WifiDevice[] }) 
   return (
     <div className={CARD}>
       <div className="flex items-center justify-between">
-        <span className="font-medium text-white">{name}</span>
+        <button onClick={() => open({ kind: "person", name })} className="font-medium text-white transition hover:text-sky-300">{name} <span className="text-xs font-normal text-sky-400">›</span></button>
         {isHome ? (
           <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/15 px-2.5 py-1 text-xs font-medium text-emerald-300 ring-1 ring-emerald-500/30">
             🏠 Home
@@ -1366,13 +1644,15 @@ function PersonCard({ name, devices }: { name: string; devices: WifiDevice[] }) 
       <p className="mt-1 text-xs text-zinc-500">
         {isHome ? "Home since" : "Away since"} {clockTime(anchor.lastChangeAt)} ({relativeTime(anchor.lastChangeAt)})
       </p>
-      <ul className="mt-3 space-y-1.5">
+      <ul className="mt-3 space-y-0.5">
         {devices.map((d) => (
-          <li key={d.id} className="flex items-center gap-2 text-sm">
-            <span>{KIND_EMOJI[d.kind]}</span>
-            <span className="flex-1 truncate text-zinc-300">{d.label}</span>
-            <span className="text-xs text-zinc-600">{d.typeLabel}</span>
-            <span className={`h-2 w-2 rounded-full ${d.online ? "bg-emerald-400" : "bg-zinc-600"}`} title={d.online ? "On WiFi" : "Off WiFi"} />
+          <li key={d.id}>
+            <button onClick={() => open({ kind: "device", id: d.id })} className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm transition hover:bg-white/5">
+              <span>{KIND_EMOJI[d.kind]}</span>
+              <span className="flex-1 truncate text-zinc-300">{d.label}</span>
+              <span className="text-xs text-zinc-600">{d.typeLabel}</span>
+              <span className={`h-2 w-2 rounded-full ${d.online ? "bg-emerald-400" : "bg-zinc-600"}`} title={d.online ? "On WiFi" : "Off WiFi"} />
+            </button>
           </li>
         ))}
       </ul>
@@ -1389,6 +1669,7 @@ function DeviceInventory({
   editing: boolean;
   onPatch: (id: string, patch: DeviceOverride) => void;
 }) {
+  const open = useDrawer();
   const inputCls =
     "w-full rounded-md border border-white/15 bg-white/5 px-2 py-1 text-sm text-white outline-none focus:border-sky-400";
   return (
@@ -1407,7 +1688,11 @@ function DeviceInventory({
         </thead>
         <tbody>
           {devices.map((d) => (
-            <tr key={d.id} className="border-b border-zinc-800/60 last:border-0">
+            <tr
+              key={d.id}
+              onClick={editing ? undefined : () => open({ kind: "device", id: d.id })}
+              className={`border-b border-zinc-800/60 last:border-0 ${editing ? "" : "cursor-pointer transition hover:bg-white/5"}`}
+            >
               <td className="px-4 py-3">
                 <div className="flex items-center gap-2">
                   <span className="text-lg">{KIND_EMOJI[d.kind]}</span>
@@ -1532,6 +1817,7 @@ function PresenceTimeline({ events, byId }: { events: PresenceEvent[]; byId: Map
 }
 
 function CallLog({ calls, byId }: { calls: CallSession[]; byId: Map<string, WifiDevice> }) {
+  const open = useDrawer();
   const sorted = [...calls].sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
   if (sorted.length === 0) return <p className="text-sm text-zinc-500">No call sessions detected today.</p>;
   return (
@@ -1541,17 +1827,19 @@ function CallLog({ calls, byId }: { calls: CallSession[]; byId: Map<string, Wifi
           const device = byId.get(call.deviceId);
           const video = call.kind === "video";
           return (
-            <li key={call.id} className={`flex items-center gap-3 px-4 py-3 text-sm ${i > 0 ? "border-t border-zinc-800/70" : ""}`}>
-              <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-sky-500/15">{video ? "📹" : "📞"}</span>
-              <span className="flex-1 text-zinc-300">
-                <span className="font-medium text-white">{device?.owner ?? "Unknown"}</span> had a {video ? "video" : "voice"} call via{" "}
-                <span className="font-medium text-white">{call.service}</span>
-                <span className="text-zinc-500"> · {device?.label ?? call.deviceId}</span>
-              </span>
-              <span className="flex-shrink-0 text-right text-zinc-400">
-                {clockTime(call.startedAt)}
-                <span className="block text-xs text-zinc-600">{humanDuration(call.durationMinutes)}</span>
-              </span>
+            <li key={call.id}>
+              <button onClick={() => open({ kind: "call", id: call.id })} className={`flex w-full items-center gap-3 px-4 py-3 text-left text-sm transition hover:bg-white/5 ${i > 0 ? "border-t border-zinc-800/70" : ""}`}>
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-sky-500/15">{video ? "📹" : "📞"}</span>
+                <span className="flex-1 text-zinc-300">
+                  <span className="font-medium text-white">{device?.owner ?? "Unknown"}</span> had a {video ? "video" : "voice"} call via{" "}
+                  <span className="font-medium text-white">{call.service}</span>
+                  <span className="text-zinc-500"> · {device?.label ?? call.deviceId}</span>
+                </span>
+                <span className="flex-shrink-0 text-right text-zinc-400">
+                  {clockTime(call.startedAt)}
+                  <span className="block text-xs text-zinc-600">{humanDuration(call.durationMinutes)}</span>
+                </span>
+              </button>
             </li>
           );
         })}
@@ -1564,30 +1852,33 @@ function CallLog({ calls, byId }: { calls: CallSession[]; byId: Map<string, Wifi
 }
 
 function DeviceActivityCard({ device, domains, usageMinutes }: { device: WifiDevice; domains: DomainVisit[]; usageMinutes: number }) {
+  const open = useDrawer();
   const sorted = [...domains].sort((a, b) => b.requests - a.requests);
   return (
     <div className={CARD}>
-      <div className="flex items-center gap-2">
+      <button onClick={() => open({ kind: "device", id: device.id })} className="flex w-full items-center gap-2 text-left transition hover:opacity-80">
         <span className="text-lg">{KIND_EMOJI[device.kind]}</span>
         <div className="flex-1">
-          <p className="font-medium text-white">{device.label}</p>
+          <p className="font-medium text-white">{device.label} <span className="text-xs font-normal text-sky-400">· details ›</span></p>
           <p className="text-xs text-zinc-500">
             {device.typeLabel} · {device.online ? "on WiFi" : "off WiFi"} · {humanDuration(usageMinutes)} active today
           </p>
         </div>
-      </div>
-      <ul className="mt-3 space-y-2">
+      </button>
+      <ul className="mt-3 space-y-1">
         {sorted.map((v) => (
-          <li key={v.domain} className="flex items-center gap-2 text-sm">
-            <span title={v.blocked ? "Blocked by filter" : "Allowed"}>{v.blocked ? "🚫" : "🛡️"}</span>
-            <span className="flex-1 truncate">
-              <span className="font-medium text-zinc-200">{v.service}</span>
-              <span className="text-zinc-500"> · {v.domain}</span>
-            </span>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${CATEGORY_CHIP[v.category]}`}>
-              {CATEGORY_LABELS[v.category]}
-            </span>
-            <span className="w-16 text-right text-xs tabular-nums text-zinc-500">{v.requests} hits</span>
+          <li key={v.domain}>
+            <button onClick={() => open({ kind: "domain", domain: v.domain })} className="flex w-full items-center gap-2 rounded-lg px-1 py-1 text-left text-sm transition hover:bg-white/5">
+              <span title={v.blocked ? "Blocked by filter" : "Allowed"}>{v.blocked ? "🚫" : "🛡️"}</span>
+              <span className="flex-1 truncate">
+                <span className="font-medium text-zinc-200">{v.service}</span>
+                <span className="text-zinc-500"> · {v.domain}</span>
+              </span>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ring-inset ${CATEGORY_CHIP[v.category]}`}>
+                {CATEGORY_LABELS[v.category]}
+              </span>
+              <span className="w-16 text-right text-xs tabular-nums text-zinc-500">{v.requests} hits</span>
+            </button>
           </li>
         ))}
       </ul>
