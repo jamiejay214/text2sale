@@ -440,7 +440,7 @@ export async function GET(req: NextRequest) {
     );
     if (needsMigration) {
       console.warn(
-        "[messaging/advance] schema not ready — apply migrations/add_messaging_status.sql"
+        "[messaging/advance] schema not ready — apply supabase/migrations/010_messaging_status.sql"
       );
       return NextResponse.json(
         { ok: false, skipped: true, reason: "migration_not_applied" },
