@@ -1416,6 +1416,1537 @@ export const BLOG_POSTS: BlogPost[] = [
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" }
     ]
   },
+
+  {
+    slug: "sms-marketing-for-small-business",
+    metaTitle: "SMS Marketing for Small Business: A Practical Starter Guide | Text2Sale",
+    title: "SMS marketing for small business: a practical starter guide",
+    description:
+      "How small businesses start text message marketing the right way — getting consent, picking a number, writing the first campaign, and measuring what it actually earns.",
+    excerpt:
+      "Texting is the cheapest channel a small business has, and the easiest one to get wrong. Here is the whole setup, start to finish.",
+    datePublished: "2026-09-15",
+    dateModified: "2026-09-15",
+    readMinutes: 7,
+    tags: ["SMS marketing", "Small business", "Getting started"],
+    intro: [
+      "Most small businesses already have the two things text message marketing needs: a list of customers who like them and something worth telling those customers about. What they usually lack is a compliant way to send it and a habit of doing it consistently.",
+      "This guide walks through the full setup in the order it actually happens — consent, number, first campaign, measurement — so you can go from nothing to a working channel in about a week.",
+    ],
+    sections: [
+      {
+        heading: "Start with consent, not with the message",
+        paragraphs: [
+          "Every legitimate text program begins with permission. Before you write a single campaign you need a place where customers actively opt in — a checkbox at checkout, a keyword they text to your number, a form on your site — and a record of when and how they agreed.",
+          "That record is what protects you if anyone ever complains, and it is also what keeps your list healthy. A list of 400 people who asked to hear from you outperforms a list of 4,000 scraped contacts every single time, because the scraped list generates complaints and complaints get your number filtered.",
+        ],
+        bullets: [
+          "Ask for the number and the permission in the same step",
+          "State clearly what you will send and roughly how often",
+          "Store the timestamp, source, and exact wording of the opt-in",
+          "Include opt-out instructions in your first message to every new contact",
+        ],
+      },
+      {
+        heading: "Pick the right number and register it",
+        paragraphs: [
+          "A local 10-digit number is the right default for most small businesses — it looks familiar, it can take replies, and customers can call it back. Whatever you choose, it has to be registered for business messaging through 10DLC before you send at any volume, or carriers will silently filter your traffic.",
+          "Registration takes business details you already have: legal name, EIN, address, website, and a description of what you plan to send. Do it before you build the list, not after your first campaign disappears.",
+        ],
+      },
+      {
+        heading: "Write the first campaign like a person, not a billboard",
+        paragraphs: [
+          "The best-performing small business texts read like a note from someone the customer knows. Lead with the useful part, keep it under 160 characters, and give exactly one thing to do. Cut the branding preamble — your name belongs in the message, but not as the first six words.",
+          "Send during business hours, never before 8am or after 9pm in the recipient time zone, and start with one campaign a month rather than one a week. You can always add frequency later; you cannot un-annoy someone who already opted out.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Collect explicit opt-in and store the proof before you send anything.",
+      "Register your number for 10DLC up front or your messages get filtered.",
+      "Keep the first text short, human, and limited to one clear action.",
+      "Start at a low frequency and increase only when replies stay healthy.",
+    ],
+    faq: [
+      {
+        question: "Is SMS marketing worth it for a small business?",
+        answer:
+          "Yes, for most local and service businesses it is the highest-response channel available. Texts are typically opened within minutes and reply rates run far above email, so even a small opted-in list can drive meaningful bookings or sales at a very low cost per message.",
+      },
+      {
+        question: "How do I legally text my customers?",
+        answer:
+          "You need express written consent from each contact before sending marketing texts, a registered business number, clear opt-out instructions, and immediate processing of any opt-out request. Keep records of when and how each person consented.",
+      },
+      {
+        question: "How many texts per month should a small business send?",
+        answer:
+          "Two to four messages per month suits most small businesses. Fewer and customers forget who you are; more and opt-out rates start climbing unless every message is genuinely useful.",
+      },
+    ],
+    relatedSlugs: ["how-to-build-an-sms-opt-in-list", "how-much-does-sms-marketing-cost"],
+    relatedPages: [
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+    ],
+  },
+
+  {
+    slug: "text-message-marketing-examples",
+    metaTitle: "25 Text Message Marketing Examples That Get Replies | Text2Sale",
+    title: "25 text message marketing examples that actually get replies",
+    description:
+      "Real SMS marketing templates for promotions, reminders, re-engagement, reviews, and follow-up — with notes on why each one works and what to change for your business.",
+    excerpt:
+      "Copy-and-paste templates for the campaigns businesses send most, plus the reasoning behind why each one earns a reply.",
+    datePublished: "2026-09-08",
+    dateModified: "2026-09-08",
+    readMinutes: 8,
+    tags: ["Templates", "SMS marketing", "Copywriting"],
+    intro: [
+      "The difference between a text that gets a reply and one that gets an opt-out is usually thirty characters of wording. Below are templates for the campaign types businesses run most often, grouped by what you are trying to make happen.",
+      "Use them as starting points. Swap in your own voice, keep the structure, and test one variable at a time.",
+    ],
+    sections: [
+      {
+        heading: "Promotions and offers",
+        paragraphs: [
+          "Promotional texts work when the offer is specific and the deadline is real. Vague discounts get ignored; a named product with an end date gets action.",
+        ],
+        bullets: [
+          "\"Hi [Name] — 20% off all [product] through Sunday. Use code SAVE20 at [link]. Reply STOP to opt out.\"",
+          "\"[Business]: we just got [item] back in stock. Want me to hold one for you?\"",
+          "\"Last call, [Name] — the [offer] ends tonight at midnight: [link]\"",
+          "\"Quiet Tuesday at [Business]. Walk in before 4pm and your second [item] is free.\"",
+          "\"[Name], your loyalty reward is ready. Show this text at checkout for [reward].\"",
+        ],
+      },
+      {
+        heading: "Reminders, confirmations, and service updates",
+        paragraphs: [
+          "These are the highest-value texts most businesses send because they prevent lost revenue. Transactional in tone, low in friction, and always with a way to reschedule rather than just cancel.",
+        ],
+        bullets: [
+          "\"Reminder: your appointment with [Business] is [day] at [time]. Reply C to confirm or R to reschedule.\"",
+          "\"[Name], your order #[number] shipped. Track it here: [link]\"",
+          "\"Heads up — we are running about 15 minutes behind today. Still good for [time]?\"",
+          "\"Your [service] is due this month. Want me to grab you a slot next week?\"",
+          "\"Payment received, [Name]. Receipt: [link]. Thanks for your business.\"",
+        ],
+      },
+      {
+        heading: "Re-engagement, follow-up, and reviews",
+        paragraphs: [
+          "Re-engagement texts should assume the customer forgot you, not that they rejected you. Ask a question rather than making an announcement — questions get replies, announcements get silence.",
+          "Review requests work best sent within 24 hours of a good experience, with a direct link and no more than one follow-up.",
+        ],
+        bullets: [
+          "\"Hi [Name], it has been a while since your last [service]. Want me to get you back on the schedule?\"",
+          "\"[Name] — still thinking about [product]? Happy to answer anything.\"",
+          "\"Quick one: how did we do yesterday? If we earned it, a review here means a lot: [link]\"",
+          "\"Circling back on the quote I sent Tuesday. Any questions I can clear up?\"",
+          "\"We saved your cart, [Name]. Finish up here whenever you are ready: [link]\"",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Specific offers with real deadlines beat vague discounts.",
+      "Reminders and confirmations protect revenue you have already earned.",
+      "Ending with a question dramatically increases reply rate.",
+      "Every marketing text needs your business name and an opt-out path.",
+    ],
+    faq: [
+      {
+        question: "What should a marketing text message say?",
+        answer:
+          "Identify your business, deliver one clear benefit, and give a single action to take. Keep it under 160 characters where possible and include opt-out instructions on marketing messages.",
+      },
+      {
+        question: "How long should a marketing text be?",
+        answer:
+          "Under 160 characters is ideal because it sends as a single segment and reads in one glance. Longer messages still deliver, but they cost more per send and lose readers.",
+      },
+      {
+        question: "Should marketing texts include a link?",
+        answer:
+          "Include one link when there is something to see or do. Use a consistent, branded domain rather than an anonymous shortener, because unfamiliar shortened links are a common trigger for carrier filtering.",
+      },
+    ],
+    relatedSlugs: ["sms-copywriting-tips", "appointment-reminder-text-templates"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+    ],
+  },
+
+  {
+    slug: "how-to-build-an-sms-opt-in-list",
+    metaTitle: "How to Build an SMS Opt-In List (Without Risking Compliance) | Text2Sale",
+    title: "How to build an SMS opt-in list without risking compliance",
+    description:
+      "Proven ways to grow a text marketing list — keywords, checkout capture, website forms, and in-store signage — plus exactly what your consent language needs to say.",
+    excerpt:
+      "Growing a text list is easy. Growing one that holds up if anyone ever asks for proof of consent is the part most businesses skip.",
+    datePublished: "2026-09-01",
+    dateModified: "2026-09-01",
+    readMinutes: 6,
+    tags: ["Opt-in", "Compliance", "List growth"],
+    intro: [
+      "A text marketing list is only an asset if every number on it agreed to be there. Consent is what separates a channel you can rely on from a liability that generates complaints and carrier blocks.",
+      "The good news is that the compliant ways to grow a list are also the ways that produce the most engaged subscribers.",
+    ],
+    sections: [
+      {
+        heading: "The channels that actually grow a list",
+        paragraphs: [
+          "Start where customers already interact with you. Checkout, booking confirmations, and your website capture the people most likely to want messages from you, and they cost nothing to set up.",
+          "Keyword opt-ins work well anywhere you have physical presence or an audience: signage, receipts, packaging, podcasts, live events. The customer texts a word to your number, which is itself unambiguous proof that they initiated contact.",
+        ],
+        bullets: [
+          "Checkout and booking flows with an unchecked consent box",
+          "A keyword like TEXT [WORD] to [NUMBER] on signage and receipts",
+          "A dedicated landing page offering something specific in return",
+          "Post-purchase confirmation pages and email footers",
+          "Front-desk or point-of-sale capture with verbal consent logged",
+        ],
+      },
+      {
+        heading: "What your consent language must include",
+        paragraphs: [
+          "Express written consent for marketing texts means the customer saw a clear disclosure and took an affirmative action. The disclosure needs to name your business, say that they will receive recurring marketing messages, state that consent is not a condition of purchase, mention that message and data rates may apply, and explain how to stop.",
+          "Never pre-check the box, and never bundle SMS consent invisibly into a general terms-and-conditions acceptance. Both are the kinds of shortcuts that turn an ordinary complaint into an expensive one.",
+        ],
+      },
+      {
+        heading: "Confirm, then keep the list clean",
+        paragraphs: [
+          "Send a confirmation message immediately after opt-in that restates who you are, what they will get, and how to stop. It sets expectations and it is your first deliverability signal to carriers that this is legitimate two-way traffic.",
+          "After that, maintain the list. Remove hard bounces, honor opt-outs instantly everywhere, and re-permission anyone you have not messaged in more than a year rather than waking up a cold list all at once.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Capture consent where customers already engage: checkout, booking, and your site.",
+      "Disclosure language must name your business, frequency, rates, and opt-out method.",
+      "Never pre-check consent boxes or bury SMS consent in general terms.",
+      "Confirm every new subscriber and prune the list regularly.",
+    ],
+    faq: [
+      {
+        question: "What counts as express written consent for text marketing?",
+        answer:
+          "A clear written disclosure stating that the person agrees to receive recurring marketing texts from your business, that consent is not required to purchase, and that message and data rates may apply — combined with an affirmative action such as checking an unchecked box or texting a keyword.",
+      },
+      {
+        question: "Can I text customers who gave me their number for something else?",
+        answer:
+          "Not for marketing. A number given for a transaction or service can generally support related transactional messages, but promotional texts require separate marketing consent.",
+      },
+      {
+        question: "How fast can you build an SMS list?",
+        answer:
+          "Businesses with steady foot traffic or online checkout volume often collect a few hundred opted-in numbers within the first month simply by adding consent capture to existing flows. Paid list purchases are never a shortcut — purchased numbers have no valid consent.",
+      },
+    ],
+    relatedSlugs: ["sms-marketing-for-small-business", "quiet-hours-and-texting-time-rules"],
+    relatedPages: [
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "how-much-does-sms-marketing-cost",
+    metaTitle: "How Much Does SMS Marketing Cost in 2026? Full Breakdown | Text2Sale",
+    title: "How much does SMS marketing cost?",
+    description:
+      "A complete breakdown of text marketing costs — per-message rates, carrier fees, number rental, 10DLC registration, and platform pricing — with real campaign math.",
+    excerpt:
+      "Per-message rates are the smallest line item. Here is what text marketing really costs once carrier fees and registration are included.",
+    datePublished: "2026-08-25",
+    dateModified: "2026-08-25",
+    readMinutes: 7,
+    tags: ["Pricing", "SMS marketing", "Budgeting"],
+    intro: [
+      "Text marketing is cheap compared to almost any other paid channel, but the pricing is layered in a way that surprises people. The advertised per-message rate is real — it is just not the whole bill.",
+      "Here is every component, what each one typically runs, and how to estimate a monthly budget before you commit.",
+    ],
+    sections: [
+      {
+        heading: "The four things you actually pay for",
+        paragraphs: [
+          "Costs break into message fees, carrier pass-through fees, number and registration fees, and platform software. Message and carrier fees scale with volume; the rest are largely fixed.",
+          "The line item people miss is the carrier pass-through — a small per-message surcharge the mobile carriers charge for delivering business traffic. It is usually a fraction of a cent but it applies to every segment you send.",
+        ],
+        bullets: [
+          "Outbound message fee, charged per 160-character segment",
+          "Carrier pass-through fees on each delivered segment",
+          "Monthly rental for each phone number you send from",
+          "One-time and recurring 10DLC brand and campaign registration",
+          "Platform subscription for the software that sends and tracks",
+        ],
+      },
+      {
+        heading: "Doing the math on a real campaign",
+        paragraphs: [
+          "Take a list of 2,000 subscribers and one promotional text per month. If the message fits in a single segment you are paying for 2,000 segments, plus carrier fees on each, plus your number and platform costs. For most businesses that lands in the low tens of dollars for the sends and a modest fixed monthly cost around it.",
+          "Two things blow that budget up: messages that spill past 160 characters into two or three segments, and MMS, which costs several times more per send. Trimming a message from 170 to 155 characters cuts its send cost in half.",
+        ],
+      },
+      {
+        heading: "Where the real cost hides",
+        paragraphs: [
+          "The expensive mistakes are not per-message. They are undelivered campaigns from an unregistered number, a list full of people who never consented, and messages so frequent that subscribers opt out and never come back. Each of those costs more than years of message fees.",
+          "Spend the money on registration and on list quality first. The sending itself is the cheap part.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Costs are message fees, carrier pass-through, number rental, registration, and software.",
+      "Messages over 160 characters bill as multiple segments and double or triple send cost.",
+      "MMS costs several times more per message than SMS.",
+      "Unregistered numbers and churned subscribers cost far more than message fees.",
+    ],
+    faq: [
+      {
+        question: "How much does it cost to send 1,000 text messages?",
+        answer:
+          "For most business messaging platforms, 1,000 single-segment SMS messages cost in the range of a few dollars to roughly ten dollars once carrier pass-through fees are included. Longer messages that split into multiple segments multiply that cost.",
+      },
+      {
+        question: "Is SMS marketing cheaper than email?",
+        answer:
+          "Per message, email is cheaper. Per result, SMS is usually cheaper, because open and reply rates are dramatically higher — so the cost per actual conversation or conversion tends to favor texting.",
+      },
+      {
+        question: "Do I have to pay for 10DLC registration?",
+        answer:
+          "Yes. There is a one-time brand registration fee plus a recurring campaign fee, both set by the carrier registry rather than your platform. It is a required cost of sending business texts at volume in the US.",
+      },
+    ],
+    relatedSlugs: ["sms-marketing-roi-metrics", "sms-marketing-for-small-business"],
+    relatedPages: [
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "sms-marketing-roi-metrics",
+    metaTitle: "SMS Marketing ROI: The Metrics That Actually Matter | Text2Sale",
+    title: "SMS marketing ROI: the metrics that actually matter",
+    description:
+      "How to measure text marketing performance — delivery rate, reply rate, conversion, opt-out rate, and revenue per message — and how to tell a good number from a vanity one.",
+    excerpt:
+      "Delivery rate tells you the plumbing works. These are the numbers that tell you the channel is earning its keep.",
+    datePublished: "2026-08-18",
+    dateModified: "2026-08-18",
+    readMinutes: 6,
+    tags: ["Analytics", "ROI", "SMS marketing"],
+    intro: [
+      "Text marketing produces a lot of easy-to-read numbers, and most of them do not mean much on their own. A 99% delivery rate is table stakes, not a win.",
+      "These are the metrics worth building a dashboard around, in the order they should be fixed when something is off.",
+    ],
+    sections: [
+      {
+        heading: "Health metrics: is the channel working at all?",
+        paragraphs: [
+          "Delivery rate and opt-out rate are your early-warning system. Delivery below the high nineties means a registration or filtering problem. Opt-out rate climbing above roughly one to two percent per campaign means frequency or relevance is off.",
+          "Watch these per campaign rather than as a running average, because an average hides the one send that caused the damage.",
+        ],
+        bullets: [
+          "Delivery rate — target high 90s; anything lower signals filtering",
+          "Opt-out rate — watch for a rise above 1–2% on any single send",
+          "Reply rate — the clearest proof people are reading",
+          "Time to first reply — how fast the conversation actually starts",
+        ],
+      },
+      {
+        heading: "Performance metrics: is it producing revenue?",
+        paragraphs: [
+          "Reply rate, click rate, and conversion rate tell you whether the message worked. Revenue per message sent is the number that settles arguments — total attributed revenue divided by messages sent, including the ones that did nothing.",
+          "Track conversion against a defined window, usually 72 hours from send, and use a unique link or code per campaign so attribution is not guesswork.",
+        ],
+      },
+      {
+        heading: "Calculating ROI honestly",
+        paragraphs: [
+          "ROI is attributed revenue minus total cost, divided by total cost — and total cost has to include message fees, carrier fees, platform subscription, and registration, not just the sends.",
+          "Compare against the channel you would otherwise have used, not against zero. Texting usually wins on cost per conversation; showing that comparison is what justifies scaling the program.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Delivery and opt-out rates are health checks, not performance measures.",
+      "Reply rate and revenue per message sent are the metrics that matter most.",
+      "Use unique links or codes per campaign so attribution is not guesswork.",
+      "Include platform and registration fees when calculating true ROI.",
+    ],
+    faq: [
+      {
+        question: "What is a good SMS marketing conversion rate?",
+        answer:
+          "It varies widely by industry and offer, but well-targeted campaigns to an engaged opted-in list commonly convert several times better than the same offer sent by email. Judge your own baseline over three to five campaigns rather than chasing a published benchmark.",
+      },
+      {
+        question: "What is a good SMS opt-out rate?",
+        answer:
+          "Under roughly one to two percent per campaign is normal and healthy. A sudden spike almost always points to sending too often, sending at a bad time, or sending something the list did not expect.",
+      },
+      {
+        question: "How do I track SMS conversions?",
+        answer:
+          "Give each campaign its own trackable link or promo code, define a conversion window of around 72 hours, and match replies and redemptions back to the send. Platforms that log delivery, replies, and clicks per campaign make this automatic.",
+      },
+    ],
+    relatedSlugs: ["how-much-does-sms-marketing-cost", "sms-list-segmentation"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
+    ],
+  },
+
+  {
+    slug: "sms-vs-email-marketing",
+    metaTitle: "SMS vs Email Marketing: Which Wins, and When to Use Each | Text2Sale",
+    title: "SMS vs email marketing: which one should you use?",
+    description:
+      "An honest comparison of text and email marketing — open rates, cost, message length, compliance burden, and the campaign types each channel handles best.",
+    excerpt:
+      "Email is cheaper per send. Texting is cheaper per result. The real answer is which message belongs in which channel.",
+    datePublished: "2026-08-11",
+    dateModified: "2026-08-11",
+    readMinutes: 6,
+    tags: ["SMS marketing", "Email", "Strategy"],
+    intro: [
+      "The SMS-versus-email argument is usually framed as a winner-take-all comparison, which is the wrong frame. They have different economics, different attention profiles, and different compliance rules.",
+      "The businesses that get the most from both put urgent, short, personal messages in SMS and everything long-form in email.",
+    ],
+    sections: [
+      {
+        heading: "Where each channel wins",
+        paragraphs: [
+          "Texts are read almost immediately and almost always. That makes SMS unbeatable for anything time-sensitive: appointment reminders, limited windows, delivery updates, and first contact with a new lead.",
+          "Email wins on length, design, and cost per send. Newsletters, product education, receipts with detail, and anything the reader may want to search for later belong in the inbox.",
+        ],
+        bullets: [
+          "SMS: reminders, confirmations, flash offers, speed-to-lead, two-way conversation",
+          "Email: newsletters, long-form content, detailed receipts, onboarding series",
+          "SMS: near-immediate open, very high reply rate, 160-character limit",
+          "Email: rich formatting, near-zero send cost, much lower open rate",
+        ],
+      },
+      {
+        heading: "The cost comparison people get wrong",
+        paragraphs: [
+          "Per message, email is dramatically cheaper — often effectively free at small volumes. But the comparison that matters is cost per outcome. If a text costs a few cents and produces a reply from one in ten recipients, and an email costs nothing but produces a reply from one in five hundred, texting is usually the cheaper conversation.",
+          "Use email for reach and texting for response, and measure both on cost per conversion rather than cost per send.",
+        ],
+      },
+      {
+        heading: "Compliance is stricter on SMS",
+        paragraphs: [
+          "Email marketing in the US largely requires accurate headers, a physical address, and a working unsubscribe. SMS marketing requires prior express written consent, registered numbers, quiet-hour awareness, and immediate opt-out processing.",
+          "That difference is a feature, not a burden: the higher bar is exactly why texts still get read. Treat the list as permission-based and the channel keeps working.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "SMS wins on urgency and response; email wins on length and cost per send.",
+      "Compare channels on cost per conversion, not cost per message.",
+      "SMS compliance requirements are materially stricter than email.",
+      "Run both — route the message to the channel that fits its job.",
+    ],
+    faq: [
+      {
+        question: "Is SMS marketing better than email marketing?",
+        answer:
+          "For time-sensitive, short, conversational messages, yes — texts get opened and answered at far higher rates. For long-form content, education, and detailed receipts, email remains better. Most businesses get the best results running both with clear rules about what goes where.",
+      },
+      {
+        question: "Can I use the same list for email and SMS?",
+        answer:
+          "Not automatically. Email consent does not transfer to SMS. You need separate express written consent for marketing text messages, even from contacts already on your email list.",
+      },
+      {
+        question: "Should I send the same campaign by text and email?",
+        answer:
+          "Send the same offer, not the same copy. Email can carry the full explanation; the text should be a short nudge with one link. Sending identical long copy by SMS wastes segments and reads poorly.",
+      },
+    ],
+    relatedSlugs: ["sms-marketing-roi-metrics", "sms-copywriting-tips"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+    ],
+  },
+
+  {
+    slug: "short-code-vs-long-code-vs-toll-free",
+    metaTitle: "Short Code vs Long Code vs Toll-Free: Which Number Type? | Text2Sale",
+    title: "Short code vs long code vs toll-free: which number should you text from?",
+    description:
+      "A clear comparison of short codes, 10DLC long codes, and toll-free numbers for business texting — throughput, cost, approval time, and which fits your volume.",
+    excerpt:
+      "Three number types, three very different price tags and approval timelines. Here is how to pick without overbuying.",
+    datePublished: "2026-08-04",
+    dateModified: "2026-08-04",
+    readMinutes: 7,
+    tags: ["10DLC", "Deliverability", "Getting started"],
+    intro: [
+      "Before you send a business text you have to choose what kind of number it comes from, and the choice affects cost, speed, and how your messages are filtered.",
+      "There are three practical options in the US: a standard 10-digit long code registered through 10DLC, a toll-free number, or a dedicated short code.",
+    ],
+    sections: [
+      {
+        heading: "10DLC long codes: the default for most businesses",
+        paragraphs: [
+          "A long code is an ordinary 10-digit phone number — the kind you already recognize. Registered through 10DLC, it can send business traffic at reasonable volume, receive replies, and take voice calls.",
+          "It is inexpensive, familiar to recipients, and appropriate for anything conversational: sales follow-up, appointment reminders, service updates, and local promotions. Throughput is limited by your registered trust tier, which is fine for most lists.",
+        ],
+        bullets: [
+          "Cheapest option and fastest to get running",
+          "Looks local and supports both texting and calling",
+          "Throughput capped by trust tier — not built for instant blasts to huge lists",
+          "Requires 10DLC brand and campaign registration",
+        ],
+      },
+      {
+        heading: "Toll-free: higher throughput, national feel",
+        paragraphs: [
+          "A toll-free number carries higher messaging throughput than a typical long code and is well suited to national brands and support lines. It requires its own verification process rather than 10DLC registration.",
+          "The tradeoff is that toll-free reads as a business line rather than a person, which slightly dampens reply rates on one-to-one sales conversations.",
+        ],
+      },
+      {
+        heading: "Short codes: maximum scale, maximum cost",
+        paragraphs: [
+          "A short code is a five or six digit number leased specifically for high-volume messaging. It delivers the highest throughput and the strongest deliverability, and it is the right answer for retailers blasting hundreds of thousands of messages.",
+          "It is also expensive — a significant monthly lease plus a multi-week carrier approval process — and it cannot receive voice calls. Unless your volume genuinely demands it, a registered long code does the job for a fraction of the cost.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Registered 10DLC long codes fit most small and mid-size businesses.",
+      "Toll-free offers higher throughput with its own verification process.",
+      "Short codes deliver maximum scale at significant monthly cost and long approval times.",
+      "All three require registration or verification — none can skip the carrier review.",
+    ],
+    faq: [
+      {
+        question: "What is the difference between a long code and a short code?",
+        answer:
+          "A long code is a standard 10-digit phone number that supports calls and texts at moderate throughput. A short code is a leased 5–6 digit number built for very high-volume messaging, with higher cost, longer approval, and no voice capability.",
+      },
+      {
+        question: "Do I need a toll-free number to send business texts?",
+        answer:
+          "No. Most businesses send from a registered 10-digit local number. Toll-free makes sense when you need higher throughput or a national presence, and it requires toll-free verification rather than 10DLC registration.",
+      },
+      {
+        question: "Can I text from my existing business phone number?",
+        answer:
+          "Often yes — many landline and VoIP numbers can be text-enabled or ported to a messaging platform, then registered for business messaging. Keeping the number customers already know is usually worth the setup step.",
+      },
+    ],
+    relatedSlugs: ["toll-free-verification-guide", "why-are-my-texts-not-delivering"],
+    relatedPages: [
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+    ],
+  },
+
+  {
+    slug: "toll-free-verification-guide",
+    metaTitle: "Toll-Free Number Verification for Texting: Complete Guide | Text2Sale",
+    title: "Toll-free verification for business texting, explained",
+    description:
+      "What toll-free messaging verification is, what information carriers require, how long approval takes, and the common mistakes that get submissions rejected.",
+    excerpt:
+      "Unverified toll-free traffic gets blocked outright. Here is exactly what the verification form wants and how to pass it the first time.",
+    datePublished: "2026-07-28",
+    dateModified: "2026-07-28",
+    readMinutes: 6,
+    tags: ["Compliance", "Deliverability", "Toll-free"],
+    intro: [
+      "Toll-free numbers can send business texts at good throughput, but only after they pass messaging verification. Unverified toll-free traffic is heavily restricted and in many cases blocked entirely.",
+      "Verification is a form, not an ordeal — but it is a form that gets rejected for predictable reasons.",
+    ],
+    sections: [
+      {
+        heading: "What carriers ask for",
+        paragraphs: [
+          "Verification asks who you are, what you will send, and how people agreed to receive it. Every field is cross-checked against your public web presence, so the details need to match what is actually on your site.",
+        ],
+        bullets: [
+          "Legal business name, address, and website",
+          "A description of your use case and sample message content",
+          "The exact opt-in method and a link to where consent is collected",
+          "Estimated monthly message volume",
+          "Contact details for a real person at the business",
+        ],
+      },
+      {
+        heading: "Why submissions get rejected",
+        paragraphs: [
+          "The most common rejection reason is an opt-in that reviewers cannot verify. If you say customers opt in on your website, the reviewer will look for that form — and if the page is behind a login, still in development, or missing the required disclosure language, the submission fails.",
+          "The second most common reason is a sample message that does not match the stated use case, or one that omits the business name and opt-out instructions. Your samples should look exactly like what you will really send.",
+        ],
+      },
+      {
+        heading: "Timeline and what to do while you wait",
+        paragraphs: [
+          "Approval typically takes a few business days, though it can stretch longer when a reviewer requests changes. Submit before you build campaigns so the wait overlaps with your setup work rather than delaying your launch.",
+          "If you are rejected, read the stated reason literally, fix that exact item, and resubmit. Repeated resubmissions with no changes do not help and can slow the queue.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Unverified toll-free messaging traffic is restricted or blocked.",
+      "Every detail must match your live, publicly reachable website.",
+      "Unverifiable opt-in pages are the top rejection reason.",
+      "Sample messages should include your business name and opt-out language.",
+    ],
+    faq: [
+      {
+        question: "How long does toll-free verification take?",
+        answer:
+          "Most submissions are reviewed within a few business days, though timelines vary by carrier and queue depth. Rejections that require resubmission add several more days, which is why getting the opt-in page right the first time matters.",
+      },
+      {
+        question: "Can I send texts while toll-free verification is pending?",
+        answer:
+          "Sending before approval is heavily restricted and unreliable — expect low throughput and significant filtering. Treat approval as a prerequisite for any real campaign.",
+      },
+      {
+        question: "What is the difference between toll-free verification and 10DLC registration?",
+        answer:
+          "They are separate programs for separate number types. 10DLC registration covers standard 10-digit local numbers and involves brand plus campaign registration. Toll-free verification covers toll-free numbers and is a single carrier review of your use case and opt-in.",
+      },
+    ],
+    relatedSlugs: ["short-code-vs-long-code-vs-toll-free", "why-are-my-texts-not-delivering"],
+    relatedPages: [
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "why-are-my-texts-not-delivering",
+    metaTitle: "Why Are My Business Texts Not Delivering? 9 Causes and Fixes | Text2Sale",
+    title: "Why are my business texts not delivering?",
+    description:
+      "The nine most common reasons business text messages get filtered or fail — registration gaps, link shorteners, spam trigger words, volume spikes — and how to fix each one.",
+    excerpt:
+      "Messages that show as sent but never arrive are almost always carrier filtering. Here is how to diagnose which of the nine causes is yours.",
+    datePublished: "2026-07-21",
+    dateModified: "2026-07-21",
+    readMinutes: 7,
+    tags: ["Deliverability", "Troubleshooting", "Compliance"],
+    intro: [
+      "A message marked as sent has left your platform. Whether it reached a handset is a separate question, and when the answer is no, the cause is almost always a carrier filter rather than a bug.",
+      "Work through these in order — the first three explain the large majority of cases.",
+    ],
+    sections: [
+      {
+        heading: "Registration and sender problems",
+        paragraphs: [
+          "If your number is not registered for business messaging, carriers will throttle or block it regardless of what you send. This is the single most common cause of a campaign that vanishes.",
+          "Close behind: sending business traffic from a consumer number, using a number whose registered use case does not match what you are actually sending, or exceeding your registered throughput in a burst.",
+        ],
+        bullets: [
+          "Unregistered 10DLC brand or campaign",
+          "Registered use case does not match actual message content",
+          "Volume spike well above your normal sending pattern",
+          "Sending from a number flagged by earlier complaints",
+        ],
+      },
+      {
+        heading: "Content problems",
+        paragraphs: [
+          "Carriers filter on message content too. Public link shorteners are a strong negative signal because spammers rely on them; use a branded or platform-provided domain instead. Heavy capitalization, excessive punctuation, and certain regulated keywords also raise filtering risk.",
+          "Messages that lack any identification of the sender look like spam to a filter and to a human. Including your business name and an opt-out path helps on both fronts.",
+        ],
+      },
+      {
+        heading: "List and behavior problems",
+        paragraphs: [
+          "A list with bad numbers, landlines, or contacts who never consented generates errors and complaints, and complaint rate is a direct input to filtering decisions. Scrub invalid numbers and stop sending to anyone who has not engaged in a long time.",
+          "Finally, check the obvious: the recipient may have opted out, blocked the number, or be on a device or carrier plan that blocks short-code-style traffic. Your platform should log the specific error code — read it rather than guessing.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Unregistered numbers are the most common cause of silent filtering.",
+      "Public link shorteners meaningfully increase the odds of being blocked.",
+      "Sudden volume spikes look like spam behavior to carriers.",
+      "Read the platform error code before changing anything else.",
+    ],
+    faq: [
+      {
+        question: "Why do my texts say delivered but the recipient never got them?",
+        answer:
+          "A delivered status means the carrier accepted the message, not that it was shown to the user. Carrier-level spam filtering can accept and then suppress a message, which is most common with unregistered numbers, shortened links, or content that does not match your registered use case.",
+      },
+      {
+        question: "Do link shorteners hurt SMS deliverability?",
+        answer:
+          "Yes. Public shorteners are widely abused by spammers, so carriers treat them as a risk signal. Use a branded domain or your platform's own link domain instead.",
+      },
+      {
+        question: "How do I fix filtered business texts?",
+        answer:
+          "Confirm your 10DLC brand and campaign registration is approved and matches your actual content, replace public shortened links, include your business name and opt-out language, scrub invalid numbers, and ramp volume gradually rather than in spikes.",
+      },
+    ],
+    relatedSlugs: ["short-code-vs-long-code-vs-toll-free", "toll-free-verification-guide"],
+    relatedPages: [
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+    ],
+  },
+
+  {
+    slug: "sms-copywriting-tips",
+    metaTitle: "SMS Copywriting: How to Write Texts People Answer | Text2Sale",
+    title: "SMS copywriting: how to write texts people actually answer",
+    description:
+      "Practical rules for writing marketing and sales text messages — length, structure, tone, calls to action, and the phrases that get messages ignored or filtered.",
+    excerpt:
+      "You get about seven words before someone decides whether to keep reading. Here is how to spend them.",
+    datePublished: "2026-07-14",
+    dateModified: "2026-07-14",
+    readMinutes: 6,
+    tags: ["Copywriting", "SMS marketing", "Best practices"],
+    intro: [
+      "A text arrives in the same place as messages from family and friends, which is both the channel's advantage and its constraint. Anything that reads like a press release gets dismissed instantly.",
+      "Good SMS copy is short, specific, and sounds like a person typed it. These rules get you there.",
+    ],
+    sections: [
+      {
+        heading: "Structure: one message, one job",
+        paragraphs: [
+          "Every text should do exactly one thing. Name the person, deliver the point, ask for one action. If you find yourself writing the word \"also,\" you have two messages.",
+          "Front-load the value. The preview on a lock screen shows roughly the first forty characters, so the reason to care has to appear before your pleasantries do.",
+        ],
+        bullets: [
+          "Under 160 characters keeps it to one segment and one glance",
+          "Lead with the benefit, not the greeting",
+          "One call to action, phrased as a question when you want a reply",
+          "Identify your business by name so it is not an unknown sender",
+        ],
+      },
+      {
+        heading: "Tone: write it the way you would say it",
+        paragraphs: [
+          "Read the message out loud. If you would not say it to a customer standing in front of you, rewrite it. Contractions, plain words, and normal punctuation all help; exclamation points and all-caps hurt.",
+          "Personalization beyond the first name works when it is real — referencing the product they bought or the appointment they booked. Merge fields that simply insert a name into generic copy fool nobody.",
+        ],
+      },
+      {
+        heading: "What to avoid",
+        paragraphs: [
+          "Skip the spam signals: all-caps words, multiple exclamation points, public link shorteners, and phrases that make regulated claims about money, credit, or guaranteed results. These get messages filtered before anyone reads them.",
+          "Also avoid the false urgency that businesses reach for by default. Subscribers learn fast that every message is a final chance, and then they stop believing any of them.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "One message, one action — if you wrote \"also,\" split it.",
+      "The first forty characters decide whether the rest gets read.",
+      "Questions get replies; announcements get silence.",
+      "All-caps, exclamation stacks, and public shorteners invite filtering.",
+    ],
+    faq: [
+      {
+        question: "How do you write a good marketing text message?",
+        answer:
+          "Identify your business, lead with the specific benefit, keep it under 160 characters, and end with one clear action — ideally a question. Write the way you would speak to the customer in person, and include opt-out instructions on marketing messages.",
+      },
+      {
+        question: "Should I use emojis in marketing texts?",
+        answer:
+          "Sparingly, and only if they fit your brand voice. One well-placed emoji can add warmth; several look like spam. Note that emojis can push a message into a different encoding that shortens the per-segment character limit.",
+      },
+      {
+        question: "What words should you avoid in text marketing?",
+        answer:
+          "Avoid all-caps promotional shouting, stacked exclamation points, and claims about guaranteed income, credit repair, or similar regulated topics. These raise carrier filtering risk regardless of how legitimate your business is.",
+      },
+    ],
+    relatedSlugs: ["text-message-marketing-examples", "why-are-my-texts-not-delivering"],
+    relatedPages: [
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "appointment-reminder-text-templates",
+    metaTitle: "Appointment Reminder Text Templates That Cut No-Shows | Text2Sale",
+    title: "Appointment reminder texts that cut no-shows",
+    description:
+      "Ready-to-use appointment reminder text templates plus the timing, confirmation flow, and rescheduling language that reduce no-shows without annoying clients.",
+    excerpt:
+      "No-shows are lost revenue you already earned. A two-message reminder sequence recovers most of it.",
+    datePublished: "2026-07-07",
+    dateModified: "2026-07-07",
+    readMinutes: 6,
+    tags: ["Templates", "Appointments", "Automation"],
+    intro: [
+      "Every missed appointment is a paid-for slot that produced nothing. Most no-shows are not flakes — they are people who forgot, or who could not find an easy way to move the time.",
+      "A short reminder sequence fixes both problems, and it is the single easiest automation to turn on.",
+    ],
+    sections: [
+      {
+        heading: "The timing that works",
+        paragraphs: [
+          "Two reminders is the sweet spot: one at 24 hours, which gives the client time to reschedule rather than cancel, and one on the morning of, which catches the genuine forgetters.",
+          "For appointments booked far out, add a confirmation at booking time so the details are in their message history from the start. Three reminders is usually the point where people start finding it excessive.",
+        ],
+        bullets: [
+          "At booking: confirm date, time, address, and what to bring",
+          "24 hours before: remind and offer an easy reschedule",
+          "Morning of: short nudge with the time and location",
+          "After: a thank-you and, where appropriate, a review request",
+        ],
+      },
+      {
+        heading: "Templates you can use today",
+        paragraphs: [
+          "Keep reminders transactional in tone. They are not the place for promotions — mixing an offer into a reminder undermines both.",
+        ],
+        bullets: [
+          "\"Hi [Name], confirming your [service] with [Business] on [day] at [time]. Address: [address]. Reply C to confirm or R to reschedule.\"",
+          "\"Reminder: you are booked with [Business] tomorrow at [time]. Need a different time? Just reply R.\"",
+          "\"Good morning [Name] — see you at [time] today at [address]. Reply if anything changed.\"",
+          "\"Thanks for coming in today, [Name]. If we did right by you, a quick review helps a lot: [link]\"",
+          "\"We had a cancellation at [time] [day] — want it, [Name]?\"",
+        ],
+      },
+      {
+        heading: "Make rescheduling easier than ghosting",
+        paragraphs: [
+          "The reason people no-show instead of canceling is that canceling feels like a confrontation. A one-character reply that moves the appointment removes that friction entirely, and a moved appointment is worth far more than an empty slot.",
+          "Route those replies into a real inbox where someone sees them, and fill the freed slots by texting your waitlist. That last step turns your reminder system from a cost saver into a revenue generator.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Two reminders — 24 hours out and morning-of — cover most no-show causes.",
+      "Offer a one-tap reschedule so clients move appointments instead of ghosting.",
+      "Keep reminders transactional; do not bundle promotions into them.",
+      "Text your waitlist when a slot frees up to recover the revenue.",
+    ],
+    faq: [
+      {
+        question: "When should you send an appointment reminder text?",
+        answer:
+          "Send one 24 hours before the appointment and a short one on the morning of. The 24-hour message gives clients time to reschedule rather than cancel, and the day-of message catches people who simply forgot.",
+      },
+      {
+        question: "Do appointment reminder texts require consent?",
+        answer:
+          "Reminders tied to an appointment the customer booked are generally treated as transactional rather than marketing, but you still need the customer to have provided their number for that purpose, and you should honor any opt-out request. Promotional content inside a reminder changes its character and requires marketing consent.",
+      },
+      {
+        question: "How much do reminder texts reduce no-shows?",
+        answer:
+          "Businesses that move from no reminders to an automated two-message sequence commonly see a substantial drop in missed appointments, because the majority of no-shows stem from forgetting or from not having an easy way to reschedule.",
+      },
+    ],
+    relatedSlugs: ["text-message-marketing-examples", "sms-automation-workflows"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+    ],
+  },
+
+  {
+    slug: "mms-vs-sms-marketing",
+    metaTitle: "MMS vs SMS Marketing: When Images Are Worth the Cost | Text2Sale",
+    title: "MMS vs SMS: when is an image worth the extra cost?",
+    description:
+      "The practical differences between SMS and MMS for marketing — cost per message, character limits, file size rules, deliverability, and the campaigns where MMS pays off.",
+    excerpt:
+      "MMS costs several times more per send. Here are the few campaign types where the picture earns it back.",
+    datePublished: "2026-06-30",
+    dateModified: "2026-06-30",
+    readMinutes: 5,
+    tags: ["MMS", "SMS marketing", "Strategy"],
+    intro: [
+      "MMS lets you attach an image, a short video, or a much longer block of text. It also costs multiples of an SMS per recipient, which means it needs to earn its place in a campaign.",
+      "The decision comes down to whether seeing something changes the outcome.",
+    ],
+    sections: [
+      {
+        heading: "The practical differences",
+        paragraphs: [
+          "SMS is limited to 160 characters per segment and carries text only. MMS supports images, audio, video, and a much larger text body, at a noticeably higher per-message price.",
+          "MMS also has file size limits that vary by carrier, and oversized attachments get compressed or dropped. Keep images well under the common limits and test on both major mobile platforms before a large send.",
+        ],
+        bullets: [
+          "SMS: 160 characters per segment, text only, lowest cost",
+          "MMS: images and video, long text body, several times the cost",
+          "MMS file sizes are capped and vary by carrier",
+          "Both require the same consent and registration",
+        ],
+      },
+      {
+        heading: "When MMS is worth it",
+        paragraphs: [
+          "Use MMS when the product is visual and the image drives the decision: a menu special, a new arrival, an event flyer, a before-and-after. Retail, restaurants, salons, and trades get real lift from showing rather than describing.",
+          "Skip it for reminders, confirmations, follow-up, and anything conversational. Those messages perform just as well as plain text at a fraction of the price.",
+        ],
+      },
+      {
+        heading: "Test before you commit the budget",
+        paragraphs: [
+          "Split your list and send the same offer as SMS to half and MMS to the other half. Compare conversion, not click rate, and include the cost difference in the comparison.",
+          "If MMS does not beat SMS by more than its cost multiple, the picture is not paying for itself, and the money is better spent on frequency or on a better offer.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "MMS costs several times more per recipient than SMS.",
+      "Images earn their cost for visual products, not for reminders or follow-up.",
+      "Carrier file size limits vary — test attachments before a large send.",
+      "A/B test on conversion including the cost difference, not on clicks.",
+    ],
+    faq: [
+      {
+        question: "What is the difference between SMS and MMS marketing?",
+        answer:
+          "SMS sends plain text limited to 160 characters per segment. MMS can include images, video, and much longer text, but costs several times more per message and is subject to carrier file size limits.",
+      },
+      {
+        question: "Is MMS better than SMS for marketing?",
+        answer:
+          "Only when the visual changes the outcome — showing a product, a menu special, or a before-and-after. For reminders, confirmations, and conversational follow-up, SMS performs equally well at far lower cost.",
+      },
+      {
+        question: "What size image can you send in an MMS?",
+        answer:
+          "Limits vary by carrier, and files that exceed them are compressed or dropped. Keeping images small and testing on both major mobile platforms before a large send avoids most delivery problems.",
+      },
+    ],
+    relatedSlugs: ["how-much-does-sms-marketing-cost", "restaurant-sms-marketing"],
+    relatedPages: [
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "abandoned-cart-text-messages",
+    metaTitle: "Abandoned Cart Text Messages: Timing, Templates, Results | Text2Sale",
+    title: "Abandoned cart text messages that recover sales",
+    description:
+      "How to build an abandoned cart SMS sequence — when to send, what to say, how many messages, and the consent rules that keep cart recovery texts compliant.",
+    excerpt:
+      "Cart recovery is the highest-converting text most stores send. Timing matters more than the discount.",
+    datePublished: "2026-06-23",
+    dateModified: "2026-06-23",
+    readMinutes: 6,
+    tags: ["Ecommerce", "Automation", "SMS marketing"],
+    intro: [
+      "A customer who added an item to a cart told you exactly what they want. Cart abandonment texts convert well because they are relevant by definition — the hard part is timing and restraint.",
+      "Here is a sequence that recovers revenue without training customers to abandon carts for a discount.",
+    ],
+    sections: [
+      {
+        heading: "The sequence and the timing",
+        paragraphs: [
+          "Send the first message within an hour, while intent is still warm and the decision is still open. Make it a helpful nudge with a direct link back to the cart, not a pitch.",
+          "A second message the next day works if the first went unanswered. Stop there. A third message annoys more people than it converts, and it is where opt-outs spike.",
+        ],
+        bullets: [
+          "Message 1, within 60 minutes: friendly reminder with cart link",
+          "Message 2, next day: answer the likely objection — shipping, sizing, stock",
+          "Stop after two unanswered messages",
+          "Suppress anyone who completed the purchase, immediately",
+        ],
+      },
+      {
+        heading: "What to say",
+        paragraphs: [
+          "Lead with the item, not the brand. \"Your [item] is still in your cart\" outperforms a generic \"you left something behind\" because it re-triggers the specific want.",
+          "Hold the discount back for the second message, if you use one at all. Discounting in the first message teaches customers that abandoning a cart is how you get a deal — an expensive habit to create.",
+        ],
+      },
+      {
+        heading: "Consent still applies",
+        paragraphs: [
+          "Cart recovery messages are marketing, which means they require prior express written consent for SMS. Collect the number and the consent at checkout in the same step, with the disclosure language the rules require.",
+          "Include opt-out instructions, honor them immediately, and make sure completed purchases suppress the rest of the sequence. Nothing sours a new customer faster than being nagged about something they already bought.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Send the first recovery text within an hour of abandonment.",
+      "Two messages maximum — a third drives opt-outs more than sales.",
+      "Name the specific item rather than sending a generic reminder.",
+      "Cart recovery is marketing and requires SMS consent captured at checkout.",
+    ],
+    faq: [
+      {
+        question: "How soon should you send an abandoned cart text?",
+        answer:
+          "Within about an hour of abandonment, while the customer still remembers the decision they were making. A second message the following day is worth sending if the first goes unanswered.",
+      },
+      {
+        question: "Do abandoned cart texts need consent?",
+        answer:
+          "Yes. They are marketing messages, so they require prior express written consent for SMS, collected at checkout with the proper disclosure, plus clear opt-out instructions in the messages themselves.",
+      },
+      {
+        question: "Should abandoned cart texts include a discount?",
+        answer:
+          "Not in the first message. Discounting immediately teaches customers to abandon carts on purpose. If you use one, hold it for the second message and make it modest.",
+      },
+    ],
+    relatedSlugs: ["sms-automation-workflows", "text-message-marketing-examples"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+    ],
+  },
+
+  {
+    slug: "sms-list-segmentation",
+    metaTitle: "SMS List Segmentation: Send Less, Convert More | Text2Sale",
+    title: "SMS list segmentation: how to send less and convert more",
+    description:
+      "How to segment a text marketing list by behavior, purchase history, location, and engagement — and why segmented sends cut opt-outs while raising conversion.",
+    excerpt:
+      "Blasting the whole list is what drives opt-outs. Segmentation is how you send fewer messages and earn more from them.",
+    datePublished: "2026-06-16",
+    dateModified: "2026-06-16",
+    readMinutes: 6,
+    tags: ["Segmentation", "Strategy", "SMS marketing"],
+    intro: [
+      "Most businesses send every message to everyone, then wonder why opt-out rates climb. The subscriber who bought last week and the one who has never purchased do not want the same text.",
+      "Segmentation fixes that without more work — it usually means sending fewer messages, more precisely.",
+    ],
+    sections: [
+      {
+        heading: "The segments worth building first",
+        paragraphs: [
+          "Start with three: recent buyers, engaged non-buyers, and dormant subscribers. Those three cover most of the decisions you will make about what to send.",
+          "From there, layer in whatever your business actually uses — location for anything store-specific, product category for cross-sells, and lead source for sales follow-up.",
+        ],
+        bullets: [
+          "Recent buyers — cross-sell, review requests, replenishment",
+          "Engaged non-buyers — objection handling, social proof, first-purchase offers",
+          "Dormant subscribers — win-back, then sunset if no response",
+          "Location — store events, local availability, regional pricing",
+          "Lead source — tailor the message to what they originally asked about",
+        ],
+      },
+      {
+        heading: "Behavior beats demographics",
+        paragraphs: [
+          "What someone did with your business predicts their next action far better than who they are. Purchase recency, reply history, and link clicks are the strongest signals available in SMS, and all three are free to collect.",
+          "A subscriber who has replied to you before is dramatically more likely to reply again. That alone is worth a segment.",
+        ],
+      },
+      {
+        heading: "Sunset the dead weight",
+        paragraphs: [
+          "Subscribers who have not engaged in six to twelve months drag down delivery rates and raise complaint risk. Send one clear win-back message, and remove anyone who does not respond.",
+          "A smaller list that actually engages costs less to message and performs better per send. Holding on to unengaged numbers is a vanity metric with a real price.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Three segments — recent buyers, engaged non-buyers, dormant — cover most decisions.",
+      "Behavior predicts response far better than demographics.",
+      "Prior repliers are your most valuable segment.",
+      "Sunset unengaged subscribers rather than carrying them.",
+    ],
+    faq: [
+      {
+        question: "How should I segment my SMS list?",
+        answer:
+          "Start with purchase recency and engagement: recent buyers, engaged non-buyers, and dormant subscribers. Add location and lead source if your business uses them. Behavioral signals like replies and clicks outperform demographic splits.",
+      },
+      {
+        question: "Does segmentation reduce SMS opt-outs?",
+        answer:
+          "Yes, consistently. Most opt-outs come from irrelevance rather than frequency, so sending a targeted message to a smaller group typically lowers opt-out rate while raising conversion on that send.",
+      },
+      {
+        question: "How small can an SMS segment be?",
+        answer:
+          "Small segments are fine — a list of fifty highly relevant recipients can outperform a blast to five thousand. The practical floor is whatever size still gives you readable results to learn from.",
+      },
+    ],
+    relatedSlugs: ["sms-marketing-roi-metrics", "sms-automation-workflows"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
+    ],
+  },
+
+  {
+    slug: "two-way-texting-for-customer-service",
+    metaTitle: "Two-Way Texting for Customer Service: Setup and Best Practices | Text2Sale",
+    title: "Two-way texting for customer service",
+    description:
+      "How to run customer support over SMS — shared inboxes, response time targets, routing, templates, and the handoffs that keep texting from becoming chaos.",
+    excerpt:
+      "Customers would rather text you than call. Here is how to handle that without messages disappearing into someone's personal phone.",
+    datePublished: "2026-06-09",
+    dateModified: "2026-06-09",
+    readMinutes: 6,
+    tags: ["Customer service", "Two-way texting", "Operations"],
+    intro: [
+      "Given the choice, most customers will text a business rather than sit on hold. The businesses that struggle with this are not the ones that get too many texts — they are the ones with no system for handling them.",
+      "The fix is structural: one number, one shared inbox, clear ownership, and known response times.",
+    ],
+    sections: [
+      {
+        heading: "One number, one shared inbox",
+        paragraphs: [
+          "The failure mode is texts landing on individual employees' phones, where nobody else can see them and nothing is logged. When that person is out, the conversation dies.",
+          "A shared business number with a team inbox fixes it: every message is visible, assignable, and searchable, and the history follows the customer rather than the employee.",
+        ],
+        bullets: [
+          "One business number customers can save and reuse",
+          "A shared inbox with assignment and ownership",
+          "Full conversation history attached to the customer record",
+          "Coverage rules for evenings, weekends, and vacations",
+        ],
+      },
+      {
+        heading: "Set and publish a response time",
+        paragraphs: [
+          "Texting implies speed. If you cannot answer within minutes during business hours, say so — an auto-reply that states your hours and expected response time prevents the frustration of silence.",
+          "Use saved replies for the questions you answer constantly, but edit them before sending. A template that arrives verbatim to a customer who asked something slightly different reads worse than no reply at all.",
+        ],
+      },
+      {
+        heading: "Know when to leave the channel",
+        paragraphs: [
+          "Text is excellent for quick answers, scheduling, status, and light troubleshooting. It is poor for anything requiring sensitive data, long explanation, or back-and-forth diagnosis.",
+          "Train the team to move those conversations to a call and to say why: \"This will be faster on the phone — okay if I call you in two minutes?\" The customer keeps control and the issue actually gets solved.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Never let support texts land on personal phones — use a shared inbox.",
+      "Publish your hours and expected response time with an auto-reply.",
+      "Edit saved replies before sending; verbatim templates read badly.",
+      "Move sensitive or complex issues to a call, and explain why.",
+    ],
+    faq: [
+      {
+        question: "Should businesses use text for customer service?",
+        answer:
+          "Yes for quick questions, scheduling, order status, and light troubleshooting — customers strongly prefer it to waiting on hold. Move to a call for sensitive information or complex diagnosis.",
+      },
+      {
+        question: "How fast should you reply to a customer text?",
+        answer:
+          "Within a few minutes during business hours is the expectation texting sets. If you cannot meet that, use an auto-reply that states your hours and when the customer can expect an answer.",
+      },
+      {
+        question: "Do customer service texts need the same consent as marketing?",
+        answer:
+          "Replying to a customer who texted you first is a conversation they started. Sending them promotional content afterward is marketing and requires separate express written consent.",
+      },
+    ],
+    relatedSlugs: ["sms-automation-workflows", "appointment-reminder-text-templates"],
+    relatedPages: [
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+      { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
+    ],
+  },
+
+  {
+    slug: "sms-automation-workflows",
+    metaTitle: "SMS Automation Workflows Every Business Should Turn On | Text2Sale",
+    title: "Seven SMS automation workflows worth turning on first",
+    description:
+      "The text automations with the best return — instant lead response, appointment reminders, review requests, win-backs, and post-purchase follow-up — and how to set each one up.",
+    excerpt:
+      "Automation is not about sending more texts. It is about the handful of messages that should never depend on someone remembering.",
+    datePublished: "2026-06-02",
+    dateModified: "2026-06-02",
+    readMinutes: 7,
+    tags: ["Automation", "Workflows", "Operations"],
+    intro: [
+      "The value of SMS automation is not volume — it is reliability. These are the messages that make money when they go out on time and cost money when they get forgotten.",
+      "Turn them on in this order. Each one runs unattended once configured, and together they cover most of the revenue that leaks out of a normal week.",
+    ],
+    sections: [
+      {
+        heading: "The three that pay for themselves immediately",
+        paragraphs: [
+          "Instant lead response, appointment reminders, and review requests are the automations with the shortest path to revenue. Each one addresses a specific, measurable leak.",
+          "Instant response wins the speed race on new leads. Reminders recover slots you already sold. Review requests compound into the search visibility that generates the next batch of leads.",
+        ],
+        bullets: [
+          "New lead auto-response — fires within seconds of a form fill or import",
+          "Appointment reminders — 24 hours out and morning-of",
+          "Review request — sent within a day of a completed, positive interaction",
+        ],
+      },
+      {
+        heading: "The four that compound over time",
+        paragraphs: [
+          "Once the basics run, add the workflows that work your existing database. These produce less on any given day and more over a year than anything else on the list.",
+        ],
+        bullets: [
+          "Post-purchase follow-up — check in, then cross-sell at the right interval",
+          "Win-back — one message to subscribers dormant six months or more",
+          "Renewal or replenishment reminders — timed to your actual cycle",
+          "Birthday or anniversary messages — the cheapest goodwill you can send",
+        ],
+      },
+      {
+        heading: "Rules that keep automation from backfiring",
+        paragraphs: [
+          "Every automation needs a stop condition. A sequence that keeps running after the customer replies, purchases, or opts out turns a good system into a complaint generator.",
+          "Respect send windows so nothing fires at 3am, cap the total number of automated messages a contact can receive in a week, and make sure a human reply always pauses the automation. The goal is a system that feels like attentive service, not a machine talking at people.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Start with instant lead response, reminders, and review requests.",
+      "Win-backs and replenishment reminders compound over months.",
+      "Every sequence needs stop conditions on reply, purchase, and opt-out.",
+      "Cap total automated messages per contact per week.",
+    ],
+    faq: [
+      {
+        question: "What is SMS automation?",
+        answer:
+          "SMS automation sends text messages based on triggers and timing rules rather than someone pressing send — for example, an instant reply when a lead comes in, a reminder 24 hours before an appointment, or a follow-up three days after a purchase.",
+      },
+      {
+        question: "Which text automation should I set up first?",
+        answer:
+          "Instant response to new leads. It has the clearest revenue impact because response speed strongly predicts whether a lead converts, and it is the hardest message to deliver reliably by hand.",
+      },
+      {
+        question: "How do I keep SMS automation from annoying customers?",
+        answer:
+          "Give every sequence stop conditions on reply, purchase, and opt-out; respect quiet hours; cap how many automated messages one contact can get in a week; and pause automation as soon as a human conversation starts.",
+      },
+    ],
+    relatedSlugs: ["appointment-reminder-text-templates", "sms-list-segmentation"],
+    relatedPages: [
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "quiet-hours-and-texting-time-rules",
+    metaTitle: "Texting Quiet Hours: When You Can Legally Send Business Texts | Text2Sale",
+    title: "Quiet hours: when can you legally send business texts?",
+    description:
+      "What federal and state quiet-hour rules mean for business texting, how time zones complicate scheduling, and how to make sure no campaign fires at the wrong hour.",
+    excerpt:
+      "The federal window is 8am to 9pm in the recipient's time zone. Several states are stricter, and time zones are where businesses slip up.",
+    datePublished: "2026-05-26",
+    dateModified: "2026-05-26",
+    readMinutes: 6,
+    tags: ["Compliance", "TCPA", "Best practices"],
+    intro: [
+      "Sending a marketing text at the wrong hour is not just rude — it is one of the clearest and most easily proven compliance violations there is. The timestamp is right there in the message.",
+      "The rules are simple to state and easy to break by accident, because the clock that matters is the recipient's, not yours.",
+    ],
+    sections: [
+      {
+        heading: "The federal window and stricter state rules",
+        paragraphs: [
+          "Federal telemarketing rules restrict calls and marketing texts to the hours between 8am and 9pm in the recipient's local time. That is the baseline every business should build around.",
+          "Several states impose narrower windows or additional restrictions on particular days, and some have their own mini-TCPA statutes with their own penalties. If you send nationally, the practical approach is to adopt the strictest window you are subject to and apply it everywhere.",
+        ],
+        bullets: [
+          "Federal baseline: 8am–9pm in the recipient's local time",
+          "Some states narrow the window further or restrict certain days",
+          "Transactional messages have more latitude than marketing ones",
+          "The recipient's time zone governs, not your office's",
+        ],
+      },
+      {
+        heading: "Time zones are where it goes wrong",
+        paragraphs: [
+          "A campaign scheduled for 8am Eastern lands at 5am on the West Coast. This is the single most common quiet-hour mistake, and it happens to businesses that fully intended to comply.",
+          "Your sending platform should map each contact to a time zone — by area code at minimum, better by stored location — and hold messages until the window opens locally. If yours cannot, schedule to the latest time zone on your list rather than the earliest.",
+        ],
+      },
+      {
+        heading: "Good practice beyond the legal minimum",
+        paragraphs: [
+          "Legal and effective are different standards. Marketing texts perform best late morning and early evening on weekdays; 8:01am and 8:59pm are technically allowed and reliably irritating.",
+          "Hold automation to the same rule. An automated reminder that fires at midnight because a lead was imported then does more damage than the reminder was ever worth.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "The federal window is 8am–9pm in the recipient's local time.",
+      "Some states are stricter — adopt the tightest window that applies to you.",
+      "Map contacts to time zones or schedule to the latest one on your list.",
+      "Apply send windows to automated messages, not just campaigns.",
+    ],
+    faq: [
+      {
+        question: "What time can you legally send marketing text messages?",
+        answer:
+          "Federal rules restrict marketing calls and texts to 8am through 9pm in the recipient's local time zone. Several states apply narrower windows, so businesses sending nationally typically adopt the strictest applicable window across the whole list.",
+      },
+      {
+        question: "Do quiet hours apply to appointment reminders?",
+        answer:
+          "Transactional messages such as reminders for an appointment the customer booked have more latitude than marketing messages, but sending them in the middle of the night is still a bad practice that generates complaints and opt-outs.",
+      },
+      {
+        question: "How do I handle time zones when scheduling texts?",
+        answer:
+          "Use a platform that assigns each contact a time zone and holds messages until the local window opens. If that is not available, schedule the send based on the latest time zone on your list so nobody receives it too early.",
+      },
+    ],
+    relatedSlugs: ["how-to-build-an-sms-opt-in-list", "sms-automation-workflows"],
+    relatedPages: [
+      { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
+
+  {
+    slug: "restaurant-sms-marketing",
+    metaTitle: "Restaurant Text Message Marketing: Fill Slow Shifts | Text2Sale",
+    title: "Restaurant text marketing: how to fill your slow shifts",
+    description:
+      "How restaurants use SMS to fill empty tables — building a list from the dining room, same-day offers, reservation reminders, and the campaigns that actually drive covers.",
+    excerpt:
+      "A text sent at 3pm can fill a 6pm dining room. No other channel moves that fast.",
+    datePublished: "2026-05-19",
+    dateModified: "2026-05-19",
+    readMinutes: 6,
+    tags: ["Restaurants", "SMS marketing", "Local business"],
+    intro: [
+      "Restaurants have a perishable product: an empty table at 7pm is revenue that can never be recovered. Texting is the only marketing channel fast enough to do something about it the same day.",
+      "The businesses that make this work build the list in the dining room and use it sparingly.",
+    ],
+    sections: [
+      {
+        heading: "Build the list where people are already happy",
+        paragraphs: [
+          "The best moment to ask for a phone number is right after a good meal. Table tents, receipts, and the checkout conversation all outperform anything you can put on social media.",
+          "Give a concrete reason to join — a specific perk, not \"news and updates\" — and use a keyword so the opt-in is unambiguous and requires no typing on your end.",
+        ],
+        bullets: [
+          "Table tent: \"Text [WORD] to [NUMBER] for the Tuesday special list\"",
+          "Receipt line with the keyword and what subscribers get",
+          "Online ordering checkout consent box",
+          "Waitlist and reservation confirmations as a natural capture point",
+        ],
+      },
+      {
+        heading: "Same-day offers are the whole point",
+        paragraphs: [
+          "The highest-value restaurant text is sent between 2pm and 4pm and fills that evening's slow shift. Announce something real — a special, a new dish, a limited batch — with a time window that matches the shift you are trying to fill.",
+          "This only works if you use it rarely. A list that gets a special every day stops reading; a list that gets one great reason a week shows up.",
+        ],
+      },
+      {
+        heading: "Reservations, waitlists, and coming back",
+        paragraphs: [
+          "Beyond promotions, texting handles the operational work: reservation reminders that cut no-shows, waitlist notifications that let people wander instead of hovering, and a thank-you with a review link after a first visit.",
+          "For regulars who have not been in for a while, one personal-sounding message beats any discount: \"Hey [Name], have not seen you in a bit — we put [dish] back on the menu.\"",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Collect numbers in the dining room, right after a good experience.",
+      "The 2–4pm same-day text is the highest-value message a restaurant sends.",
+      "Send rarely — daily specials by text train people to ignore you.",
+      "Use texting for reservations and waitlists, not just promotions.",
+    ],
+    faq: [
+      {
+        question: "How do restaurants use text message marketing?",
+        answer:
+          "Mainly to fill slow shifts with same-day offers, to cut no-shows with reservation reminders, to manage waitlists, and to bring back regulars who have not visited recently. The speed of the channel is what makes it work.",
+      },
+      {
+        question: "How do restaurants build a text list?",
+        answer:
+          "Capture numbers in person where the experience was good — table tents and receipts with a text-in keyword, online ordering checkout, and reservation confirmations. Offer a specific perk rather than generic updates.",
+      },
+      {
+        question: "How often should a restaurant text its list?",
+        answer:
+          "Roughly once a week is a sustainable cadence for most restaurants. Daily specials by text drive opt-outs quickly, because subscribers stop finding any single message worth opening.",
+      },
+    ],
+    relatedSlugs: ["gym-sms-marketing", "text-message-marketing-examples"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+    ],
+  },
+
+  {
+    slug: "gym-sms-marketing",
+    metaTitle: "Gym & Fitness Studio SMS Marketing: Retention Playbook | Text2Sale",
+    title: "SMS marketing for gyms and fitness studios",
+    description:
+      "How gyms and studios use texting to fill classes, recover lapsed members, convert trial leads, and cut cancellations — with templates for each stage of the member lifecycle.",
+    excerpt:
+      "Membership businesses live and die on retention. Texting is the cheapest retention tool you have.",
+    datePublished: "2026-05-12",
+    dateModified: "2026-05-12",
+    readMinutes: 6,
+    tags: ["Fitness", "Retention", "SMS marketing"],
+    intro: [
+      "Gyms lose members quietly. Someone stops showing up in week three, keeps paying for two months, then cancels — and nobody noticed the gap that predicted it.",
+      "Texting catches that early, and it fills the classes and trial slots that drive new revenue in the meantime.",
+    ],
+    sections: [
+      {
+        heading: "Convert trials and leads fast",
+        paragraphs: [
+          "Fitness leads are high-intent and short-lived. Someone who requested a trial pass this morning is making a decision today, and the studio that texts back first usually gets the visit.",
+          "Automate the first response, confirm the trial time, and follow up the day after the trial while the experience is still fresh.",
+        ],
+        bullets: [
+          "\"Hi [Name], got your trial request for [Studio] — want to come to the [time] class [day]?\"",
+          "\"You are booked for [class] at [time]. Arrive 10 min early and bring [item]. Reply R to move it.\"",
+          "\"How did [class] feel yesterday, [Name]? Happy to talk through membership options if you are in.\"",
+        ],
+      },
+      {
+        heading: "Fill classes and catch the drop-off",
+        paragraphs: [
+          "Empty class spots are perishable the same way restaurant tables are. A text to the waitlist or to members who usually attend that slot fills seats hours before the class starts.",
+          "More importantly, set an automated check-in for members who have not visited in two weeks. A short, non-judgmental message at that point recovers a meaningful share of members who would otherwise drift to cancellation.",
+        ],
+      },
+      {
+        heading: "Handle cancellations as conversations",
+        paragraphs: [
+          "Cancellations that arrive by email or app get processed. Cancellations that arrive by text get answered — and a real conversation converts a meaningful number of them into a pause, a downgrade, or a stay.",
+          "Give members a number they can actually text, staff it during business hours, and treat every cancellation message as an opening rather than a form to process.",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Respond to trial leads within minutes — fitness intent decays fast.",
+      "An automated check-in at two weeks of absence prevents quiet churn.",
+      "Text the waitlist to fill perishable class spots same-day.",
+      "Route cancellations into a text conversation, not a form.",
+    ],
+    faq: [
+      {
+        question: "How do gyms use SMS marketing?",
+        answer:
+          "For fast response to trial leads, class and waitlist notifications, automated check-ins when a member stops attending, renewal reminders, and win-back campaigns for lapsed members. Retention is where the biggest return sits.",
+      },
+      {
+        question: "What is the best way to reduce gym member churn with texting?",
+        answer:
+          "Trigger a friendly check-in when a member has not visited in about two weeks. Attendance gaps precede cancellations by weeks, so a short message at that point reaches people while the membership is still salvageable.",
+      },
+      {
+        question: "Do fitness studios need consent to text members?",
+        answer:
+          "Yes. Marketing texts require express written consent, usually collected at signup. Messages about a class a member booked are transactional, but promotional content needs separate marketing consent and clear opt-out instructions.",
+      },
+    ],
+    relatedSlugs: ["restaurant-sms-marketing", "sms-automation-workflows"],
+    relatedPages: [
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+      { href: "/ai-texting-crm", label: "AI texting CRM" },
+    ],
+  },
+
+  {
+    slug: "holiday-sms-marketing-campaigns",
+    metaTitle: "Holiday SMS Marketing: Plan, Timing & Templates | Text2Sale",
+    title: "Holiday SMS marketing: planning the busiest weeks of the year",
+    description:
+      "How to plan holiday text campaigns — when to start, how often to send, managing carrier congestion and higher costs, and templates for the peak shopping days.",
+    excerpt:
+      "Everyone texts in Q4, which means carriers are congested, costs rise, and inboxes are loud. Planning is what separates the campaigns that land.",
+    datePublished: "2026-05-05",
+    dateModified: "2026-05-05",
+    readMinutes: 6,
+    tags: ["Seasonal", "SMS marketing", "Planning"],
+    intro: [
+      "The holiday stretch is the highest-volume messaging period of the year. Every business with a list is sending, carriers are congested, and your subscribers are getting texts from everyone they ever bought from.",
+      "Winning that window is mostly about preparation: register early, warm the list, and plan the calendar before the rush starts.",
+    ],
+    sections: [
+      {
+        heading: "Prepare before the rush",
+        paragraphs: [
+          "Get registration and verification handled months ahead. Carrier review queues slow down in the fourth quarter, and a campaign you cannot send in November is worth nothing.",
+          "Grow and warm the list through the fall rather than mailing a cold list for the first time on the busiest day of the year. A sudden volume spike from a number with no sending history is exactly what filtering systems are built to stop.",
+        ],
+        bullets: [
+          "Complete 10DLC or toll-free approval well before peak season",
+          "Ramp sending volume gradually through the fall",
+          "Run list growth campaigns in advance of the promotional period",
+          "Scrub invalid numbers before the big sends",
+        ],
+      },
+      {
+        heading: "Plan the calendar, then cut it",
+        paragraphs: [
+          "Map the key dates for your business and assign one clear message to each. Then remove the weakest third. Holiday inboxes punish businesses that send every day and reward the ones whose messages are worth opening.",
+          "Send the important campaigns early in the day rather than at the exact minute everyone else does. The midnight and 9am peaks are the most congested times of the season.",
+        ],
+      },
+      {
+        heading: "Templates for the peak days",
+        paragraphs: [
+          "Keep holiday copy shorter than usual — attention is scarcer and segment costs are higher when volume is high.",
+        ],
+        bullets: [
+          "\"[Business]: our [holiday] sale is live — [offer] through [day]. [link]\"",
+          "\"Last day for [holiday] delivery, [Name]. Order by [time] and it arrives on time: [link]\"",
+          "\"Still shopping? [product] is our most-gifted item this year: [link]\"",
+          "\"Thanks for a great year, [Name]. Here is [offer] to start the new one.\"",
+          "\"[Name], your [holiday] order is on the way. Track it: [link]\"",
+        ],
+      },
+    ],
+    keyTakeaways: [
+      "Finish registration and verification long before the fourth quarter.",
+      "Warm the list gradually — a cold spike gets filtered.",
+      "Plan the calendar, then cut the weakest third of the sends.",
+      "Avoid the midnight and 9am congestion peaks on major days.",
+    ],
+    faq: [
+      {
+        question: "When should you start planning holiday SMS campaigns?",
+        answer:
+          "Registration and verification should be complete months ahead, and list growth plus volume warming should run through the fall. The campaign calendar itself is best finalized several weeks before the first major promotional date.",
+      },
+      {
+        question: "How often should you text during the holidays?",
+        answer:
+          "More than your normal cadence but far less than daily. Assign one strong message to each key date and cut the weakest ones — subscribers are receiving texts from every business they have ever bought from during this period.",
+      },
+      {
+        question: "Why do texts get delayed during the holidays?",
+        answer:
+          "Carrier networks handle enormous message volume during peak shopping days, which creates congestion and queuing. Sending outside the most common peak times and warming your volume gradually beforehand both reduce delays.",
+      },
+    ],
+    relatedSlugs: ["why-are-my-texts-not-delivering", "text-message-marketing-examples"],
+    relatedPages: [
+      { href: "/bulk-sms-software", label: "Bulk SMS software" },
+      { href: "/mass-texting-crm", label: "Mass texting CRM" },
+    ],
+  },
 ];
 
 export function getAllPosts(): BlogPost[] {
