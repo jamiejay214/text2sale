@@ -119,7 +119,9 @@ export async function findAvailableNumber(areaCode?: string): Promise<string | n
   return candidates[0]?.phone_number || null;
 }
 
-export type OrderResult = { ok: true; number: string } | { ok: false; error: string };
+export type OrderResult =
+  | { ok: true; number: string; orderId: string | null }
+  | { ok: false; error: string };
 
 export async function orderNumber(e164: string): Promise<OrderResult> {
   const res = await fetch("https://api.telnyx.com/v2/number_orders", {
@@ -158,5 +160,6 @@ export async function orderNumber(e164: string): Promise<OrderResult> {
     return { ok: false, error: msg };
   }
 
-  return { ok: true, number: e164 };
+  const orderId = (data?.data as { id?: string } | undefined)?.id ?? null;
+  return { ok: true, number: e164, orderId };
 }

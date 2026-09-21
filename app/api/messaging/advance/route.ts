@@ -9,6 +9,7 @@ import {
   orderNumber,
   NUMBER_PURCHASE_COST,
 } from "@/lib/telnyx-10dlc";
+import type { OwnedNumber } from "@/lib/types";
 import {
   MAX_ATTEMPTS,
   MessagingStatus,
@@ -47,6 +48,20 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const BATCH_SIZE = 25;
 
 /**
+ * Auto-purchase kill switch.
+ *
+ * Registration advancement is safe to run unattended — it only reads Telnyx
+ * status and creates campaigns. Buying numbers spends real money on real
+ * customer accounts, and this driver has never done that in production.
+ *
+ * So purchasing is off unless MESSAGING_AUTOBUY is explicitly "true".
+ * With it off, accounts advance all the way to CAMPAIGN_APPROVED and wait
+ * there, which lets you watch the whole flow work against live accounts at
+ * zero financial risk before enabling the last step.
+ */
+const AUTOBUY_ENABLED = process.env.MESSAGING_AUTOBUY === "true";
+
+/**
  * How long a claimed account is reserved for. Long enough to cover the
  * Telnyx round-trips one account needs, short enough that a crashed run
  * frees it again quickly.
@@ -71,7 +86,7 @@ type ProfileRow = {
   messaging_status: MessagingStatus;
   messaging_attempts: number;
   a2p_registration: Registration | null;
-  owned_numbers: Array<{ number: string; campaignId?: string }> | null;
+  owned_numbers: OwnedNumber[] | null;
 };
 
 // Matches how the rest of the API routes type the service-role client; the
@@ -143,16 +158,29 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<{ status: M
   if (!campaignId) return { status: "REJECTED", note: "No campaign to attach a number to" };
 
   // Already holds a number: attach it rather than selling them another.
+  //
+  // There is no per-number record of which campaign a number belongs to, so
+  // we can't tell attached from unattached here. That's fine — attaching is
+  // idempotent (Telnyx reports an already-assigned number as success), so we
+  // simply (re)attach the first one they own and never buy a second.
   const owned = Array.isArray(profile.owned_numbers) ? profile.owned_numbers : [];
-  const unattached = owned.find((n) => n && n.number && !n.campaignId);
-  if (unattached) {
-    const res = await assignNumberToCampaign(unattached.number.replace(/[^\d+]/g, ""), campaignId);
-    if (res.assigned) return { status: "NUMBER_ASSIGNED", note: `Attached existing ${unattached.number}` };
+  const existing = owned.find((n) => n && n.number);
+  if (existing) {
+    const e164 = `+1${existing.number.replace(/\D/g, "").replace(/^1/, "")}`;
+    const res = await assignNumberToCampaign(e164, campaignId);
+    if (res.assigned) return { status: "NUMBER_ASSIGNED", note: `Attached ${existing.number}` };
     return { status: "CAMPAIGN_APPROVED", note: `Attach failed: ${res.error}` };
   }
-  if (owned.length > 0) {
-    // Every number they own is already attached — nothing left to buy.
-    return { status: "NUMBER_ASSIGNED", note: "Existing numbers already attached" };
+
+  if (!AUTOBUY_ENABLED) {
+    // Hold at CAMPAIGN_APPROVED rather than AWAITING_PAYMENT. The customer
+    // then sees "Approved — getting your number", which is true, instead of
+    // being asked to add funds that would not unblock anything. Flipping the
+    // switch on resumes these accounts automatically on the next run.
+    return {
+      status: "CAMPAIGN_APPROVED",
+      note: "Auto-purchase disabled (set MESSAGING_AUTOBUY=true to enable)",
+    };
   }
 
   // ── Pay first ───────────────────────────────────────────────────────────
@@ -197,14 +225,44 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<{ status: M
 
   // Record the number before attaching. If attachment lags, the customer
   // still owns what they paid for and a later run finishes the job.
+  //
+  // Shape must match what /api/buy-number writes — lib/types.ts OwnedNumber
+  // requires id, number and alias, the number is stored in display format,
+  // and the wallet debit needs a matching usage_history entry or the charge
+  // shows up in the customer's balance with nothing explaining it.
+  const digits = order.number.replace(/\D/g, "").replace(/^1/, "");
+  const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
   const entry = {
-    number: order.number,
-    purchasedAt: new Date().toISOString(),
-    autoProvisioned: true,
+    id: order.orderId || `num_${digits}`,
+    number: display,
+    alias: `Sales Line ${owned.length + 1}`,
   };
+
+  const { data: current } = await db
+    .from("profiles")
+    .select("usage_history")
+    .eq("id", profile.id)
+    .single();
+  const usage = Array.isArray(current?.usage_history)
+    ? (current!.usage_history as Array<Record<string, unknown>>)
+    : [];
+
   await db
     .from("profiles")
-    .update({ owned_numbers: [...owned, entry] })
+    .update({
+      owned_numbers: [...owned, entry],
+      usage_history: [
+        ...usage,
+        {
+          id: `number_${Date.now()}`,
+          type: "number_purchase",
+          amount: NUMBER_PURCHASE_COST,
+          description: `Purchased number ${display}`,
+          createdAt: new Date().toISOString(),
+          status: "succeeded",
+        },
+      ],
+    })
     .eq("id", profile.id);
   profile.owned_numbers = [...owned, entry];
 
@@ -373,6 +431,22 @@ export async function GET(req: NextRequest) {
     .limit(BATCH_SIZE);
 
   if (error) {
+    // The migration adds messaging_status and friends. Until it has been
+    // applied this query cannot work, and the cron runs every minute — so
+    // say so once, clearly, instead of emitting an opaque error 1,440 times
+    // a day.
+    const needsMigration = /messaging_status|messaging_next_attempt_at|column .* does not exist/i.test(
+      error.message
+    );
+    if (needsMigration) {
+      console.warn(
+        "[messaging/advance] schema not ready — apply migrations/add_messaging_status.sql"
+      );
+      return NextResponse.json(
+        { ok: false, skipped: true, reason: "migration_not_applied" },
+        { status: 200 }
+      );
+    }
     console.error("[messaging/advance] query failed:", error.message);
     return NextResponse.json({ error: "Query failed" }, { status: 500 });
   }
@@ -401,6 +475,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    autobuy: AUTOBUY_ENABLED,
     examined: profiles.length,
     activated: results.filter((r) => r.to === "ACTIVE").length,
     awaitingPayment: results.filter((r) => r.to === "AWAITING_PAYMENT").length,
