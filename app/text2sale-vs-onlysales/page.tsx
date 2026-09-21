@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["texting CRM", "Campaigns", "Strategy"]}
       eyebrow="Text2Sale vs OnlySales"
       title="Text2Sale vs OnlySales: a texting CRM built for speed, AI, and sales follow-up."
       description="If you are comparing Text2Sale and OnlySales, the real question is simple: which platform helps your team start more conversations, manage replies faster, and turn more leads into booked calls? Text2Sale is built for mass texting, AI-assisted replies, CSV lead uploads, and sales teams that need clean follow-up workflows."

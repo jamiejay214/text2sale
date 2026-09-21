@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Automation", "Workflows", "texting CRM"]}
       eyebrow="GoHighLevel Alternative"
       title="The best GoHighLevel alternative when all you need is a powerful texting CRM."
       description="GoHighLevel is a massive all-in-one marketing suite. Text2Sale is the focused alternative — built just for sales teams that need mass texting, AI-assisted replies, lead follow-up, and a simple SMS CRM without paying for features they will never use."

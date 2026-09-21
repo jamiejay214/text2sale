@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Deliverability", "10DLC", "Pricing"]}
       eyebrow="Text2Sale vs Twilio"
       title="Text2Sale vs Twilio: ready-to-use SMS CRM vs developer SMS API."
       description="Twilio is a powerful communications API for developers. Text2Sale is a ready-to-use texting CRM for sales teams that want campaigns, conversations, AI replies, CSV uploads, opt-out handling, and team workflows without building everything from scratch."

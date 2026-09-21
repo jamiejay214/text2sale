@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Templates", "Automation", "texting CRM"]}
       eyebrow="Textdrip Alternative"
       title="The best Textdrip alternative for sales teams that need AI and CRM follow-up."
       description="Text2Sale is a Textdrip alternative for teams that want more than automated text sequences. It combines mass SMS campaigns, a 2-way team inbox, AI-assisted replies, CSV lead uploads, and sales-focused follow-up tools."

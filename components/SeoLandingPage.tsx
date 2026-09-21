@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Script from "next/script";
+import { getPostsByTags } from "@/lib/blog-posts";
 
 type FaqItem = { question: string; answer: string };
 type RelatedPage = { href: string; label: string };
@@ -21,6 +22,12 @@ type SeoLandingPageProps = {
   faq?: FaqItem[];
   relatedPages?: RelatedPage[];
   canonicalPath?: string;
+  /**
+   * Blog tags relevant to this page. When set, the guides section surfaces
+   * posts on those topics instead of the generic cornerstone list, so a
+   * dealership page links to dealership articles rather than insurance ones.
+   */
+  blogTags?: string[];
 };
 
 export default function SeoLandingPage({
@@ -37,7 +44,15 @@ export default function SeoLandingPage({
   faq = [],
   relatedPages = [],
   canonicalPath,
+  blogTags = [],
 }: SeoLandingPageProps) {
+  // Topic-matched posts when the page declares tags, cornerstone posts
+  // otherwise. Falls back to cornerstone if a tag set matches nothing.
+  const taggedPosts = blogTags.length > 0 ? getPostsByTags(blogTags, 5) : [];
+  const guides =
+    taggedPosts.length > 0
+      ? taggedPosts.map((post) => ({ href: `/blog/${post.slug}`, label: post.title }))
+      : CORNERSTONE_POSTS;
   const faqSchema = faq.length > 0
     ? {
         "@context": "https://schema.org",
@@ -166,7 +181,7 @@ export default function SeoLandingPage({
       <section className="mx-auto max-w-5xl px-6 pb-20">
         <h2 className="text-xl font-bold text-zinc-300">Guides from the Text2Sale blog</h2>
         <div className="mt-4 flex flex-wrap gap-3">
-          {CORNERSTONE_POSTS.map((post) => (
+          {guides.map((post) => (
             <Link
               key={post.href}
               href={post.href}

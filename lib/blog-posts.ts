@@ -5202,3 +5202,111 @@ export function getAllPosts(): BlogPost[] {
 export function getPostBySlug(slug: string): BlogPost | undefined {
   return BLOG_POSTS.find((p) => p.slug === slug);
 }
+
+// ── Tags ───────────────────────────────────────────────────────────────────
+// Tag archive pages live at /blog/tag/<slug>. They exist to give deep posts
+// more than one way in: without them a post is reachable only from the /blog
+// grid and whatever siblings happen to list it in relatedSlugs.
+//
+// Only tags carrying TAG_PAGE_MIN_POSTS or more posts get a page — a thin
+// archive listing one article is worth less than no page at all. Tags below
+// the threshold still render on posts, just without a link.
+
+export const TAG_PAGE_MIN_POSTS = 3;
+
+export type BlogTag = { slug: string; label: string; count: number };
+
+export function tagSlug(tag: string): string {
+  return tag
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+// Tags are authored by hand across many posts, so the same tag shows up in
+// different casing ("Compliance" / "compliance"). Group on the slug and show
+// whichever spelling is used most often.
+function buildTagIndex(): Map<string, { label: string; posts: BlogPost[]; spellings: Map<string, number> }> {
+  const index = new Map<string, { label: string; posts: BlogPost[]; spellings: Map<string, number> }>();
+
+  for (const post of BLOG_POSTS) {
+    for (const tag of post.tags) {
+      const slug = tagSlug(tag);
+      if (!slug) continue;
+
+      let entry = index.get(slug);
+      if (!entry) {
+        entry = { label: tag, posts: [], spellings: new Map() };
+        index.set(slug, entry);
+      }
+
+      // A post listing the same tag twice must not be counted twice.
+      if (!entry.posts.includes(post)) entry.posts.push(post);
+      entry.spellings.set(tag, (entry.spellings.get(tag) || 0) + 1);
+    }
+  }
+
+  for (const entry of index.values()) {
+    let best = entry.label;
+    let bestCount = -1;
+    for (const [spelling, count] of entry.spellings) {
+      if (count > bestCount) {
+        best = spelling;
+        bestCount = count;
+      }
+    }
+    entry.label = best;
+  }
+
+  return index;
+}
+
+export function getAllTags(): BlogTag[] {
+  return [...buildTagIndex().entries()]
+    .map(([slug, entry]) => ({ slug, label: entry.label, count: entry.posts.length }))
+    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+}
+
+/** Tags with enough posts to justify their own archive page. */
+export function getIndexableTags(): BlogTag[] {
+  return getAllTags().filter((t) => t.count >= TAG_PAGE_MIN_POSTS);
+}
+
+export function getTagBySlug(slug: string): BlogTag | undefined {
+  const entry = buildTagIndex().get(slug);
+  if (!entry || entry.posts.length < TAG_PAGE_MIN_POSTS) return undefined;
+  return { slug, label: entry.label, count: entry.posts.length };
+}
+
+/** Posts carrying a tag, newest first. Empty for tags with no archive page. */
+export function getPostsByTag(slug: string): BlogPost[] {
+  const entry = buildTagIndex().get(slug);
+  if (!entry || entry.posts.length < TAG_PAGE_MIN_POSTS) return [];
+  return [...entry.posts].sort((a, b) => (a.datePublished < b.datePublished ? 1 : -1));
+}
+
+/**
+ * Posts matching any of the given tag labels, most relevant first.
+ *
+ * Ranked by how many of the requested tags a post carries, then by date. The
+ * match count matters: a broad tag like "Operations" pulls in dozens of posts
+ * and would otherwise bury the one post that matches the narrow tag the caller
+ * actually cares about.
+ */
+export function getPostsByTags(tags: string[], limit?: number): BlogPost[] {
+  const wanted = new Set(tags.map(tagSlug));
+
+  const scored = BLOG_POSTS.map((post) => {
+    const hits = new Set(post.tags.map(tagSlug).filter((t) => wanted.has(t)));
+    return { post, score: hits.size };
+  }).filter((entry) => entry.score > 0);
+
+  scored.sort(
+    (a, b) =>
+      b.score - a.score ||
+      (a.post.datePublished < b.post.datePublished ? 1 : -1)
+  );
+
+  const matches = scored.map((entry) => entry.post);
+  return typeof limit === "number" ? matches.slice(0, limit) : matches;
+}

@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Automation", "Workflows", "texting CRM"]}
       eyebrow="Text2Sale vs GoHighLevel"
       title="Text2Sale vs GoHighLevel: focused texting CRM vs all-in-one marketing suite."
       description="GoHighLevel is a large all-in-one marketing platform. Text2Sale is focused on one thing: helping sales teams text leads, manage replies, use AI support, and book more conversations without unnecessary complexity."

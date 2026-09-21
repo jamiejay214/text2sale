@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Medicare", "AEP", "Insurance"]}
       eyebrow="Medicare Agent Texting CRM"
       title="Medicare agent texting CRM for appointment follow-up and lead conversations."
       description="Text2Sale helps Medicare agents and agencies manage SMS outreach, follow up with prospects, organize replies, and use AI-assisted texting to keep conversations moving toward appointments."

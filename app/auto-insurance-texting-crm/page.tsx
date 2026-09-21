@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Auto", "Insurance", "Retention"]}
       eyebrow="Auto Insurance Texting CRM"
       title="A texting CRM built for auto insurance agents who need fast lead follow-up."
       description="Auto insurance leads are competitive and time-sensitive. Text2Sale helps auto insurance agents send bulk SMS to their lead lists, manage quote conversations, use AI-assisted replies, and book more calls — all from one texting CRM built for speed."

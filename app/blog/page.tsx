@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import Script from "next/script";
-import { getAllPosts } from "@/lib/blog-posts";
+import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
 
 const SITE = "https://text2sale.com";
 
@@ -9,7 +9,10 @@ export const metadata: Metadata = {
   title: "Text2Sale Blog — Texting, Lead Follow-Up & Compliance for Agents",
   description:
     "Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, drip campaigns, and deliverability for insurance agents and sales teams.",
-  alternates: { canonical: "/blog" },
+  alternates: {
+    canonical: "/blog",
+    types: { "application/rss+xml": `${SITE}/blog/rss.xml` },
+  },
   openGraph: {
     title: "Text2Sale Blog",
     description:
@@ -31,6 +34,7 @@ function formatDate(iso: string): string {
 
 export default function BlogIndexPage() {
   const posts = getAllPosts();
+  const tags = getIndexableTags();
 
   const listSchema = {
     "@context": "https://schema.org",
@@ -60,6 +64,21 @@ export default function BlogIndexPage() {
         <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-300">
           Practical guides on texting leads faster, following up smarter, staying compliant, and getting your messages delivered at scale.
         </p>
+      </section>
+
+      <section className="mx-auto max-w-5xl px-6 pb-10">
+        <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-zinc-500">Browse by topic</h2>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {tags.map((tag) => (
+            <Link
+              key={tag.slug}
+              href={`/blog/tag/${tag.slug}`}
+              className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:border-emerald-300 hover:text-emerald-300"
+            >
+              {tag.label} <span className="text-zinc-500">{tag.count}</span>
+            </Link>
+          ))}
+        </div>
       </section>
 
       <section className="mx-auto max-w-5xl px-6 pb-24">

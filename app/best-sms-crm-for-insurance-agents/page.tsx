@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Insurance", "texting CRM"]}
       eyebrow="Best SMS CRM for Insurance Agents"
       title="The best SMS CRM for insurance agents who need to text more leads and close more policies."
       description="Insurance agents who text leads consistently outperform those who rely on email and cold calls. Text2Sale is the SMS CRM built for insurance — mass texting, AI-assisted replies, drip campaigns, and a team inbox designed around the way insurance agents actually sell."
