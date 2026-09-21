@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Deliverability", "10DLC", "Pricing"]}
       eyebrow="Twilio Alternative"
       title="The best Twilio alternative for sales teams that want SMS without writing code."
       description="Twilio is a developer API. Text2Sale is a ready-to-use alternative — a complete SMS CRM with mass texting, a built-in team inbox, AI-assisted replies, CSV lead uploads, and campaign tools your team can use on day one without any engineering work."

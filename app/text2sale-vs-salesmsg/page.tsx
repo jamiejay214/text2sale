@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Two-way texting", "Customer service", "texting CRM"]}
       eyebrow="Text2Sale vs Salesmsg"
       title="Text2Sale vs Salesmsg: business texting with AI-powered sales follow-up."
       description="Salesmsg is a business texting platform. Text2Sale is designed for sales teams that want mass texting, lead list uploads, AI-assisted replies, campaign workflows, and a CRM-style inbox built around closing more conversations."

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Script from "next/script";
 import type { BlogPost } from "@/lib/blog-posts";
-import { getPostBySlug } from "@/lib/blog-posts";
+import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
 
 const SITE = "https://text2sale.com";
 
@@ -81,11 +81,20 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
 
         <header className="mt-8">
           <div className="flex flex-wrap gap-2">
-            {post.tags.map((tag) => (
-              <span key={tag} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-                {tag}
-              </span>
-            ))}
+            {post.tags.map((tag) => {
+              const chip = "rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300";
+              // Only tags with their own archive page become links; the rest
+              // stay plain so we never link into a 404.
+              return getTagBySlug(tagSlug(tag)) ? (
+                <Link key={tag} href={`/blog/tag/${tagSlug(tag)}`} className={`${chip} transition hover:bg-emerald-400/20`}>
+                  {tag}
+                </Link>
+              ) : (
+                <span key={tag} className={chip}>
+                  {tag}
+                </span>
+              );
+            })}
           </div>
           <h1 className="mt-5 text-4xl font-black tracking-tight md:text-5xl">{post.title}</h1>
           <p className="mt-5 text-lg leading-8 text-zinc-300">{post.description}</p>

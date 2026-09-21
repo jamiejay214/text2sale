@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Final Expense", "Insurance"]}
       eyebrow="Final Expense Texting CRM"
       title="Final expense texting CRM for faster follow-up and more booked appointments."
       description="Text2Sale helps final expense agents text prospects, revive aged leads, manage replies, use AI-assisted follow-up, and move interested people toward a call or appointment."

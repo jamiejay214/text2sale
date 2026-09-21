@@ -1,11 +1,12 @@
 import type { MetadataRoute } from "next";
-import { getAllPosts } from "@/lib/blog-posts";
+import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://text2sale.com";
   const today = new Date();
 
   const blogPosts = getAllPosts();
+  const blogTags = getIndexableTags();
 
   const corePages = [
     { path: "", priority: 1.0 },
@@ -85,6 +86,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
       lastModified: new Date(post.dateModified),
       changeFrequency: "monthly" as const,
       priority: 0.7,
+    })),
+    ...blogTags.map((tag) => ({
+      url: `${baseUrl}/blog/tag/${tag.slug}`,
+      lastModified: today,
+      changeFrequency: "weekly" as const,
+      priority: 0.6,
     })),
     {
       url: `${baseUrl}/privacy-policy`,

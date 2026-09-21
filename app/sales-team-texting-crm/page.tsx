@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["SMS follow-up", "Scripts", "Speed to lead", "Segmentation"]}
       eyebrow="Sales Team Texting CRM"
       title="Sales team texting CRM built to turn replies into revenue."
       description="Text2Sale helps sales teams upload lead lists, send SMS campaigns, manage replies, use AI-assisted follow-up, and keep every conversation organized so reps can book more calls and close faster."

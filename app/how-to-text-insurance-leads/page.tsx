@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Insurance", "Speed to lead", "Lead generation"]}
       eyebrow="How to Text Insurance Leads"
       title="How to text insurance leads and turn more of them into booked calls."
       description="Texting is the highest-response follow-up channel for insurance leads — but it only works when you do it fast, consistently, and with the right message. Here is how insurance agents use Text2Sale to convert more leads into conversations."

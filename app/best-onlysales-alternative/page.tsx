@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["texting CRM", "Campaigns", "Strategy"]}
       eyebrow="OnlySales Alternative"
       title="The best OnlySales alternative for teams that want AI-powered texting."
       description="If you are looking for an OnlySales alternative, Text2Sale gives you mass texting, AI-assisted replies, lead list uploads, conversation management, and sales-focused workflows designed to help your team book more appointments."

@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Templates", "Automation", "texting CRM"]}
       eyebrow="Text2Sale vs Textdrip"
       title="Text2Sale vs Textdrip: built for sales teams that need more than drip texting."
       description="Textdrip is known for automated texting workflows. Text2Sale focuses on the full sales texting process: uploading leads, launching campaigns, managing replies, using AI to respond faster, and keeping conversations moving toward booked appointments."

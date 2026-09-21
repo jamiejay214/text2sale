@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Insurance", "Cross-sell", "Referrals"]}
       eyebrow="Life Insurance Texting CRM"
       title="Life insurance texting CRM for agents who need more conversations and booked calls."
       description="Text2Sale helps life insurance agents send SMS campaigns, manage replies, use AI-assisted follow-up, and turn lead lists into real conversations with prospects who are ready to talk."

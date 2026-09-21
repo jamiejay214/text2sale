@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Two-way texting", "Customer service", "texting CRM"]}
       eyebrow="Salesmsg Alternative"
       title="The best Salesmsg alternative for teams that need mass texting and AI sales follow-up."
       description="Text2Sale is a Salesmsg alternative built for sales teams that need more than one-on-one business texting. It combines bulk SMS campaigns, a 2-way team inbox, AI-assisted replies, CSV lead uploads, and sales-focused follow-up workflows."

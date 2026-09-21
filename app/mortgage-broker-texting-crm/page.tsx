@@ -10,6 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      blogTags={["Speed to lead", "SMS follow-up", "Scripts"]}
       eyebrow="Mortgage Broker Texting CRM"
       title="A texting CRM built for mortgage brokers who need to follow up faster on leads."
       description="Mortgage leads are expensive and competitive. Text2Sale helps mortgage brokers send bulk SMS to purchase and refinance leads, manage conversations from a team inbox, use AI replies to keep prospects engaged, and close more loans."
