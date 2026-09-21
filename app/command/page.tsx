@@ -8,7 +8,7 @@ import { motion } from "framer-motion";
 import {
   DollarSign, Users, Target, Zap, Activity, Radio, Globe, TrendingUp,
   Download, RefreshCw, MessageSquare, UserPlus, CreditCard,
-  ShoppingBag, FileText, Wifi, WifiOff, ChevronRight,
+  ShoppingBag, FileText, Wifi, WifiOff, ChevronRight, Bell, BellRing,
 } from "lucide-react";
 import { supabase } from "@/lib/supabase";
 import { loginUser } from "@/lib/auth";
@@ -109,6 +109,25 @@ function makeDemo(): Overview {
   };
 }
 
+// ── Web Push (iPhone home-screen notifications) ─────────────────────────────
+// Subscriptions live in the TrustedQuotes Supabase project, which is also where
+// the leads land — a DB trigger there pushes to this device on every new lead.
+const PUSH_SUBSCRIBE_URL =
+  "https://owdfzratwvneslwhiqvb.supabase.co/functions/v1/push-subscribe";
+const VAPID_PUBLIC_KEY =
+  "BNPHb51GmFlRsDNMRzzGGmrCO19PE6g5evqlVAcvPGiBiMUxjnrXiX5vebRLDHrrouGo6x06087jZeakN1sggFs";
+
+function vapidKeyToBytes(b64: string): ArrayBuffer {
+  const pad = "=".repeat((4 - (b64.length % 4)) % 4);
+  const raw = atob((b64 + pad).replace(/-/g, "+").replace(/_/g, "/"));
+  const buf = new ArrayBuffer(raw.length);
+  const view = new Uint8Array(buf);
+  for (let i = 0; i < raw.length; i++) view[i] = raw.charCodeAt(i);
+  return buf;
+}
+
+type PushState = "unknown" | "unsupported" | "off" | "working" | "on" | "denied" | "error";
+
 export default function CommandCenterPage() {
   const router = useRouter();
   const params = useSearchParams();
@@ -125,6 +144,7 @@ export default function CommandCenterPage() {
   const [clock, setClock] = useState(new Date());
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
   const [authState, setAuthState] = useState<"checking" | "needs-login" | "not-admin" | "ok">("checking");
+  const [pushState, setPushState] = useState<PushState>("unknown");
   const tokenRef = useRef<string | null>(null);
 
   // clock
@@ -145,6 +165,71 @@ export default function CommandCenterPage() {
     }
     return () => window.removeEventListener("beforeinstallprompt", onPrompt);
   }, []);
+
+  // Reflect the current push permission/subscription on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") { setPushState("denied"); return; }
+    navigator.serviceWorker.ready
+      .then((reg) => reg.pushManager.getSubscription())
+      .then((sub) => setPushState(sub ? "on" : "off"))
+      .catch(() => setPushState("off"));
+  }, []);
+
+  // Subscribe this device (the installed iPhone app) to lead push alerts.
+  const enablePush = async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      alert(
+        "Notifications aren't available here.\n\nOn iPhone you must open the Command Center from the app icon you added to your Home Screen — Safari tabs can't receive push notifications."
+      );
+      return;
+    }
+    setPushState("working");
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setPushState(perm === "denied" ? "denied" : "off");
+        if (perm === "denied") {
+          alert("Notifications are blocked. On iPhone: Settings → Notifications → Command Center → Allow Notifications.");
+        }
+        return;
+      }
+      const reg = await navigator.serviceWorker.register("/sw.js", { scope: "/command" });
+      await navigator.serviceWorker.ready;
+      let sub = await reg.pushManager.getSubscription();
+      if (!sub) {
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidKeyToBytes(VAPID_PUBLIC_KEY),
+        });
+      }
+      const res = await fetch(PUSH_SUBSCRIBE_URL, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${tokenRef.current ?? ""}`,
+        },
+        body: JSON.stringify({
+          subscription: sub.toJSON(),
+          label: /iPhone|iPad/i.test(navigator.userAgent) ? "iPhone" : "Device",
+        }),
+      });
+      if (!res.ok) {
+        const t = await res.text().catch(() => "");
+        setPushState("error");
+        alert("Couldn't turn on alerts: " + (t || res.status));
+        return;
+      }
+      setPushState("on");
+    } catch (e) {
+      setPushState("error");
+      alert("Couldn't turn on alerts: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
 
   const load = async (tok: string | null) => {
     if (demo) {
@@ -335,6 +420,26 @@ export default function CommandCenterPage() {
             </div>
             <button onClick={() => { setLoading(false); load(tokenRef.current); }} className="flex h-9 w-9 items-center justify-center rounded-lg border border-white/10 bg-white/5 text-white/60 transition hover:text-white" aria-label="Refresh">
               <RefreshCw className="h-4 w-4" />
+            </button>
+            <button
+              onClick={enablePush}
+              disabled={pushState === "working"}
+              title={pushState === "on" ? "Lead alerts are on — tap to re-send a test" : "Get a notification on your phone for every new lead"}
+              className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition disabled:opacity-60"
+              style={
+                pushState === "on"
+                  ? { borderColor: "rgba(52,211,153,0.45)", background: "rgba(52,211,153,0.12)", color: "#6ee7b7" }
+                  : { borderColor: "rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.8)" }
+              }
+            >
+              {pushState === "on" ? <BellRing className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+              {pushState === "working"
+                ? "Turning on\u2026"
+                : pushState === "on"
+                ? "Alerts on"
+                : pushState === "denied"
+                ? "Alerts blocked"
+                : "Enable alerts"}
             </button>
             <button onClick={install} className="flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 text-xs font-medium text-white/80 transition hover:bg-white/10">
               <Download className="h-4 w-4" /> Install app
