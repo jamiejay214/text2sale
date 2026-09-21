@@ -14,6 +14,7 @@ import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import WinCelebration from "@/components/WinCelebration";
+import ActivationStatus from "@/components/ActivationStatus";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -5763,62 +5764,18 @@ export default function DashboardPage() {
 
         {activeTab === "overview" && (
           <div className="space-y-8">
-            {/* ═══════════════ 10DLC REGISTRATION STATUS ═══════════════
-                Surfaces where the user's Telnyx 10DLC registration stands so
-                they don't have to dig into Settings. Hidden once approved. */}
-            {(() => {
-              const s = a2pStatus;
-              const approved = s === "completed" || s === "campaign_approved";
-              if (approved) return null;
-              const failed = s === "brand_failed" || s === "campaign_failed";
-              const pending = s === "brand_pending" || s === "campaign_pending";
-
-              if (failed) {
-                return (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-red-500/30 bg-red-500/10 px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-500/20 text-lg font-bold text-red-300">!</span>
-                      <div>
-                        <div className="text-sm font-semibold text-red-200">10DLC registration was rejected</div>
-                        <div className="text-xs text-red-300/80">Carriers couldn&apos;t verify your business. Fix the details (name, EIN, and address must match your IRS records) and resubmit.</div>
-                      </div>
-                    </div>
-                    <button onClick={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }} className="shrink-0 rounded-xl bg-red-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-400">Fix &amp; resubmit →</button>
-                  </div>
-                );
-              }
-
-              if (pending) {
-                return (
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4">
-                    <div className="flex items-center gap-3">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/20 text-amber-300">
-                        <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                      </span>
-                      <div>
-                        <div className="text-sm font-semibold text-amber-200">10DLC registration pending carrier approval</div>
-                        <div className="text-xs text-amber-300/80">{s === "brand_pending" ? "Your business brand is under review." : "Your campaign is under review."} This can take a few minutes to a few hours — you can&apos;t send until it&apos;s approved.</div>
-                      </div>
-                    </div>
-                    <button onClick={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }} className="shrink-0 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20">Check status →</button>
-                  </div>
-                );
-              }
-
-              // not registered / not started / null
-              return (
-                <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-500/30 bg-violet-500/10 px-5 py-4">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-violet-500/20 text-lg">📋</span>
-                    <div>
-                      <div className="text-sm font-semibold text-violet-100">Register your business to start texting</div>
-                      <div className="text-xs text-violet-200/80">Carriers require a 10DLC registration before your messages can send. It takes about 2 minutes and submits straight to Telnyx.</div>
-                    </div>
-                  </div>
-                  <button onClick={() => { setOnboardingStep(1); setShowOnboarding(true); }} className="shrink-0 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-violet-500">Register with Telnyx →</button>
-                </div>
-              );
-            })()}
+            {/* ═══════════════ TEXTING ACTIVATION ═══════════════
+                Live activation progress. This used to be a hand-rolled
+                banner reading a2p_registration.status, with the browser
+                driving registration through a polling loop — so progress
+                stalled whenever the tab closed. /api/messaging/advance now
+                owns the flow server-side and this only reports it. */}
+            <ActivationStatus
+              authFetch={authFetch}
+              onStart={() => { setOnboardingStep(1); setShowOnboarding(true); }}
+              onFixDetails={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }}
+              onAddFunds={() => { void handleAddFunds(20); }}
+            />
 
             {/* ═══════════════ HERO METRIC ROW ═══════════════
                 Four gradient stat cards with embedded sparklines. Each
