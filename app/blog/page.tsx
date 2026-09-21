@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Script from "next/script";
 import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
 
 const SITE = "https://text2sale.com";
@@ -53,7 +52,7 @@ export default function BlogIndexPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <Script id="blog-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
 
       <section className="mx-auto max-w-5xl px-6 py-20">
         <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">← Back to Text2Sale</Link>

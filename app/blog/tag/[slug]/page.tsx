@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import Script from "next/script";
 import { notFound } from "next/navigation";
 import { getIndexableTags, getPostsByTag, getTagBySlug } from "@/lib/blog-posts";
 
@@ -85,8 +84,8 @@ export default async function BlogTagPage({
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <Script id="tag-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
-      <Script id="tag-breadcrumb-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
 
       <section className="mx-auto max-w-5xl px-6 pt-16">
         <nav className="text-sm text-zinc-500">

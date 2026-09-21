@@ -1,5 +1,4 @@
 import Link from "next/link";
-import Script from "next/script";
 import type { BlogPost } from "@/lib/blog-posts";
 import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
 
@@ -66,11 +65,11 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <Script id="article-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
       {faqSchema && (
-        <Script id="faq-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
+        <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
       )}
-      <Script id="breadcrumb-schema" type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
 
       <article className="mx-auto max-w-3xl px-6 py-16">
         <nav className="text-sm text-zinc-500">
