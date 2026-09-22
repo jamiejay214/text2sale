@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { createCampaign } from "@/lib/telnyx-10dlc";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -192,6 +193,9 @@ export async function POST(req: NextRequest) {
         const errMsg = brandData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
         // Save failed state
         await supabase.from("profiles").update({
+          messaging_status: "REJECTED",
+          messaging_status_at: new Date().toISOString(),
+          messaging_error: errMsg,
           a2p_registration: {
             ...(profile.a2p_registration || {}),
             status: "brand_failed",
@@ -209,10 +213,21 @@ export async function POST(req: NextRequest) {
 
       const brandId = brandData.brandId;
 
-      // Save brand info to profile
+      // Save brand info to profile. Setting messaging_status here is the
+      // handoff: from this point /api/messaging/advance polls for approval,
+      // creates the campaign and provisions the number on its own, so the
+      // customer can close the tab.
       await supabase.from("profiles").update({
+        messaging_status: "BRAND_PENDING",
+        messaging_status_at: new Date().toISOString(),
+        messaging_error: null,
+        messaging_attempts: 0,
+        messaging_next_attempt_at: new Date().toISOString(),
         a2p_registration: {
           status: "brand_pending",
+          // Remembered so the driver can buy a number in the area code the
+          // customer picked during signup.
+          desiredAreaCode: typeof body.areaCode === "string" ? body.areaCode : null,
           brandRegistrationSid: brandId,
           brandStatus: brandData.status,
           customerProfileSid: null,
@@ -294,7 +309,6 @@ export async function POST(req: NextRequest) {
       }
 
       const usecase = "MIXED";
-      const subUsecases = ["MARKETING", "CUSTOMER_CARE"];
 
       const businessName = reg.businessName || "Text2Sale User";
       const contactEmail = reg.contactEmail || profile.email;
@@ -302,37 +316,20 @@ export async function POST(req: NextRequest) {
       const websiteUrl = reg.website || "https://text2sale.com";
 
       // Create campaign with full 10DLC compliance
-      const campaignData = await telnyxFetch("/v2/10dlc/campaignBuilder", {
-        method: "POST",
-        body: JSON.stringify({
-          brandId,
-          usecase,
-          subUsecases,
-          description: `${businessName} uses Text2Sale to send marketing promotions, appointment reminders, follow-up messages, and customer service notifications via SMS to customers and leads who have voluntarily opted in to receive text messages.`,
-          messageFlow: `Consumers opt in to receive SMS messages by voluntarily providing their phone number through the business website at ${websiteUrl} or through an in-person paper sign-up form. The opt-in form clearly discloses: (1) the types of messages they will receive, (2) that message frequency varies, (3) that message and data rates may apply, (4) instructions to reply STOP to opt out, (5) instructions to reply HELP for help, and (6) a link to the privacy policy at https://text2sale.com/privacy-policy. Consent to receive messages is not a condition of any purchase. Written consent with timestamp is recorded before any messages are sent.`,
-          helpMessage: `${businessName}: For help, contact us at ${contactEmail} or call ${contactPhone}. Msg frequency varies. Msg&data rates may apply. Reply STOP to opt out.`,
-          helpKeywords: "HELP,INFO",
-          optinMessage: `${businessName}: You are now subscribed to receive text messages. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: https://text2sale.com/privacy-policy`,
-          optinKeywords: "START,SUBSCRIBE,YES",
-          optoutMessage: `${businessName}: You have been unsubscribed and will no longer receive text messages. Reply START to re-subscribe. Contact ${contactEmail} for questions.`,
-          optoutKeywords: "STOP,UNSUBSCRIBE,CANCEL,END,QUIT",
-          sample1: `Hi Sarah, ${businessName} here! We have new health coverage options that could save you money this enrollment period. Reply for details or visit ${websiteUrl}. Reply STOP to unsubscribe. Msg&data rates may apply.`,
-          sample2: `Hi John, this is ${businessName}. Your account has been updated and your new policy documents are ready to view. If you have any questions, reply to this message or call us at ${contactPhone}. Reply STOP to opt out. Msg&data rates may apply.`,
-          embeddedLink: true,
-          embeddedPhone: false,
-          numberPool: false,
-          ageGated: false,
-          directLending: false,
-          subscriberOptin: true,
-          subscriberOptout: true,
-          subscriberHelp: true,
-          termsAndConditions: true,
-        }),
+      const campaignData = await createCampaign({
+        brandId,
+        businessName,
+        contactEmail,
+        contactPhone,
+        websiteUrl,
       });
 
       if (campaignData.errors) {
         const errMsg = campaignData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
         await supabase.from("profiles").update({
+          messaging_status: "REJECTED",
+          messaging_status_at: new Date().toISOString(),
+          messaging_error: errMsg,
           a2p_registration: { ...reg, status: "campaign_failed", campaignStatus: "FAILED", errors: [errMsg], updatedAt: new Date().toISOString() },
         }).eq("id", userId);
         return NextResponse.json({ success: false, error: errMsg }, { status: 400 });
@@ -341,6 +338,11 @@ export async function POST(req: NextRequest) {
       const campaignId = campaignData.campaignId;
 
       await supabase.from("profiles").update({
+        messaging_status: "CAMPAIGN_PENDING",
+        messaging_status_at: new Date().toISOString(),
+        messaging_error: null,
+        messaging_attempts: 0,
+        messaging_next_attempt_at: new Date().toISOString(),
         a2p_registration: {
           ...reg,
           status: "campaign_pending",
@@ -381,6 +383,9 @@ export async function POST(req: NextRequest) {
       if (status === "TCR_FAILED" || campaignCheck.submissionStatus === "FAILED") {
         const errMsg = failures?.map((f: { description: string }) => f.description).join(", ") || "Campaign registration failed";
         await supabase.from("profiles").update({
+          messaging_status: "REJECTED",
+          messaging_status_at: new Date().toISOString(),
+          messaging_error: errMsg,
           a2p_registration: { ...reg, status: "campaign_failed", campaignStatus: status, errors: [errMsg], updatedAt: new Date().toISOString() },
         }).eq("id", userId);
         return NextResponse.json({ success: false, error: errMsg, campaignStatus: status }, { status: 400 });
