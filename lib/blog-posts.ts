@@ -1425,8 +1425,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How small businesses start text message marketing the right way — getting consent, picking a number, writing the first campaign, and measuring what it actually earns.",
     excerpt:
       "Texting is the cheapest channel a small business has, and the easiest one to get wrong. Here is the whole setup, start to finish.",
-    datePublished: "2026-09-15",
-    dateModified: "2026-09-15",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["SMS marketing", "Small business", "Getting started"],
     intro: [
@@ -1500,8 +1500,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Real SMS marketing templates for promotions, reminders, re-engagement, reviews, and follow-up — with notes on why each one works and what to change for your business.",
     excerpt:
       "Copy-and-paste templates for the campaigns businesses send most, plus the reasoning behind why each one earns a reply.",
-    datePublished: "2026-09-08",
-    dateModified: "2026-09-08",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 8,
     tags: ["Templates", "SMS marketing", "Copywriting"],
     intro: [
@@ -1588,8 +1588,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Proven ways to grow a text marketing list — keywords, checkout capture, website forms, and in-store signage — plus exactly what your consent language needs to say.",
     excerpt:
       "Growing a text list is easy. Growing one that holds up if anyone ever asks for proof of consent is the part most businesses skip.",
-    datePublished: "2026-09-01",
-    dateModified: "2026-09-01",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Opt-in", "Compliance", "List growth"],
     intro: [
@@ -1664,8 +1664,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "A complete breakdown of text marketing costs — per-message rates, carrier fees, number rental, 10DLC registration, and platform pricing — with real campaign math.",
     excerpt:
       "Per-message rates are the smallest line item. Here is what text marketing really costs once carrier fees and registration are included.",
-    datePublished: "2026-08-25",
-    dateModified: "2026-08-25",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Pricing", "SMS marketing", "Budgeting"],
     intro: [
@@ -1740,8 +1740,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to measure text marketing performance — delivery rate, reply rate, conversion, opt-out rate, and revenue per message — and how to tell a good number from a vanity one.",
     excerpt:
       "Delivery rate tells you the plumbing works. These are the numbers that tell you the channel is earning its keep.",
-    datePublished: "2026-08-18",
-    dateModified: "2026-08-18",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Analytics", "ROI", "SMS marketing"],
     intro: [
@@ -1815,8 +1815,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "An honest comparison of text and email marketing — open rates, cost, message length, compliance burden, and the campaign types each channel handles best.",
     excerpt:
       "Email is cheaper per send. Texting is cheaper per result. The real answer is which message belongs in which channel.",
-    datePublished: "2026-08-11",
-    dateModified: "2026-08-11",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["SMS marketing", "Email", "Strategy"],
     intro: [
@@ -1890,8 +1890,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "A clear comparison of short codes, 10DLC long codes, and toll-free numbers for business texting — throughput, cost, approval time, and which fits your volume.",
     excerpt:
       "Three number types, three very different price tags and approval timelines. Here is how to pick without overbuying.",
-    datePublished: "2026-08-04",
-    dateModified: "2026-08-04",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["10DLC", "Deliverability", "Getting started"],
     intro: [
@@ -1965,8 +1965,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "What toll-free messaging verification is, what information carriers require, how long approval takes, and the common mistakes that get submissions rejected.",
     excerpt:
       "Unverified toll-free traffic gets blocked outright. Here is exactly what the verification form wants and how to pass it the first time.",
-    datePublished: "2026-07-28",
-    dateModified: "2026-07-28",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Compliance", "Deliverability", "Toll-free"],
     intro: [
@@ -2040,8 +2040,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "The nine most common reasons business text messages get filtered or fail — registration gaps, link shorteners, spam trigger words, volume spikes — and how to fix each one.",
     excerpt:
       "Messages that show as sent but never arrive are almost always carrier filtering. Here is how to diagnose which of the nine causes is yours.",
-    datePublished: "2026-07-21",
-    dateModified: "2026-07-21",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Deliverability", "Troubleshooting", "Compliance"],
     intro: [
@@ -2115,8 +2115,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Practical rules for writing marketing and sales text messages — length, structure, tone, calls to action, and the phrases that get messages ignored or filtered.",
     excerpt:
       "You get about seven words before someone decides whether to keep reading. Here is how to spend them.",
-    datePublished: "2026-07-14",
-    dateModified: "2026-07-14",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Copywriting", "SMS marketing", "Best practices"],
     intro: [
@@ -2190,8 +2190,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Ready-to-use appointment reminder text templates plus the timing, confirmation flow, and rescheduling language that reduce no-shows without annoying clients.",
     excerpt:
       "No-shows are lost revenue you already earned. A two-message reminder sequence recovers most of it.",
-    datePublished: "2026-07-07",
-    dateModified: "2026-07-07",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Templates", "Appointments", "Automation"],
     intro: [
@@ -2271,8 +2271,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "The practical differences between SMS and MMS for marketing — cost per message, character limits, file size rules, deliverability, and the campaigns where MMS pays off.",
     excerpt:
       "MMS costs several times more per send. Here are the few campaign types where the picture earns it back.",
-    datePublished: "2026-06-30",
-    dateModified: "2026-06-30",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["MMS", "SMS marketing", "Strategy"],
     intro: [
@@ -2346,8 +2346,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to build an abandoned cart SMS sequence — when to send, what to say, how many messages, and the consent rules that keep cart recovery texts compliant.",
     excerpt:
       "Cart recovery is the highest-converting text most stores send. Timing matters more than the discount.",
-    datePublished: "2026-06-23",
-    dateModified: "2026-06-23",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Ecommerce", "Automation", "SMS marketing"],
     intro: [
@@ -2421,8 +2421,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to segment a text marketing list by behavior, purchase history, location, and engagement — and why segmented sends cut opt-outs while raising conversion.",
     excerpt:
       "Blasting the whole list is what drives opt-outs. Segmentation is how you send fewer messages and earn more from them.",
-    datePublished: "2026-06-16",
-    dateModified: "2026-06-16",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Segmentation", "Strategy", "SMS marketing"],
     intro: [
@@ -2497,8 +2497,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to run customer support over SMS — shared inboxes, response time targets, routing, templates, and the handoffs that keep texting from becoming chaos.",
     excerpt:
       "Customers would rather text you than call. Here is how to handle that without messages disappearing into someone's personal phone.",
-    datePublished: "2026-06-09",
-    dateModified: "2026-06-09",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Customer service", "Two-way texting", "Operations"],
     intro: [
@@ -2572,8 +2572,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "The text automations with the best return — instant lead response, appointment reminders, review requests, win-backs, and post-purchase follow-up — and how to set each one up.",
     excerpt:
       "Automation is not about sending more texts. It is about the handful of messages that should never depend on someone remembering.",
-    datePublished: "2026-06-02",
-    dateModified: "2026-06-02",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Automation", "Workflows", "Operations"],
     intro: [
@@ -2651,8 +2651,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "What federal and state quiet-hour rules mean for business texting, how time zones complicate scheduling, and how to make sure no campaign fires at the wrong hour.",
     excerpt:
       "The federal window is 8am to 9pm in the recipient's time zone. Several states are stricter, and time zones are where businesses slip up.",
-    datePublished: "2026-05-26",
-    dateModified: "2026-05-26",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Compliance", "TCPA", "Best practices"],
     intro: [
@@ -2726,8 +2726,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How restaurants use SMS to fill empty tables — building a list from the dining room, same-day offers, reservation reminders, and the campaigns that actually drive covers.",
     excerpt:
       "A text sent at 3pm can fill a 6pm dining room. No other channel moves that fast.",
-    datePublished: "2026-05-19",
-    dateModified: "2026-05-19",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Restaurants", "SMS marketing", "Local business"],
     intro: [
@@ -2801,8 +2801,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How gyms and studios use texting to fill classes, recover lapsed members, convert trial leads, and cut cancellations — with templates for each stage of the member lifecycle.",
     excerpt:
       "Membership businesses live and die on retention. Texting is the cheapest retention tool you have.",
-    datePublished: "2026-05-12",
-    dateModified: "2026-05-12",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Fitness", "Retention", "SMS marketing"],
     intro: [
@@ -2875,8 +2875,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to plan holiday text campaigns — when to start, how often to send, managing carrier congestion and higher costs, and templates for the peak shopping days.",
     excerpt:
       "Everyone texts in Q4, which means carriers are congested, costs rise, and inboxes are loud. Planning is what separates the campaigns that land.",
-    datePublished: "2026-05-05",
-    dateModified: "2026-05-05",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Seasonal", "SMS marketing", "Planning"],
     intro: [
@@ -3031,8 +3031,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "A plain-English overview of texting patients under HIPAA — what counts as PHI, business associate agreements, patient consent, and how to word messages safely.",
     excerpt:
       "Texting patients is allowed. Texting them the wrong details, through the wrong vendor, is where practices get into trouble.",
-    datePublished: "2026-09-20",
-    dateModified: "2026-09-20",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Medical practice", "Compliance", "HIPAA"],
     intro: [
@@ -3106,8 +3106,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Why patients miss appointments and what actually fixes it — reminder cadence, easy rescheduling, waitlist backfill, and policies that work without punishing patients.",
     excerpt:
       "No-show rates are a systems problem, not a patient problem. Here is the fix, in order of impact.",
-    datePublished: "2026-09-19",
-    dateModified: "2026-09-19",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Medical practice", "Operations", "Appointments"],
     intro: [
@@ -3181,8 +3181,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How practices use recall texts to bring patients back for annual exams, follow-ups, screenings, and overdue care — cadence, wording, and how to work a stale patient list.",
     excerpt:
       "Most practices have hundreds of patients overdue for care sitting in the system. Recall texting is how you reach them.",
-    datePublished: "2026-09-18",
-    dateModified: "2026-09-18",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Medical practice", "Recall", "Automation"],
     intro: [
@@ -3256,8 +3256,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How practices and offices move routine questions out of the phone queue and into text — what to deflect, auto-replies that work, and staffing a shared inbox.",
     excerpt:
       "Most front desk calls are four questions asked over and over. Texting answers them without anyone picking up.",
-    datePublished: "2026-09-17",
-    dateModified: "2026-09-17",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Operations", "Two-way texting", "Medical practice"],
     intro: [
@@ -3331,8 +3331,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "A compliant, effective way for practices to request online reviews by text — when to ask, what to say, how many times to follow up, and what never to do.",
     excerpt:
       "Reviews are how new patients find you. Asking by text within a day of the visit is what actually gets them written.",
-    datePublished: "2026-09-16",
-    dateModified: "2026-09-16",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["Reviews", "Medical practice", "Local SEO"],
     intro: [
@@ -3406,8 +3406,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How dental offices use texting to fill hygiene schedules, reactivate overdue patients, cut no-shows, and present treatment plans that never got scheduled.",
     excerpt:
       "The hygiene schedule and the unscheduled treatment list are where a dental practice's easiest revenue hides.",
-    datePublished: "2026-09-15",
-    dateModified: "2026-09-15",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Dental", "Recall", "Automation"],
     intro: [
@@ -3480,8 +3480,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How dealerships use SMS across sales, BDC, and service — internet lead response, appointment setting, equity mining, service reminders, and compliant consent capture.",
     excerpt:
       "Internet leads go to four dealers at once. The one that texts back in two minutes sells the car.",
-    datePublished: "2026-09-14",
-    dateModified: "2026-09-14",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Automotive", "Dealership", "SMS marketing"],
     intro: [
@@ -3555,8 +3555,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Response timing, first-message scripts, follow-up cadence, and objection handling for texting automotive internet leads — plus what kills reply rates.",
     excerpt:
       "Four dealers got that lead. Here is the message sequence that makes yours the one they answer.",
-    datePublished: "2026-09-13",
-    dateModified: "2026-09-13",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Automotive", "Speed to lead", "Scripts"],
     intro: [
@@ -3629,8 +3629,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How dealership and independent service departments use texting for appointment reminders, status updates, additional-work approvals, and maintenance recall.",
     excerpt:
       "Customers do not want to call for a status update. Texting the update instead is the cheapest CSI improvement a service drive can make.",
-    datePublished: "2026-09-12",
-    dateModified: "2026-09-12",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Automotive", "Service", "Operations"],
     intro: [
@@ -3704,8 +3704,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How dealerships use texting to reach customers with positive equity, lease-end customers, and service drive traffic — including what to say and what to never promise.",
     excerpt:
       "Your best used inventory is already in your customers' driveways. Texting is how you ask for it.",
-    datePublished: "2026-09-11",
-    dateModified: "2026-09-11",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Automotive", "Dealership", "Retention"],
     intro: [
@@ -3779,8 +3779,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to structure a business development center around texting — ownership, response time standards, script libraries, shared inboxes, and the metrics that matter.",
     excerpt:
       "A BDC without a texting standard is just a phone room. Here is how the good ones are structured.",
-    datePublished: "2026-09-10",
-    dateModified: "2026-09-10",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 7,
     tags: ["Automotive", "BDC", "Operations"],
     intro: [
@@ -3854,8 +3854,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to plan an SMS campaign for a dealership sales event — list selection, message timing across the event window, staffing the replies, and measuring real attribution.",
     excerpt:
       "A sales event text goes to thousands of people at once. Everything about whether it works is decided before you press send.",
-    datePublished: "2026-09-09",
-    dateModified: "2026-09-09",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Automotive", "Campaigns", "Dealership"],
     intro: [
@@ -3929,8 +3929,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How chiropractic offices use texting to convert new patient inquiries, cut no-shows, support care plan adherence, and reactivate patients who dropped off.",
     excerpt:
       "Chiropractic revenue depends on patients finishing their care plan. Texting is what keeps them showing up.",
-    datePublished: "2026-09-08",
-    dateModified: "2026-09-08",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Chiropractic", "Retention", "SMS marketing"],
     intro: [
@@ -4003,8 +4003,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "A step-by-step reactivation campaign for chiropractic practices — how to segment the dormant list, what to send, how many messages, and how to handle the replies.",
     excerpt:
       "Your dormant patient list is the cheapest marketing asset you own, and almost nobody works it.",
-    datePublished: "2026-09-07",
-    dateModified: "2026-09-07",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Chiropractic", "Reactivation", "Campaigns"],
     intro: [
@@ -4078,8 +4078,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How practices use texting to move intake paperwork, insurance details, and first-visit instructions before the appointment — so the first visit starts on time.",
     excerpt:
       "Paperwork completed in the waiting room is the slowest possible way to start a relationship. Send it ahead by text instead.",
-    datePublished: "2026-09-06",
-    dateModified: "2026-09-06",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["Intake", "Operations", "Medical practice"],
     intro: [
@@ -4153,8 +4153,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How practices use check-in texts, missed-visit outreach, and progress prompts to keep patients following through on treatment plans they already committed to.",
     excerpt:
       "Patients do not quit care plans when they feel worse. They quit when they start feeling better.",
-    datePublished: "2026-09-05",
-    dateModified: "2026-09-05",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["Retention", "Medical practice", "Chiropractic"],
     intro: [
@@ -4228,8 +4228,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How insurance agents use texting to book annual policy reviews — the campaign that protects retention, uncovers cross-sells, and generates referrals at the same time.",
     excerpt:
       "The annual review is the highest-value conversation an agent has all year, and most clients never get invited to one.",
-    datePublished: "2026-09-04",
-    dateModified: "2026-09-04",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Insurance", "Retention", "Campaigns"],
     intro: [
@@ -4303,8 +4303,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How to use texting around auto policy renewals — timing, rate-increase conversations, shopping prevention, and win-back messages for clients who already left.",
     excerpt:
       "Clients shop when a renewal notice surprises them. Getting there first is the whole game.",
-    datePublished: "2026-09-03",
-    dateModified: "2026-09-03",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Insurance", "Auto", "Retention"],
     intro: [
@@ -4378,8 +4378,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "Aged leads cost a fraction of fresh ones and most agents waste them. Here is the texting approach that makes an aged list produce — segmentation, messaging, and volume math.",
     excerpt:
       "Aged leads are cheap because nobody works them properly. Texting is what makes the economics work.",
-    datePublished: "2026-09-02",
-    dateModified: "2026-09-02",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Insurance", "Lead generation", "SMS follow-up"],
     intro: [
@@ -4453,8 +4453,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "When to ask clients for referrals, exactly how to word the request by text, and how to build a repeatable referral habit into an agency's normal client contact.",
     excerpt:
       "Referrals close faster and stay longer than any lead you can buy. Most agents ask twice a year by accident.",
-    datePublished: "2026-09-01",
-    dateModified: "2026-09-01",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["Insurance", "Referrals", "Growth"],
     intro: [
@@ -4528,8 +4528,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How agents use texting to turn monoline clients into multi-policy households — which cross-sells to lead with, when to send, and the messages that get replies.",
     excerpt:
       "A second policy roughly doubles how long a client stays. Texting is the cheapest way to start that conversation.",
-    datePublished: "2026-08-31",
-    dateModified: "2026-08-31",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Insurance", "Cross-sell", "Retention"],
     intro: [
@@ -4603,8 +4603,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How commercial agents use texting to reach business owners — X-date tracking, decision-maker outreach, follow-up cadence, and the consent rules for B2B texting.",
     excerpt:
       "Business owners do not answer unknown calls either. They do read texts between meetings.",
-    datePublished: "2026-08-30",
-    dateModified: "2026-08-30",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Insurance", "Commercial", "Prospecting"],
     intro: [
@@ -4678,8 +4678,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How med spas use texting to book consultations, keep treatment series on schedule, fill last-minute openings, and bring back clients between treatment cycles.",
     excerpt:
       "Med spa revenue is a rebooking business. Texting is what keeps the treatment calendar full.",
-    datePublished: "2026-08-29",
-    dateModified: "2026-08-29",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Med spa", "Bookings", "SMS marketing"],
     intro: [
@@ -4752,8 +4752,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How home service businesses use texting for lead response, arrival windows, quote follow-up, seasonal maintenance, and review generation that drives local search.",
     excerpt:
       "Homeowners call three companies. The one that texts back with a real time window gets the job.",
-    datePublished: "2026-08-28",
-    dateModified: "2026-08-28",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Home services", "Trades", "SMS marketing"],
     intro: [
@@ -4827,8 +4827,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How salons, barbershops, and spas use texting to cut no-shows, fill last-minute openings, rebook clients on interval, and keep stylists' books full.",
     excerpt:
       "An empty chair at 2pm is gone forever. Texting is the only channel fast enough to fill it.",
-    datePublished: "2026-08-27",
-    dateModified: "2026-08-27",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 5,
     tags: ["Salon", "Appointments", "Local business"],
     intro: [
@@ -4902,8 +4902,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How firms use texting to respond to inquiries faster, move intake forward, keep clients informed, and stay inside advertising and confidentiality obligations.",
     excerpt:
       "Legal inquiries go to several firms at once. The first substantive response usually gets the consultation.",
-    datePublished: "2026-08-26",
-    dateModified: "2026-08-26",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Legal", "Intake", "Operations"],
     intro: [
@@ -4977,8 +4977,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How property managers use texting for rent reminders, maintenance coordination, showing scheduling, and lease renewals — with notes on fair housing and recordkeeping.",
     excerpt:
       "Rent reminders, maintenance windows, and renewals are three things tenants ignore by email and answer by text.",
-    datePublished: "2026-08-25",
-    dateModified: "2026-08-25",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Property management", "Operations", "Two-way texting"],
     intro: [
@@ -5052,8 +5052,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How staffing agencies and recruiters use texting to reach candidates, confirm shifts, fill open roles fast, and reduce interview and first-day no-shows.",
     excerpt:
       "Candidates do not answer unknown calls and do not check email. Every recruiter already knows this.",
-    datePublished: "2026-08-24",
-    dateModified: "2026-08-24",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Recruiting", "Staffing", "SMS follow-up"],
     intro: [
@@ -5127,8 +5127,8 @@ export const BLOG_POSTS: BlogPost[] = [
       "How veterinary clinics use texting for appointment reminders, vaccine and wellness recalls, prescription refills, surgery day updates, and post-visit follow-up.",
     excerpt:
       "Vaccine recalls, refill reminders, and surgery updates are three texts that pay for a clinic's entire messaging setup.",
-    datePublished: "2026-08-23",
-    dateModified: "2026-08-23",
+    datePublished: "2026-09-21",
+    dateModified: "2026-09-21",
     readMinutes: 6,
     tags: ["Veterinary", "Recall", "Operations"],
     intro: [
