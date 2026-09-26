@@ -327,13 +327,30 @@ export async function onTranscript(
  * (hang up, transfer), there is banked speech to answer, or we go quiet
  * and listen.
  */
-export async function onSpeakEnded(db: Db, ccid: string): Promise<void> {
+export async function onSpeakEnded(
+  db: Db,
+  ccid: string,
+  status?: string
+): Promise<void> {
   const { data: session } = await db
     .from("ai_call_sessions")
     .select("*")
     .eq("call_control_id", ccid)
     .maybeSingle();
   if (!session || session.state === "done") return;
+
+  // Telnyx reports why the speak ended: "completed", or "call_hangup" /
+  // "cancelled_amd" when the line went away underneath it. Anything but a
+  // clean finish means there is no one left to talk to — running a turn
+  // here would spend a model call and a wallet top-up answering a caller
+  // who has already gone.
+  if (status && status !== "completed") {
+    await db
+      .from("ai_call_sessions")
+      .update({ state: "done", next_action: null, turn_lock_at: null })
+      .eq("id", session.id);
+    return;
+  }
 
   if (session.next_action === "hangup") {
     await db

@@ -284,7 +284,9 @@ export async function POST(req: NextRequest) {
     // The assistant finished a sentence — hand the line back to the caller
     // (or carry out the hangup/transfer it queued).
     if (type === "call.speak.ended" && state?.aiSessionId && ccid) {
-      await onSpeakEnded(supabase, ccid);
+      // p.status is "completed", or "call_hangup" / "cancelled_amd" when
+      // the line dropped mid-sentence.
+      await onSpeakEnded(supabase, ccid, p.status as string | undefined);
       return NextResponse.json({ status: "ok" });
     }
 
