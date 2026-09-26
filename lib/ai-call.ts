@@ -59,10 +59,11 @@ export const MAX_TURNS = 40;
 
 export const DEFAULT_VOICE = "Telnyx.KokoroTTS.af";
 
-// Telnyx's transcription engine selector. "B" is Google, which handles
-// phone-quality audio better than the built-in engine. Override per
-// deployment if Telnyx changes the selector or a cheaper engine is enough.
-const TRANSCRIPTION_ENGINE = process.env.TELNYX_TRANSCRIPTION_ENGINE || "B";
+// Telnyx's transcription engine. Google handles phone-quality audio better
+// than the built-in engine, and its `phone_call` model is trained on
+// exactly this: 8kHz narrowband speech over a carrier. Override per
+// deployment to try a different engine.
+const TRANSCRIPTION_ENGINE = process.env.TELNYX_TRANSCRIPTION_ENGINE || "Google";
 
 export type AiCallSession = {
   id: string;
@@ -143,12 +144,29 @@ export async function speak(
 }
 
 export async function startTranscription(ccid: string, clientState: string) {
-  return callAction(ccid, "transcription_start", {
+  // `language` and `interim_results` are NOT top-level fields on this
+  // action — they live inside transcription_engine_config, and the shape of
+  // that object depends on which engine is selected. Passing them at the
+  // top level (as an earlier version of this did) silently drops them.
+  const engineConfig: Record<string, unknown> = {
     transcription_engine: TRANSCRIPTION_ENGINE,
     language: "en",
-    interim_results: false,
+  };
+  if (TRANSCRIPTION_ENGINE === "Google") {
+    engineConfig.interim_results = false;
+    // Trained on 8kHz narrowband carrier audio, which is exactly what a
+    // phone call is. Materially better than the default on this input.
+    engineConfig.model = "phone_call";
+    engineConfig.use_enhanced = true;
+  }
+
+  return callAction(ccid, "transcription_start", {
+    transcription_engine: TRANSCRIPTION_ENGINE,
+    transcription_engine_config: engineConfig,
     // Caller audio only. Transcribing our own track would feed the
-    // assistant's own words back to it as caller speech.
+    // assistant's own words back to it as caller speech. This is the
+    // documented default; set explicitly because the cost of being wrong
+    // is the assistant holding a conversation with itself.
     transcription_tracks: "inbound",
     client_state: clientState,
   });

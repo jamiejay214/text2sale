@@ -25,7 +25,7 @@ const PROFILE_COLUMNS =
 // invites people to pick something that reads numbers badly over a phone.
 export const VOICES = [
   { id: "Telnyx.KokoroTTS.af", label: "Ava — warm, neutral American" },
-  { id: "Telnyx.KokoroTTS.am", label: "Adam — calm, neutral American" },
+  { id: "Telnyx.KokoroTTS.af_heart", label: "Ava (warmer) — softer delivery" },
   { id: "AWS.Polly.Joanna-Neural", label: "Joanna — polished American" },
   { id: "AWS.Polly.Matthew-Neural", label: "Matthew — polished American" },
 ];

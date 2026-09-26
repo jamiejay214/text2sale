@@ -219,7 +219,31 @@ export async function openConversation(
   const ccid = session.call_control_id;
   const clientState = encodeState({ v: 1, aiSessionId: session.id, callRowId: session.call_id });
 
-  await startTranscription(ccid, clientState);
+  // If Telnyx won't start transcribing, the assistant is deaf: it would
+  // greet the caller and then sit in silence, because nothing would ever
+  // arrive to advance the turn loop. Say so honestly and take a message
+  // instead of burning the caller's time and the operator's wallet.
+  const listening = await startTranscription(ccid, clientState);
+  if (!listening) {
+    console.error(`[ai-call] transcription failed to start on ${ccid}`);
+    await db
+      .from("ai_call_sessions")
+      .update({
+        state: "speaking",
+        next_action: "hangup",
+        outcome: "message_taken",
+        summary: `Missed call from ${session.from_number || "unknown number"} — the assistant could not hear the caller. Call them back.`,
+      })
+      .eq("id", session.id);
+    const spoke = await speak(
+      ccid,
+      "Sorry, I'm having trouble hearing you. Someone will call you right back. Thanks for calling.",
+      settings.voice,
+      clientState
+    );
+    if (!spoke) await hangupCall(ccid);
+    return;
+  }
 
   const greeting =
     settings.greeting?.trim() || defaultGreeting(businessNameFor(profile));
