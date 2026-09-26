@@ -26,3 +26,25 @@ export function calcCallCharge(
       : CALL_RATE_INBOUND_PER_MIN;
   return +(minutesBilled(seconds) * rate).toFixed(4);
 }
+
+// ── AI voice assistant ───────────────────────────────────────────────────
+// An AI-answered call costs materially more to carry than a plain inbound
+// leg, because on top of the carrier minute we pay Telnyx for real-time
+// transcription and text-to-speech and Anthropic for each reasoning turn.
+// Rough per-minute floor at the time of writing: ~$0.005 carrier +
+// ~$0.05 transcription + ~$0.01 TTS + ~$0.005 LLM ≈ $0.07. The rate below
+// keeps a working margin on top of that. It supersedes (does not stack
+// with) CALL_RATE_INBOUND_PER_MIN for calls the assistant handles.
+export const AI_CALL_RATE_PER_MIN = 0.18;
+
+// Minutes of AI-call time debited from the wallet BEFORE the assistant is
+// allowed to answer. Nothing bills after the fact on this path: an empty
+// wallet must not be able to run up a transcription + TTS + LLM bill. Any
+// unused portion of the reserve is credited back at hangup.
+export const AI_CALL_RESERVE_MINUTES = 2;
+export const AI_CALL_MIN_RESERVE = +(AI_CALL_RATE_PER_MIN * AI_CALL_RESERVE_MINUTES).toFixed(4);
+
+/** Compute the charge for `seconds` of AI-handled call time. */
+export function calcAiCallCharge(seconds: number): number {
+  return +(minutesBilled(seconds) * AI_CALL_RATE_PER_MIN).toFixed(4);
+}

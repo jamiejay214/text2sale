@@ -5,6 +5,13 @@ import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calenda
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
 import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
+import {
+  type AvailableHours,
+  DEFAULT_AVAILABLE_HOURS,
+  getAvailableSlots,
+  formatTime12,
+  formatDateNice,
+} from "@/lib/availability";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -23,90 +30,6 @@ const AI_REPLY_DELAY_MS = 5_000; // 5s flat
 // Telnyx send comfortably.
 export const maxDuration = 60;
 
-type DaySlot = { enabled: boolean; start: string; end: string };
-type AvailableHours = {
-  enabled: boolean;
-  timezone: string;
-  slots: Record<string, DaySlot>;
-  slotDuration: number;
-  bufferMinutes: number;
-  maxDaysOut: number;
-};
-
-// Format time "14:00:00" -> "2:00 PM"
-function formatTime12(time: string): string {
-  const [h, m] = time.split(":").map(Number);
-  const ampm = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${String(m).padStart(2, "0")} ${ampm}`;
-}
-
-// Format date "2026-04-17" -> "Thursday, April 17"
-function formatDateNice(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00");
-  return d.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
-}
-
-// Get available slots for the next N days, excluding already-booked
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function getAvailableSlots(
-  supabase: any,
-  userId: string,
-  hours: AvailableHours,
-  limit = 6
-): Promise<{ date: string; time: string; display: string }[]> {
-  const today = new Date();
-  const maxDate = new Date(today);
-  maxDate.setDate(maxDate.getDate() + hours.maxDaysOut);
-
-  const { data: existing } = await supabase
-    .from("appointments")
-    .select("date, time")
-    .eq("user_id", userId)
-    .eq("status", "confirmed")
-    .gte("date", today.toISOString().split("T")[0])
-    .lte("date", maxDate.toISOString().split("T")[0]);
-
-  const bookedSet = new Set((existing || []).map((a: { date: string; time: string }) => `${a.date}_${a.time}`));
-  const dayNames = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
-  const slots: { date: string; time: string; display: string }[] = [];
-
-  for (let d = 0; d <= hours.maxDaysOut && slots.length < limit; d++) {
-    const date = new Date(today);
-    date.setDate(date.getDate() + d);
-    const dayName = dayNames[date.getDay()];
-    const dayConfig = hours.slots[dayName];
-    if (!dayConfig?.enabled) continue;
-
-    const [startH, startM] = dayConfig.start.split(":").map(Number);
-    const [endH, endM] = dayConfig.end.split(":").map(Number);
-    const startMin = startH * 60 + startM;
-    const endMin = endH * 60 + endM;
-    const step = hours.slotDuration + hours.bufferMinutes;
-    const dateStr = date.toISOString().split("T")[0];
-
-    const nowMinutes = today.getHours() * 60 + today.getMinutes();
-
-    for (let m = startMin; m + hours.slotDuration <= endMin && slots.length < limit; m += step) {
-      const h = Math.floor(m / 60);
-      const min = m % 60;
-      const timeStr = `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}:00`;
-
-      // For today, skip slots that have already passed (add 30-min buffer)
-      if (d === 0 && m < nowMinutes + 30) continue;
-
-      if (!bookedSet.has(`${dateStr}_${timeStr}`)) {
-        slots.push({
-          date: dateStr,
-          time: timeStr,
-          display: `${formatDateNice(dateStr)} at ${formatTime12(timeStr)}`,
-        });
-      }
-    }
-  }
-
-  return slots;
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -277,10 +200,7 @@ export async function POST(req: NextRequest) {
     const agentName = `${profile.first_name || ""} ${profile.last_name || ""}`.trim() || "Agent";
 
     // Get available slots for appointment context
-    const hours: AvailableHours = profile.available_hours || {
-      enabled: true, timezone: "America/New_York",
-      slots: {}, slotDuration: 30, bufferMinutes: 15, maxDaysOut: 14,
-    };
+    const hours: AvailableHours = profile.available_hours || DEFAULT_AVAILABLE_HOURS;
 
     let availabilityContext = "";
     let availableSlots: { date: string; time: string; display: string }[] = [];

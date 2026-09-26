@@ -14,6 +14,7 @@ import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import WinCelebration from "@/components/WinCelebration";
+import AiCallAssistant from "@/components/AiCallAssistant";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -12703,6 +12704,9 @@ export default function DashboardPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* AI Call Assistant — self-contained; see components/AiCallAssistant.tsx */}
+                <AiCallAssistant />
 
                 {/* AI Pricing Info */}
                 <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
