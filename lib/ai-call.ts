@@ -139,6 +139,12 @@ export async function speak(
     payload: sanitizeForSpeech(text),
     voice: voice || DEFAULT_VOICE,
     language: "en-US",
+    // Telnyx defaults this to "premium" anyway; set explicitly because it
+    // is the single biggest cost line on an AI call (TTS is billed per
+    // character, premium at 16x basic) and it should be a visible choice.
+    // Premium wins here: this is the first thing a customer's caller
+    // hears. See the cost build-up in lib/call-pricing.ts.
+    service_level: "premium",
     client_state: clientState,
   });
 }
