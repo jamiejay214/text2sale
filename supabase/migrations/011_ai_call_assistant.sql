@@ -68,8 +68,9 @@ create table if not exists public.ai_call_sessions (
 create index if not exists ai_call_sessions_user_idx
   on public.ai_call_sessions (user_id, started_at desc);
 
-create index if not exists ai_call_sessions_ccid_idx
-  on public.ai_call_sessions (call_control_id);
+-- No separate index on call_control_id: the UNIQUE constraint above already
+-- creates one, and every webhook lookup goes through it. A second identical
+-- btree would just be maintained on every insert for nothing.
 
 -- ─── RLS ────────────────────────────────────────────────────────────────
 -- Owners read their own sessions. All writes happen through the Telnyx
