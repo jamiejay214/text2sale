@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getIndexableTags, getPostsByTag, getTagBySlug } from "@/lib/blog-posts";
 import { TAG_INTROS } from "@/lib/blog-tag-intros";
+import MarketingFooter from "@/components/MarketingFooter";
 
 const SITE = "https://text2sale.com";
 
@@ -168,6 +169,7 @@ export default async function BlogTagPage({
           </Link>
         </div>
       </section>
+      <MarketingFooter />
     </main>
   );
 }
