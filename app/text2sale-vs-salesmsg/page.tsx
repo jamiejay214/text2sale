@@ -39,7 +39,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost compared to Salesmsg?",
-          answer: "Text2Sale starts at $39.99/month and includes mass texting, CSV imports, AI replies, 2-way conversations, and campaign tracking. You can start a free trial to test the platform before committing."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         },
         {
           question: "Can I switch from Salesmsg to Text2Sale?",

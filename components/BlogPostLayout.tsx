@@ -26,11 +26,21 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
     description: post.description,
     datePublished: post.datePublished,
     dateModified: post.dateModified,
-    author: { "@type": "Organization", name: "Text2Sale" },
+    // The per-post card from app/blog/[slug]/opengraph-image.tsx. Article
+    // rich results need an image, and 1200x630 clears Google's minimum.
+    image: {
+      "@type": "ImageObject",
+      url: `${url}/opengraph-image`,
+      width: 1200,
+      height: 630,
+    },
+    author: { "@type": "Organization", name: "Text2Sale", url: SITE },
     publisher: {
       "@type": "Organization",
       name: "Text2Sale",
-      logo: { "@type": "ImageObject", url: `${SITE}/icon.png` },
+      url: SITE,
+      // /icon.png never existed, so every post pointed at a 404 logo.
+      logo: { "@type": "ImageObject", url: `${SITE}/logo.png`, width: 944, height: 462 },
     },
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     keywords: post.tags.join(", "),

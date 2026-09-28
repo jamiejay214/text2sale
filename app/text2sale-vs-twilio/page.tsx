@@ -39,7 +39,7 @@ export default function Page() {
         },
         {
           question: "Is Text2Sale more affordable than building on Twilio?",
-          answer: "For most sales teams, yes. Building on Twilio requires developer time plus per-message API costs. Text2Sale starts at $39.99/month and includes all the tools a sales team needs to run campaigns, manage replies, and use AI — with no build cost."
+          answer: "For most sales teams, yes. Building on Twilio requires developer time plus per-message API costs. Text2Sale's Standard plan is $39.99/month plus $0.012 per text and covers campaigns and reply management with no build cost; AI replies are on the $59.99/month Text2Sale + AI plan."
         },
         {
           question: "Does Text2Sale handle 10DLC compliance like Twilio?",

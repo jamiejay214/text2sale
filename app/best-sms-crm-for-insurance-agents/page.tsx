@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "Best SMS CRM for Insurance Agents in 2025 | Text2Sale",
+  title: "Best SMS CRM for Insurance Agents (2026) | Text2Sale",
   description: "The best SMS CRM for insurance agents. Text2Sale combines mass texting, AI-assisted replies, drip campaigns, CSV lead uploads, and a team inbox built around closing more policies.",
   alternates: { canonical: "/best-sms-crm-for-insurance-agents" },
 };
@@ -45,7 +45,7 @@ export default function Page() {
         },
         {
           question: "How much does the best SMS CRM for insurance agents cost?",
-          answer: "Text2Sale starts at $39.99/month with a free trial available. It includes mass texting, AI replies, 2-way inbox, CSV imports, drip campaigns, and 10DLC compliance tools."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking, along with STOP handling and 10DLC registration tools. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         }
       ]}
       relatedPages={[
