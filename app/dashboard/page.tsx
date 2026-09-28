@@ -14,6 +14,7 @@ import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "
 import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/components/PowerDialer";
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import WinCelebration from "@/components/WinCelebration";
+import AiCallAssistant from "@/components/AiCallAssistant";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
 import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentiment";
@@ -181,7 +182,7 @@ function latestMessageIsInbound(c: ConversationRecord): boolean {
   return newest.direction === "inbound";
 }
 
-type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
+type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "aicalls" | "campaigns" | "contacts" | "appointments" | "upload" | "templates" | "settings" | "learn";
 
 // ─── FEATURE FLAG ────────────────────────────────────────────────────────
 // Calling is temporarily disabled while the Telnyx routing issue is open
@@ -1181,7 +1182,7 @@ export default function DashboardPage() {
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
-      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","campaigns","contacts","appointments","upload","templates","settings","learn"];
+      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","aicalls","campaigns","contacts","appointments","upload","templates","settings","learn"];
       const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai","integrations"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
@@ -5518,6 +5519,7 @@ export default function DashboardPage() {
     { id: "nav-campaigns",     section: "Go to",    label: "Campaigns",       hint: "Launch or review campaigns",     onRun: () => setActiveTab("campaigns"),     icon: <span className="text-base">🚀</span> },
     { id: "nav-contacts",      section: "Go to",    label: "Contacts",        hint: "Browse and tag your list",       onRun: () => setActiveTab("contacts"),      icon: <span className="text-base">👥</span> },
     { id: "nav-appointments",  section: "Go to",    label: "Appointments",    hint: "Calendar & bookings",            onRun: () => setActiveTab("appointments"),  icon: <span className="text-base">📅</span> },
+    { id: "nav-aicalls",       section: "Go to",    label: "AI Receptionist", hint: "Answer calls & book appointments", onRun: () => setActiveTab("aicalls"),     icon: <span className="text-base">🤖</span> },
     { id: "nav-upload",        section: "Go to",    label: "Upload CSV",      hint: "Import leads in bulk",           onRun: () => setActiveTab("upload"),        icon: <span className="text-base">📤</span> },
     { id: "nav-templates",     section: "Go to",    label: "Templates",       hint: "Quick replies & canned messages", onRun: () => setActiveTab("templates"),    icon: <span className="text-base">📝</span> },
     { id: "nav-settings",      section: "Go to",    label: "Settings",        hint: "Billing, numbers, AI, team",     onRun: () => setActiveTab("settings"),      icon: <span className="text-base">⚙️</span> },
@@ -5736,6 +5738,7 @@ export default function DashboardPage() {
               { id: "campaigns", label: "Campaigns" },
               { id: "contacts", label: "Contacts" },
               { id: "appointments", label: "Appointments" },
+              { id: "aicalls", label: "🤖 AI Receptionist" },
               { id: "upload", label: "Upload CSV" },
               { id: "templates", label: "Templates" },
               { id: "settings", label: "Settings" },
@@ -10422,6 +10425,20 @@ export default function DashboardPage() {
                 </div>
               );
             })()}
+          </div>
+        )}
+
+        {/* ═══════════════ AI RECEPTIONIST ═══════════════ */}
+        {activeTab === "aicalls" && (
+          <div className="space-y-6">
+            <div>
+              <h2 className="text-2xl font-bold">AI Receptionist</h2>
+              <p className="mt-1 text-sm text-zinc-400">
+                Answers your number, finds out what the caller needs, and books them straight
+                into your calendar — using the same open times your texting assistant uses.
+              </p>
+            </div>
+            <AiCallAssistant />
           </div>
         )}
 
