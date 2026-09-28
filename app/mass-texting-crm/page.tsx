@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
   title: "Mass Texting CRM for Sales Teams | Text2Sale",
@@ -8,84 +8,113 @@ export const metadata: Metadata = {
   alternates: { canonical: "/mass-texting-crm" },
 };
 
-const faqs = [
-  {
-    q: "What is a mass texting CRM?",
-    a: "A mass texting CRM combines bulk SMS sending, contact management, campaign tracking, replies, opt-outs, and lead follow-up in one dashboard instead of using separate texting and CRM tools.",
-  },
-  {
-    q: "Who is Text2Sale built for?",
-    a: "Text2Sale is built for insurance agents, sales teams, recruiters, appointment setters, and small businesses that need to reach leads fast and manage every reply in one place.",
-  },
-  {
-    q: "Can I upload a CSV lead list?",
-    a: "Yes. Text2Sale lets you upload contacts by CSV, map common fields, clean phone formatting, and send campaigns to the list from the same workflow.",
-  },
-];
-
 export default function MassTextingCrmPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">← Back to Text2Sale</Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Mass Texting CRM</p>
-        <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">
-          Mass texting CRM built to turn lead lists into conversations.
-        </h1>
-        <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">
-          Text2Sale helps sales teams upload contacts, send bulk SMS campaigns, manage 2-way replies, automate follow-up, and track results from one clean dashboard. It is made for teams that need more appointments, faster speed-to-lead, and better control over every conversation.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/#auth-form" className="rounded-2xl bg-emerald-500 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-400">Start free trial</Link>
-          <Link href="/ai-texting-crm" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-400">See AI texting CRM</Link>
-        </div>
-      </section>
-
-      <section className="border-y border-zinc-800 bg-zinc-900/40">
-        <div className="mx-auto grid max-w-5xl gap-6 px-6 py-14 md:grid-cols-3">
-          {[
-            ["CSV lead upload", "Import contacts, map fields, remove messy formatting, and prepare campaigns without fighting spreadsheets."],
-            ["2-way inbox", "Keep every reply organized so hot leads, objections, follow-ups, and booked appointments do not get lost."],
-            ["Campaign tracking", "See texts sent, replies, delivery performance, and campaign activity so you know what is actually working."],
-          ].map(([title, body]) => (
-            <div key={title} className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6">
-              <h2 className="text-xl font-bold">{title}</h2>
-              <p className="mt-3 text-sm leading-6 text-zinc-400">{body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <h2 className="text-3xl font-black">Why sales teams use a texting CRM instead of regular SMS tools</h2>
-        <p className="mt-4 text-zinc-300 leading-7">
-          Basic bulk SMS tools can send messages, but they usually fall short once replies start coming in. A real texting CRM keeps contacts, campaigns, conversations, opt-outs, and performance data connected. That matters when your team is trying to reach thousands of leads without losing the people who actually respond.
-        </p>
-        <div className="mt-8 grid gap-4 md:grid-cols-2">
-          {[
-            "Send campaigns to segmented lead lists",
-            "Use templates and drip sequences for consistent follow-up",
-            "Handle STOP opt-outs and compliance workflows",
-            "Give teams one place to manage all conversations",
-            "Use AI replies and smart suggestions to book more appointments",
-            "Track wallet usage, credits, and messaging costs",
-          ].map((item) => (
-            <div key={item} className="rounded-2xl border border-zinc-800 p-4 text-zinc-200">✓ {item}</div>
-          ))}
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-5xl px-6 pb-20">
-        <h2 className="text-3xl font-black">Mass texting CRM FAQs</h2>
-        <div className="mt-6 space-y-4">
-          {faqs.map((faq) => (
-            <div key={faq.q} className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
-              <h3 className="font-bold text-white">{faq.q}</h3>
-              <p className="mt-2 text-zinc-400">{faq.a}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-    </main>
+    <SeoLandingPage
+      blogTags={["texting CRM", "Campaigns", "SMS marketing", "Automation"]}
+      eyebrow="Mass Texting CRM"
+      title="Mass texting CRM built to turn lead lists into conversations."
+      description="Text2Sale helps sales teams upload contacts, send bulk SMS campaigns, manage 2-way replies, automate follow-up, and track results from one clean dashboard. It is made for teams that need more appointments, faster speed-to-lead, and better control over their texting."
+      secondaryCta="See AI texting CRM"
+      secondaryHref="/ai-texting-crm"
+      canonicalPath="/mass-texting-crm"
+      sections={[
+        {
+          title: "CSV lead upload",
+          body: "Import contacts, map fields, remove messy formatting, and prepare campaigns without fighting spreadsheets.",
+        },
+        {
+          title: "2-way inbox",
+          body: "Keep every reply organized so hot leads, objections, follow-ups, and booked appointments do not get lost.",
+        },
+        {
+          title: "Campaign tracking",
+          body: "See texts sent, replies, delivery performance, and campaign activity so you know what is actually working.",
+        },
+        {
+          title: "Drip sequences",
+          body: "Schedule follow-up that stops automatically when a contact replies or opts out.",
+        },
+      ]}
+      bullets={[
+        "Send campaigns to segmented lead lists",
+        "Use templates and drip sequences for consistent follow-up",
+        "Handle STOP opt-outs and compliance workflows",
+        "Give managers visibility into every rep's conversations",
+        "Use AI replies and smart suggestions to book more appointments",
+        "Track wallet usage, credits, and messaging costs",
+      ]}
+      guideTitle="Why sales teams use a texting CRM instead of regular SMS tools"
+      guide={[
+        {
+          heading: "Sending is the easy part",
+          paragraphs: [
+            "Basic bulk SMS tools can send messages, but they usually fall short once replies start coming in. A real texting CRM keeps contacts, campaigns, conversations, opt-outs, and performance data connected. That matters when your team is trying to reach thousands of leads and still give each reply a fast, personal answer.",
+            "In Text2Sale the workflow runs in one place: upload a list, send a campaign, let drip sequences follow up with people who have not answered, and work every reply from the two-way inbox. On the AI plan, AI can answer replies the moment they arrive and book appointments.",
+          ],
+        },
+        {
+          heading: "A typical campaign, start to finish",
+          paragraphs: [
+            "Most teams settle into the same rhythm. Each step is simple on its own; the value is that nothing falls between them.",
+          ],
+          bullets: [
+            "Upload a CSV of contacts who opted in, and map names and phone numbers",
+            "Choose a template or write a short message with the contact's first name and one question",
+            "Send the campaign during daytime hours in your contacts' time zones",
+            "Work replies from the inbox, or let AI handle them on the AI plan",
+            "Let a drip sequence follow up with people who did not answer, stopping when they reply",
+            "Review reply and opt-out rates to see which messages and lists performed",
+          ],
+        },
+        {
+          heading: "Built for compliance and deliverability",
+          paragraphs: [
+            "Mass texting only works if your messages get delivered. Text2Sale walks you through 10DLC registration, records STOP replies automatically, excludes opted-out contacts from every future campaign, and applies quiet-hours sending windows.",
+            "Pricing is straightforward: the Standard plan is $39.99 per month and the Text2Sale + AI plan is $59.99 per month, with texts at $0.012 per segment and 10% off when you add $500 or more to your wallet.",
+          ],
+        },
+      ]}
+      faq={[
+        {
+          question: "What is a mass texting CRM?",
+          answer: "A mass texting CRM combines bulk SMS sending, contact management, campaign tracking, replies, opt-outs, and lead follow-up in one dashboard instead of using separate texting and CRM tools.",
+        },
+        {
+          question: "Who is Text2Sale built for?",
+          answer: "Text2Sale is built for insurance agents, sales teams, recruiters, appointment setters, and small businesses that need to reach leads fast and manage every reply in one place.",
+        },
+        {
+          question: "Can I upload a CSV lead list?",
+          answer: "Yes. Text2Sale lets you upload contacts by CSV, map common fields, clean phone formatting, and send campaigns to the list from the same workflow.",
+        },
+        {
+          question: "Do drip sequences stop when someone replies?",
+          answer: "Yes. Drip follow-ups are cancelled for a contact as soon as they reply or opt out, so nobody who is already talking to you keeps getting automated messages.",
+        },
+        {
+          question: "How much does Text2Sale cost?",
+          answer: "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $59.99 per month. Texts cost $0.012 each and AI replies cost $0.025 each. There is no long-term contract.",
+        },
+      ]}
+      relatedPages={[
+        {
+          href: "/bulk-sms-software",
+          label: "Bulk SMS software",
+        },
+        {
+          href: "/ai-texting-crm",
+          label: "AI texting CRM",
+        },
+        {
+          href: "/10dlc-compliant-texting",
+          label: "10DLC compliant texting",
+        },
+        {
+          href: "/sales-team-texting-crm",
+          label: "Sales team texting CRM",
+        },
+      ]}
+    />
   );
 }

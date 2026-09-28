@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
   title: "SMS CRM for Insurance Agents | Text2Sale",
@@ -10,52 +10,102 @@ export const metadata: Metadata = {
 
 export default function SmsCrmForInsuranceAgentsPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-amber-300 hover:text-amber-200">← Back to Text2Sale</Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-amber-300">Insurance Agent SMS CRM</p>
-        <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">
-          SMS CRM for insurance agents who live off speed, follow-up, and booked calls.
-        </h1>
-        <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">
-          Text2Sale helps health, life, final expense, Medicare, and agency sales teams text leads faster, manage replies in one inbox, automate follow-up, and use AI to push interested prospects toward a quote call.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/#auth-form" className="rounded-2xl bg-amber-400 px-6 py-3 font-bold text-zinc-950 hover:bg-amber-300">Start free trial</Link>
-          <Link href="/ai-texting-crm" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-amber-300">See AI texting</Link>
-        </div>
-      </section>
-
-      <section className="border-y border-zinc-800 bg-zinc-900/40">
-        <div className="mx-auto max-w-5xl px-6 py-16">
-          <h2 className="text-3xl font-black">Built for insurance lead follow-up</h2>
-          <div className="mt-8 grid gap-5 md:grid-cols-2">
-            {[
-              ["Work internet leads faster", "Upload lead lists and start conversations before the prospect forgets they requested information."],
-              ["Handle inbound replies", "Keep every reply, question, objection, and call request organized in a single team inbox."],
-              ["Use scripts and templates", "Give agents approved message templates for quote follow-up, appointment reminders, and missed-call recovery."],
-              ["Let AI help qualify", "AI can ask basic qualifying questions and move interested prospects toward a phone call."],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6">
-                <h3 className="text-xl font-bold">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-400">{body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <h2 className="text-3xl font-black">Why insurance agents need texting built into the CRM</h2>
-        <p className="mt-4 text-zinc-300 leading-7">
-          Insurance sales is a follow-up game. Calls matter, but many prospects answer texts faster than phone calls. Text2Sale helps agents turn aged leads, new inquiries, referral lists, and reactivation campaigns into live conversations without bouncing between spreadsheets, phones, and disconnected texting apps.
-        </p>
-        <div className="mt-8 grid gap-4 md:grid-cols-3">
-          {["Health insurance", "Life insurance", "Final expense", "Medicare", "Recruiting", "Agency sales teams"].map((item) => (
-            <div key={item} className="rounded-2xl border border-zinc-800 p-4 text-zinc-200">{item}</div>
-          ))}
-        </div>
-      </section>
-    </main>
+    <SeoLandingPage
+      blogTags={["Insurance", "Speed to lead", "Scripts", "Compliance"]}
+      eyebrow="Insurance Agent SMS CRM"
+      title="SMS CRM for insurance agents who live off speed, follow-up, and booked calls."
+      description="Text2Sale helps health, life, final expense, Medicare, and agency sales teams text leads faster, manage replies in one inbox, automate follow-up, and use AI to push interested prospects toward a quote call."
+      secondaryCta="See AI texting"
+      secondaryHref="/ai-texting-crm"
+      canonicalPath="/sms-crm-for-insurance-agents"
+      sections={[
+        {
+          title: "Work internet leads faster",
+          body: "Upload lead lists and start conversations before the prospect forgets they requested information.",
+        },
+        {
+          title: "Handle inbound replies",
+          body: "Keep every reply, question, objection, and call request organized in a single inbox.",
+        },
+        {
+          title: "Use scripts and templates",
+          body: "Give agents approved message templates for quote follow-up, appointment reminders, and missed-call recovery.",
+        },
+        {
+          title: "Let AI help qualify",
+          body: "AI can ask basic qualifying questions and move interested prospects toward a phone call.",
+        },
+      ]}
+      guideTitle="Why insurance agents need texting built into the CRM"
+      guide={[
+        {
+          heading: "Insurance sales is a follow-up game",
+          paragraphs: [
+            "Calls matter, but many prospects answer texts faster than phone calls. Internet leads often hear from several agents within an hour of requesting a quote, and the agent who responds first with something useful usually gets the conversation. Text2Sale helps agents turn aged leads, new inquiries, referral lists, and reactivation campaigns into live conversations without bouncing between a dialer, a spreadsheet, and a personal phone.",
+            "The platform brings the pieces together: CSV lead uploads, bulk campaigns, drip sequences that stop when someone replies, a two-way inbox, AI replies on the AI plan, and appointment booking that syncs to Google Calendar.",
+          ],
+        },
+        {
+          heading: "One workflow across every line of business",
+          paragraphs: [
+            "Each line has its own rhythm, and your texting should follow it. The workflow stays the same: a fast first touch, consistent follow-up, and reminders that get people to the call.",
+          ],
+          bullets: [
+            "Health: answer quote requests fast and plan campaigns around Open Enrollment and special enrollment events",
+            "Life: keep applicants informed through exams and underwriting so approved policies get placed",
+            "Final expense: follow up patiently with a calm, reassuring tone and daytime sending",
+            "Medicare: text only beneficiaries who asked to hear from you, and use texts for scheduling",
+            "Recruiting: reply to agent candidates the same day and keep them engaged through licensing",
+          ],
+        },
+        {
+          heading: "Compliance that protects your book",
+          paragraphs: [
+            "Insurance marketing draws more consent-related lawsuits than almost any other industry, so compliance has to be built into the workflow rather than remembered. Text only people whose consent covers texts from you, identify your agency in the first message, and honor opt-outs immediately.",
+            "Text2Sale records STOP replies automatically, blocks opted-out numbers across every campaign, applies quiet-hours sending windows, and walks you through 10DLC registration. Those tools support good practice; how you collect consent is still up to you.",
+          ],
+        },
+      ]}
+      faq={[
+        {
+          question: "What is an SMS CRM for insurance agents?",
+          answer: "It is a CRM built around texting: it stores your leads, sends campaigns and drip sequences, keeps every reply in one inbox, and tracks opt-outs so agents can follow up quickly and compliantly.",
+        },
+        {
+          question: "Can I text leads I bought from a lead vendor?",
+          answer: "Only if the lead's consent covers texts from you. Many vendor leads name specific companies. Check the consent language and keep a record before texting.",
+        },
+        {
+          question: "Does Text2Sale work for health, life, final expense, and Medicare agents?",
+          answer: "Yes. Agents in each of those lines use the same core workflow: fast first-touch texts, drip follow-up, appointment reminders, and opt-out handling.",
+        },
+        {
+          question: "What does Text2Sale cost for an insurance agent?",
+          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $59.99 per month plus $0.025 per AI reply, and adds AI replies and appointment booking.",
+        },
+      ]}
+      relatedPages={[
+        {
+          href: "/best-sms-crm-for-insurance-agents",
+          label: "Best SMS CRM for insurance agents",
+        },
+        {
+          href: "/health-insurance-texting-crm",
+          label: "Health insurance texting CRM",
+        },
+        {
+          href: "/life-insurance-texting-crm",
+          label: "Life insurance texting CRM",
+        },
+        {
+          href: "/final-expense-texting-crm",
+          label: "Final expense texting CRM",
+        },
+        {
+          href: "/medicare-agent-texting-crm",
+          label: "Medicare agent texting CRM",
+        },
+      ]}
+    />
   );
 }

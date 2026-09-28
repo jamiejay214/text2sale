@@ -1,9 +1,11 @@
 import React from "react";
+import type { Metadata } from "next";
 import { LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE, LEGAL_COMPANY, LEGAL_WEBSITE } from "@/lib/legal-text";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Privacy Policy — Text2Sale",
   description: "How Text2Sale collects, uses, shares, and protects information.",
+  alternates: { canonical: "/privacy-policy" },
 };
 
 export default function PrivacyPolicyPage() {

@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { getPostsByTags } from "@/lib/blog-posts";
+import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
   title: "AI Texting CRM That Replies and Books Appointments | Text2Sale",
@@ -11,77 +10,100 @@ export const metadata: Metadata = {
 
 export default function AiTextingCrmPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-cyan-300 hover:text-cyan-200">← Back to Text2Sale</Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-cyan-300">AI Texting CRM</p>
-        <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">
-          AI texting CRM that replies fast, qualifies leads, and books appointments.
-        </h1>
-        <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">
-          Text2Sale gives your team an AI-powered texting assistant that can respond to inbound messages, ask qualifying questions, handle common objections, and push interested prospects toward a call or appointment. Your team stays in control while AI helps keep every conversation moving.
-        </p>
-        <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/#auth-form" className="rounded-2xl bg-cyan-400 px-6 py-3 font-bold text-zinc-950 hover:bg-cyan-300">Start free trial</Link>
-          <Link href="/mass-texting-crm" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-cyan-300">Mass texting CRM</Link>
-        </div>
-      </section>
-
-      <section className="border-y border-zinc-800 bg-zinc-900/40">
-        <div className="mx-auto max-w-5xl px-6 py-16">
-          <h2 className="text-3xl font-black">What the AI can help with</h2>
-          <div className="mt-8 grid gap-5 md:grid-cols-2">
-            {[
-              ["Instant replies", "Respond to new inbound texts in seconds so leads do not go cold while your team is busy."],
-              ["Lead qualification", "Ask the right questions, gather key details, and identify who is worth calling first."],
-              ["Appointment setting", "Move interested leads toward a scheduled call instead of leaving conversations open-ended."],
-              ["Objection handling", "Answer common concerns with consistent messaging based on your sales process."],
-            ].map(([title, body]) => (
-              <div key={title} className="rounded-3xl border border-zinc-800 bg-zinc-950 p-6">
-                <h3 className="text-xl font-bold">{title}</h3>
-                <p className="mt-3 text-sm leading-6 text-zinc-400">{body}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="mx-auto max-w-5xl px-6 py-16">
-        <h2 className="text-3xl font-black">AI texting built for real sales conversations</h2>
-        <p className="mt-4 text-zinc-300 leading-7">
-          Most leads do not wait around. If they text back and your team takes too long to respond, the opportunity can disappear. Text2Sale helps keep the conversation alive by giving your team AI replies, smart suggestions, sentiment cues, and a centralized inbox for every lead.
-        </p>
-        <div className="mt-8 rounded-3xl border border-cyan-400/30 bg-cyan-400/10 p-6">
-          <h3 className="text-2xl font-bold">Best for teams that need speed-to-lead</h3>
-          <p className="mt-3 text-zinc-300 leading-7">
-            Use AI to respond after campaigns, follow up with missed replies, qualify prospects before a call, and keep appointment-setting conversations moving without hiring another full-time setter.
-          </p>
-        </div>
-      </section>
-
-      {/* Guides — the same blog cross-linking the SeoLandingPage template
-          gives every other landing page, so crawl paths and link equity flow
-          between this page and the AI texting articles. */}
-      <section className="mx-auto max-w-5xl px-6 pb-20">
-        <h2 className="text-xl font-bold text-zinc-300">Guides from the Text2Sale blog</h2>
-        <div className="mt-4 flex flex-wrap gap-3">
-          {getPostsByTags(["AI", "Workflows", "Missed calls"], 5).map((post) => (
-            <Link
-              key={post.slug}
-              href={`/blog/${post.slug}`}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-cyan-300 hover:text-cyan-300"
-            >
-              {post.title}
-            </Link>
-          ))}
-          <Link
-            href="/blog"
-            className="rounded-xl border border-cyan-400/40 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10"
-          >
-            All guides →
-          </Link>
-        </div>
-      </section>
-    </main>
+    <SeoLandingPage
+      blogTags={["AI", "Workflows", "Missed calls", "Speed to lead"]}
+      eyebrow="AI Texting CRM"
+      title="AI texting CRM that replies fast, qualifies leads, and books appointments."
+      description="Text2Sale gives your team an AI-powered texting assistant that can respond to inbound messages, ask qualifying questions, handle common objections, and push interested prospects toward a call or appointment. Your team stays in control while AI helps keep conversations moving."
+      secondaryCta="Mass texting CRM"
+      secondaryHref="/mass-texting-crm"
+      canonicalPath="/ai-texting-crm"
+      sections={[
+        {
+          title: "Instant replies",
+          body: "Respond to new inbound texts in seconds so leads do not go cold while your team is busy.",
+        },
+        {
+          title: "Lead qualification",
+          body: "Ask the right questions, gather key details, and identify who is worth calling first.",
+        },
+        {
+          title: "Appointment setting",
+          body: "Move interested leads toward a scheduled call instead of leaving conversations open-ended.",
+        },
+        {
+          title: "Objection handling",
+          body: "Answer common concerns with consistent messaging based on your sales process.",
+        },
+      ]}
+      guideTitle="How AI texting works in Text2Sale"
+      guide={[
+        {
+          heading: "AI texting built for real sales conversations",
+          paragraphs: [
+            "Most leads do not wait around. If they text back and your team takes too long to respond, the opportunity can disappear. Text2Sale helps keep the conversation alive by giving your team AI replies, smart suggestions, sentiment cues, and a centralized inbox.",
+            "On the Text2Sale + AI plan, AI reads each inbound reply in context and responds the way you have instructed it to: answering a question, asking the next qualifying question, handling a common objection, or offering appointment times. Booked appointments sync to Google Calendar so they show up where you already work.",
+          ],
+        },
+        {
+          heading: "You decide how much AI does",
+          paragraphs: [
+            "AI is a tool, not a replacement for your judgment. Some teams let it handle every reply after a campaign; others want suggestions only and send every message themselves. Text2Sale supports both.",
+          ],
+          bullets: [
+            "Full AI mode handles every reply in a conversation",
+            "A per-conversation toggle lets you switch AI off and take over at any point",
+            "Smart replies suggest responses you can edit before sending",
+            "Sentiment scoring and lead temperature show which conversations need a person now",
+            "Your written instructions set the tone, the questions to ask, and what AI should never say",
+          ],
+        },
+        {
+          heading: "Where AI helps most",
+          paragraphs: [
+            "The biggest gains come from the moments your team cannot cover: replies that arrive while reps are on calls, after hours, or during a campaign that produces fifty responses at once. AI answers immediately, keeps the lead engaged, and hands the conversation to a person when it is ready for a call.",
+            "Keep AI inside clear lines. Write instructions that tell it to identify your business, avoid making promises about pricing or coverage it cannot confirm, and escalate anything sensitive to a person. Review conversations regularly and refine the instructions as you learn what works.",
+          ],
+        },
+      ]}
+      noteTitle="Best for teams that need speed-to-lead"
+      noteBody="Use AI to respond after campaigns, follow up with missed replies, qualify prospects before a call, and keep appointment-setting conversations moving without hiring another full-time setter."
+      faq={[
+        {
+          question: "What does the AI actually do?",
+          answer: "On the Text2Sale + AI plan, AI replies to inbound texts, asks qualifying questions, handles common objections, and books appointments that sync to Google Calendar, following the instructions you give it.",
+        },
+        {
+          question: "Can I turn AI off for a conversation?",
+          answer: "Yes. AI can be switched on or off for each conversation, so you can take over whenever a lead needs a person.",
+        },
+        {
+          question: "How much does the AI plan cost?",
+          answer: "The Text2Sale + AI plan is $59.99 per month, plus $0.012 per text and $0.025 per AI reply.",
+        },
+        {
+          question: "Will AI replace my sales team?",
+          answer: "No. AI covers fast replies and routine questions so leads do not go cold, and hands conversations to your team for calls and closing. Your team stays in control of what it says.",
+        },
+      ]}
+      relatedPages={[
+        {
+          href: "/mass-texting-crm",
+          label: "Mass texting CRM",
+        },
+        {
+          href: "/sales-team-texting-crm",
+          label: "Sales team texting CRM",
+        },
+        {
+          href: "/sms-crm-for-insurance-agents",
+          label: "SMS CRM for insurance agents",
+        },
+        {
+          href: "/sms-follow-up-for-sales-teams",
+          label: "SMS follow-up for sales teams",
+        },
+      ]}
+    />
   );
 }

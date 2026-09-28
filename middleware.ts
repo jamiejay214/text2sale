@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { CUSTOM_DOMAIN_HOSTS, CUSTOM_DOMAINS } from "@/lib/custom-domains";
+import { SITE_PAGES } from "@/lib/site-pages";
 
 // ─── Dynamic custom-domain routing ────────────────────────────────────────
 // Serves each user's /biz/<slug> page under their own domain without us
@@ -32,6 +33,22 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // passed through so the app's normal routes still work on the apex domain
 // (useful when admins log in from a branded URL).
 const COMPLIANCE_PATHS = new Set(["/", "/opt-in", "/privacy-policy", "/terms"]);
+
+// Text2Sale's own marketing pages. On a customer's branded domain these used
+// to render as full copies of text2sale.com (northernlegacyia.info/blog,
+// /mass-texting-crm, ...), which search engines treat as duplicate content
+// and which puts bulk-SMS marketing copy on a domain carriers review for a
+// customer's 10DLC campaign. They now 308 to the same path on text2sale.com.
+const MARKETING_PATHS = new Set(SITE_PAGES.map((page) => page.path));
+
+function isMarketingPath(path: string): boolean {
+  return MARKETING_PATHS.has(path) || path === "/blog" || path.startsWith("/blog/");
+}
+
+function redirectToMainSite(req: NextRequest): NextResponse {
+  const url = new URL(req.nextUrl.pathname + req.nextUrl.search, "https://text2sale.com");
+  return NextResponse.redirect(url, 308);
+}
 
 // Hardcoded slug lookup — checked before Supabase to save a round-trip.
 const STATIC_SLUG_BY_HOST = new Map(
@@ -76,11 +93,14 @@ async function lookupSlugForHost(host: string): Promise<string | null> {
 export async function middleware(req: NextRequest) {
   const host = (req.headers.get("host") || "").toLowerCase().split(":")[0];
 
+  // One canonical host. www served a full duplicate of the site; API routes
+  // (webhooks) are outside the matcher, so they are unaffected.
+  if (host === "www.text2sale.com") return redirectToMainSite(req);
+
   // Main app + Vercel previews: pass through untouched.
   if (
     !host ||
     host === "text2sale.com" ||
-    host === "www.text2sale.com" ||
     host.endsWith(".vercel.app") ||
     host === "localhost"
   ) {
@@ -88,6 +108,10 @@ export async function middleware(req: NextRequest) {
   }
 
   const path = req.nextUrl.pathname.toLowerCase();
+
+  // Any other host reaching this deployment is a customer's branded domain.
+  if (isMarketingPath(path)) return redirectToMainSite(req);
+
   if (!COMPLIANCE_PATHS.has(path)) return NextResponse.next();
 
   // Known launch-customer domains short-circuit the DB entirely.
