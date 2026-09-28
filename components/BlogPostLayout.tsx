@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { BlogPost } from "@/lib/blog-posts";
 import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
+import MarketingFooter from "@/components/MarketingFooter";
+import { landingForTags } from "@/lib/topic-landing";
 
 const SITE = "https://text2sale.com";
 
@@ -18,6 +20,7 @@ function formatDate(iso: string): string {
 
 export default function BlogPostLayout({ post }: { post: BlogPost }) {
   const url = `${SITE}/blog/${post.slug}`;
+  const landing = landingForTags(post.tags);
 
   const articleSchema = {
     "@context": "https://schema.org",
@@ -163,7 +166,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Link href="/#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Start free trial</Link>
-            <Link href="/sms-crm-for-insurance-agents" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">See the platform</Link>
+            <Link href={landing.href} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">{landing.label}</Link>
           </div>
         </section>
 
@@ -199,6 +202,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
           </section>
         )}
       </article>
+      <MarketingFooter />
     </main>
   );
 }

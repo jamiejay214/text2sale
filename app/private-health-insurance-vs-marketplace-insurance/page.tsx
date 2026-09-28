@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import MarketingFooter from "@/components/MarketingFooter";
 
 export const metadata: Metadata = {
   title: "Private Health Insurance vs Marketplace Insurance: Which Saves More in 2026? | Text2Sale",
@@ -344,6 +345,7 @@ export default function PrivateVsMarketplaceInsurancePage() {
           </p>
         </section>
       </article>
+      <MarketingFooter />
     </main>
   );
 }

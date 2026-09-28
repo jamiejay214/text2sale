@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getPostsByTags } from "@/lib/blog-posts";
+import MarketingFooter from "@/components/MarketingFooter";
 
 type FaqItem = { question: string; answer: string };
 type GuideSection = { heading: string; paragraphs: string[]; bullets?: string[] };
@@ -230,6 +231,7 @@ export default function SeoLandingPage({
           </Link>
         </div>
       </section>
+      <MarketingFooter />
     </main>
   );
 }

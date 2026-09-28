@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
+import MarketingFooter from "@/components/MarketingFooter";
 
 const SITE = "https://text2sale.com";
 
@@ -107,6 +108,7 @@ export default function BlogIndexPage() {
           ))}
         </div>
       </section>
+      <MarketingFooter />
     </main>
   );
 }
