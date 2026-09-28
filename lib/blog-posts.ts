@@ -5,6 +5,7 @@
 // article, add an entry here — no new route files needed.
 
 import { BLOG_POSTS_2 } from "./blog-posts-2";
+import { BLOG_POSTS_3 } from "./blog-posts-3";
 
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
@@ -8199,6 +8200,7 @@ export const BLOG_POSTS: BlogPost[] = [
   },
   // Volume 2 lives in its own file — see lib/blog-posts-2.ts.
   ...BLOG_POSTS_2,
+  ...BLOG_POSTS_3,
 ];
 
 export function getAllPosts(): BlogPost[] {

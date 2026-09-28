@@ -2,6 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { calcCallCharge, CALL_RATE_INBOUND_PER_MIN } from "@/lib/call-pricing";
+import {
+  type AvailableHours,
+  DEFAULT_AVAILABLE_HOURS,
+} from "@/lib/availability";
+import { isWithinBusinessHours, settingsFromProfile } from "@/lib/ai-call";
+import {
+  ensureSession,
+  finalizeAiSession,
+  onSpeakEnded,
+  onTranscript,
+  openConversation,
+  reserveForAiCall,
+} from "@/lib/ai-call-turn";
+
+// A model turn plus the transcript debounce plus the Telnyx round trip
+// fits comfortably in 30s. Without this the platform can cut a turn off
+// mid-thought and the caller hears silence.
+export const maxDuration = 30;
+
+// Everything the assistant needs off the profile row. Kept as one literal
+// (not a concatenation) so supabase-js can still infer the row type.
+const AI_PROFILE_COLUMNS =
+  "first_name, last_name, industry, a2p_registration, available_hours, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 // The old B-leg dial path used TELNYX_VOICE_APP_ID to stamp newly-created
@@ -47,6 +70,8 @@ type ClientState = {
   fromE164?: string;
   inboundUserId?: string;
   inboundContactId?: string | null;
+  // Present when the AI assistant is handling this leg. See lib/ai-call.ts.
+  aiSessionId?: string;
 };
 
 function decodeClientState(raw?: string): ClientState | null {
@@ -127,21 +152,141 @@ export async function POST(req: NextRequest) {
         .select("id")
         .single();
 
-      // Answer the call and play a brief ringing tone. The dashboard's
-      // browser WebRTC session handles the actual audio — we no longer
-      // forward inbound calls to the agent's cell phone. The calls row
-      // with status="ringing" is enough to notify the UI via Supabase
-      // realtime so the agent can pick up in the browser.
+      // ── Should the AI assistant take this call? ──
+      // The assistant is opt-in per user, can be limited to after hours,
+      // and — per the operator's standing rule that nothing is bought
+      // before it's paid for — only runs once the wallet has actually
+      // covered the reserve. Any "no" here falls through to the normal
+      // ring path, so a billing problem never drops a customer's call.
+      let aiSessionId: string | undefined;
+      if (ccid) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select(AI_PROFILE_COLUMNS)
+          .eq("id", ownership.user_id)
+          .maybeSingle();
+
+        const settings = settingsFromProfile(profile);
+        const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
+        const inHours = isWithinBusinessHours(hours);
+        const shouldAnswer =
+          settings.enabled && !(settings.afterHoursOnly && inHours);
+
+        if (shouldAnswer) {
+          // Session first, reserve second. The session row is unique per
+          // call_control_id, so a retried call.initiated finds the existing
+          // one and takes no second reserve off the caller's wallet.
+          const opened = await ensureSession({
+            db: supabase,
+            userId: ownership.user_id,
+            callRowId: row?.id || null,
+            contactId: contactMatch?.id || null,
+            callControlId: ccid,
+            fromNumber: fromE164,
+            toNumber: toE164,
+            profile,
+          });
+
+          if (opened?.created) {
+            const reserved = await reserveForAiCall(
+              supabase,
+              ownership.user_id,
+              opened.session.id
+            );
+            if (reserved > 0) {
+              aiSessionId = opened.session.id;
+              if (row?.id) {
+                await supabase
+                  .from("calls")
+                  .update({ handled_by_ai: true })
+                  .eq("id", row.id);
+              }
+            } else {
+              // Wallet can't cover it. Mark the session settled so nothing
+              // later mistakes it for a live call, and ring through instead.
+              console.warn(
+                `[call-webhook] AI assistant skipped for ${ownership.user_id}: wallet cannot cover the reserve`
+              );
+              await supabase
+                .from("ai_call_sessions")
+                .update({
+                  state: "done",
+                  outcome: "declined",
+                  ended_at: new Date().toISOString(),
+                })
+                .eq("id", opened.session.id);
+            }
+          } else if (opened) {
+            // A retry of an event we already handled — resume, don't re-charge.
+            aiSessionId = opened.session.id;
+          }
+        }
+      }
+
+      // Answer the call. When the assistant has the leg, call.answered
+      // starts transcription and speaks the greeting (see openConversation).
+      // Otherwise the dashboard's browser WebRTC session handles the audio —
+      // we no longer forward inbound calls to the agent's cell phone. The
+      // calls row with status="ringing" is enough to notify the UI via
+      // Supabase realtime so the agent can pick up in the browser.
       if (ccid) {
         const newState = encodeClientState({
           v: 1,
           inboundUserId: ownership.user_id,
           inboundContactId: contactMatch?.id || null,
           callRowId: row?.id,
+          aiSessionId,
         });
         await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
       }
 
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // ───────── AI ASSISTANT: greet, listen, answer, repeat ─────────
+    // Ordered before the outbound bridge branch because an AI leg has no
+    // contactE164 and must never fall into the dial-the-B-leg path.
+    if (type === "call.answered" && state?.aiSessionId && ccid) {
+      if (state.callRowId) {
+        await supabase
+          .from("calls")
+          .update({ status: "answered", answered_at: new Date().toISOString() })
+          .eq("id", state.callRowId);
+      }
+
+      const { data: session } = await supabase
+        .from("ai_call_sessions")
+        .select("*")
+        .eq("id", state.aiSessionId)
+        .maybeSingle();
+
+      if (session) {
+        const { data: profile } = await supabase
+          .from("profiles")
+          .select(AI_PROFILE_COLUMNS)
+          .eq("id", session.user_id)
+          .maybeSingle();
+        await openConversation(supabase, session, settingsFromProfile(profile), profile);
+      }
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // Caller finished saying something.
+    if (type === "call.transcription" && state?.aiSessionId && ccid) {
+      const td = p.transcription_data || {};
+      // Interim results are off, but Telnyx will still send partials on
+      // some engines. Acting on a partial means answering half a sentence.
+      if (td.is_final === false) return NextResponse.json({ status: "ok" });
+      await onTranscript(supabase, ccid, String(td.transcript || ""));
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // The assistant finished a sentence — hand the line back to the caller
+    // (or carry out the hangup/transfer it queued).
+    if (type === "call.speak.ended" && state?.aiSessionId && ccid) {
+      // p.status is "completed", or "call_hangup" / "cancelled_amd" when
+      // the line dropped mid-sentence.
+      await onSpeakEnded(supabase, ccid, p.status as string | undefined);
       return NextResponse.json({ status: "ok" });
     }
 
@@ -219,7 +364,25 @@ export async function POST(req: NextRequest) {
       }
 
       const direction = (existing.direction as "inbound" | "outbound") || "outbound";
-      let charge = calcCallCharge(direction, durationSec);
+
+      // An AI-handled leg bills at the AI rate instead of the plain
+      // inbound rate, and settles against the reserve that was taken up
+      // front. finalizeAiSession is idempotent and returns null if another
+      // hangup event already settled this leg.
+      let charge: number;
+      let aiSettled = false;
+      if (state?.aiSessionId && ccid) {
+        const settled = await finalizeAiSession(supabase, ccid, durationSec);
+        if (settled) {
+          charge = settled.charged;
+          aiSettled = true;
+        } else {
+          charge = 0;
+        }
+      } else {
+        charge = calcCallCharge(direction, durationSec);
+      }
+
       // Don't bill calls answered by voicemail.
       if (existing.outcome === "voicemail") charge = 0;
 
@@ -235,8 +398,10 @@ export async function POST(req: NextRequest) {
         .eq("id", rowId);
 
       // Debit the wallet atomically via RPC to avoid lost updates from
-      // concurrent charges racing on a read-then-write.
-      if (charge > 0) {
+      // concurrent charges racing on a read-then-write. An AI leg has
+      // already settled against its reserve inside finalizeAiSession, so
+      // debiting again here would charge the call twice.
+      if (charge > 0 && !aiSettled) {
         await supabase.rpc("decrement_wallet", { p_user_id: existing.user_id, p_amount: charge });
       }
 
