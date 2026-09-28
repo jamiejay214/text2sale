@@ -4,6 +4,8 @@
 // pulled into the sitemap automatically (see app/sitemap.ts). To publish a new
 // article, add an entry here — no new route files needed.
 
+import { BLOG_POSTS_2 } from "./blog-posts-2";
+
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
 
@@ -94,7 +96,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Use a texting CRM that fires the first message automatically the moment a lead is imported or opts in. Text2Sale lets you set an instant first-touch message plus an automated follow-up sequence, so every lead is contacted on time even when you are on a call or away.",
       },
     ],
-    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "tcpa-compliance-texting-leads"],
+    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "tcpa-compliance-texting-leads", "exclusive-vs-shared-insurance-leads", "mortgage-lead-follow-up-texts"],
     relatedPages: [
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
@@ -177,7 +179,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "The most common cause is missing or incomplete 10DLC registration, or numbers that are not attached to an approved campaign. Mismatched EIN/business details and a missing opt-in page are also frequent culprits. A registered, vetted brand with a live opt-in page resolves the majority of delivery problems.",
       },
     ],
-    relatedSlugs: ["tcpa-compliance-texting-leads", "import-and-text-thousands-of-leads"],
+    relatedSlugs: ["tcpa-compliance-texting-leads", "import-and-text-thousands-of-leads", "switching-sms-providers"],
     relatedPages: [
       { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
       { href: "/bulk-sms-software", label: "Bulk SMS software" },
@@ -341,7 +343,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Texts and calls should generally be sent only between 8 a.m. and 9 p.m. in the recipient's local time. Because leads span timezones, use a platform that infers each contact's timezone and defers messages that would otherwise land outside that window.",
       },
     ],
-    relatedSlugs: ["10dlc-registration-guide-for-agents", "how-fast-to-text-insurance-leads"],
+    relatedSlugs: ["10dlc-registration-guide-for-agents", "how-fast-to-text-insurance-leads", "ai-texting-compliance", "expired-and-fsbo-listing-texts"],
     relatedPages: [
       { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
@@ -505,7 +507,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "A short, spaced cadence works best: a first-touch text immediately, a nudge around day two, a value reminder near day five, and a deadline reminder as December 7 approaches. Stop the sequence the instant a lead replies, and switch to a live call to answer questions and close."
       }
     ],
-    relatedSlugs: ["how-fast-to-text-insurance-leads", "tcpa-compliance-texting-leads"],
+    relatedSlugs: ["how-fast-to-text-insurance-leads", "tcpa-compliance-texting-leads", "medicare-turning-65-texts"],
     relatedPages: [
       { href: "/medicare-agent-texting-crm", label: "Medicare agent texting CRM" },
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" }
@@ -589,7 +591,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "Identify yourself and your agency, reference the coverage they asked about, and ask one simple question without pressure. For example: 'Hi {name}, this is Marcus with Liberty Final Expense — you asked about coverage for funeral costs. Are you still looking?' Include an opt-out option like 'Reply STOP.'"
       }
     ],
-    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "how-fast-to-text-insurance-leads"],
+    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "how-fast-to-text-insurance-leads", "term-life-lead-follow-up-texts", "mortgage-protection-lead-texting"],
     relatedPages: [
       { href: "/final-expense-texting-crm", label: "Final expense texting CRM" },
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" }
@@ -671,7 +673,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "Plan a spaced sequence rather than a single blast: a first-touch message, a follow-up a couple of days later, a mid-window value reminder, and a final deadline push. Stop the sequence the moment a prospect replies, and switch to a call to answer questions and complete the enrollment."
       }
     ],
-    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "import-and-text-thousands-of-leads"],
+    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "import-and-text-thousands-of-leads", "special-enrollment-period-texting", "health-insurance-lead-qualifying-texts"],
     relatedPages: [
       { href: "/health-insurance-texting-crm", label: "Health insurance texting CRM" },
       { href: "/ai-texting-crm", label: "AI texting CRM" }
@@ -822,7 +824,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "Generally text first. A short, relevant text gets read quickly, warms the lead, and tells you who is interested before you invest call time. Then call the leads who reply or engage. Leading with a call to a cold, unknown number usually goes to voicemail and wastes rep hours."
       }
     ],
-    relatedSlugs: ["how-to-text-insurance-leads", "10dlc-registration-guide-for-agents"],
+    relatedSlugs: ["10dlc-registration-guide-for-agents"],
     relatedPages: [
       { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" }
@@ -898,7 +900,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "Two to three follow-ups beyond the first message is a reasonable range for most leads. Many replies come from the second or third touch because timing simply lined up better. Space them out over several days, keep each one short and friendly, and stop immediately if the lead opts out."
       }
     ],
-    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "import-and-text-thousands-of-leads"],
+    relatedSlugs: ["sms-drip-templates-for-insurance-agents", "import-and-text-thousands-of-leads", "sms-objection-handling-scripts"],
     relatedPages: [
       { href: "/ai-texting-crm", label: "AI texting CRM" },
       { href: "/mass-texting-crm", label: "Mass texting CRM" }
@@ -1237,7 +1239,7 @@ export const BLOG_POSTS: BlogPost[] = [
         answer: "Yes, when done correctly. In the United States the TCPA requires proper consent for marketing texts, and carriers require business senders to register through 10DLC. A good texting CRM handles registration, honors opt-outs automatically, and keeps consent records, so high-volume outreach stays compliant rather than getting filtered, blocked, or penalized."
       }
     ],
-    relatedSlugs: ["import-and-text-thousands-of-leads", "10dlc-registration-guide-for-agents"],
+    relatedSlugs: ["import-and-text-thousands-of-leads", "10dlc-registration-guide-for-agents", "how-to-choose-an-sms-platform"],
     relatedPages: [
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" }
@@ -1800,7 +1802,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Give each campaign its own trackable link or promo code, define a conversion window of around 72 hours, and match replies and redemptions back to the send. Platforms that log delivery, replies, and clicks per campaign make this automatic.",
       },
     ],
-    relatedSlugs: ["how-much-does-sms-marketing-cost", "sms-list-segmentation"],
+    relatedSlugs: ["how-much-does-sms-marketing-cost", "sms-list-segmentation", "sales-rep-texting-kpis"],
     relatedPages: [
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
       { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
@@ -2256,7 +2258,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Businesses that move from no reminders to an automated two-message sequence commonly see a substantial drop in missed appointments, because the majority of no-shows stem from forgetting or from not having an easy way to reschedule.",
       },
     ],
-    relatedSlugs: ["text-message-marketing-examples", "sms-automation-workflows"],
+    relatedSlugs: ["text-message-marketing-examples", "sms-automation-workflows", "how-to-book-appointments-by-text", "ai-appointment-booking-by-text"],
     relatedPages: [
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
       { href: "/ai-texting-crm", label: "AI texting CRM" },
@@ -2636,7 +2638,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Give every sequence stop conditions on reply, purchase, and opt-out; respect quiet hours; cap how many automated messages one contact can get in a week; and pause automation as soon as a human conversation starts.",
       },
     ],
-    relatedSlugs: ["appointment-reminder-text-templates", "sms-list-segmentation"],
+    relatedSlugs: ["appointment-reminder-text-templates", "sms-list-segmentation", "ai-sms-replies-for-sales"],
     relatedPages: [
       { href: "/ai-texting-crm", label: "AI texting CRM" },
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
@@ -4288,7 +4290,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "They generally do, because a client who has recently spoken with their agent about coverage is harder for a competitor to pull away with a price quote, and gaps found during the review often add policies that further increase retention.",
       },
     ],
-    relatedSlugs: ["insurance-cross-sell-texts", "insurance-referral-request-texts"],
+    relatedSlugs: ["insurance-cross-sell-texts", "insurance-referral-request-texts", "life-insurance-underwriting-status-texts"],
     relatedPages: [
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
@@ -4438,7 +4440,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Only with valid prior express written consent covering contact about that coverage, which the lead vendor must be able to document. Suppress anyone who has opted out, honor stop requests immediately, and keep your own consent records.",
       },
     ],
-    relatedSlugs: ["insurance-referral-request-texts", "auto-insurance-renewal-texts"],
+    relatedSlugs: ["insurance-referral-request-texts", "auto-insurance-renewal-texts", "what-to-text-a-lead-who-ghosted-you", "exclusive-vs-shared-insurance-leads"],
     relatedPages: [
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
       { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
@@ -4812,7 +4814,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Substantially. Waiting without information is the most common source of homeowner frustration with trades, and a dispatch notification plus a twenty-minute warning addresses it while also reducing inbound calls to the office.",
       },
     ],
-    relatedSlugs: ["dealership-service-department-texts", "salon-and-barbershop-texting"],
+    relatedSlugs: ["dealership-service-department-texts", "salon-and-barbershop-texting", "solar-lead-follow-up-texts"],
     relatedPages: [
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
       { href: "/sales-team-texting-crm", label: "Sales team texting CRM" },
@@ -5112,7 +5114,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Confirm at booking, remind the day before, and send a morning-of message with the address, parking, arrival time, and who to ask for. Most no-shows come from logistical confusion rather than lost interest.",
       },
     ],
-    relatedSlugs: ["home-services-text-marketing", "two-way-texting-for-customer-service"],
+    relatedSlugs: ["home-services-text-marketing", "two-way-texting-for-customer-service", "insurance-agent-recruiting-texts"],
     relatedPages: [
       { href: "/recruiting-texting-crm", label: "Recruiting texting CRM" },
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
@@ -6761,7 +6763,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Any business whose callers have an urgent and easily substituted need: trades, medical and dental practices, legal intake, auto repair and salons. If a caller can simply ring the next result on the page, recovery is valuable.",
       },
     ],
-    relatedSlugs: ["two-way-texting-for-customer-service", "front-desk-call-deflection-texting"],
+    relatedSlugs: ["two-way-texting-for-customer-service", "front-desk-call-deflection-texting", "ai-sms-replies-for-sales"],
     relatedPages: [
       { href: "/ai-texting-crm", label: "AI texting CRM" },
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
@@ -8114,7 +8116,7 @@ export const BLOG_POSTS: BlogPost[] = [
           "Broadcast the shift details — date, hours, location and rate — to a qualified group and take the first confirmed reply. This fills in minutes what a manager calling down a list takes hours to do.",
       },
     ],
-    relatedSlugs: ["staffing-agency-recruiting-texts", "home-health-care-texting"],
+    relatedSlugs: ["staffing-agency-recruiting-texts", "home-health-care-texting", "managing-team-texting-quality"],
     relatedPages: [
       { href: "/recruiting-texting-crm", label: "Recruiting texting CRM" },
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
@@ -8195,10 +8197,21 @@ export const BLOG_POSTS: BlogPost[] = [
       { href: "/mass-texting-crm", label: "Mass texting CRM" },
     ],
   },
+  // Volume 2 lives in its own file — see lib/blog-posts-2.ts.
+  ...BLOG_POSTS_2,
 ];
 
 export function getAllPosts(): BlogPost[] {
-  return [...BLOG_POSTS].sort((a, b) => (a.datePublished < b.datePublished ? 1 : -1));
+  return [...BLOG_POSTS].sort((a, b) => byNewest(a, b));
+}
+
+// Newest first. Equal dates return 0 so Array.prototype.sort (stable) keeps
+// posts in source order. The old `a < b ? 1 : -1` returned -1 for equal dates
+// — claiming each post should precede the other — which is an invalid
+// comparator and left same-day posts in an arbitrary order.
+function byNewest(a: BlogPost, b: BlogPost): number {
+  if (a.datePublished === b.datePublished) return 0;
+  return a.datePublished < b.datePublished ? 1 : -1;
 }
 
 export function getPostBySlug(slug: string): BlogPost | undefined {
@@ -8296,18 +8309,27 @@ export function getPostsByTag(slug: string): BlogPost[] {
  * actually cares about.
  */
 export function getPostsByTags(tags: string[], limit?: number): BlogPost[] {
-  const wanted = new Set(tags.map(tagSlug));
+  // Tags are listed in priority order: the first is the page's own topic
+  // ("Mortgage" on the mortgage page), the rest progressively looser
+  // neighbours. Each tag is weighted by position — 2^(n-1-i) — so the first
+  // outweighs all the others combined, the second outweighs everything after
+  // it, and so on. When every tag counted equally, a post matching two
+  // generic tags outranked one matching only the topic, and the mortgage
+  // page listed solar and health-insurance posts ahead of its own.
+  const weight = new Map<string, number>();
+  tags.forEach((t, i) => {
+    const slug = tagSlug(t);
+    if (!weight.has(slug)) weight.set(slug, 2 ** (tags.length - 1 - i));
+  });
 
   const scored = BLOG_POSTS.map((post) => {
-    const hits = new Set(post.tags.map(tagSlug).filter((t) => wanted.has(t)));
-    return { post, score: hits.size };
+    const own = new Set(post.tags.map(tagSlug));
+    let score = 0;
+    for (const t of own) score += weight.get(t) ?? 0;
+    return { post, score };
   }).filter((entry) => entry.score > 0);
 
-  scored.sort(
-    (a, b) =>
-      b.score - a.score ||
-      (a.post.datePublished < b.post.datePublished ? 1 : -1)
-  );
+  scored.sort((a, b) => b.score - a.score || byNewest(a.post, b.post));
 
   const matches = scored.map((entry) => entry.post);
   return typeof limit === "number" ? matches.slice(0, limit) : matches;

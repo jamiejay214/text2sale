@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getPostsByTags } from "@/lib/blog-posts";
 
 export const metadata: Metadata = {
   title: "AI Texting CRM That Replies and Books Appointments | Text2Sale",
@@ -55,6 +56,30 @@ export default function AiTextingCrmPage() {
           <p className="mt-3 text-zinc-300 leading-7">
             Use AI to respond after campaigns, follow up with missed replies, qualify prospects before a call, and keep appointment-setting conversations moving without hiring another full-time setter.
           </p>
+        </div>
+      </section>
+
+      {/* Guides — the same blog cross-linking the SeoLandingPage template
+          gives every other landing page, so crawl paths and link equity flow
+          between this page and the AI texting articles. */}
+      <section className="mx-auto max-w-5xl px-6 pb-20">
+        <h2 className="text-xl font-bold text-zinc-300">Guides from the Text2Sale blog</h2>
+        <div className="mt-4 flex flex-wrap gap-3">
+          {getPostsByTags(["AI", "Workflows", "Missed calls"], 5).map((post) => (
+            <Link
+              key={post.slug}
+              href={`/blog/${post.slug}`}
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-cyan-300 hover:text-cyan-300"
+            >
+              {post.title}
+            </Link>
+          ))}
+          <Link
+            href="/blog"
+            className="rounded-xl border border-cyan-400/40 px-4 py-2 text-sm font-semibold text-cyan-300 hover:bg-cyan-400/10"
+          >
+            All guides →
+          </Link>
         </div>
       </section>
     </main>
