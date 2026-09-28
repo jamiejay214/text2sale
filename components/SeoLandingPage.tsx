@@ -1,8 +1,9 @@
 import Link from "next/link";
-import Script from "next/script";
 import { getPostsByTags } from "@/lib/blog-posts";
+import MarketingFooter from "@/components/MarketingFooter";
 
 type FaqItem = { question: string; answer: string };
+type GuideSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 type RelatedPage = { href: string; label: string };
 
 type SeoLandingPageProps = {
@@ -19,6 +20,13 @@ type SeoLandingPageProps = {
   bullets?: string[];
   noteTitle?: string;
   noteBody?: string;
+  /**
+   * Long-form sections rendered as prose under the feature cards. This is
+   * where a page explains the workflow in depth, so it has enough unique,
+   * useful text to be worth indexing on its own.
+   */
+  guideTitle?: string;
+  guide?: GuideSection[];
   faq?: FaqItem[];
   relatedPages?: RelatedPage[];
   canonicalPath?: string;
@@ -41,6 +49,8 @@ export default function SeoLandingPage({
   bullets = [],
   noteTitle,
   noteBody,
+  guideTitle,
+  guide = [],
   faq = [],
   relatedPages = [],
   canonicalPath,
@@ -76,18 +86,18 @@ export default function SeoLandingPage({
       }
     : null;
 
+  // Plain <script> tags, not next/script: next/script injects inline JSON-LD
+  // on the client, so it was missing from the HTML crawlers fetch.
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
       {faqSchema && (
-        <Script
-          id="faq-schema"
+        <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }}
         />
       )}
       {breadcrumbSchema && (
-        <Script
-          id="breadcrumb-schema"
+        <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }}
         />
@@ -120,6 +130,29 @@ export default function SeoLandingPage({
           ))}
         </div>
       </section>
+
+      {guide.length > 0 && (
+        <article className="mx-auto max-w-3xl px-6 py-16">
+          {guideTitle && <h2 className="text-3xl font-black">{guideTitle}</h2>}
+          {guide.map((part) => (
+            <section key={part.heading} className="mt-10 first:mt-8">
+              <h3 className="text-2xl font-bold">{part.heading}</h3>
+              {part.paragraphs.map((paragraph) => (
+                <p key={paragraph.slice(0, 48)} className="mt-4 leading-8 text-zinc-300">
+                  {paragraph}
+                </p>
+              ))}
+              {part.bullets && part.bullets.length > 0 && (
+                <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-zinc-300 marker:text-emerald-400">
+                  {part.bullets.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          ))}
+        </article>
+      )}
 
       {bullets.length > 0 && (
         <section className="mx-auto max-w-5xl px-6 py-16">
@@ -161,7 +194,7 @@ export default function SeoLandingPage({
 
       {relatedPages.length > 0 && (
         <section className="mx-auto max-w-5xl px-6 pb-10">
-          <h2 className="text-xl font-bold text-zinc-300">More Text2Sale comparisons</h2>
+          <h2 className="text-xl font-bold text-zinc-300">More from Text2Sale</h2>
           <div className="mt-4 flex flex-wrap gap-3">
             {relatedPages.map((page) => (
               <Link
@@ -198,6 +231,7 @@ export default function SeoLandingPage({
           </Link>
         </div>
       </section>
+      <MarketingFooter />
     </main>
   );
 }

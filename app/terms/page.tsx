@@ -1,9 +1,11 @@
 import React from "react";
+import type { Metadata } from "next";
 import { LEGAL_TERMS_SECTIONS, LEGAL_EFFECTIVE_DATE, LEGAL_COMPANY, LEGAL_WEBSITE } from "@/lib/legal-text";
 
-export const metadata = {
+export const metadata: Metadata = {
   title: "Terms and Conditions — Text2Sale",
   description: "Legally binding terms governing use of the Text2Sale SMS platform.",
+  alternates: { canonical: "/terms" },
 };
 
 export default function TermsPage() {

@@ -1,109 +1,72 @@
 import type { MetadataRoute } from "next";
-import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
+import { getAllPosts, getIndexableTags, getPostsByTag } from "@/lib/blog-posts";
+import { HOME_UPDATED, SITE_PAGES, SITE_URL } from "@/lib/site-pages";
+
+// lastmod values track real content changes. Stamping every URL with the
+// build date teaches search engines to ignore lastmod entirely, which slows
+// down recrawls of the pages that did change.
+
+const LEGAL_UPDATED = "2026-04-18"; // LEGAL_EFFECTIVE_DATE in lib/legal-text.ts
+const TAG_INTROS_ADDED = "2026-09-28";
+
+// Landing pages with their own opengraph-image.tsx (the rest share the
+// site-wide card, which is already listed once on the homepage entry).
+const PAGES_WITH_OWN_IMAGE = new Set(["/private-health-insurance-vs-marketplace-insurance"]);
+
+function newest(dates: string[]): Date {
+  return new Date(dates.reduce((a, b) => (a > b ? a : b)));
+}
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://text2sale.com";
-  const today = new Date();
-
   const blogPosts = getAllPosts();
   const blogTags = getIndexableTags();
 
-  const corePages = [
-    { path: "", priority: 1.0 },
-    { path: "/mass-texting-crm", priority: 0.9 },
-    { path: "/ai-texting-crm", priority: 0.9 },
-    { path: "/sms-crm-for-insurance-agents", priority: 0.9 },
-    { path: "/bulk-sms-software", priority: 0.85 },
-    { path: "/10dlc-compliant-texting", priority: 0.85 },
-  ];
-
-  const comparisonPages = [
-    "/text2sale-vs-onlysales",
-    "/text2sale-vs-textdrip",
-    "/text2sale-vs-salesmsg",
-    "/text2sale-vs-gohighlevel",
-    "/text2sale-vs-twilio",
-    "/best-onlysales-alternative",
-    "/best-textdrip-alternative",
-    "/best-salesmsg-alternative",
-    "/best-gohighlevel-alternative",
-    "/best-twilio-alternative",
-  ];
-
-  const nichePages = [
-    "/health-insurance-texting-crm",
-    "/life-insurance-texting-crm",
-    "/final-expense-texting-crm",
-    "/medicare-agent-texting-crm",
-    "/recruiting-texting-crm",
-    "/sales-team-texting-crm",
-    "/auto-insurance-texting-crm",
-    "/real-estate-texting-crm",
-    "/mortgage-broker-texting-crm",
-    "/solar-sales-texting-crm",
-    "/best-sms-crm-for-insurance-agents",
-  ];
-
-  const articlePages = [
-    "/how-to-text-insurance-leads",
-    "/sms-follow-up-for-sales-teams",
-    "/private-health-insurance-vs-marketplace-insurance",
-  ];
-
   return [
-    ...corePages.map((page) => ({
-      url: `${baseUrl}${page.path}`,
-      lastModified: today,
-      changeFrequency: "weekly" as const,
+    {
+      url: SITE_URL,
+      lastModified: new Date(HOME_UPDATED),
+      changeFrequency: "weekly",
+      priority: 1.0,
+      images: [`${SITE_URL}/opengraph-image`],
+    },
+    ...SITE_PAGES.map((page) => ({
+      url: `${SITE_URL}${page.path}`,
+      lastModified: new Date(page.updated),
+      changeFrequency: "monthly" as const,
       priority: page.priority,
-    })),
-    ...comparisonPages.map((path) => ({
-      url: `${baseUrl}${path}`,
-      lastModified: today,
-      changeFrequency: "weekly" as const,
-      priority: 0.8,
-    })),
-    ...nichePages.map((path) => ({
-      url: `${baseUrl}${path}`,
-      lastModified: today,
-      changeFrequency: "weekly" as const,
-      priority: 0.82,
-    })),
-    ...articlePages.map((path) => ({
-      url: `${baseUrl}${path}`,
-      lastModified: today,
-      changeFrequency: "weekly" as const,
-      priority: 0.78,
+      ...(PAGES_WITH_OWN_IMAGE.has(page.path) && { images: [`${SITE_URL}${page.path}/opengraph-image`] }),
     })),
     {
-      url: `${baseUrl}/blog`,
-      lastModified: today,
-      changeFrequency: "weekly" as const,
+      url: `${SITE_URL}/blog`,
+      lastModified: newest(blogPosts.map((post) => post.dateModified)),
+      changeFrequency: "weekly",
       priority: 0.8,
     },
     ...blogPosts.map((post) => ({
-      url: `${baseUrl}/blog/${post.slug}`,
+      url: `${SITE_URL}/blog/${post.slug}`,
       lastModified: new Date(post.dateModified),
       changeFrequency: "monthly" as const,
       priority: 0.7,
+      // Image sitemap entry so the per-post cards can surface in image search.
+      images: [`${SITE_URL}/blog/${post.slug}/opengraph-image`],
     })),
     ...blogTags.map((tag) => ({
-      url: `${baseUrl}/blog/tag/${tag.slug}`,
-      lastModified: today,
+      url: `${SITE_URL}/blog/tag/${tag.slug}`,
+      lastModified: newest([...getPostsByTag(tag.slug).map((post) => post.dateModified), TAG_INTROS_ADDED]),
       changeFrequency: "weekly" as const,
       priority: 0.6,
     })),
     {
-      url: `${baseUrl}/privacy-policy`,
-      lastModified: today,
-      changeFrequency: "monthly",
-      priority: 0.5,
+      url: `${SITE_URL}/privacy-policy`,
+      lastModified: new Date(LEGAL_UPDATED),
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
     {
-      url: `${baseUrl}/terms`,
-      lastModified: today,
-      changeFrequency: "monthly",
-      priority: 0.5,
+      url: `${SITE_URL}/terms`,
+      lastModified: new Date(LEGAL_UPDATED),
+      changeFrequency: "yearly",
+      priority: 0.3,
     },
   ];
 }

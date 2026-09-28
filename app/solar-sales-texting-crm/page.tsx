@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
-      blogTags={["Home services", "Trades", "Speed to lead"]}
+      blogTags={["Solar", "Home services", "Appointments"]}
       eyebrow="Solar Sales Texting CRM"
       title="A texting CRM built for solar sales teams that need more booked appointments."
       description="Solar leads are expensive and short-lived. Text2Sale helps solar sales teams send bulk SMS to homeowner lead lists, manage conversations, use AI-assisted replies, and book more in-home or virtual appointments — all from one texting CRM."
@@ -43,7 +43,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost for solar sales teams?",
-          answer: "Text2Sale starts at $39.99/month with a free trial available. It includes mass texting, AI replies, 2-way inbox, CSV imports, and campaign tracking."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         }
       ]}
       relatedPages={[

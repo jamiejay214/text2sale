@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
-      blogTags={["Speed to lead", "SMS follow-up", "Scripts"]}
+      blogTags={["Mortgage", "Speed to lead", "Scripts"]}
       eyebrow="Mortgage Broker Texting CRM"
       title="A texting CRM built for mortgage brokers who need to follow up faster on leads."
       description="Mortgage leads are expensive and competitive. Text2Sale helps mortgage brokers send bulk SMS to purchase and refinance leads, manage conversations from a team inbox, use AI replies to keep prospects engaged, and close more loans."
@@ -43,7 +43,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost for mortgage brokers?",
-          answer: "Text2Sale starts at $39.99/month with a free trial available. It includes mass texting, AI replies, 2-way inbox, CSV imports, and campaign tools."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         }
       ]}
       relatedPages={[

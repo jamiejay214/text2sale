@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getIndexableTags, getPostsByTag, getTagBySlug } from "@/lib/blog-posts";
+import { TAG_INTROS } from "@/lib/blog-tag-intros";
+import MarketingFooter from "@/components/MarketingFooter";
 
 const SITE = "https://text2sale.com";
 
@@ -19,7 +21,9 @@ export async function generateMetadata({
   if (!tag) return { title: "Topic Not Found | Text2Sale" };
 
   const title = `${tag.label} — Texting Guides & Articles | Text2Sale`;
-  const description = `${tag.count} guides on ${tag.label.toLowerCase()} for businesses that text their customers — practical playbooks on outreach, follow-up, compliance, and deliverability.`;
+  const description =
+    TAG_INTROS[tag.slug]?.intro[0] ??
+    `${tag.count} guides on ${tag.label.toLowerCase()} for businesses that text their customers — practical playbooks on outreach, follow-up, compliance, and deliverability.`;
 
   return {
     title,
@@ -54,6 +58,7 @@ export default async function BlogTagPage({
   if (!tag) notFound();
 
   const posts = getPostsByTag(slug);
+  const intro = TAG_INTROS[slug];
   const otherTags = getIndexableTags().filter((t) => t.slug !== slug);
 
   const listSchema = {
@@ -98,9 +103,28 @@ export default async function BlogTagPage({
 
         <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Topic</p>
         <h1 className="mt-4 max-w-3xl text-4xl font-black tracking-tight md:text-5xl">{tag.label}</h1>
-        <p className="mt-5 max-w-2xl text-lg leading-8 text-zinc-300">
-          {tag.count} {tag.count === 1 ? "guide" : "guides"} on {tag.label.toLowerCase()} — written for teams that text
-          customers every day and need it to work.
+        {intro ? (
+          intro.intro.map((paragraph, i) => (
+            <p key={i} className={`${i === 0 ? "mt-5 text-lg text-zinc-300" : "mt-4 text-zinc-400"} max-w-3xl leading-8`}>
+              {paragraph}
+            </p>
+          ))
+        ) : (
+          <p className="mt-5 max-w-2xl text-lg leading-8 text-zinc-300">
+            {tag.count} {tag.count === 1 ? "guide" : "guides"} on {tag.label.toLowerCase()} — written for teams that text
+            customers every day and need it to work.
+          </p>
+        )}
+        <p className="mt-5 text-sm text-zinc-500">
+          {tag.count} {tag.count === 1 ? "guide" : "guides"} in this topic
+          {intro?.landing && (
+            <>
+              <span className="mx-2">·</span>
+              <Link href={intro.landing.href} className="font-semibold text-emerald-300 hover:text-emerald-200">
+                {intro.landing.label} →
+              </Link>
+            </>
+          )}
         </p>
       </section>
 
@@ -145,6 +169,7 @@ export default async function BlogTagPage({
           </Link>
         </div>
       </section>
+      <MarketingFooter />
     </main>
   );
 }

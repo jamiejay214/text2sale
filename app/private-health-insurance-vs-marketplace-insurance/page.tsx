@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import MarketingFooter from "@/components/MarketingFooter";
 
 export const metadata: Metadata = {
   title: "Private Health Insurance vs Marketplace Insurance: Which Saves More in 2026? | Text2Sale",
@@ -61,9 +62,16 @@ export default function PrivateVsMarketplaceInsurancePage() {
     headline: "Private Health Insurance vs Marketplace Insurance: Which One Saves You More Money in 2026?",
     description:
       "A clear comparison of private health insurance and ACA Marketplace insurance in 2026, including costs, networks, deductibles, enrollment rules, and best-fit examples.",
+    image: {
+      "@type": "ImageObject",
+      url: "https://text2sale.com/private-health-insurance-vs-marketplace-insurance/opengraph-image",
+      width: 1200,
+      height: 630,
+    },
     author: {
       "@type": "Organization",
       name: "Text2Sale",
+      url: "https://text2sale.com",
     },
     publisher: {
       "@type": "Organization",
@@ -337,6 +345,7 @@ export default function PrivateVsMarketplaceInsurancePage() {
           </p>
         </section>
       </article>
+      <MarketingFooter />
     </main>
   );
 }

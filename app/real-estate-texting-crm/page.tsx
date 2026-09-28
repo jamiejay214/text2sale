@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
-      blogTags={["Speed to lead", "Property management", "SMS follow-up"]}
+      blogTags={["Real estate", "Mortgage", "Speed to lead"]}
       eyebrow="Real Estate Texting CRM"
       title="A texting CRM built for real estate agents who need faster lead follow-up."
       description="Real estate leads go cold fast. Text2Sale helps agents send bulk SMS to buyer and seller leads, manage 2-way conversations, use AI to keep replies moving, and book more showings — all from one texting CRM built around speed."
@@ -43,7 +43,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost for real estate agents?",
-          answer: "Text2Sale starts at $39.99/month and includes mass texting, AI replies, 2-way inbox, CSV imports, and campaign tools. A free trial is available."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         }
       ]}
       relatedPages={[

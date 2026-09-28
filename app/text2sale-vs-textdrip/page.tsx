@@ -43,7 +43,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost compared to Textdrip?",
-          answer: "Text2Sale starts at $39.99/month with a free trial available. It includes mass texting, drip campaigns, AI replies, CSV imports, and team inbox access in one plan."
+          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $59.99/month plus $0.025 per AI reply. There is no long-term contract."
         }
       ]}
       relatedPages={[

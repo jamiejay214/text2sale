@@ -24,6 +24,10 @@
     {
       "path": "/api/messaging/advance",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/indexnow",
+      "schedule": "23 14 * * *"
     }
   ]
 }
