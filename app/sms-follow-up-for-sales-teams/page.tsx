@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
-      blogTags={["SMS follow-up", "Automation", "Segmentation"]}
+      blogTags={["SMS follow-up", "Scripts", "Automation"]}
       eyebrow="SMS Follow-Up for Sales Teams"
       title="How sales teams use SMS follow-up to contact more leads and close more deals."
       description="Email open rates have dropped. Cold calls go to voicemail. SMS follow-up consistently outperforms both channels for reaching leads and starting conversations. Here is how sales teams build a texting follow-up process that actually converts."
