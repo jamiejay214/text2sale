@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { NUMBER_PURCHASE_COST } from "@/lib/telnyx-10dlc";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -26,7 +27,7 @@ const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 // sync with app/dashboard/page.tsx if it ever changes. The Telnyx side
 // charges ~$1/mo per local number on our billing account; the extra covers
 // our overhead.
-const NUMBER_PURCHASE_COST = 1.5;
+
 
 // ─── Configure new number for voice + HD voice ───────────────────────────
 // Telnyx provisions numbers in a couple of seconds. Once the number is
