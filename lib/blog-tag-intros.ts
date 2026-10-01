@@ -293,6 +293,34 @@ export const TAG_INTROS: Record<string, TagIntro> = {
     ],
     landing: { href: "/recruiting-texting-crm", label: "See the recruiting texting CRM" },
   },
+  "local-business": {
+    intro: [
+      "Texting guides for local businesses: reminders, waitlists, reviews, and referrals that keep a neighborhood customer base coming back.",
+      "Local businesses compete on convenience and reputation, and text messages support both. These articles cover appointment reminders, filling last-minute cancellations from a waitlist, asking for Google reviews, and running a simple referral program, with examples drawn from salons, restaurants, pet care, and professional offices.",
+    ],
+    landing: { href: "/mass-texting-crm", label: "See how Text2Sale works for local businesses" },
+  },
+  legal: {
+    intro: [
+      "Guides to the legal side of business texting: Do Not Call rules, state laws, and how client intake works in law firms.",
+      "Texting sits under several overlapping rules, from federal consent requirements to state mini-TCPA laws and the Do Not Call Registry. These articles explain how they fit together in plain language and how a law practice can use texting responsibly. They are general information, not legal advice, so confirm anything specific to your business with counsel.",
+    ],
+    landing: { href: "/10dlc-compliant-texting", label: "Read about 10DLC compliant texting" },
+  },
+  medicare: {
+    intro: [
+      "Texting guides for Medicare agents: the Annual Enrollment Period, turning-65 prospects, and the January to March Medicare Advantage window.",
+      "Medicare is seasonal and tightly regulated. CMS marketing rules prohibit unsolicited contact, so a permission-based list matters more here than anywhere else in insurance. These articles cover when each enrollment window opens, who agents can contact, and how to use texting to schedule conversations without breaking the rules.",
+    ],
+    landing: { href: "/medicare-agent-texting-crm", label: "See the Medicare agent texting CRM" },
+  },
+  "missed-calls": {
+    intro: [
+      "Guides to recovering missed calls: automatic text-backs, AI phone receptionists, and forwarding your cell so no caller is lost to voicemail.",
+      "Many callers will not leave a voicemail, and a call that goes unanswered often becomes a lost customer. These articles cover the cheapest recovery tactic, a text sent right after a missed call, and how an AI receptionist can answer, take a message, or book an appointment while you are busy.",
+    ],
+    landing: { href: "/ai-texting-crm", label: "See the AI texting CRM" },
+  },
   technical: {
     intro: [
       "Technical guides to business texting: message segments, encoding, number types, integrations, and delivery troubleshooting.",
