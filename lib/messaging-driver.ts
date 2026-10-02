@@ -430,6 +430,11 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
     };
   }
 
+  // No point searching (or asking Telnyx anything) for someone who can't pay.
+  if ((Number(profile.wallet_balance) || 0) < NUMBER_PURCHASE_COST) {
+    return { status: "AWAITING_PAYMENT", note: `Needs $${NUMBER_PURCHASE_COST.toFixed(2)} in the balance` };
+  }
+
   // Search first: nothing should move in the wallet if there's nothing to buy.
   let candidate = await findAvailableNumber(reg.desiredAreaCode || undefined);
   if (!candidate && reg.desiredAreaCode) {

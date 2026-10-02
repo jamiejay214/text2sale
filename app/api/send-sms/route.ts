@@ -34,6 +34,10 @@ async function getAuthedUserId(req: NextRequest): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
+  // Set once the wallet has been charged for this message, so any failure
+  // after that point can give the money back.
+  let charged = 0;
+  let refund: (why: string) => Promise<void> = async () => {};
   try {
     const userId = await getAuthedUserId(req);
     if (!userId) {
@@ -142,6 +146,49 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // ── Pay first ───────────────────────────────────────────────────────
+    // The wallet is charged BEFORE Telnyx is asked to send, and refunded if
+    // the send then fails. This used to send first and charge afterwards,
+    // ignoring a failed charge — so an account with an empty balance could
+    // keep texting for free while Text2Sale paid Telnyx for every message.
+    // Charged per segment: a 200-char reply is 2 GSM-7 segments and Telnyx
+    // bills us twice.
+    const { data: planRow } = await adminSupabase.from("profiles").select("plan").eq("id", userId).single();
+    const planObj = (planRow?.plan as Record<string, unknown> | null) || null;
+    const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
+    const segments = countSegments(sanitizedBody);
+    const totalCost = Number((messageCost * Math.max(1, segments)).toFixed(4));
+    const { data: newBalance, error: debitErr } = await adminSupabase.rpc("decrement_wallet", {
+      p_user_id: userId,
+      p_amount: totalCost,
+    });
+    if (debitErr || newBalance === null) {
+      return NextResponse.json(
+        {
+          success: false,
+          insufficientFunds: true,
+          error: "Your balance is too low to send this message. Add funds and try again.",
+        },
+        { status: 402 }
+      );
+    }
+    charged = totalCost;
+    const refundCharge = async (why: string) => {
+      if (!charged) return;
+      try {
+        await adminSupabase.rpc("credit_wallet", {
+          p_user_id: userId,
+          p_amount: charged,
+          p_idempotency_key: null,
+          p_description: `Refund — message not sent: ${why.slice(0, 60)}`,
+        });
+        charged = 0;
+      } catch (e) {
+        console.error("[send-sms] refund failed — needs reconciliation:", userId, e);
+      }
+    };
+    refund = refundCharge;
+
     // Build Telnyx payload — include messaging_profile_id when available
     // so messages route through the correct 10DLC campaign.
     const telnyxPayload: Record<string, string> = {
@@ -169,40 +216,11 @@ export async function POST(req: NextRequest) {
     if (data.errors) {
       const errMsg = data.errors[0]?.detail || "Failed to send";
       console.error("Telnyx send error:", JSON.stringify(data.errors));
+      await refundCharge(errMsg);
       return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
     }
 
     console.log("Telnyx send OK:", data.data?.id, "from:", fromE164, "to:", toE164);
-
-    // ── Charge the wallet for this 1:1 message ────────────────────────────
-    // Campaigns already decrement via send-campaign; this is the matching
-    // path for ad-hoc replies/DMs from the conversation view. We charge
-    // AFTER a successful Telnyx accept so a rejected send doesn't bill the
-    // user. messageCost comes from the profile's plan shape (default
-    // $0.012 — matches the Standard/AI plan rate). Decrement is
-    // best-effort: a failed RPC (e.g. zero balance) is logged but doesn't
-    // fail the send since Telnyx has already queued it. The real hard gate
-    // on zero-balance senders is the campaign loop + auto-recharge cron.
-    try {
-      const { data: planRow } = await adminSupabase
-        .from("profiles")
-        .select("plan")
-        .eq("id", userId)
-        .single();
-      const planObj = (planRow?.plan as Record<string, unknown> | null) || null;
-      const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
-      // Charge per segment, not per message. A 200-char reply is 2
-      // GSM-7 segments and Telnyx bills us twice; charging once would
-      // erode margin on long sends.
-      const segments = countSegments(sanitizedBody);
-      const totalCost = Number((messageCost * Math.max(1, segments)).toFixed(4));
-      await adminSupabase.rpc("decrement_wallet", {
-        p_user_id: userId,
-        p_amount: totalCost,
-      });
-    } catch (e) {
-      console.error("[send-sms] wallet decrement failed:", e);
-    }
 
     return NextResponse.json({
       success: true,
@@ -212,6 +230,7 @@ export async function POST(req: NextRequest) {
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Telnyx send error:", errMsg);
+    await refund(errMsg);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }

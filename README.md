@@ -35,3 +35,28 @@ The easiest way to deploy your Next.js app is to use the [Vercel Platform](https
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
 # text2sale
+
+## Customer activation pipeline (signup → texting live)
+
+After a customer subscribes and submits their business details once, everything else is automatic:
+
+1. **Website** – a compliance site is generated from their details (`/biz/<slug>`, served on their own domain). With "build one for me" the driver registers the domain they picked, **after** debiting their wallet.
+2. **Business registration** – submitted to Telnyx once the site answers.
+3. **Messaging (10DLC) registration** – filed when the business is approved; industry-specific wording, privacy/terms links on their own domain.
+4. **Phone number** – bought (wallet debited first) and attached when the campaign is approved.
+
+`lib/messaging-driver.ts` does the work and runs every minute from the cron `/api/messaging/advance`. `lib/activation-pipeline.ts` turns a profile row into the progress shown in **Admin → Activation**.
+
+### Settings the automation needs (Vercel env vars)
+
+| Variable | Why |
+| --- | --- |
+| `CRON_SECRET` | Authorises the minute cron. **Without it the activation cron (and every other cron) refuses to run.** |
+| `MESSAGING_AUTOBUY=true` | Lets the driver buy phone numbers. Off = accounts wait at "campaign approved". |
+| `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` | Lets the driver register and attach customer domains. Without them customers fall back to "I own a domain". |
+| `TELNYX_API_KEY`, `TELNYX_MESSAGING_PROFILE_ID` | Telnyx. Keep the Telnyx account balance funded: a low balance holds registrations and texts you (it never rejects the customer). |
+| `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Subscriptions, wallet top-ups, AI-plan upgrades. |
+
+### Pay-first rules
+
+Nothing is bought for an account that isn't paying. Brand/campaign registration needs an active (or comped) subscription; phone numbers and domains debit the customer's wallet before the supplier is called and are refunded if the order fails; opt-in confirmation texts and 1:1 texts are charged before they are sent.

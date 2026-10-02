@@ -35,9 +35,9 @@ export async function POST(req: NextRequest) {
         Thanks for signing up. Your account is ready — here's how to get up and running in the next 10 minutes:
       </p>
       <ol style="color: #d4d4d8; font-size: 14px; line-height: 1.7; padding-left: 20px;">
-        <li><strong>Subscribe</strong> to the $39.99/mo plan to unlock messaging, number purchasing, and campaigns.</li>
-        <li><strong>Register 10DLC.</strong> Carriers require every business to be approved before sending A2P SMS. Takes 1–3 business days.</li>
-        <li><strong>Buy a local number</strong> ($1.50 one-time + $1/mo).</li>
+        <li><strong>Subscribe</strong> to your plan to unlock messaging and campaigns.</li>
+        <li><strong>Tell us about your business — once.</strong> We build your website, register your business with the carriers, and set up your local phone number automatically. Carrier approval usually takes a day or two, and you don't need to keep the page open.</li>
+        <li><strong>Add funds</strong> to your balance. Your phone number ($1.50) and, if we register a web address for you, its first-year price are taken from it — nothing is bought until the money is there.</li>
         <li><strong>Import your contacts</strong> from a CSV — or add them one at a time.</li>
         <li><strong>Launch your first campaign.</strong></li>
       </ol>

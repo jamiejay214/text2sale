@@ -39,6 +39,7 @@ export default function ActivationStatus({
   onAddFunds,
   onFixSubscription,
   onStart,
+  refreshKey,
 }: {
   /** Injected so this component doesn't need to know how auth is wired. */
   authFetch: (url: string, init?: RequestInit) => Promise<Response>;
@@ -47,6 +48,8 @@ export default function ActivationStatus({
   onAddFunds?: (amountNeeded: number) => void;
   onFixSubscription?: () => void;
   onStart?: () => void;
+  /** Change this to re-check straight away (e.g. right after details are submitted). */
+  refreshKey?: number;
 }) {
   const [state, setState] = useState<StatusPayload | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -99,7 +102,7 @@ export default function ActivationStatus({
       cancelled = true;
       if (timer) window.clearInterval(timer);
     };
-  }, [authFetch, onActive]);
+  }, [authFetch, onActive, refreshKey]);
 
   if (!state) {
     return (

@@ -376,7 +376,11 @@ export default function PipelineBoard({
       <div className="space-y-3">
         {visible.map(({ profile, pipeline }) => {
           const reg = profile.a2p_registration;
-          const chip = OWNER_CHIP[pipeline.owner];
+          // Accounts that haven't started aren't "waiting on" anyone yet.
+          const chip =
+            pipeline.health === "not_started" && pipeline.alerts.length === 0
+              ? { label: "Not started", cls: "bg-zinc-700/50 text-zinc-300" }
+              : OWNER_CHIP[pipeline.owner];
           const isOpen = open.has(profile.id);
           return (
             <div key={profile.id} className="rounded-2xl border border-zinc-800 bg-zinc-900 p-4">

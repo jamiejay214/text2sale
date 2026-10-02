@@ -899,6 +899,8 @@ export default function DashboardPage() {
   // The business-details form, shared by the onboarding wizard and Settings → 10DLC.
   const [bizForm, setBizForm] = useState<BusinessFormValues>(EMPTY_BUSINESS_FORM);
   const bizFormPrefilled = useRef(false);
+  // Bumped after details are submitted so the activation card re-checks at once.
+  const [activationRefresh, setActivationRefresh] = useState(0);
 
   // Search & filter state
   const [globalSearch, setGlobalSearch] = useState("");
@@ -3344,6 +3346,7 @@ export default function DashboardPage() {
       setMessage("✅ " + (data.message || "Submitted — we'll take it from here."));
       window.setTimeout(() => setMessage(""), 6000);
       setA2pStep(2);
+      setActivationRefresh((n) => n + 1);
       await refreshCurrentUser();
       return true;
     } catch {
@@ -3368,6 +3371,7 @@ export default function DashboardPage() {
       const data = await res.json();
       setMessage(data.success ? "✅ " + (data.message || "Checked.") : "❌ " + (data.error || "Could not check status."));
       window.setTimeout(() => setMessage(""), 5000);
+      setActivationRefresh((n) => n + 1);
       await refreshCurrentUser();
     } catch {
       setMessage("❌ Could not check status.");
@@ -5718,6 +5722,7 @@ export default function DashboardPage() {
               onFixDetails={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }}
               onAddFunds={(need) => { void handleAddFunds(Math.max(20, Math.ceil(need / 5) * 5)); }}
               onFixSubscription={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
+              refreshKey={activationRefresh}
             />
 
             {/* ═══════════════ HERO METRIC ROW ═══════════════

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { CUSTOM_DOMAIN_HOSTS, CUSTOM_DOMAINS } from "@/lib/custom-domains";
+import { CUSTOM_DOMAIN_HOSTS, CUSTOM_DOMAINS, isMainSiteHost } from "@/lib/custom-domains";
 import { SITE_PAGES } from "@/lib/site-pages";
 
 // ─── Dynamic custom-domain routing ────────────────────────────────────────
@@ -109,12 +109,7 @@ export async function middleware(req: NextRequest) {
   if (host === "www.text2sale.com") return redirectToMainSite(req);
 
   // Main app + Vercel previews: pass through untouched.
-  if (
-    !host ||
-    host === "text2sale.com" ||
-    host.endsWith(".vercel.app") ||
-    host === "localhost"
-  ) {
+  if (isMainSiteHost(host)) {
     return NextResponse.next();
   }
 

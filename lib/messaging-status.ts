@@ -280,6 +280,9 @@ export function classifyTelnyxError(input: {
   if (TRANSIENT_PATTERN.test(text)) return { kind: "transient", message };
 
   const status = input.status ?? 0;
+  // A success response that we couldn't use (a missing id, an odd shape) is
+  // Telnyx misbehaving, not the customer's details being wrong.
+  if (status >= 200 && status < 300) return { kind: "transient", message };
   if (status === 401 || status === 402 || status === 403) return { kind: "platform", message };
   if (status === 408 || status === 425 || status === 429 || status >= 500) {
     return { kind: "transient", message };
