@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import { headers } from "next/headers";
-import { isCustomComplianceHost } from "@/lib/custom-domains";
+import { isBrandedHost } from "@/lib/custom-domains";
 import Tracker from "@/components/Tracker";
 import "./globals.css";
 
@@ -70,7 +70,11 @@ export default async function RootLayout({
   // and serve a stripped <head> for those domains.
   const hdrs = await headers();
   const host = hdrs.get("host");
-  const isComplianceSite = isCustomComplianceHost(host);
+  // Any host that isn't Text2Sale's own is a customer's site. This used to
+  // check a hand-maintained list, so a domain the activation flow had just
+  // bought served the Meta Pixel and Tracker on a page carriers were about
+  // to review.
+  const isComplianceSite = isBrandedHost(host);
 
   return (
     <html lang="en" className="h-full antialiased">

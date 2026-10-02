@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { loginUser, signupUser } from "@/lib/auth";
+import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
 
@@ -132,6 +133,24 @@ export default function HomeClient({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email: signupEmail.trim(), firstName }),
     }).catch(() => {});
+
+    // Carry the plan they picked on this page into their account. Without
+    // this every signup landed on Standard no matter which card was selected,
+    // and the checkout charged a different price from the one shown. Waits
+    // briefly so the dashboard loads with the right plan, but never blocks
+    // the signup if it's slow — they can still change plan from the dashboard.
+    try {
+      await Promise.race([
+        authFetch("/api/onboarding/plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ package: selectedPlan }),
+        }),
+        new Promise((resolve) => setTimeout(resolve, 4000)),
+      ]);
+    } catch {
+      /* the account exists either way */
+    }
 
     router.push("/dashboard");
   };

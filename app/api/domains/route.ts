@@ -1,43 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import { authenticate } from "@/lib/auth-guard";
-import {
-  attachDomainToProject,
-  buyDomain,
-  isDomainAvailable,
-  suggestDomains,
-} from "@/lib/vercel-domains";
+import { isDomainAvailable, suggestDomains } from "@/lib/vercel-domains";
+import { priceToCharge, purchaseDomainForUser, type DomainPurchaseFailure } from "@/lib/domain-purchase";
+import { isValidDomain, normalizeDomain } from "@/lib/business-site";
+import { createServiceClient } from "@/lib/messaging-driver";
 
-// ── Domain provisioning for activation ─────────────────────────────────────
+// ── Website addresses ──────────────────────────────────────────────────────
 //
-// Carriers reject compliance pages hosted on a shared domain, so a customer
-// without a website can't be activated on a text2sale.com/<slug> URL — that
-// path was tried and removed. Instead we get them a real domain of their own
-// here, host the compliance page on it, and register the brand against it.
+// Carriers reject compliance pages hosted on a shared domain, so every
+// customer needs a real address of their own. During activation the customer
+// picks one from the suggestions here and the driver registers it once their
+// balance covers it (lib/messaging-driver.ts); "buy" is the direct route for
+// buying one on demand.
 //
-// Three actions:
-//   suggest  — candidate names derived from their business name, with live
-//              availability and price
-//   check    — availability and price for one specific name
-//   buy      — charge the wallet, then register and attach the domain
+//   suggest  candidate names from their business name, with live availability
+//            and price
+//   check    availability and price for one specific name
+//   buy      charge the wallet, then register and attach the domain
 //
 // Nothing is purchased without money in hand: "buy" debits the wallet first
-// and refunds if registration fails. It also requires the caller to echo back
-// the price they were shown, so a customer can never be charged more than the
-// figure they agreed to when the quote moves between check and buy.
+// and refunds if registration fails, and it requires the caller to echo back
+// the price they were shown so a quote that moves between check and buy can
+// never charge more than the customer agreed to.
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+// Suggestions fan out to the registrar; keep one customer from hammering it.
+const SUGGEST_LIMIT = 15;
+const SUGGEST_WINDOW_MS = 60 * 60 * 1000;
+const suggestCalls = new Map<string, number[]>();
 
-/** What we add to the registrar price, covering renewal and handling. */
-const DOMAIN_MARKUP = 5;
-
-/** Reject a quote that drifted more than this from what the customer saw. */
-const PRICE_TOLERANCE = 0.01;
-
-function priceToCharge(registrarPrice: number): number {
-  return Math.round((registrarPrice + DOMAIN_MARKUP) * 100) / 100;
+function rateLimited(userId: string): boolean {
+  const now = Date.now();
+  const recent = (suggestCalls.get(userId) || []).filter((t) => now - t < SUGGEST_WINDOW_MS);
+  if (recent.length >= SUGGEST_LIMIT) {
+    suggestCalls.set(userId, recent);
+    return true;
+  }
+  recent.push(now);
+  suggestCalls.set(userId, recent);
+  return false;
 }
+
+const FAILURE_STATUS: Record<DomainPurchaseFailure["code"], number> = {
+  invalid: 400,
+  missing_details: 400,
+  insufficient: 402,
+  unavailable: 409,
+  price_changed: 409,
+  not_configured: 503,
+  registrar: 502,
+};
 
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
@@ -49,11 +60,19 @@ export async function POST(req: NextRequest) {
   // ── suggest ─────────────────────────────────────────────────────────────
   if (action === "suggest") {
     const businessName = typeof body.businessName === "string" ? body.businessName : "";
+    const industry = typeof body.industry === "string" ? body.industry : null;
     if (!businessName.trim()) {
       return NextResponse.json({ success: false, error: "Business name is required" }, { status: 400 });
     }
+    if (rateLimited(auth.user.id)) {
+      return NextResponse.json(
+        { success: false, error: "Too many searches — try again in a little while." },
+        { status: 429 }
+      );
+    }
 
-    const candidates = suggestDomains(businessName).slice(0, 6);
+    const candidates = suggestDomains(businessName, industry).slice(0, 8);
+    let registrarProblem: string | null = null;
     const results = await Promise.all(
       candidates.map(async (domain) => {
         try {
@@ -64,24 +83,30 @@ export async function POST(req: NextRequest) {
             premium: status.premium ?? false,
             price: status.price != null ? priceToCharge(status.price) : null,
           };
-        } catch {
-          // A registrar hiccup on one candidate shouldn't blank the whole list.
+        } catch (e) {
+          // Remember why, so "nothing available" and "registrar not set up"
+          // aren't the same message to the customer.
+          registrarProblem = e instanceof Error ? e.message : "Registrar unavailable";
           return { domain, available: false, premium: false, price: null };
         }
       })
     );
 
+    const suggestions = results.filter((r) => r.available && r.price != null && !r.premium).slice(0, 6);
     return NextResponse.json({
       success: true,
-      suggestions: results.filter((r) => r.available && r.price != null),
-      checked: results,
+      suggestions,
+      // True when the registrar isn't configured or rejected us: the screen
+      // then falls back to "I already own a domain".
+      registrarAvailable: !(registrarProblem && suggestions.length === 0),
+      registrarProblem: suggestions.length === 0 ? registrarProblem : null,
     });
   }
 
   // ── check ───────────────────────────────────────────────────────────────
   if (action === "check") {
-    const domain = typeof body.domain === "string" ? body.domain.toLowerCase().trim() : "";
-    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
+    const domain = normalizeDomain(typeof body.domain === "string" ? body.domain : "");
+    if (!isValidDomain(domain)) {
       return NextResponse.json({ success: false, error: "That doesn't look like a valid domain" }, { status: 400 });
     }
     try {
@@ -103,153 +128,37 @@ export async function POST(req: NextRequest) {
 
   // ── buy ─────────────────────────────────────────────────────────────────
   if (action === "buy") {
-    const domain = typeof body.domain === "string" ? body.domain.toLowerCase().trim() : "";
+    const domain = normalizeDomain(typeof body.domain === "string" ? body.domain : "");
     const agreedPrice = typeof body.agreedPrice === "number" ? body.agreedPrice : null;
-
-    if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(domain)) {
+    if (!isValidDomain(domain)) {
       return NextResponse.json({ success: false, error: "That doesn't look like a valid domain" }, { status: 400 });
     }
     // Explicit consent to a specific figure is required — we never pick a
     // price for the customer and charge it.
     if (agreedPrice == null) {
-      return NextResponse.json(
-        { success: false, error: "Confirm the price before purchase" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: "Confirm the price before purchase" }, { status: 400 });
     }
 
-    // Re-quote at purchase time; registrar pricing moves.
-    let status: Awaited<ReturnType<typeof isDomainAvailable>>;
-    try {
-      status = await isDomainAvailable(domain);
-    } catch (e) {
-      return NextResponse.json(
-        { success: false, error: e instanceof Error ? e.message : "Availability check failed" },
-        { status: 502 }
-      );
-    }
-    if (!status.available || status.price == null) {
-      return NextResponse.json({ success: false, error: "That domain is no longer available" }, { status: 409 });
-    }
-
-    const charge = priceToCharge(status.price);
-    if (Math.abs(charge - agreedPrice) > PRICE_TOLERANCE) {
+    const result = await purchaseDomainForUser(createServiceClient(), auth.user.id, domain, agreedPrice);
+    if (!result.ok) {
       return NextResponse.json(
         {
           success: false,
-          error: "The price changed — please confirm the new price",
-          price: charge,
-          priceChanged: true,
+          error: result.message,
+          price: result.price,
+          priceChanged: result.code === "price_changed",
+          amountNeeded: result.amountNeeded,
+          missing: result.missing,
         },
-        { status: 409 }
+        { status: FAILURE_STATUS[result.code] }
       );
     }
-
-    const db = createClient(supabaseUrl, serviceKey);
-
-    // ICANN requires real WHOIS contact details, and they must be the
-    // customer's own — the domain belongs to them, not to us. These come
-    // from the business details they already gave us during activation, so
-    // there is nothing extra to fill in.
-    const { data: profile } = await db
-      .from("profiles")
-      .select("first_name, last_name, email, phone, a2p_registration")
-      .eq("id", auth.user.id)
-      .single();
-
-    const reg = (profile?.a2p_registration || {}) as Record<string, string | undefined>;
-    const registrant = {
-      firstName: profile?.first_name || reg.contactFirstName || "",
-      lastName: profile?.last_name || reg.contactLastName || "",
-      email: reg.contactEmail || profile?.email || "",
-      phone: (reg.contactPhone || profile?.phone || "").replace(/[^\d+]/g, ""),
-      address1: reg.businessAddress || "",
-      city: reg.businessCity || "",
-      state: reg.businessState || "",
-      postalCode: reg.businessZip || "",
-      orgName: reg.businessName || undefined,
-    };
-
-    const missing = (["firstName", "lastName", "email", "phone", "address1", "city", "state", "postalCode"] as const)
-      .filter((k) => !registrant[k]);
-    if (missing.length > 0) {
-      // Fail before charging rather than taking money for a purchase the
-      // registrar is certain to reject.
-      return NextResponse.json(
-        {
-          success: false,
-          error: "We need your business address and contact details before registering a domain.",
-          missing,
-        },
-        { status: 400 }
-      );
-    }
-
-    // E.164 for the registrar.
-    const phone = registrant.phone.startsWith("+")
-      ? registrant.phone
-      : `+1${registrant.phone.replace(/^1/, "")}`;
-
-    // ── Charge before buying ──────────────────────────────────────────────
-    const { data: newBalance, error: debitErr } = await db.rpc("decrement_wallet", {
-      p_user_id: auth.user.id,
-      p_amount: charge,
-    });
-    if (debitErr || newBalance === null) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Add $${charge.toFixed(2)} to your balance to register ${domain}.`,
-          amountNeeded: charge,
-        },
-        { status: 402 }
-      );
-    }
-
-    const refund = async (why: string) => {
-      try {
-        await db.rpc("credit_wallet", {
-          p_user_id: auth.user.id,
-          p_amount: charge,
-          p_idempotency_key: null,
-          p_description: `Refund — domain purchase failed: ${why.slice(0, 80)}`,
-        });
-      } catch (e) {
-        console.error("[domains] refund failed — needs reconciliation:", auth.user.id, e);
-      }
-    };
-
-    try {
-      await buyDomain({
-        domain,
-        expectedPrice: status.price,
-        ...registrant,
-        phone,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : "Registration failed";
-      await refund(msg);
-      return NextResponse.json({ success: false, error: msg }, { status: 502 });
-    }
-
-    // Registered and paid for. An attach failure from here is recoverable and
-    // must not refund a domain the customer now owns.
-    let attachWarning: string | null = null;
-    try {
-      await attachDomainToProject(domain);
-    } catch (e) {
-      attachWarning = e instanceof Error ? e.message : "Domain attach failed";
-      console.error("[domains] attach failed:", domain, attachWarning);
-    }
-
-    await db.from("profiles").update({ custom_domain: domain }).eq("id", auth.user.id);
-
     return NextResponse.json({
       success: true,
-      domain,
-      charged: charge,
-      balance: newBalance,
-      attachWarning,
+      domain: result.domain,
+      charged: result.charged,
+      balance: result.balance,
+      attachWarning: result.attachWarning,
     });
   }
 

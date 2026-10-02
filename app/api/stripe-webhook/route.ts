@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
+import type { Db } from "@/lib/business-site";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -12,6 +13,23 @@ function getStripe() {
   return new Stripe(process.env.STRIPE_SECRET_KEY, {
     apiVersion: "2026-03-25.dahlia",
   });
+}
+
+/**
+ * Wake an account the activation driver is holding on payment, so it resumes
+ * within a minute of the money arriving instead of at its next scheduled
+ * retry. Best-effort: the driver would pick the account up regardless.
+ */
+async function nudgeActivation(supabase: Db, userId: string, statuses: string[]) {
+  try {
+    await supabase
+      .from("profiles")
+      .update({ messaging_next_attempt_at: new Date().toISOString() })
+      .eq("id", userId)
+      .in("messaging_status", statuses);
+  } catch (e) {
+    console.error("[stripe-webhook] activation nudge failed:", e);
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -101,6 +119,9 @@ export async function POST(req: NextRequest) {
           });
           if (creditErr) {
             console.error("[stripe-webhook] credit_wallet failed:", creditErr);
+          } else {
+            // An activation parked on "add funds" resumes on its own.
+            await nudgeActivation(supabase, userId, ["AWAITING_PAYMENT"]);
           }
 
           // Read the fresh balance + metadata for the audit log / referral
@@ -248,14 +269,35 @@ export async function POST(req: NextRequest) {
         // don't want Stripe's "inactive" state to clobber the comp.
         const { data: current } = await supabase
           .from("profiles")
-          .select("free_subscription")
+          .select("free_subscription, free_ai_plan")
           .eq("id", userId)
           .single();
         const update: Record<string, unknown> = {
           stripe_subscription_id: subscription.id,
         };
         if (!current?.free_subscription) update.subscription_status = subStatus;
+
+        // The AI features follow the package that is actually being paid for.
+        // The package is stamped on the subscription at checkout (and by the
+        // plan switch), so an AI signup is never left on Standard features
+        // and a Standard one never gets AI for free. Subscriptions that
+        // predate the stamp have no package and are left as they are, as are
+        // accounts an admin has comped.
+        const pkg = subscription.metadata?.package;
+        if (!current?.free_subscription && !current?.free_ai_plan && (pkg === "ai" || pkg === "standard")) {
+          update.ai_plan = pkg === "ai" && (subStatus === "active" || subStatus === "canceling" || subStatus === "past_due");
+        }
         await supabase.from("profiles").update(update).eq("id", userId);
+
+        // Paying again releases an activation that was waiting on it.
+        if (subStatus === "active" || subStatus === "canceling") {
+          await nudgeActivation(supabase, userId, [
+            "BUSINESS_SUBMITTED",
+            "BRAND_APPROVED",
+            "CAMPAIGN_APPROVED",
+            "AWAITING_PAYMENT",
+          ]);
+        }
       }
     }
 
@@ -267,11 +309,13 @@ export async function POST(req: NextRequest) {
       if (userId) {
         const { data: current } = await supabase
           .from("profiles")
-          .select("free_subscription")
+          .select("free_subscription, free_ai_plan")
           .eq("id", userId)
           .single();
         const update: Record<string, unknown> = { stripe_subscription_id: null };
         if (!current?.free_subscription) update.subscription_status = "inactive";
+        // No subscription, no AI plan — unless an admin comped it.
+        if (!current?.free_subscription && !current?.free_ai_plan) update.ai_plan = false;
         await supabase.from("profiles").update(update).eq("id", userId);
       }
     }

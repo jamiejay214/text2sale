@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { countSegments } from "@/lib/sms-text";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -126,7 +127,7 @@ export async function POST(
     // the intro message from their AI settings.
     const { data: profile } = await supabase
       .from("profiles")
-      .select("owned_numbers, ai_instructions, industry, first_name, last_name")
+      .select("owned_numbers, ai_instructions, industry, first_name, last_name, plan")
       .eq("id", integration.user_id)
       .single();
 
@@ -167,18 +168,53 @@ export async function POST(
         }
       }
 
-      await fetch("https://api.telnyx.com/v2/messages", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${telnyxKey}`,
-        },
-        body: JSON.stringify({
-          from: fromNumber,
-          to: phone,
-          text: introMsg,
-        }),
-      }).catch((err) => console.error("[integrations/inbound] Auto-SMS failed:", err));
+      // Pay first. This auto-text used to go out at Text2Sale's expense — the
+      // account was never charged for it — so every lead from a connected
+      // vendor cost us a text and the customer nothing. The wallet is charged
+      // before the send and refunded if it fails; a customer with no balance
+      // simply doesn't get the automatic text (the lead is still saved).
+      const planObj = (profile?.plan as Record<string, unknown> | null) || null;
+      const perSegment = Number((planObj?.messageCost as number) ?? 0.012);
+      const cost = Number((perSegment * Math.max(1, countSegments(introMsg))).toFixed(4));
+      const { data: newBalance, error: debitErr } = await supabase.rpc("decrement_wallet", {
+        p_user_id: integration.user_id,
+        p_amount: cost,
+      });
+      if (debitErr || newBalance === null) {
+        console.warn("[integrations/inbound] Auto-SMS skipped — insufficient balance for user", integration.user_id);
+      } else {
+        let delivered = false;
+        try {
+          const sendRes = await fetch("https://api.telnyx.com/v2/messages", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${telnyxKey}`,
+            },
+            body: JSON.stringify({
+              from: fromNumber,
+              to: phone,
+              text: introMsg,
+            }),
+          });
+          const sendJson = await sendRes.json().catch(() => ({}));
+          delivered = sendRes.ok && !sendJson?.errors;
+        } catch (err) {
+          console.error("[integrations/inbound] Auto-SMS failed:", err);
+        }
+        if (!delivered) {
+          try {
+            await supabase.rpc("credit_wallet", {
+              p_user_id: integration.user_id,
+              p_amount: cost,
+              p_idempotency_key: null,
+              p_description: "Refund — automatic lead text failed",
+            });
+          } catch (e) {
+            console.error("[integrations/inbound] refund failed — needs reconciliation:", e);
+          }
+        }
+      }
     }
   }
 

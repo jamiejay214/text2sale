@@ -69,8 +69,9 @@ const COPY: Record<MessagingStatus, StatusCopy> = {
     needsCustomerAction: true,
   },
   BUSINESS_SUBMITTED: {
-    headline: "Setting up your texting number…",
-    detail: "We're submitting your business details for verification. Nothing needed from you.",
+    headline: "Setting up your website and texting…",
+    detail:
+      "We're getting your website ready and submitting your business for verification. Nothing needed from you.",
     progress: 15,
     needsCustomerAction: false,
   },
@@ -125,7 +126,24 @@ const COPY: Record<MessagingStatus, StatusCopy> = {
   },
 };
 
-export function statusCopy(status: MessagingStatus): StatusCopy {
+/** What an account is waiting on when it parks in AWAITING_PAYMENT. */
+export type Awaiting = "domain" | "number";
+
+/**
+ * Customer-facing copy for a status. AWAITING_PAYMENT covers two different
+ * purchases (the website address before the business is submitted, the phone
+ * number after approval), so it takes the reason to say the right thing.
+ */
+export function statusCopy(status: MessagingStatus, awaiting?: Awaiting | null): StatusCopy {
+  if (status === "AWAITING_PAYMENT" && awaiting === "domain") {
+    return {
+      headline: "Add funds to register your website address",
+      detail:
+        "Carriers need a website for your business. Add funds to your balance and we'll register your address, build the site and keep going automatically.",
+      progress: 10,
+      needsCustomerAction: true,
+    };
+  }
   return COPY[status];
 }
 
@@ -133,6 +151,11 @@ export function statusCopy(status: MessagingStatus): StatusCopy {
 // Telnyx reports brand status on one vocabulary and campaign status on
 // another. Both funnel into our statuses here so no caller has to remember
 // that "OK" means an approved brand while campaigns say "TCR_ACCEPTED".
+//
+// The campaign values are the complete `campaignStatus` enum from Telnyx's
+// OpenAPI spec. The first version of this mapped only four of the twelve and
+// let the rest fall through to "pending" — so a suspended, expired or
+// carrier-rejected campaign was polled for days instead of being surfaced.
 
 export type BrandOutcome = "approved" | "pending" | "failed";
 
@@ -145,15 +168,143 @@ export function mapBrandStatus(telnyxStatus: string | undefined | null): BrandOu
 
 export type CampaignOutcome = "approved" | "pending" | "failed";
 
+const CAMPAIGN_APPROVED = new Set(["TCR_ACCEPTED", "MNO_ACCEPTED", "MNO_PROVISIONED", "ACTIVE"]);
+const CAMPAIGN_FAILED = new Set([
+  "TCR_FAILED",
+  "TCR_SUSPENDED",
+  "TCR_EXPIRED",
+  "TELNYX_FAILED",
+  "MNO_REJECTED",
+  "MNO_PROVISIONING_FAILED",
+]);
+
 export function mapCampaignStatus(
   campaignStatus: string | undefined | null,
   submissionStatus?: string | undefined | null
 ): CampaignOutcome {
   const c = (campaignStatus || "").toUpperCase();
   const s = (submissionStatus || "").toUpperCase();
-  if (s === "FAILED" || c === "TCR_FAILED" || c === "MNO_REJECTED") return "failed";
-  if (c === "TCR_ACCEPTED" || c === "ACTIVE" || c === "MNO_ACCEPTED") return "approved";
+  if (s === "FAILED" || CAMPAIGN_FAILED.has(c)) return "failed";
+  if (CAMPAIGN_APPROVED.has(c)) return "approved";
   return "pending";
+}
+
+/**
+ * Turn Telnyx's `failureReasons` into one readable string.
+ *
+ * The spec types it as a string for both brands and campaigns, but older
+ * responses (and our own earlier assumptions) treated it as an array of
+ * `{ description }` objects. Code that indexed it as an array silently lost
+ * the brand rejection reason, and `.map` on the string threw for campaigns —
+ * which the driver caught and retried, so a rejected campaign looked "pending"
+ * for days. Accept every shape and never throw.
+ */
+export function parseFailureReasons(value: unknown): string {
+  const parts: string[] = [];
+  const visit = (v: unknown, depth: number) => {
+    if (v == null || depth > 3) return;
+    if (typeof v === "string") {
+      const t = v.trim();
+      if (!t) return;
+      // A JSON-encoded array/object inside the string.
+      if ((t.startsWith("[") || t.startsWith("{")) && depth < 3) {
+        try {
+          visit(JSON.parse(t), depth + 1);
+          return;
+        } catch {
+          /* not JSON — treat as text */
+        }
+      }
+      parts.push(t);
+      return;
+    }
+    if (Array.isArray(v)) {
+      for (const item of v) visit(item, depth + 1);
+      return;
+    }
+    if (typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const text = [o.description, o.detail, o.message, o.reason, o.title, o.error].find(
+        (x) => typeof x === "string" && x.trim()
+      );
+      if (typeof text === "string") parts.push(text.trim());
+    }
+  };
+  visit(value, 0);
+  return [...new Set(parts)].join("; ");
+}
+
+// ── Error classification ───────────────────────────────────────────────────
+// Not every failed Telnyx call means the customer did something wrong.
+// Production history shows it: of three accounts parked as REJECTED, none
+// were bad business details. Two were our own Telnyx balance running short
+// ("You do not have enough funds to perform this action") and one was a
+// campaign submitted while its brand was still pending. The customer could
+// not have fixed any of them, yet each was told their details needed fixing
+// and the account was dropped by the driver.
+//
+//   data      the request itself was refused — the customer can fix it
+//   platform  our Telnyx account needs attention (balance, credentials,
+//             permissions) — only the operator can fix it
+//   transient timing, rate limits, outages — retry later, nobody to blame
+
+export type ErrorKind = "data" | "platform" | "transient";
+
+export type ClassifiedError = { kind: ErrorKind; message: string };
+
+const PLATFORM_PATTERN =
+  /enough funds|insufficient (funds|balance|credit)|must have at least \$|balance (is )?(too )?low|payment required|top[- ]?up|account (is )?not (enabled|authori[sz]ed|permitted|verified)|10dlc (is )?not (enabled|available)|invalid (api )?key|authentication (failed|required)|unauthori[sz]ed/i;
+const TRANSIENT_PATTERN =
+  /timeout|timed out|temporar|try again|rate limit|too many requests|unavailable|brand registration status pending|still pending|not yet (approved|verified|active)|being processed|in progress|econnreset|fetch failed|network/i;
+
+/** Flatten Telnyx's `errors` (array of objects, array of strings, string) to text. */
+export function flattenTelnyxErrors(errors: unknown): string {
+  return parseFailureReasons(errors);
+}
+
+export function classifyTelnyxError(input: {
+  status?: number;
+  errors?: unknown;
+  message?: string;
+  /** The request never produced an HTTP response. */
+  network?: boolean;
+}): ClassifiedError {
+  const text = (input.message || flattenTelnyxErrors(input.errors) || "").trim();
+  const message = text || (input.status ? `Telnyx returned HTTP ${input.status}` : "Telnyx request failed");
+
+  if (input.network) return { kind: "transient", message };
+
+  // Pattern first: Telnyx reports a short balance as a 4xx whose wording is
+  // the only reliable signal, and a "pending" brand as a 4xx too.
+  if (PLATFORM_PATTERN.test(text)) return { kind: "platform", message };
+  if (TRANSIENT_PATTERN.test(text)) return { kind: "transient", message };
+
+  const status = input.status ?? 0;
+  // A success response that we couldn't use (a missing id, an odd shape) is
+  // Telnyx misbehaving, not the customer's details being wrong.
+  if (status >= 200 && status < 300) return { kind: "transient", message };
+  if (status === 401 || status === 402 || status === 403) return { kind: "platform", message };
+  if (status === 408 || status === 425 || status === 429 || status >= 500) {
+    return { kind: "transient", message };
+  }
+  return { kind: "data", message };
+}
+
+// ── Entitlement ────────────────────────────────────────────────────────────
+// "Collect payment before purchasing anything." Brand and campaign
+// registration cost real money on our Telnyx account, so they only proceed
+// for an account that is paying (or has been comped by an admin). Checked on
+// the server — the dashboard hides the buttons, but a hidden button is not a
+// gate: the old onboarding wizard let anyone press "Skip — already
+// subscribed" and submit a registration we then paid for.
+
+export function isEntitled(profile: {
+  subscription_status?: string | null;
+  free_subscription?: boolean | null;
+}): boolean {
+  if (profile.free_subscription) return true;
+  const s = profile.subscription_status;
+  return s === "active" || s === "canceling";
 }
 
 // ── Retry backoff ──────────────────────────────────────────────────────────
@@ -182,8 +333,12 @@ export const MAX_ATTEMPTS = 200;
 
 export function legacyStatusFor(
   status: MessagingStatus,
-  stage: "brand" | "campaign"
+  stage: "brand" | "campaign",
+  awaiting?: Awaiting | null
 ): string | null {
+  // Waiting on the website address happens before anything is submitted, so
+  // it must not read as "campaign approved" and unlock sending.
+  if (status === "AWAITING_PAYMENT" && awaiting === "domain") return "brand_pending";
   switch (status) {
     case "BUSINESS_SUBMITTED":
     case "BRAND_PENDING":

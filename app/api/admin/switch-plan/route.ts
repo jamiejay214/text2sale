@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate } from "@/lib/auth-guard";
+import { PACKAGES, type PackageKey } from "@/lib/packages";
 
 // ─── Admin: swap a user's subscription package ────────────────────────────
 // The app ships two packages:
@@ -19,12 +20,6 @@ import { authenticate } from "@/lib/auth-guard";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const PACKAGES = {
-  standard: { name: "Text2Sale Standard", price: 39.99, messageCost: 0.012, aiPlan: false },
-  ai:       { name: "Text2Sale AI",       price: 59.99, messageCost: 0.012, aiPlan: true  },
-} as const;
-
-type PackageKey = keyof typeof PACKAGES;
 
 function getStripe() {
   if (!process.env.STRIPE_SECRET_KEY) throw new Error("Stripe not configured.");

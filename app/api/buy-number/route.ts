@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { NUMBER_PURCHASE_COST } from "@/lib/telnyx-10dlc";
+import { NUMBER_PURCHASE_COST, assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -101,60 +101,6 @@ async function configureVoiceOnNumber(e164: string) {
   }
 
   return { ok: true as const };
-}
-
-export async function assignNumberToCampaign(e164: string, campaignId: string) {
-  // Associate a phone number with an approved 10DLC campaign on Telnyx.
-  //
-  // CORRECT ENDPOINT (verified live against this account, 2026-06):
-  //   POST /v2/10dlc/phone_number_campaigns   body: { phoneNumber, campaignId }
-  // The snake_case /v2/phone_number_campaigns route returns 404 (error
-  // 10005 "Resource not found") on this account — it does not exist here.
-  // An earlier comment had these two reversed, which is why every
-  // self-serve purchase silently failed to link to its campaign (David's
-  // numbers, and Jamie's, all "bought but never assigned"). The GET list
-  // and POST both only work under the /v2/10dlc/ prefix with camelCase.
-  //
-  // A successful POST returns 200 with { assignmentStatus: "PENDING_ASSIGNMENT" }
-  // (no `data` wrapper, `errors: null`). PENDING_ASSIGNMENT counts as
-  // assigned — Telnyx just propagates the T-Mobile/AT&T number mapping
-  // over the next few hours.
-  //
-  // Retry because a freshly-ordered number isn't assignable until it goes
-  // "active" (can lag ~30-60s); until then the API returns 10005.
-  for (let attempt = 0; attempt < 6; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
-    const res = await fetch("https://api.telnyx.com/v2/10dlc/phone_number_campaigns", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ phoneNumber: e164, campaignId }),
-    });
-    const data = await res.json().catch(() => ({}));
-    const errors = Array.isArray(data?.errors) ? data.errors : [];
-    // Success: 200 with an assignmentStatus and no error payload.
-    if (res.ok && errors.length === 0 && typeof data?.assignmentStatus === "string") {
-      return { assigned: true as const };
-    }
-    const detail = errors.length
-      ? errors.map((e: { detail?: string; title?: string }) => e.detail || e.title || "").join(", ")
-      : typeof data?.error === "string"
-        ? data.error
-        : "";
-    // "already assigned" is fine — idempotent success.
-    if (/already/i.test(detail) && /assigned|exists/i.test(detail)) {
-      return { assigned: true as const };
-    }
-    // Number not active/indexed yet → transient, keep retrying. Telnyx
-    // phrases this as 10005 "could not be found" while the order settles.
-    const transient = /not found|could not be found|provisioning|does not exist|not yet|pending/i.test(detail);
-    if (!transient) {
-      return { assigned: false as const, error: detail || `HTTP ${res.status}` };
-    }
-  }
-  return { assigned: false as const, error: "Timed out waiting for number to be provisioned" };
 }
 
 export async function POST(req: NextRequest) {

@@ -1,0 +1,259 @@
+// ── Paying for and registering a customer's website domain ────────────────
+//
+// Used by the activation driver (hands-off path) and by /api/domains (manual
+// path). The rule everywhere: the customer's wallet is charged BEFORE the
+// registrar is asked for anything, and refunded if registration fails.
+//
+// The driver can be interrupted between "charged" and "registered" (a function
+// timeout, a deploy). A marker is written to the registration right after the
+// charge so a later attempt resumes the purchase instead of charging a second
+// time.
+
+import { attachDomainToProject, buyDomain, isDomainAvailable, isDomainOwned } from "./vercel-domains";
+import { getUniqueSlug, isValidDomain, normalizeDomain, toSlug, type Db } from "./business-site";
+
+/** What we add to the registrar price, covering renewal and handling. */
+export const DOMAIN_MARKUP = 5;
+
+/** Reject a quote that rose more than this above what the customer agreed to. */
+const PRICE_TOLERANCE = 0.01;
+
+export function priceToCharge(registrarPrice: number): number {
+  return Math.round((registrarPrice + DOMAIN_MARKUP) * 100) / 100;
+}
+
+export type DomainPurchaseFailure = {
+  ok: false;
+  code:
+    | "invalid"
+    | "unavailable"
+    | "price_changed"
+    | "missing_details"
+    | "insufficient"
+    | "registrar"
+    | "not_configured";
+  message: string;
+  /** Current price, when it differs from what the customer agreed to. */
+  price?: number;
+  /** What the wallet is short by, when the code is "insufficient". */
+  amountNeeded?: number;
+  missing?: string[];
+};
+
+export type DomainPurchaseSuccess = {
+  ok: true;
+  domain: string;
+  charged: number;
+  balance: number | null;
+  slug: string;
+  attachWarning: string | null;
+};
+
+type Marker = {
+  domain: string;
+  state: "charged" | "bought" | "refunded";
+  charged: number;
+  at: string;
+};
+
+type Reg = Record<string, unknown> & { domainPurchase?: Marker };
+
+async function patchRegistration(db: Db, userId: string, patch: Record<string, unknown>) {
+  const { data } = await db.from("profiles").select("a2p_registration").eq("id", userId).single();
+  const reg = ((data?.a2p_registration as Reg | null) || {}) as Reg;
+  await db
+    .from("profiles")
+    .update({ a2p_registration: { ...reg, ...patch, updatedAt: new Date().toISOString() } })
+    .eq("id", userId);
+}
+
+/** Attach the apex and send www to it. Safe to call repeatedly. */
+export async function ensureDomainAttached(domain: string): Promise<string | null> {
+  try {
+    await attachDomainToProject(domain);
+  } catch (e) {
+    return e instanceof Error ? e.message : "Domain attach failed";
+  }
+  try {
+    await attachDomainToProject(`www.${domain}`, { redirectTo: domain });
+  } catch {
+    /* www is a convenience; the apex is what carriers load */
+  }
+  return null;
+}
+
+export async function purchaseDomainForUser(
+  db: Db,
+  userId: string,
+  rawDomain: string,
+  agreedPrice: number
+): Promise<DomainPurchaseSuccess | DomainPurchaseFailure> {
+  const domain = normalizeDomain(rawDomain);
+  if (!isValidDomain(domain)) {
+    return { ok: false, code: "invalid", message: "That doesn't look like a valid domain" };
+  }
+
+  const { data: profile } = await db
+    .from("profiles")
+    .select("first_name, last_name, email, phone, a2p_registration, business_slug")
+    .eq("id", userId)
+    .single();
+  if (!profile) return { ok: false, code: "registrar", message: "Account not found" };
+
+  const reg = ((profile.a2p_registration as Reg | null) || {}) as Reg & Record<string, string | undefined>;
+  const marker = reg.domainPurchase && reg.domainPurchase.domain === domain ? reg.domainPurchase : null;
+  const resuming = marker?.state === "charged" || marker?.state === "bought";
+
+  // ── Registrant details (before any money moves) ─────────────────────────
+  // ICANN requires real WHOIS contact details, and they must be the
+  // customer's own — the domain belongs to them, not to us. These come from
+  // the business details they already gave us, so nothing extra to fill in.
+  const registrant = {
+    firstName: profile.first_name || reg.contactFirstName || "",
+    lastName: profile.last_name || reg.contactLastName || "",
+    email: reg.contactEmail || profile.email || "",
+    phone: (reg.contactPhone || profile.phone || "").replace(/[^\d+]/g, ""),
+    address1: reg.businessAddress || "",
+    city: reg.businessCity || "",
+    state: reg.businessState || "",
+    postalCode: reg.businessZip || "",
+    orgName: reg.businessName || undefined,
+  };
+  const missing = (["firstName", "lastName", "email", "phone", "address1", "city", "state", "postalCode"] as const).filter(
+    (k) => !registrant[k]
+  );
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      code: "missing_details",
+      message: "We need your business address and contact details before registering a domain.",
+      missing,
+    };
+  }
+  const phone = registrant.phone.startsWith("+") ? registrant.phone : `+1${registrant.phone.replace(/^1/, "")}`;
+
+  // ── Quote ───────────────────────────────────────────────────────────────
+  let quote: Awaited<ReturnType<typeof isDomainAvailable>> | null = null;
+  const owned = resuming ? await isDomainOwned(domain).catch(() => false) : false;
+  if (!owned) {
+    try {
+      quote = await isDomainAvailable(domain);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Availability check failed";
+      return { ok: false, code: /not configured/i.test(msg) ? "not_configured" : "registrar", message: msg };
+    }
+    if (!quote.available || quote.price == null) {
+      if (resuming && marker?.state === "charged") {
+        // Charged earlier, and the name has since gone. Refund below via the
+        // generic failure path rather than leaving the customer out of pocket.
+        await refund(db, userId, marker.charged, "domain no longer available");
+        await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "refunded" } });
+      }
+      return { ok: false, code: "unavailable", message: "That domain is no longer available" };
+    }
+  }
+
+  const charge = quote?.price != null ? priceToCharge(quote.price) : (marker?.charged ?? agreedPrice);
+  if (!resuming && charge > agreedPrice + PRICE_TOLERANCE) {
+    return {
+      ok: false,
+      code: "price_changed",
+      message: "The price changed — please confirm the new price",
+      price: charge,
+    };
+  }
+
+  // ── Charge before buying ────────────────────────────────────────────────
+  let balance: number | null = null;
+  let chargedAmount = marker?.charged ?? charge;
+  if (!resuming) {
+    const { data: newBalance, error: debitErr } = await db.rpc("decrement_wallet", {
+      p_user_id: userId,
+      p_amount: charge,
+    });
+    if (debitErr || newBalance === null) {
+      // Short by the full price when the balance is unknown, so the prompt
+      // never under-asks.
+      const { data: bal } = await db.from("profiles").select("wallet_balance").eq("id", userId).single();
+      const have = Number(bal?.wallet_balance) || 0;
+      return {
+        ok: false,
+        code: "insufficient",
+        message: `Add $${Math.max(charge - have, 0).toFixed(2)} to your balance to register ${domain}.`,
+        amountNeeded: Math.max(charge - have, 0),
+        price: charge,
+      };
+    }
+    balance = Number(newBalance);
+    chargedAmount = charge;
+    await patchRegistration(db, userId, {
+      domainPurchase: { domain, state: "charged", charged: charge, at: new Date().toISOString() } satisfies Marker,
+    });
+  }
+
+  // ── Register ────────────────────────────────────────────────────────────
+  if (!owned) {
+    try {
+      await buyDomain({ domain, expectedPrice: quote!.price!, ...registrant, phone });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Registration failed";
+      await refund(db, userId, chargedAmount, `domain purchase failed: ${msg}`);
+      await patchRegistration(db, userId, {
+        domainPurchase: { domain, state: "refunded", charged: chargedAmount, at: new Date().toISOString() } satisfies Marker,
+      });
+      return { ok: false, code: "registrar", message: msg };
+    }
+  }
+  await patchRegistration(db, userId, {
+    domainPurchase: { domain, state: "bought", charged: chargedAmount, at: new Date().toISOString() } satisfies Marker,
+  });
+
+  // Registered and paid for. An attach failure from here is recoverable and
+  // must not refund a domain the customer now owns — the driver keeps
+  // retrying the attach while it waits for the site to come up.
+  const attachWarning = await ensureDomainAttached(domain);
+
+  // The site resolves by slug, so a domain without one would serve nothing.
+  let slug = profile.business_slug as string | null;
+  if (!slug) {
+    slug = await getUniqueSlug(db, toSlug(reg.businessName || domain.split(".")[0]) || "site", userId);
+  }
+  await db.from("profiles").update({ custom_domain: domain, business_slug: slug }).eq("id", userId);
+
+  if (!resuming) {
+    // Show the charge in the customer's history, like the number purchase does.
+    const { data: current } = await db.from("profiles").select("usage_history").eq("id", userId).single();
+    const usage = Array.isArray(current?.usage_history) ? (current!.usage_history as unknown[]) : [];
+    await db
+      .from("profiles")
+      .update({
+        usage_history: [
+          ...usage,
+          {
+            id: `domain_${Date.now()}`,
+            type: "charge",
+            amount: chargedAmount,
+            description: `Website domain ${domain} (1 year)`,
+            createdAt: new Date().toISOString(),
+            status: "succeeded",
+          },
+        ],
+      })
+      .eq("id", userId);
+  }
+
+  return { ok: true, domain, charged: chargedAmount, balance, slug, attachWarning };
+}
+
+async function refund(db: Db, userId: string, amount: number, why: string) {
+  try {
+    await db.rpc("credit_wallet", {
+      p_user_id: userId,
+      p_amount: amount,
+      p_idempotency_key: null,
+      p_description: `Refund — ${why}`.slice(0, 120),
+    });
+  } catch (e) {
+    console.error("[domain-purchase] refund failed — needs reconciliation:", userId, e);
+  }
+}

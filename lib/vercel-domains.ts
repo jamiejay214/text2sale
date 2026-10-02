@@ -48,8 +48,14 @@ export async function isDomainAvailable(domain: string): Promise<{
       headers: { Authorization: `Bearer ${token}` },
     }),
   ]);
-  const status = (await statusRes.json()) as { available?: boolean };
-  const price = (await priceRes.json()) as { price?: number; period?: number };
+  // A misconfigured token or a registrar outage must not look like "this name
+  // is taken" — the customer would be shown an empty list of suggestions with
+  // no hint that anything is wrong. Throw so callers can say so.
+  if (statusRes.status === 401 || statusRes.status === 403 || priceRes.status === 401 || priceRes.status === 403) {
+    throw new Error("Domain registrar credentials were rejected");
+  }
+  const status = (await statusRes.json().catch(() => ({}))) as { available?: boolean };
+  const price = (await priceRes.json().catch(() => ({}))) as { price?: number; period?: number };
   return {
     available: !!status.available,
     price: price.price,
@@ -58,6 +64,17 @@ export async function isDomainAvailable(domain: string): Promise<{
     // non-.com is usually premium pricing, worth surfacing to the caller.
     premium: (price.price || 0) >= 50,
   };
+}
+
+// ── Ownership check ─────────────────────────────────────────────────────
+// True when the domain is already registered to our Vercel team — used to
+// resume an interrupted purchase without buying (or charging) twice.
+export async function isDomainOwned(domain: string): Promise<boolean> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v5/domains/${encodeURIComponent(domain)}`, teamId), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  return res.ok;
 }
 
 // ── Purchase + auto-attach to the project ───────────────────────────────
@@ -138,7 +155,10 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
 // Buying a domain through Vercel registers it but doesn't link it to a
 // project — that's a separate call. This is idempotent; calling it on an
 // already-attached domain is a no-op (returns 409 which we swallow).
-export async function attachDomainToProject(domain: string): Promise<void> {
+export async function attachDomainToProject(
+  domain: string,
+  opts: { redirectTo?: string } = {}
+): Promise<void> {
   const { token, projectId, teamId } = getAuth();
   const res = await fetch(
     withTeam(`${VERCEL_API}/v10/projects/${projectId}/domains`, teamId),
@@ -148,7 +168,11 @@ export async function attachDomainToProject(domain: string): Promise<void> {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ name: domain }),
+      body: JSON.stringify(
+        opts.redirectTo
+          ? { name: domain, redirect: opts.redirectTo, redirectStatusCode: 308 }
+          : { name: domain }
+      ),
     }
   );
   if (!res.ok && res.status !== 409) {
@@ -175,16 +199,38 @@ export function suggestDomainBase(businessName: string): string {
   return base;
 }
 
-export function suggestDomains(businessName: string): string[] {
+/** A word that fits the customer's trade, for names like "acmehealth.com". */
+const INDUSTRY_SUFFIX: Record<string, string> = {
+  health_insurance: "health",
+  life_insurance: "life",
+  auto_insurance: "auto",
+  home_insurance: "home",
+  medicare: "medicare",
+  real_estate: "realty",
+  solar: "solar",
+  roofing: "roofing",
+  financial_services: "financial",
+  auto_dealer: "motors",
+  debt_settlement: "financial",
+  legal: "law",
+};
+
+export function suggestDomains(businessName: string, industry?: string | null): string[] {
   const base = suggestDomainBase(businessName);
   if (!base) return [];
-  // .com first (most credible with carriers), then cheap fallbacks.
-  return [
+  const suffix = (industry && INDUSTRY_SUFFIX[industry]) || "";
+  // .com first (most credible with carriers). .info and similar bulk-spam
+  // TLDs are deliberately left out: carriers' URL filters treat them with
+  // suspicion, which defeats the point of a registered brand website.
+  const candidates = [
     `${base}.com`,
-    `${base}ins.com`,
-    `${base}.info`,
+    suffix ? `${base}${suffix}.com` : "",
+    `${base}.net`,
     `${base}.org`,
-    `${base}agency.com`,
-    `${base}quotes.com`,
-  ];
+    `get${base}.com`,
+    `${base}hq.com`,
+    `${base}.us`,
+    `${base}online.com`,
+  ].filter(Boolean);
+  return [...new Set(candidates)];
 }
