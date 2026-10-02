@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireAdmin } from "@/lib/auth-guard";
-import { assignNumberToCampaign } from "@/app/api/buy-number/route";
+import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 
 // ─── Admin: backfill 10DLC campaign assignment for a user's numbers ───────
 // Until now /api/buy-number was POSTing to Telnyx's legacy 10DLC

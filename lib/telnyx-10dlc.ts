@@ -1,10 +1,13 @@
 // ── Shared Telnyx 10DLC helpers ────────────────────────────────────────────
 //
-// Both the interactive route (/api/register-10dlc) and the background driver
-// (/api/messaging/advance) register brands and campaigns. The campaign
-// payload in particular is carrier-reviewed compliance copy — if the two
+// The interactive route (/api/register-10dlc) and the background driver
+// (lib/messaging-driver.ts) both register brands and campaigns. The payloads
+// are carrier-reviewed compliance copy, so they live here once — if the two
 // paths drifted, a customer's registration would describe something different
-// depending on which code path submitted it. So it lives here once.
+// depending on which code path happened to submit it.
+
+import { getIndustry, industryToVertical } from "./industries";
+import { classifyTelnyxError, flattenTelnyxErrors, type ErrorKind } from "./messaging-status";
 
 /**
  * What we charge a customer's wallet for a phone number. Lives here so the
@@ -16,6 +19,7 @@ export const NUMBER_PURCHASE_COST = 1.5;
 const telnyxApiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
 
+/** Legacy helper: returns the parsed body only, so HTTP status is lost. */
 export async function telnyxFetch(path: string, options?: RequestInit) {
   const res = await fetch(`https://api.telnyx.com${path}`, {
     ...options,
@@ -28,6 +32,39 @@ export async function telnyxFetch(path: string, options?: RequestInit) {
   return res.json();
 }
 
+export type TelnyxResponse = {
+  ok: boolean;
+  status: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  json: any;
+  /** No HTTP response at all (DNS, timeout, reset). */
+  network: boolean;
+};
+
+/**
+ * Like telnyxFetch but keeps the status code and never throws. The status is
+ * what separates "your EIN is invalid" from "our Telnyx balance ran out" from
+ * "Telnyx is having a bad minute", and the driver treats those three very
+ * differently.
+ */
+export async function telnyxRequest(path: string, options?: RequestInit): Promise<TelnyxResponse> {
+  try {
+    const res = await fetch(`https://api.telnyx.com${path}`, {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${telnyxApiKey}`,
+        ...options?.headers,
+      },
+      signal: AbortSignal.timeout(25_000),
+    });
+    const json = await res.json().catch(() => null);
+    return { ok: res.ok, status: res.status, json, network: false };
+  } catch {
+    return { ok: false, status: 0, json: null, network: true };
+  }
+}
+
 export async function fetchBrand(brandId: string) {
   return telnyxFetch(`/10dlc/brand/${brandId}`);
 }
@@ -36,40 +73,148 @@ export async function fetchCampaign(campaignId: string) {
   return telnyxFetch(`/10dlc/campaign/${campaignId}`);
 }
 
+// ── Brand ──────────────────────────────────────────────────────────────────
+
+// Sole proprietors with an EIN register as PRIVATE_PROFIT: Telnyx's
+// SOLE_PROPRIETOR entity type takes a different path (no EIN, OTP
+// verification) that this flow does not collect for.
+export function toEntityType(businessType: string): "PRIVATE_PROFIT" | "NON_PROFIT" {
+  return businessType === "non_profit" ? "NON_PROFIT" : "PRIVATE_PROFIT";
+}
+
+const clip = (v: string, max: number) => v.trim().slice(0, max);
+
+function e164(phone: string | null | undefined): string {
+  const digits = (phone || "").replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+  return `+1${digits}`;
+}
+
+export type BrandInput = {
+  businessName: string;
+  businessType: string;
+  ein: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  phone: string;
+  email: string;
+  firstName?: string | null;
+  lastName?: string | null;
+  website: string;
+  industry?: string | null;
+};
+
+export function buildBrandPayload(input: BrandInput): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    entityType: toEntityType(input.businessType),
+    displayName: clip(input.businessName, 100),
+    companyName: clip(input.businessName, 100),
+    ein: input.ein.replace(/\D/g, ""),
+    einIssuingCountry: "US",
+    phone: e164(input.phone),
+    street: clip(input.street, 100),
+    city: clip(input.city, 100),
+    state: input.state.trim().toUpperCase().slice(0, 2),
+    postalCode: clip(input.postalCode, 10),
+    country: "US",
+    email: input.email.trim(),
+    // Was hard-coded to INSURANCE for every customer.
+    vertical: industryToVertical(input.industry),
+    website: clip(input.website, 100),
+  };
+  if (input.firstName) payload.firstName = input.firstName;
+  if (input.lastName) payload.lastName = input.lastName;
+  return payload;
+}
+
+export type SubmitFailure = { ok: false; kind: ErrorKind; message: string };
+
+export async function submitBrand(
+  input: BrandInput
+): Promise<{ ok: true; brandId: string; status?: string } | SubmitFailure> {
+  const res = await telnyxRequest("/v2/10dlc/brand", {
+    method: "POST",
+    body: JSON.stringify(buildBrandPayload(input)),
+  });
+
+  const errors = res.json?.errors;
+  const brandId = res.json?.brandId;
+  if (!res.ok || errors || typeof brandId !== "string") {
+    const c = classifyTelnyxError({
+      status: res.status,
+      errors,
+      network: res.network,
+      message: res.network ? "Could not reach Telnyx" : undefined,
+    });
+    return { ok: false, ...c };
+  }
+  return { ok: true, brandId, status: typeof res.json?.status === "string" ? res.json.status : undefined };
+}
+
+// ── Campaign ───────────────────────────────────────────────────────────────
+
 export type CampaignPayloadArgs = {
   brandId: string;
   businessName: string;
   contactEmail: string;
   contactPhone: string;
+  /** The brand's site — the address shown on the sample texts. */
   websiteUrl: string;
+  industry?: string | null;
+  /** Policy pages the carriers read. Default to paths under websiteUrl. */
+  optInUrl?: string;
+  privacyPolicyUrl?: string;
+  termsUrl?: string;
+  /** Caller-supplied id; Telnyx rejects a second campaign with the same one. */
+  referenceId?: string;
 };
+
+function trimSlash(url: string) {
+  return url.replace(/\/+$/, "");
+}
 
 /**
  * The 10DLC campaign registration body.
  *
- * Copied verbatim from the original inline payload in /api/register-10dlc so
- * that extracting it changes nothing a carrier sees. Edit with care: every
- * string here is read by TCR and the mobile network operators during review,
- * and the opt-in/opt-out/help language is what makes the campaign compliant.
+ * Every string here is read by TCR and the mobile network operators during
+ * review. Three things in the first version caused avoidable rejections and
+ * are fixed here:
+ *   - the privacy link pointed at text2sale.com instead of the brand's own
+ *     site, and the dedicated privacyPolicyLink / termsAndConditionsLink /
+ *     embeddedLinkSample fields were never sent;
+ *   - the sample texts were written for health insurance whatever the
+ *     customer sold, which is the classic "samples don't match the business"
+ *     rejection;
+ *   - one sample contained a phone number while embeddedPhone said false.
  */
 export function buildCampaignPayload(args: CampaignPayloadArgs) {
-  const { brandId, businessName, contactEmail, contactPhone, websiteUrl } = args;
-  return {
+  const { brandId, businessName, contactEmail, contactPhone } = args;
+  const site = trimSlash(args.websiteUrl);
+  const optInUrl = args.optInUrl || `${site}/opt-in`;
+  const privacyUrl = args.privacyPolicyUrl || `${site}/privacy-policy`;
+  const termsUrl = args.termsUrl || `${site}/terms`;
+  const industry = getIndustry(args.industry);
+  const [sample1, sample2] = industry.samples({ business: businessName, phone: contactPhone, site });
+
+  const payload: Record<string, unknown> = {
     brandId,
     usecase: "MIXED",
     subUsecases: ["MARKETING", "CUSTOMER_CARE"],
-    description: `${businessName} uses Text2Sale to send marketing promotions, appointment reminders, follow-up messages, and customer service notifications via SMS to customers and leads who have voluntarily opted in to receive text messages.`,
-    messageFlow: `Consumers opt in to receive SMS messages by voluntarily providing their phone number through the business website at ${websiteUrl} or through an in-person paper sign-up form. The opt-in form clearly discloses: (1) the types of messages they will receive, (2) that message frequency varies, (3) that message and data rates may apply, (4) instructions to reply STOP to opt out, (5) instructions to reply HELP for help, and (6) a link to the privacy policy at https://text2sale.com/privacy-policy. Consent to receive messages is not a condition of any purchase. Written consent with timestamp is recorded before any messages are sent.`,
+    description: `${businessName} is a ${industry.businessNoun}. ${businessName} uses Text2Sale to send ${industry.messageTypes} by SMS to customers and prospects who have voluntarily opted in to receive text messages from ${businessName}. Message frequency varies.`,
+    messageFlow: `Consumers opt in by completing the SMS sign-up form on the business website at ${optInUrl}. The form collects first name, last name and mobile number and includes an unchecked consent checkbox with this disclosure: the consumer agrees to receive recurring text messages from ${businessName} (${industry.messageTypes}); message frequency varies; message and data rates may apply; reply STOP to opt out and HELP for help; consent is not a condition of any purchase. Links to the Privacy Policy (${privacyUrl}) and Terms (${termsUrl}) appear on the form. Mobile numbers and consent are never shared with third parties or affiliates for marketing purposes. Consent is recorded with a timestamp before any message is sent, and opt-outs are honored immediately. Consumers may also opt in on a written sign-up form at the business with the same disclosures.`,
     helpMessage: `${businessName}: For help, contact us at ${contactEmail} or call ${contactPhone}. Msg frequency varies. Msg&data rates may apply. Reply STOP to opt out.`,
     helpKeywords: "HELP,INFO",
-    optinMessage: `${businessName}: You are now subscribed to receive text messages. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: https://text2sale.com/privacy-policy`,
+    optinMessage: `${businessName}: You are now subscribed to text messages from ${businessName}. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: ${privacyUrl}`,
     optinKeywords: "START,SUBSCRIBE,YES",
     optoutMessage: `${businessName}: You have been unsubscribed and will no longer receive text messages. Reply START to re-subscribe. Contact ${contactEmail} for questions.`,
     optoutKeywords: "STOP,UNSUBSCRIBE,CANCEL,END,QUIT",
-    sample1: `Hi Sarah, ${businessName} here! We have new health coverage options that could save you money this enrollment period. Reply for details or visit ${websiteUrl}. Reply STOP to unsubscribe. Msg&data rates may apply.`,
-    sample2: `Hi John, this is ${businessName}. Your account has been updated and your new policy documents are ready to view. If you have any questions, reply to this message or call us at ${contactPhone}. Reply STOP to opt out. Msg&data rates may apply.`,
+    sample1,
+    sample2,
     embeddedLink: true,
-    embeddedPhone: false,
+    embeddedLinkSample: site,
+    // sample2 includes the business phone number, so this must be true.
+    embeddedPhone: true,
     numberPool: false,
     ageGated: false,
     directLending: false,
@@ -77,14 +222,128 @@ export function buildCampaignPayload(args: CampaignPayloadArgs) {
     subscriberOptout: true,
     subscriberHelp: true,
     termsAndConditions: true,
+    privacyPolicyLink: privacyUrl,
+    termsAndConditionsLink: termsUrl,
   };
+  if (args.referenceId) payload.referenceId = args.referenceId;
+  return payload;
 }
 
+/** Raw Telnyx response; kept for callers that read the fields it echoes back. */
 export async function createCampaign(args: CampaignPayloadArgs) {
   return telnyxFetch("/v2/10dlc/campaignBuilder", {
     method: "POST",
     body: JSON.stringify(buildCampaignPayload(args)),
   });
+}
+
+export type CampaignSubmitted = {
+  ok: true;
+  campaignId: string;
+  campaignStatus?: string;
+  description?: string;
+  messageFlow?: string;
+  sampleMessages: string[];
+  optInMessage?: string;
+  optOutMessage?: string;
+  helpMessage?: string;
+};
+
+export async function submitCampaign(args: CampaignPayloadArgs): Promise<CampaignSubmitted | SubmitFailure> {
+  const res = await telnyxRequest("/v2/10dlc/campaignBuilder", {
+    method: "POST",
+    body: JSON.stringify(buildCampaignPayload(args)),
+  });
+
+  const errors = res.json?.errors;
+  const campaignId = res.json?.campaignId;
+  if (!res.ok || errors || typeof campaignId !== "string") {
+    const c = classifyTelnyxError({
+      status: res.status,
+      errors,
+      network: res.network,
+      message: res.network ? "Could not reach Telnyx" : undefined,
+    });
+    // A duplicate referenceId means an earlier attempt already created this
+    // campaign (a concurrent run, or a crash after Telnyx accepted it). That
+    // is not an error to surface — back off and let the caller look again.
+    if (/reference ?id/i.test(c.message) && /(exist|duplicate|unique|already)/i.test(c.message)) {
+      return { ok: false, kind: "transient", message: "Campaign already submitted — waiting for it to appear" };
+    }
+    return { ok: false, ...c };
+  }
+
+  const j = res.json;
+  return {
+    ok: true,
+    campaignId,
+    campaignStatus: typeof j.campaignStatus === "string" ? j.campaignStatus : undefined,
+    description: j.description,
+    messageFlow: j.messageFlow,
+    sampleMessages: [j.sample1, j.sample2].filter((x: unknown): x is string => typeof x === "string" && !!x),
+    optInMessage: j.optinMessage,
+    optOutMessage: j.optoutMessage,
+    helpMessage: j.helpMessage,
+  };
+}
+
+/** Plain-text reason for a Telnyx errors payload, for logs and admin screens. */
+export function describeTelnyxErrors(errors: unknown): string {
+  return flattenTelnyxErrors(errors);
+}
+
+export async function assignNumberToCampaign(e164: string, campaignId: string) {
+  // Associate a phone number with an approved 10DLC campaign on Telnyx.
+  //
+  // CORRECT ENDPOINT (verified live against this account, 2026-06):
+  //   POST /v2/10dlc/phone_number_campaigns   body: { phoneNumber, campaignId }
+  // The snake_case /v2/phone_number_campaigns route returns 404 (error
+  // 10005 "Resource not found") on this account — it does not exist here.
+  // An earlier comment had these two reversed, which is why every
+  // self-serve purchase silently failed to link to its campaign (David's
+  // numbers, and Jamie's, all "bought but never assigned"). The GET list
+  // and POST both only work under the /v2/10dlc/ prefix with camelCase.
+  //
+  // A successful POST returns 200 with { assignmentStatus: "PENDING_ASSIGNMENT" }
+  // (no `data` wrapper, `errors: null`). PENDING_ASSIGNMENT counts as
+  // assigned — Telnyx just propagates the T-Mobile/AT&T number mapping
+  // over the next few hours.
+  //
+  // Retry because a freshly-ordered number isn't assignable until it goes
+  // "active" (can lag ~30-60s); until then the API returns 10005.
+  for (let attempt = 0; attempt < 6; attempt++) {
+    if (attempt > 0) await new Promise((r) => setTimeout(r, 3000));
+    const res = await fetch("https://api.telnyx.com/v2/10dlc/phone_number_campaigns", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${telnyxApiKey}`,
+      },
+      body: JSON.stringify({ phoneNumber: e164, campaignId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    const errors = Array.isArray(data?.errors) ? data.errors : [];
+    // Success: 200 with an assignmentStatus and no error payload.
+    if (res.ok && errors.length === 0 && typeof data?.assignmentStatus === "string") {
+      return { assigned: true as const };
+    }
+    const detail = errors.length
+      ? errors.map((e: { detail?: string; title?: string }) => e.detail || e.title || "").join(", ")
+      : typeof data?.error === "string"
+        ? data.error
+        : "";
+    // "already assigned" is fine — idempotent success.
+    if (/already/i.test(detail) && /assigned|exists/i.test(detail)) {
+      return { assigned: true as const };
+    }
+    // Number not active/indexed yet → transient, keep retrying. Telnyx
+    // phrases this as 10005 "could not be found" while the order settles.
+    const transient = /not found|could not be found|provisioning|does not exist|not yet|pending/i.test(detail);
+    if (!transient) {
+      return { assigned: false as const, error: detail || `HTTP ${res.status}` };
+    }
+  }
+  return { assigned: false as const, error: "Timed out waiting for number to be provisioned" };
 }
 
 // ── Number provisioning ────────────────────────────────────────────────────
@@ -123,7 +382,7 @@ export type OrderResult =
   | { ok: true; number: string; orderId: string | null }
   | { ok: false; error: string };
 
-export async function orderNumber(e164: string): Promise<OrderResult> {
+export async function orderNumber(e164Number: string): Promise<OrderResult> {
   const res = await fetch("https://api.telnyx.com/v2/number_orders", {
     method: "POST",
     headers: {
@@ -131,7 +390,7 @@ export async function orderNumber(e164: string): Promise<OrderResult> {
       Authorization: `Bearer ${telnyxApiKey}`,
     },
     body: JSON.stringify({
-      phone_numbers: [{ phone_number: e164 }],
+      phone_numbers: [{ phone_number: e164Number }],
       messaging_profile_id: messagingProfileId,
     }),
   });
@@ -161,5 +420,22 @@ export async function orderNumber(e164: string): Promise<OrderResult> {
   }
 
   const orderId = (data?.data as { id?: string } | undefined)?.id ?? null;
-  return { ok: true, number: e164, orderId };
+
+  // "pending" is a normal first answer, but an order can still land in
+  // "failure" a few seconds later — after the customer has been charged.
+  // Look again briefly so that case refunds instead of leaving them paying
+  // for a number that never arrives. Still pending after the wait is treated
+  // as success: orders normally complete in seconds, and the attach step
+  // already retries until the number is active.
+  if (orderId && status === "pending") {
+    for (let i = 0; i < 5; i++) {
+      await new Promise((r) => setTimeout(r, 1500));
+      const check = await telnyxRequest(`/v2/number_orders/${orderId}`);
+      const s = (check.json?.data as { status?: string } | undefined)?.status;
+      if (s === "failure") return { ok: false, error: "Telnyx could not complete the number order" };
+      if (s === "success") break;
+    }
+  }
+
+  return { ok: true, number: e164Number, orderId };
 }

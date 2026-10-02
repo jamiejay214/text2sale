@@ -55,6 +55,15 @@ export type Profile = {
   is_usha?: boolean;
   usha_prompted?: boolean;
   industry?: string;
+  // Texting activation (see lib/messaging-status.ts). These columns exist from
+  // migration 010; the admin pipeline reads them to show how far along each
+  // customer is.
+  messaging_status?: string;
+  messaging_status_at?: string;
+  messaging_error?: string | null;
+  messaging_attempts?: number;
+  messaging_next_attempt_at?: string | null;
+  custom_domain?: string | null;
   available_hours?: Record<string, unknown> | null;
   appointment_reminders?: Record<string, unknown> | null;
   google_calendar_tokens?: Record<string, unknown> | null;
@@ -126,6 +135,21 @@ export type A2PRegistration = {
   // Errors
   errors: string[];
   updatedAt: string;
+  // ── Activation pipeline (written by the server; see lib/messaging-driver.ts)
+  industry?: string;
+  /** "hosted": we build and host the site on their domain. "own": they gave us a site. */
+  websiteMode?: "hosted" | "own";
+  /** The domain the customer chose and agreed to pay for, before it is bought. */
+  domainRequest?: { domain: string; price: number; requestedAt: string } | null;
+  /** Set while the account is parked waiting for the customer to add funds. */
+  awaiting?: "domain" | "number" | null;
+  /** Something only the operator can fix (Telnyx balance, credentials, a stalled site). */
+  adminAlert?: { code: string; message: string; at: string; notifiedAt?: string } | null;
+  desiredAreaCode?: string | null;
+  /** Set once the customer's website has answered a live check. */
+  siteLiveAt?: string | null;
+  brandIdentityStatus?: string | null;
+  campaignAttempt?: number;
 };
 
 export type OptOutSettings = {
