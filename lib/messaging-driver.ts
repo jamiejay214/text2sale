@@ -526,7 +526,10 @@ function campaignInputs(profile: ProfileRow, reg: Registration) {
   const consentBase = hosted ? siteBase({ customDomain: profile.custom_domain, slug }) : `${MAIN_SITE}/biz/${slug}`;
   const urls = siteUrls(consentBase);
   return {
-    websiteUrl: String(reg.website || consentBase),
+    // Sample texts point at the customer's own address: their domain when we
+    // host the site (older rows were registered against a text2sale.com path
+    // before the domain existed), or the site they brought.
+    websiteUrl: hosted ? consentBase : String(reg.website || consentBase),
     optInUrl: urls.optIn,
     privacyPolicyUrl: urls.privacy,
     termsUrl: urls.terms,
@@ -557,11 +560,6 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
 
     // ── Business submitted: website, then brand ───────────────────────────
     if (status === "BUSINESS_SUBMITTED") {
-      if (reg.brandRegistrationSid) {
-        await setStatus(db, profile, "BRAND_PENDING");
-        continue;
-      }
-
       const site = await ensureWebsite(db, profile);
       if (!site.ok) {
         if (site.action === "reject") {
@@ -591,6 +589,14 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
       }
 
       const r = profile.a2p_registration || {};
+
+      // A brand that already exists (a re-submission after the campaign was
+      // rejected reuses the approved one) is checked, never bought again.
+      if (r.brandRegistrationSid) {
+        await setStatus(db, profile, "BRAND_PENDING");
+        continue;
+      }
+
       const submitted = await submitBrand({
         businessName: String(r.businessName || ""),
         businessType: String(r.businessType || "llc"),
@@ -634,6 +640,7 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         patch: {
           brandRegistrationSid: submitted.brandId,
           brandStatus: submitted.status || "REGISTRATION_PENDING",
+          brandSubmissions: (r.brandSubmissions ?? 0) + 1,
         },
       });
       return done(profile, from, "brand submitted");

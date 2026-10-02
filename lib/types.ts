@@ -150,6 +150,8 @@ export type A2PRegistration = {
   siteLiveAt?: string | null;
   brandIdentityStatus?: string | null;
   campaignAttempt?: number;
+  /** How many brands have been submitted for this account (each costs a fee). */
+  brandSubmissions?: number;
 };
 
 export type OptOutSettings = {

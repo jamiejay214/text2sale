@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { packageForPlan } from "@/lib/packages";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -53,6 +54,10 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // Which package this is, recorded on the subscription so the webhook can
+    // switch the AI features on only once the AI plan is actually paid for.
+    const pkg = packageForPlan(profile?.plan);
 
     // Get the user's plan price (default to $39.99 if not set)
     const planPrice = profile?.plan?.price || 39.99;
@@ -120,10 +125,12 @@ export async function POST(req: NextRequest) {
       metadata: {
         userId,
         type: "subscription",
+        package: pkg,
       },
       subscription_data: {
         metadata: {
           userId,
+          package: pkg,
         },
       },
     });

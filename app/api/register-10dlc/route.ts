@@ -1,76 +1,47 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { NextRequest, NextResponse, after } from "next/server";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { createCampaign } from "@/lib/telnyx-10dlc";
+import { advanceUser, createServiceClient, PROFILE_COLUMNS, type ProfileRow, type Registration } from "@/lib/messaging-driver";
+import { validateBusinessDetails } from "@/lib/business-details";
+import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";
+import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
+import { getUniqueSlug, toSlug } from "@/lib/business-site";
 
-// CLIENT UPDATE NEEDED: dashboard must send Authorization header
+// ── Start texting activation ───────────────────────────────────────────────
+//
+// The customer submits their business details once. This route validates and
+// saves them, then hands over to the activation driver
+// (lib/messaging-driver.ts), which builds the website, registers the business
+// with Telnyx, files the campaign, buys a number and switches texting on.
+// None of that waits on the browser.
+//
+// This route used to run the registration itself and the dashboard polled it
+// in a loop, so closing the tab stalled the account and a second click could
+// file a duplicate campaign. Now there is one owner of progress, and every
+// action here either records the customer's input or asks the driver to take
+// a turn — which is safe to repeat, because the driver is lease-protected.
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const telnyxApiKey = process.env.TELNYX_API_KEY!;
-const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
+// The driver can do real work (domain registration, site checks) in one turn.
+export const maxDuration = 60;
 
-async function telnyxFetch(path: string, options?: RequestInit) {
-  const res = await fetch(`https://api.telnyx.com${path}`, {
-    ...options,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${telnyxApiKey}`,
-      ...options?.headers,
-    },
-  });
-  return res.json();
-}
+/** A customer can start (or re-start) registration this many times unaided. */
+const MAX_BRAND_SUBMISSIONS = 3;
 
-// Map business type to Telnyx entity type
-// Note: SOLE_PROPRIETOR is NOT a valid entityType in Telnyx brand API.
-// Sole proprietors with an EIN should register as PRIVATE_PROFIT.
-// Generate a URL-safe slug from a business name
-function toSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
-// Ensure slug is unique, appending -2, -3, etc. if needed
-async function getUniqueSlug(
-  supabase: ReturnType<typeof createClient<any, any, any>>,
-  base: string,
-  userId: string
-): Promise<string> {
-  let slug = base;
-  let suffix = 1;
-  while (true) {
-    const { data } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("business_slug", slug)
-      .neq("id", userId)
-      .maybeSingle();
-    if (!data) return slug;
-    suffix += 1;
-    slug = `${base}-${suffix}`;
-  }
-}
-
-function toEntityType(businessType: string): string {
-  switch (businessType) {
-    case "sole_proprietor": return "PRIVATE_PROFIT";
-    case "partnership": return "PRIVATE_PROFIT";
-    case "corporation": return "PRIVATE_PROFIT";
-    case "llc": return "PRIVATE_PROFIT";
-    case "non_profit": return "NON_PROFIT";
-    default: return "PRIVATE_PROFIT";
-  }
-}
+const IN_FLIGHT: MessagingStatus[] = [
+  "BUSINESS_SUBMITTED",
+  "BRAND_PENDING",
+  "BRAND_APPROVED",
+  "CAMPAIGN_PENDING",
+  "CAMPAIGN_APPROVED",
+  "NUMBER_ASSIGNED",
+  "AWAITING_PAYMENT",
+  "ACTIVE",
+];
 
 export async function POST(req: NextRequest) {
   const auth = await authenticate(req);
   if (!auth.ok) return auth.response;
   try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
+    const db = createServiceClient();
     const body = await req.json();
     const { userId: bodyUserId, action } = body;
 
@@ -81,401 +52,257 @@ export async function POST(req: NextRequest) {
     if (forbid) return forbid;
     const userId = auth.user.id;
 
-    // Get current profile
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("a2p_registration, owned_numbers, first_name, last_name, email, phone")
-      .eq("id", userId)
-      .single();
-
-    if (!profile) {
+    const { data } = await db.from("profiles").select(PROFILE_COLUMNS).eq("id", userId).single();
+    if (!data) {
       return NextResponse.json({ success: false, error: "Profile not found" }, { status: 404 });
     }
+    const profile = data as unknown as ProfileRow;
+    const status: MessagingStatus = isMessagingStatus(profile.messaging_status) ? profile.messaging_status : "NOT_STARTED";
+    const reg = (profile.a2p_registration || {}) as Registration;
 
-    // ── Step 1: Register Brand ──
+    // ── Save details and start ──
     if (action === "register_brand") {
-      const {
-        businessName, businessType, ein, businessAddress, businessCity,
-        businessState, businessZip, website, contactEmail, contactPhone,
-        hasWebsite, buildPage, businessDescription, customDomain,
-      } = body;
-
-      if (!ein || !businessName) {
-        return NextResponse.json({ success: false, error: "EIN and business name are required" }, { status: 400 });
-      }
-
-      // Decide the website URL to register the brand under.
-      //
-      // Three paths:
-      //   1. User has their own existing website → use it as-is
-      //   2. User has no website but bought a TLD they want us to host →
-      //      auto-build the /biz/<slug> compliance page AND save their
-      //      custom_domain so middleware routes their TLD to it. Brand
-      //      registration uses https://<customDomain>.
-      //   3. User has no website and no custom domain → reject. We used
-      //      to fall back to text2sale.com/biz/<slug>, but MNOs reject
-      //      shared-subdomain compliance pages so that path is gone.
-      let finalWebsite = website;
-      const cleanCustomDomain = typeof customDomain === "string"
-        ? customDomain.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/$/, "")
-        : "";
-
-      if (hasWebsite === "no") {
-        if (!cleanCustomDomain) {
-          return NextResponse.json(
-            { success: false, error: "A custom domain is required when you don't have a website. Buy one (e.g. yourbusiness.com) and try again." },
-            { status: 400 }
-          );
-        }
-        // Build/refresh the auto-generated /biz/<slug> page that the
-        // custom domain will route to via middleware.
-        const base = toSlug(businessName);
-        if (!base) {
-          return NextResponse.json(
-            { success: false, error: "Could not generate a page slug from your business name. Please use letters/numbers." },
-            { status: 400 }
-          );
-        }
-        const slug = await getUniqueSlug(supabase, base, userId);
-        finalWebsite = `https://${cleanCustomDomain}`;
-
-        await supabase
-          .from("profiles")
-          .update({
-            business_slug: slug,
-            business_description: businessDescription || null,
-            custom_domain: cleanCustomDomain,
-          })
-          .eq("id", userId);
-      } else if (buildPage) {
-        // Legacy fallback for existing flows that still pass buildPage:
-        // build the auto-page but DO NOT publish a text2sale.com/biz URL
-        // as the brand's website (MNOs reject those). Without a custom
-        // domain we have nothing safe to register, so error.
+      // Pay first. Registering a brand and a campaign costs money on our
+      // Telnyx account, so it only starts for an account that is paying.
+      // The dashboard hides the button, but a hidden button isn't a gate —
+      // the old wizard let anyone skip the subscription step and submit.
+      if (!isEntitled(profile)) {
         return NextResponse.json(
-          { success: false, error: "buildPage requires a customDomain — text2sale.com/biz subdomains are no longer accepted by carriers." },
-          { status: 400 }
+          {
+            success: false,
+            needsSubscription: true,
+            error: "Start your subscription to activate texting. Your details are safe — you can submit them as soon as you're subscribed.",
+          },
+          { status: 402 }
         );
       }
 
-      const entityType = toEntityType(businessType);
-
-      // Register brand with Telnyx
-      const cleanEin = ein.replace(/\D/g, "");
-      const brandPayload: Record<string, unknown> = {
-        entityType,
-        displayName: businessName,
-        companyName: businessName,
-        ein: cleanEin,
-        einIssuingCountry: "US",
-        phone: `+1${(contactPhone || profile.phone || "").replace(/\D/g, "").replace(/^1/, "")}`,
-        street: businessAddress,
-        city: businessCity,
-        state: businessState,
-        postalCode: businessZip,
-        country: "US",
-        email: contactEmail || profile.email,
-        vertical: "INSURANCE",
-        website: finalWebsite || "https://text2sale.com",
-      };
-      // Include first/last name for all registrations
-      if (profile.first_name) brandPayload.firstName = profile.first_name;
-      if (profile.last_name) brandPayload.lastName = profile.last_name;
-
-      console.log("10DLC brand payload:", JSON.stringify(brandPayload, null, 2));
-
-      const brandData = await telnyxFetch("/v2/10dlc/brand", {
-        method: "POST",
-        body: JSON.stringify(brandPayload),
-      });
-
-      if (brandData.errors) {
-        const errMsg = brandData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
-        // Save failed state
-        await supabase.from("profiles").update({
-          messaging_status: "REJECTED",
-          messaging_status_at: new Date().toISOString(),
-          messaging_error: errMsg,
-          a2p_registration: {
-            ...(profile.a2p_registration || {}),
-            status: "brand_failed",
-            errors: [errMsg],
-            updatedAt: new Date().toISOString(),
-            businessName, businessType, ein, businessAddress, businessCity,
-            businessState, businessZip, businessCountry: "US", website: finalWebsite,
-            contactFirstName: profile.first_name, contactLastName: profile.last_name,
-            contactEmail: contactEmail || profile.email, contactPhone: contactPhone || profile.phone,
-          },
-        }).eq("id", userId);
-
-        return NextResponse.json({ success: false, error: errMsg }, { status: 400 });
-      }
-
-      const brandId = brandData.brandId;
-
-      // Save brand info to profile. Setting messaging_status here is the
-      // handoff: from this point /api/messaging/advance polls for approval,
-      // creates the campaign and provisions the number on its own, so the
-      // customer can close the tab.
-      await supabase.from("profiles").update({
-        messaging_status: "BRAND_PENDING",
-        messaging_status_at: new Date().toISOString(),
-        messaging_error: null,
-        messaging_attempts: 0,
-        messaging_next_attempt_at: new Date().toISOString(),
-        a2p_registration: {
-          status: "brand_pending",
-          // Remembered so the driver can buy a number in the area code the
-          // customer picked during signup.
-          desiredAreaCode: typeof body.areaCode === "string" ? body.areaCode : null,
-          brandRegistrationSid: brandId,
-          brandStatus: brandData.status,
-          customerProfileSid: null,
-          trustProductSid: null,
-          messagingServiceSid: messagingProfileId,
-          campaignSid: null,
-          campaignStatus: null,
-          businessName, businessType, ein,
-          businessAddress, businessCity, businessState, businessZip, businessCountry: "US",
-          website: finalWebsite || "https://text2sale.com/#sms-program",
-          contactFirstName: profile.first_name,
-          contactLastName: profile.last_name,
-          contactEmail: contactEmail || profile.email,
-          contactPhone: contactPhone || profile.phone,
-          useCase: "MIXED",
-          description: "",
-          sampleMessages: [],
-          messageFlow: "",
-          optInMessage: "",
-          optOutMessage: "",
-          helpMessage: "",
-          hasEmbeddedLinks: true,
-          hasEmbeddedPhone: false,
-          errors: [],
-          updatedAt: new Date().toISOString(),
-        },
-      }).eq("id", userId);
-
-      // Wait a moment then check brand status
-      await new Promise((r) => setTimeout(r, 5000));
-      const brandCheck = await telnyxFetch(`/10dlc/brand/${brandId}`);
-      const brandStatus = brandCheck.status;
-
-      if (brandStatus === "OK") {
-        // Brand approved immediately — proceed to campaign
-        await supabase.from("profiles").update({
-          a2p_registration: {
-            ...((await supabase.from("profiles").select("a2p_registration").eq("id", userId).single()).data?.a2p_registration || {}),
-            status: "brand_approved",
-            brandStatus: "OK",
-            updatedAt: new Date().toISOString(),
-          },
-        }).eq("id", userId);
-
+      if (IN_FLIGHT.includes(status)) {
         return NextResponse.json({
           success: true,
-          brandId,
-          brandStatus: "OK",
-          message: "Brand approved! Creating campaign...",
-          nextAction: "create_campaign",
+          alreadyInProgress: true,
+          status,
+          message: status === "ACTIVE" ? "Texting is already active on your account." : "Your activation is already in progress.",
         });
       }
 
-      return NextResponse.json({
-        success: true,
-        brandId,
-        brandStatus,
-        message: "Brand registration submitted. Checking status...",
-      });
-    }
+      const v = validateBusinessDetails(body);
+      if (!v.ok) return NextResponse.json({ success: false, error: v.error }, { status: 400 });
+      const d = v.value;
 
-    // ── Step 2: Create Campaign ──
-    if (action === "create_campaign") {
-      const reg = profile.a2p_registration;
-      if (!reg?.brandRegistrationSid) {
-        return NextResponse.json({ success: false, error: "No brand registered yet" }, { status: 400 });
+      // A brand that was approved and whose campaign was then rejected is
+      // reused rather than bought again — unless the details that identify
+      // the business changed, which the carriers would treat as a new brand.
+      const sameBrand =
+        !!reg.brandRegistrationSid &&
+        !!reg.campaignSid &&
+        status === "REJECTED" &&
+        String(reg.businessName || "").toLowerCase() === d.businessName.toLowerCase() &&
+        String(reg.ein || "").replace(/\D/g, "") === d.ein.replace(/\D/g, "") &&
+        String(reg.businessAddress || "").toLowerCase() === d.businessAddress.toLowerCase() &&
+        String(reg.businessZip || "") === d.businessZip;
+
+      // Each new brand costs a fee, so cap how many a customer can trigger on
+      // their own. Past the cap a human decides.
+      if (!sameBrand && (reg.brandSubmissions ?? 0) >= MAX_BRAND_SUBMISSIONS) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "We've already submitted your business several times. Please contact support and we'll sort it out with you.",
+          },
+          { status: 429 }
+        );
       }
 
-      const brandId = reg.brandRegistrationSid;
+      // ── Website ──
+      let customDomain = profile.custom_domain;
+      let domainRequest: Registration["domainRequest"] = null;
+      let website = "";
+      let websiteMode: "hosted" | "own" = "hosted";
+      let siteLiveAt = reg.siteLiveAt ?? null;
+      const w = d.website;
 
-      // Check brand status first
-      const brandCheck = await telnyxFetch(`/10dlc/brand/${brandId}`);
-      if (brandCheck.status !== "OK") {
-        return NextResponse.json({
-          success: false,
-          error: `Brand is not approved yet. Status: ${brandCheck.status}`,
-          brandStatus: brandCheck.status,
-        }, { status: 400 });
-      }
-
-      const usecase = "MIXED";
-
-      const businessName = reg.businessName || "Text2Sale User";
-      const contactEmail = reg.contactEmail || profile.email;
-      const contactPhone = reg.contactPhone || profile.phone;
-      const websiteUrl = reg.website || "https://text2sale.com";
-
-      // Create campaign with full 10DLC compliance
-      const campaignData = await createCampaign({
-        brandId,
-        businessName,
-        contactEmail,
-        contactPhone,
-        websiteUrl,
-      });
-
-      if (campaignData.errors) {
-        const errMsg = campaignData.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
-        await supabase.from("profiles").update({
-          messaging_status: "REJECTED",
-          messaging_status_at: new Date().toISOString(),
-          messaging_error: errMsg,
-          a2p_registration: { ...reg, status: "campaign_failed", campaignStatus: "FAILED", errors: [errMsg], updatedAt: new Date().toISOString() },
-        }).eq("id", userId);
-        return NextResponse.json({ success: false, error: errMsg }, { status: 400 });
-      }
-
-      const campaignId = campaignData.campaignId;
-
-      await supabase.from("profiles").update({
-        messaging_status: "CAMPAIGN_PENDING",
-        messaging_status_at: new Date().toISOString(),
-        messaging_error: null,
-        messaging_attempts: 0,
-        messaging_next_attempt_at: new Date().toISOString(),
-        a2p_registration: {
-          ...reg,
-          status: "campaign_pending",
-          campaignSid: campaignId,
-          campaignStatus: campaignData.campaignStatus || "TCR_PENDING",
-          useCase: usecase,
-          description: campaignData.description,
-          sampleMessages: [campaignData.sample1, campaignData.sample2].filter(Boolean),
-          messageFlow: campaignData.messageFlow,
-          optInMessage: campaignData.optinMessage,
-          optOutMessage: campaignData.optoutMessage,
-          helpMessage: campaignData.helpMessage,
-          errors: [],
-          updatedAt: new Date().toISOString(),
-        },
-      }).eq("id", userId);
-
-      return NextResponse.json({
-        success: true,
-        campaignId,
-        campaignStatus: campaignData.campaignStatus,
-        message: "Campaign created! Waiting for approval...",
-        nextAction: "check_campaign",
-      });
-    }
-
-    // ── Step 3: Check campaign status & assign numbers ──
-    if (action === "check_campaign") {
-      const reg = profile.a2p_registration;
-      if (!reg?.campaignSid) {
-        return NextResponse.json({ success: false, error: "No campaign created yet" }, { status: 400 });
-      }
-
-      const campaignCheck = await telnyxFetch(`/10dlc/campaign/${reg.campaignSid}`);
-      const status = campaignCheck.campaignStatus;
-      const failures = campaignCheck.failureReasons;
-
-      if (status === "TCR_FAILED" || campaignCheck.submissionStatus === "FAILED") {
-        const errMsg = failures?.map((f: { description: string }) => f.description).join(", ") || "Campaign registration failed";
-        await supabase.from("profiles").update({
-          messaging_status: "REJECTED",
-          messaging_status_at: new Date().toISOString(),
-          messaging_error: errMsg,
-          a2p_registration: { ...reg, status: "campaign_failed", campaignStatus: status, errors: [errMsg], updatedAt: new Date().toISOString() },
-        }).eq("id", userId);
-        return NextResponse.json({ success: false, error: errMsg, campaignStatus: status }, { status: 400 });
-      }
-
-      if (status === "TCR_PENDING") {
-        return NextResponse.json({ success: true, campaignStatus: status, message: "Campaign is pending TCR approval. This can take a few minutes." });
-      }
-
-      // TCR_ACCEPTED — try to assign phone numbers
-      if (status === "TCR_ACCEPTED") {
-        const ownedNumbers = profile.owned_numbers || [];
-        const assigned: string[] = [];
-        const pendingAssignment: string[] = [];
-
-        for (const num of ownedNumbers) {
-          const rawNumber = num.number.replace(/[^\d+]/g, "");
-          const e164 = rawNumber.startsWith("+") ? rawNumber : `+1${rawNumber.replace(/\D/g, "")}`;
-
-          const assignResult = await telnyxFetch("/v2/10dlc/phone_number_campaigns", {
-            method: "POST",
-            body: JSON.stringify({
-              phoneNumber: e164,
-              campaignId: reg.campaignSid,
-            }),
-          });
-
-          if (assignResult.errors) {
-            // Campaign might still be processing
-            pendingAssignment.push(num.number);
-          } else {
-            assigned.push(num.number);
-          }
+      if (w.mode === "own") {
+        websiteMode = "own";
+        website = w.url;
+        if (reg.websiteMode !== "own" || reg.website !== w.url) siteLiveAt = null;
+      } else if ("domainRequest" in w) {
+        domainRequest = { ...w.domainRequest, requestedAt: new Date().toISOString() };
+        if (customDomain !== w.domainRequest.domain) {
+          customDomain = null; // the driver registers it (after payment) and sets it
+          siteLiveAt = null;
         }
-
-        const allAssigned = assigned.length > 0 && pendingAssignment.length === 0;
-        const newStatus = allAssigned ? "completed" : "campaign_approved";
-
-        await supabase.from("profiles").update({
-          a2p_registration: {
-            ...reg,
-            status: newStatus,
-            campaignStatus: status,
-            errors: [],
-            updatedAt: new Date().toISOString(),
-          },
-        }).eq("id", userId);
-
-        return NextResponse.json({
-          success: true,
-          campaignStatus: status,
-          assigned,
-          pendingAssignment,
-          completed: allAssigned,
-          message: allAssigned
-            ? "10DLC registration complete! Your numbers are ready to send."
-            : `Campaign approved. ${assigned.length} number(s) assigned, ${pendingAssignment.length} pending.`,
-        });
+      } else if ("customDomain" in w) {
+        customDomain = w.customDomain;
+        if (profile.custom_domain !== w.customDomain) siteLiveAt = null;
+      } else if (!customDomain && !reg.domainRequest) {
+        return NextResponse.json(
+          { success: false, error: "Choose your website address — carriers need a real website for your business." },
+          { status: 400 }
+        );
+      } else {
+        domainRequest = reg.domainRequest ?? null;
       }
 
-      return NextResponse.json({ success: true, campaignStatus: status, message: `Campaign status: ${status}` });
+      if (customDomain && customDomain !== profile.custom_domain) {
+        const { data: taken } = await db
+          .from("profiles")
+          .select("id")
+          .eq("custom_domain", customDomain)
+          .neq("id", userId)
+          .maybeSingle();
+        if (taken) {
+          return NextResponse.json(
+            { success: false, error: "That domain is already connected to another account." },
+            { status: 409 }
+          );
+        }
+      }
+
+      const slug =
+        profile.business_slug ||
+        (await getUniqueSlug(db, toSlug(d.businessName) || `site-${userId.slice(0, 6)}`, userId));
+
+      const now = new Date().toISOString();
+      const next: Registration = {
+        ...reg,
+        // Brand and campaign state: carried over when reusing the brand,
+        // cleared otherwise.
+        brandRegistrationSid: sameBrand ? reg.brandRegistrationSid : null,
+        brandStatus: sameBrand ? reg.brandStatus : null,
+        brandIdentityStatus: sameBrand ? reg.brandIdentityStatus : null,
+        campaignSid: null,
+        campaignStatus: null,
+        customerProfileSid: null,
+        trustProductSid: null,
+        messagingServiceSid: process.env.TELNYX_MESSAGING_PROFILE_ID || null,
+        businessName: d.businessName,
+        businessType: d.businessType,
+        ein: d.ein,
+        businessAddress: d.businessAddress,
+        businessCity: d.businessCity,
+        businessState: d.businessState,
+        businessZip: d.businessZip,
+        businessCountry: "US",
+        contactFirstName: profile.first_name || "",
+        contactLastName: profile.last_name || "",
+        contactEmail: d.contactEmail,
+        contactPhone: d.contactPhone,
+        website,
+        websiteMode,
+        domainRequest,
+        siteLiveAt,
+        industry: d.industry,
+        desiredAreaCode: d.areaCode ?? reg.desiredAreaCode ?? null,
+        useCase: "MIXED",
+        description: "",
+        sampleMessages: [],
+        messageFlow: "",
+        optInMessage: "",
+        optOutMessage: "",
+        helpMessage: "",
+        hasEmbeddedLinks: true,
+        hasEmbeddedPhone: true,
+        awaiting: null,
+        adminAlert: null,
+        errors: [],
+        updatedAt: now,
+        status: "brand_pending",
+      };
+
+      const { error: saveErr } = await db
+        .from("profiles")
+        .update({
+          industry: d.industry,
+          business_description: d.businessDescription || null,
+          business_slug: slug,
+          custom_domain: customDomain,
+          messaging_status: "BUSINESS_SUBMITTED",
+          messaging_status_at: now,
+          messaging_error: null,
+          messaging_attempts: 0,
+          messaging_next_attempt_at: now,
+          a2p_registration: next,
+        })
+        .eq("id", userId);
+      if (saveErr) {
+        console.error("[register-10dlc] save failed:", saveErr.message);
+        return NextResponse.json({ success: false, error: "We couldn't save your details. Please try again." }, { status: 500 });
+      }
+
+      // Take the first turn right away so the customer sees movement (a
+      // domain registered, a brand submitted) instead of waiting for the next
+      // cron tick — but after responding, so the request itself stays quick.
+      after(async () => {
+        try {
+          await advanceUser(db, userId, { force: true });
+        } catch (e) {
+          console.error("[register-10dlc] first turn failed:", e);
+        }
+      });
+
+      return NextResponse.json({
+        success: true,
+        status: "BUSINESS_SUBMITTED",
+        message: "Got it — we're building your website and submitting your business now. Nothing else needed from you.",
+      });
     }
 
-    // ── Assign a single number to existing campaign ──
+    // ── Compatibility actions ──
+    //
+    // The Settings screen and older clients still call these. They no longer
+    // do the work themselves; they ask the driver to take a turn and report
+    // where the account stands.
+    if (action === "create_campaign" || action === "check_campaign") {
+      if (status === "NOT_STARTED") {
+        return NextResponse.json({ success: false, error: "No registration has been started yet" }, { status: 400 });
+      }
+      await advanceUser(db, userId, { force: true });
+      const { data: after1 } = await db
+        .from("profiles")
+        .select("messaging_status, messaging_error, a2p_registration")
+        .eq("id", userId)
+        .single();
+      const now = (isMessagingStatus(after1?.messaging_status) ? after1!.messaging_status : status) as MessagingStatus;
+      const r = (after1?.a2p_registration || {}) as Registration;
+
+      if (now === "REJECTED") {
+        return NextResponse.json(
+          { success: false, error: after1?.messaging_error || "Registration was rejected", brandStatus: r.brandStatus, campaignStatus: r.campaignStatus },
+          { status: 400 }
+        );
+      }
+      const brandDone = !["BUSINESS_SUBMITTED", "BRAND_PENDING"].includes(now);
+      if (action === "create_campaign" && !brandDone) {
+        return NextResponse.json(
+          { success: false, error: `Brand is not approved yet. Status: ${r.brandStatus || "pending"}`, brandStatus: r.brandStatus },
+          { status: 400 }
+        );
+      }
+      return NextResponse.json({
+        success: true,
+        status: now,
+        brandStatus: r.brandStatus,
+        campaignStatus: r.campaignStatus,
+        completed: now === "NUMBER_ASSIGNED" || now === "ACTIVE",
+        message: now === "ACTIVE" ? "Texting is active." : "Your activation is moving along — we'll finish it automatically.",
+      });
+    }
+
+    // ── Assign a single number to the existing campaign ──
     if (action === "assign_number") {
-      const reg = profile.a2p_registration;
-      if (!reg?.campaignSid) {
+      if (!reg.campaignSid) {
         return NextResponse.json({ success: false, error: "No campaign registered" }, { status: 400 });
       }
-
       const { phoneNumber } = body;
       if (!phoneNumber) {
         return NextResponse.json({ success: false, error: "Missing phoneNumber" }, { status: 400 });
       }
-
-      const e164 = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber.replace(/\D/g, "")}`;
-
-      const result = await telnyxFetch("/v2/10dlc/phone_number_campaigns", {
-        method: "POST",
-        body: JSON.stringify({
-          phoneNumber: e164,
-          campaignId: reg.campaignSid,
-        }),
-      });
-
-      if (result.errors) {
-        const errMsg = result.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ");
-        return NextResponse.json({ success: false, error: errMsg }, { status: 400 });
+      const e164 = phoneNumber.startsWith("+") ? phoneNumber : `+1${String(phoneNumber).replace(/\D/g, "")}`;
+      const result = await assignNumberToCampaign(e164, reg.campaignSid);
+      if (!result.assigned) {
+        return NextResponse.json({ success: false, error: result.error }, { status: 400 });
       }
-
       return NextResponse.json({ success: true, message: `Number ${phoneNumber} assigned to campaign` });
     }
 

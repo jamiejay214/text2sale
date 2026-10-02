@@ -12,6 +12,8 @@ import {
 } from "@/lib/supabase-data";
 import type { Profile, Campaign, UsageHistoryItem, OwnedNumber } from "@/lib/types";
 import USMapChart from "@/components/USMapChart";
+import PipelineBoard, { ActivationPanel } from "@/components/AdminPipeline";
+import { computePipeline } from "@/lib/activation-pipeline";
 
 // Adapter types to keep JSX working with camelCase
 type AccountRecord = {
@@ -53,6 +55,10 @@ type AccountRecord = {
   contactCount?: number;
   customDomain?: string | null;
   businessSlug?: string | null;
+  // Activation pipeline: the raw row feeds lib/activation-pipeline, which is
+  // what the Activation tab and the per-user panel render.
+  messagingStatus?: string;
+  raw?: Profile;
 };
 
 type CampaignRecord = {
@@ -69,7 +75,7 @@ type CampaignRecord = {
   logs: { id: string; createdAt: string; success: number; failed: number; attempted: number; notes: string }[];
 };
 
-type AdminTab = "overview" | "users" | "campaigns" | "analytics" | "transactions" | "numbers" | "support" | "settings";
+type AdminTab = "overview" | "users" | "pipeline" | "campaigns" | "analytics" | "transactions" | "numbers" | "support" | "settings";
 
 type SupportThread = {
   userId: string;
@@ -90,6 +96,36 @@ type NewUserForm = {
   confirmPassword: string;
 };
 
+/**
+ * One 10DLC status for every screen. The activation driver tracks progress in
+ * messaging_status; the older a2p_registration.status only knows five states
+ * and never says "completed" for accounts the driver activated. Reading the
+ * driver's status first keeps the funnel, badges and filters truthful.
+ */
+function unifiedA2pStatus(p: Profile): string {
+  const reg = p.a2p_registration;
+  switch (p.messaging_status) {
+    case "ACTIVE":
+    case "NUMBER_ASSIGNED":
+      return "completed";
+    case "CAMPAIGN_APPROVED":
+      return "campaign_approved";
+    case "AWAITING_PAYMENT":
+      return reg?.awaiting === "domain" ? "brand_pending" : "campaign_approved";
+    case "CAMPAIGN_PENDING":
+      return "campaign_pending";
+    case "BRAND_APPROVED":
+      return "brand_approved";
+    case "BRAND_PENDING":
+    case "BUSINESS_SUBMITTED":
+      return "brand_pending";
+    case "REJECTED":
+      return reg?.campaignSid ? "campaign_failed" : "brand_failed";
+    default:
+      return reg?.status || "not_started";
+  }
+}
+
 function profileToAccount(p: Profile): AccountRecord {
   return {
     id: p.id, role: p.role, firstName: p.first_name, lastName: p.last_name,
@@ -104,7 +140,9 @@ function profileToAccount(p: Profile): AccountRecord {
     freeAiPlan: p.free_ai_plan || false,
     isUsha: !!p.is_usha,
     teamCode: p.team_code || "", managerId: p.manager_id, referralCode: p.referral_code || "",
-    a2pStatus: p.a2p_registration?.status || "not_started",
+    a2pStatus: unifiedA2pStatus(p),
+    messagingStatus: p.messaging_status || "NOT_STARTED",
+    raw: p,
     a2pBusinessName: p.a2p_registration?.businessName || "",
     a2pEin: p.a2p_registration?.ein || "",
     einCertificatePath: p.a2p_registration?.einCertificatePath || null,
@@ -197,6 +235,16 @@ export default function AdminPage() {
   const [mounted, setMounted] = useState(false);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
+  // Customers whose activation has something a human should look at.
+  const pipelineAttention = useMemo(
+    () =>
+      accounts.filter((a) => {
+        if (!a.raw || a.role === "admin") return false;
+        const p = computePipeline(a.raw);
+        return p.health !== "complete" && p.alerts.length > 0;
+      }).length,
+    [accounts]
+  );
   const [contactCounts, setContactCounts] = useState<Record<string, number>>({});
 
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
@@ -664,9 +712,16 @@ export default function AdminPage() {
     setMessage("✅ Chat initiated!");
   };
 
+  // Re-read one customer after an action (also used by the Activation tab, so
+  // it shows what the driver just did). Falls back to a full reload.
   const refreshAccount = async (accountId: string) => {
+    const fresh = await fetchProfile(accountId);
+    if (fresh) {
+      setAccounts((prev) => prev.map((a) => (a.id === accountId ? profileToAccount(fresh) : a)));
+      return;
+    }
     const profiles = await fetchAllProfiles();
-    setAccounts(profiles.map(profileToAccount));
+    if (profiles.length > 0) setAccounts(profiles.map(profileToAccount));
   };
 
   const resetCreateUserModal = () => {
@@ -1113,6 +1168,7 @@ export default function AdminPage() {
           {([
             { id: "overview", label: "Overview", icon: "📊" },
             { id: "users", label: "Users", icon: "👥" },
+            { id: "pipeline", label: "Activation", icon: "🧭" },
             { id: "campaigns", label: "Campaigns", icon: "🚀" },
             { id: "analytics", label: "Analytics", icon: "📈" },
             { id: "transactions", label: "Revenue", icon: "💳" },
@@ -1120,7 +1176,12 @@ export default function AdminPage() {
             { id: "support", label: "Support", icon: "💬" },
             { id: "settings", label: "Settings", icon: "⚙️" },
           ] as { id: AdminTab; label: string; icon: string }[]).map((tab) => {
-            const unreadBadge = tab.id === "support" ? supportThreads.reduce((s, t) => s + (t.unreadCount || 0), 0) : 0;
+            const unreadBadge =
+              tab.id === "support"
+                ? supportThreads.reduce((s, t) => s + (t.unreadCount || 0), 0)
+                : tab.id === "pipeline"
+                  ? pipelineAttention
+                  : 0;
             return (
               <button
                 key={tab.id}
@@ -1940,6 +2001,15 @@ export default function AdminPage() {
                     </div>
                   )}
 
+                  {/* Texting activation: where this customer is, who is holding
+                      them up, and the controls to push them along. */}
+                  {selectedAccount.raw && (
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-800/50 p-4">
+                      <div className="mb-3 text-[10px] uppercase tracking-wide text-zinc-500">Texting activation</div>
+                      <ActivationPanel profile={selectedAccount.raw} onChanged={refreshAccount} />
+                    </div>
+                  )}
+
                   {/* 10DLC / EIN Details */}
                   {(selectedAccount.a2pStatus && selectedAccount.a2pStatus !== "not_started") && (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-800/50 p-4">
@@ -2272,6 +2342,15 @@ export default function AdminPage() {
         )}
 
         {/* ═══════════════ CAMPAIGNS ═══════════════ */}
+        {/* ═══════════════ ACTIVATION PIPELINE ═══════════════ */}
+        {activeTab === "pipeline" && (
+          <PipelineBoard
+            profiles={accounts.map((a) => a.raw).filter((p): p is Profile => !!p)}
+            onChanged={refreshAccount}
+            onOpenUser={(id) => { setSelectedId(id); setActiveTab("users"); }}
+          />
+        )}
+
         {activeTab === "campaigns" && (
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
             <div className="mb-6 flex items-center justify-between">
