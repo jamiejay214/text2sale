@@ -9,10 +9,17 @@ import type { Metadata } from "next";
 // campaign. This helper returns a Metadata object that explicitly null's
 // out every leaky parent field so only the branded title/description
 // remain. Pass it the business-specific title + description.
+//
+// `canonical` is the page's address on the business's own domain when it has
+// one. The same page is also reachable under text2sale.com/biz/<slug>; naming
+// the customer's domain as canonical keeps search engines (and reviewers
+// following the canonical link) on the address the business is registered
+// under.
 
 export function cleanBizMetadata(opts: {
   title: string;
   description: string;
+  canonical?: string;
 }): Metadata {
   return {
     title: opts.title,
@@ -23,11 +30,12 @@ export function cleanBizMetadata(opts: {
     authors: null,
     creator: null,
     publisher: null,
-    alternates: { canonical: null },
+    alternates: { canonical: opts.canonical ?? null },
     openGraph: {
       title: opts.title,
       description: opts.description,
       type: "website",
+      ...(opts.canonical ? { url: opts.canonical } : {}),
     },
     twitter: {
       card: "summary",

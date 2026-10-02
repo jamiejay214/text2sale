@@ -1,8 +1,5 @@
-import { notFound } from "next/navigation";
-import { fetchBusiness, getBusinessName, getBusinessContact } from "@/lib/biz-fetch";
+import { BIZ_LEGAL_UPDATED, loadSite } from "@/lib/biz-site";
 import { cleanBizMetadata } from "@/lib/biz-metadata";
-
-export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -10,12 +7,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const biz = await fetchBusiness(slug);
-  if (!biz) return { title: "Not Found" };
-  const name = getBusinessName(biz);
+  const site = await loadSite(slug);
+  if (!site) return { title: "Not Found" };
   return cleanBizMetadata({
-    title: `Terms of Service | ${name}`,
-    description: `Terms of service for ${name}, including SMS messaging terms.`,
+    title: `Terms of Service | ${site.name}`,
+    description: `Terms of service for ${site.name}, including SMS messaging terms.`,
+    canonical: site.canonical("/terms"),
   });
 }
 
@@ -25,22 +22,14 @@ export default async function TermsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const biz = await fetchBusiness(slug);
-  if (!biz) notFound();
-
-  const businessName = getBusinessName(biz);
-  const contact = getBusinessContact(biz);
-  const today = new Date().toLocaleDateString("en-US", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
+  const site = (await loadSite(slug, { required: true }))!;
+  const { name: businessName, contact, href, industry } = site;
 
   return (
     <section className="py-16 px-6">
       <div className="mx-auto max-w-3xl prose prose-gray prose-emerald">
         <h1 className="text-3xl font-bold text-gray-900">Terms of Service</h1>
-        <p className="text-sm text-gray-500">Last updated: {today}</p>
+        <p className="text-sm text-gray-500">Last updated: {BIZ_LEGAL_UPDATED}</p>
 
         <h2 className="mt-8 text-xl font-semibold text-gray-900">1. Agreement to Terms</h2>
         <p className="mt-2 text-gray-700 leading-relaxed">
@@ -51,27 +40,58 @@ export default async function TermsPage({
 
         <h2 className="mt-8 text-xl font-semibold text-gray-900">2. Services</h2>
         <p className="mt-2 text-gray-700 leading-relaxed">
-          {businessName} provides professional services to its customers. The specific scope of
-          services is described on our website or communicated to you directly. We reserve the
-          right to modify or discontinue services at any time.
+          {businessName} is a {industry.businessNoun}. The specific scope of services is described
+          on our website or communicated to you directly. We reserve the right to modify or
+          discontinue services at any time.
         </p>
 
-        <h2 className="mt-8 text-xl font-semibold text-gray-900">3. SMS Messaging</h2>
+        <h2 className="mt-8 text-xl font-semibold text-gray-900">3. SMS Text Messaging Program</h2>
         <p className="mt-2 text-gray-700 leading-relaxed">
-          By opting in to our SMS program, you agree to receive recurring marketing text messages
-          from {businessName} at the mobile number you provide. These messages may include updates,
-          reminders, and promotional offers.
+          These terms apply to the {businessName} text message program (the &quot;Program&quot;).
+          By opting in, you agree to receive recurring text messages from {businessName} at the
+          mobile number you provide.
         </p>
-        <ul className="mt-2 list-disc pl-6 text-gray-700 space-y-1">
-          <li>Message frequency varies.</li>
-          <li>Message and data rates may apply.</li>
+        <ul className="mt-2 list-disc pl-6 text-gray-700 space-y-2">
           <li>
-            Reply <strong>STOP</strong> to cancel. Reply <strong>HELP</strong> for help.
+            <strong>Program description:</strong> You will receive {industry.messageTypes}.
           </li>
           <li>
-            <strong>
-              Consent to receive text messages is not a condition of purchase or enrollment.
-            </strong>
+            <strong>How to join:</strong> You join by submitting your mobile number and checking the
+            consent box on our{" "}
+            <a href={href("/opt-in")} className="text-emerald-700 underline">opt-in page</a>, or by
+            giving written consent to {businessName}. You must be 18 or older and the account holder
+            or authorized user of the mobile number.
+          </li>
+          <li>
+            <strong>Message frequency:</strong> Message frequency varies.
+          </li>
+          <li>
+            <strong>Cost:</strong> Message and data rates may apply, according to your mobile plan.
+          </li>
+          <li>
+            <strong>How to opt out:</strong> Reply <strong>STOP</strong> to any message at any time.
+            You will receive one final message confirming you have been unsubscribed, and no
+            further messages will be sent. To rejoin, reply <strong>START</strong> or sign up
+            again.
+          </li>
+          <li>
+            <strong>Help:</strong> Reply <strong>HELP</strong> to any message
+            {contact.email ? `, email ${contact.email}` : ""}
+            {contact.phone ? `, or call ${contact.phone}` : ""} for assistance.
+          </li>
+          <li>
+            <strong>Carriers:</strong> Wireless carriers and their affiliates are not liable for
+            delayed or undelivered messages.
+          </li>
+          <li>
+            <strong>Not a condition of purchase:</strong> Consent to receive text messages is not a
+            condition of purchasing any goods or services.
+          </li>
+          <li>
+            <strong>Privacy:</strong> Our{" "}
+            <a href={href("/privacy-policy")} className="text-emerald-700 underline">Privacy Policy</a>{" "}
+            explains how we handle your information. Mobile information is not shared with third
+            parties or affiliates for marketing or promotional purposes.
           </li>
         </ul>
 
@@ -86,8 +106,8 @@ export default async function TermsPage({
         <h2 className="mt-8 text-xl font-semibold text-gray-900">5. Accuracy of Information</h2>
         <p className="mt-2 text-gray-700 leading-relaxed">
           You agree to provide accurate, current, and complete information when using our services
-          or opting in to our SMS program. We are not responsible for errors resulting from
-          inaccurate information you provide.
+          or opting in to our text message program. We are not responsible for errors resulting
+          from inaccurate information you provide.
         </p>
 
         <h2 className="mt-8 text-xl font-semibold text-gray-900">6. Limitation of Liability</h2>

@@ -15,6 +15,7 @@ import PowerDialer, { type PowerDialerEntry, type Disposition } from "@/componen
 import UshaWelcomeModal from "@/components/UshaWelcomeModal";
 import WinCelebration from "@/components/WinCelebration";
 import ActivationStatus from "@/components/ActivationStatus";
+import BusinessDetailsForm, { EMPTY_BUSINESS_FORM, businessFormProblem, type BusinessFormValues } from "@/components/BusinessDetailsForm";
 import AiCallAssistant from "@/components/AiCallAssistant";
 import { computeTemperature } from "@/lib/lead-temperature";
 import { computeSendWindow } from "@/lib/send-window";
@@ -22,6 +23,8 @@ import { analyzeSentiment, suggestReplies, type Sentiment } from "@/lib/sentimen
 import { supabase } from "@/lib/supabase";
 import { logoutUser, formatPhoneNumber } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
+import { INDUSTRIES } from "@/lib/industries";
+import { packageForPlan } from "@/lib/packages";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import {
   fetchProfile, updateProfile,
@@ -72,6 +75,7 @@ type AccountRecord = {
   complianceLog?: ComplianceEventRecord[];
   autoRecharge?: { enabled: boolean; threshold: number; amount: number };
   businessSlug?: string | null;
+  customDomain?: string | null;
   businessDescription?: string | null;
   businessLogoUrl?: string | null;
   tagLibrary?: { name: string; color: string }[];
@@ -329,6 +333,7 @@ function profileToAccount(p: Profile): AccountRecord {
     complianceLog: p.compliance_log || [],
     autoRecharge: p.auto_recharge || { enabled: false, threshold: 1, amount: 20 },
     businessSlug: p.business_slug || null,
+    customDomain: p.custom_domain || null,
     businessDescription: p.business_description || null,
     businessLogoUrl: p.business_logo_url || null,
     tagLibrary: p.tag_library || [],
@@ -891,24 +896,9 @@ export default function DashboardPage() {
   // 10DLC A2P Registration state
   const [a2pStep, setA2pStep] = useState(0); // 0=info, 1=submitting, 2=brand pending, 3=campaign form, 4=campaign pending, 5=done
   const [a2pLoading, setA2pLoading] = useState(false);
-  const [a2pForm, setA2pForm] = useState({
-    businessName: "", businessType: "llc" as "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit",
-    ein: "", businessAddress: "", businessCity: "", businessState: "", businessZip: "", businessCountry: "US",
-    website: "", hasWebsite: "yes" as "yes" | "no", buildPage: false, businessDescription: "",
-    // Custom TLD the user owns (e.g. "northernlegacyia.info"). Saved to
-    // profiles.custom_domain so middleware routes it to /biz/<slug>. Lets
-    // them serve the auto-built compliance page from THEIR own brand
-    // instead of a text2sale.com/biz/X subdomain — MNOs are far more
-    // likely to approve campaigns hosted on a real owned TLD.
-    customDomain: "",
-    contactFirstName: "", contactLastName: "", contactEmail: "", contactPhone: "",
-    useCase: "MIXED", description: "", sampleMessage1: "", sampleMessage2: "",
-    messageFlow: "End users opt-in by signing up on our website and providing their phone number. They can opt out at any time by replying STOP.",
-    optInMessage: "You have opted in to receive messages. Reply STOP to unsubscribe.",
-    optOutMessage: "You have been unsubscribed and will no longer receive messages. Reply START to re-subscribe.",
-    helpMessage: "Reply HELP for assistance or STOP to unsubscribe. Contact support at our website.",
-    hasEmbeddedLinks: true, hasEmbeddedPhone: false,
-  });
+  // The business-details form, shared by the onboarding wizard and Settings → 10DLC.
+  const [bizForm, setBizForm] = useState<BusinessFormValues>(EMPTY_BUSINESS_FORM);
+  const bizFormPrefilled = useRef(false);
 
   // Search & filter state
   const [globalSearch, setGlobalSearch] = useState("");
@@ -918,13 +908,6 @@ export default function DashboardPage() {
   // Onboarding wizard state
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [onboardingStep, setOnboardingStep] = useState(0);
-  const [onboardingBiz, setOnboardingBiz] = useState({
-    businessName: "", ein: "",
-    businessType: "llc" as "sole_proprietor" | "partnership" | "corporation" | "llc" | "non_profit",
-    businessAddress: "", businessCity: "", businessState: "", businessZip: "",
-    contactPhone: "", businessDescription: "",
-    website: "", customDomain: "", hasWebsite: "yes" as "yes" | "no",
-  });
   const [onboardingBizSaving, setOnboardingBizSaving] = useState(false);
 
   // Notification permission
@@ -3274,38 +3257,55 @@ export default function DashboardPage() {
     else setA2pStep(0);
   }, [currentUser?.a2pRegistration?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // 10DLC automated registration via Telnyx
-  const handleA2pRegister = async (formOverride?: typeof a2pForm) => {
-    if (!currentUser) return;
-    // Onboarding passes its values directly (React state set just before this
-    // call would still be stale), Settings calls with no arg and uses a2pForm.
-    const form = formOverride ?? a2pForm;
+  // Pre-fill the business form from what we already know — the registration on
+  // file (so a customer whose registration was rejected corrects it instead of
+  // retyping everything), otherwise their own email and phone.
+  useEffect(() => {
+    if (!currentUser || bizFormPrefilled.current) return;
+    bizFormPrefilled.current = true;
+    const reg = currentUser.a2pRegistration;
+    setBizForm((prev) => ({
+      ...prev,
+      businessName: reg?.businessName || prev.businessName,
+      businessType: reg?.businessType || prev.businessType,
+      ein: reg?.ein || prev.ein,
+      businessAddress: reg?.businessAddress || prev.businessAddress,
+      businessCity: reg?.businessCity || prev.businessCity,
+      businessState: reg?.businessState || prev.businessState,
+      businessZip: reg?.businessZip || prev.businessZip,
+      contactPhone: reg?.contactPhone || formatPhoneNumber(currentUser.phone || "") || prev.contactPhone,
+      contactEmail: reg?.contactEmail || currentUser.email || prev.contactEmail,
+      industry: currentUser.industry || reg?.industry || prev.industry,
+      businessDescription: currentUser.businessDescription || prev.businessDescription,
+      areaCode: reg?.desiredAreaCode || prev.areaCode,
+      ...(reg?.websiteMode === "own" && reg.website
+        ? { hasWebsite: "yes" as const, website: reg.website }
+        : currentUser.customDomain
+          ? { hasWebsite: "no" as const, customDomain: currentUser.customDomain }
+          : {}),
+    }));
+  }, [currentUser]);
 
-    // If they don't have a website, they MUST give us their owned TLD —
-    // we no longer offer a text2sale.com/biz/<slug> subdomain because
-    // MNOs reject subdomained compliance pages. Validate the format
-    // before we hit Telnyx (cheap to fail here, expensive to fail at
-    // the brand-registration call).
-    if (form.hasWebsite === "no") {
-      const domain = form.customDomain.trim();
-      if (!domain) {
-        setMessage("❌ Enter the domain you bought (e.g. yourbusiness.com) — we no longer offer subdomains.");
-        window.setTimeout(() => setMessage(""), 5000);
-        return;
-      }
-      if (!/^[a-z0-9-]+(\.[a-z0-9-]+)+$/i.test(domain) || domain.includes("text2sale.")) {
-        setMessage("❌ That doesn't look like a valid domain. Use the format yourbusiness.com — no subdomains of text2sale.");
-        window.setTimeout(() => setMessage(""), 5000);
-        return;
-      }
-      // Persist the domain on the profile right away so middleware can
-      // route requests to /biz/<slug> as soon as the user finishes DNS
-      // setup. RLS allows users to update their own custom_domain.
-      try {
-        await supabase.from("profiles").update({ custom_domain: domain }).eq("id", currentUser.id);
-      } catch (err) {
-        console.error("[10DLC] custom_domain save failed:", err);
-      }
+  const refreshCurrentUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) return;
+    const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
+    if (p) setCurrentUser(profileToAccount(p as Profile));
+  };
+
+  // Hand the business details to the server. Everything after this — the
+  // website, the business registration, the messaging registration, the phone
+  // number — happens there without this page open, so there is nothing to
+  // poll or wait for here.
+  const handleA2pRegister = async (values?: BusinessFormValues): Promise<boolean> => {
+    if (!currentUser) return false;
+    const form = values ?? bizForm;
+
+    const problem = businessFormProblem(form);
+    if (problem) {
+      setMessage("❌ " + problem);
+      window.setTimeout(() => setMessage(""), 5000);
+      return false;
     }
 
     setA2pLoading(true);
@@ -3323,118 +3323,57 @@ export default function DashboardPage() {
           businessCity: form.businessCity,
           businessState: form.businessState,
           businessZip: form.businessZip,
-          // If they entered a custom domain we route Telnyx's "website"
-          // field to it (with https:// prefix) — TCR/MNO bots will load
-          // it during the brand review and check it advertises the same
-          // business name. The auto-built /biz/<slug> page on that
-          // domain handles that.
-          website: form.hasWebsite === "yes"
-            ? form.website
-            : form.customDomain
-              ? `https://${form.customDomain}`
-              : "",
-          hasWebsite: form.hasWebsite,
-          buildPage: form.hasWebsite === "no", // always build when no website
+          contactEmail: form.contactEmail,
+          contactPhone: form.contactPhone,
+          industry: form.industry,
           businessDescription: form.businessDescription,
+          hasWebsite: form.hasWebsite,
+          website: form.website,
           customDomain: form.customDomain,
-          contactEmail: form.contactEmail || currentUser.email,
-          contactPhone: form.contactPhone || currentUser.phone,
+          domainRequest: form.domainRequest,
+          areaCode: form.areaCode,
         }),
       });
       const data = await res.json();
-      if (!data.success) { setMessage("❌ " + (data.error || "Brand registration failed")); setA2pLoading(false); return; }
-
-      if (data.nextAction === "create_campaign") {
-        setMessage("Brand approved! Creating campaign...");
-        setA2pStep(3);
-        await handleA2pCreateCampaign();
-      } else {
-        setMessage("✅ Brand submitted! Approval can take a few minutes to a few hours. Click 'Check Status' to see if it's approved.");
-        setA2pStep(2);
+      if (!data.success) {
+        setMessage("❌ " + (data.error || "We couldn't submit your details"));
+        window.setTimeout(() => setMessage(""), 6000);
+        if (data.needsSubscription) setOnboardingStep(0);
+        return false;
       }
-    } catch { setMessage("❌ Registration failed. Please try again."); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pCreateCampaign = async () => {
-    if (!currentUser) return;
-    setA2pLoading(true);
-    try {
-      const res = await authFetch("/api/register-10dlc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
-      });
-      const data = await res.json();
-      if (!data.success) { setMessage("❌ " + (data.error || "Campaign creation failed")); setA2pLoading(false); return; }
-
-      setMessage("Campaign created! Waiting for approval...");
-      setA2pStep(4);
-
-      // Poll for campaign approval
-      await handleA2pCheckCampaign();
-    } catch { setMessage("❌ Campaign creation failed."); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pCheckBrand = async () => {
-    if (!currentUser) return;
-    setA2pLoading(true);
-    try {
-      const res = await authFetch("/api/register-10dlc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser.id, action: "create_campaign" }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setMessage("✅ Brand approved! Campaign created. Waiting for campaign approval...");
-        setA2pStep(4);
-        await handleA2pCheckCampaign();
-      } else if (data.brandStatus === "FAILED" || data.brandStatus === "REGISTRATION_FAILED") {
-        setMessage("❌ Brand registration was rejected. Please fix the issues and try again.");
-        setA2pStep(0);
-      } else {
-        setMessage("⏳ Brand is still pending approval. Try again in a few minutes.");
-      }
-    } catch { setMessage("❌ Could not check status."); }
-    setA2pLoading(false);
-  };
-
-  const handleA2pCheckCampaign = async () => {
-    for (let i = 0; i < 20; i++) {
-      await new Promise((r) => setTimeout(r, 10000));
-      const res = await authFetch("/api/register-10dlc", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: currentUser!.id, action: "check_campaign" }),
-      });
-      const data = await res.json();
-      if (data.completed) {
-        setMessage("✅ 10DLC registration complete! You can now send messages.");
-        setA2pStep(5);
-        // Refresh profile
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-          if (p) setCurrentUser(profileToAccount(p as Profile));
-        }
-        return;
-      }
-      if (data.campaignStatus === "TCR_ACCEPTED") {
-        setMessage("Campaign approved! Assigning numbers...");
-        setA2pStep(5);
-        // Refresh profile
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          const { data: p } = await supabase.from("profiles").select("*").eq("id", session.user.id).single();
-          if (p) setCurrentUser(profileToAccount(p as Profile));
-        }
-        return;
-      }
-      if (data.campaignStatus === "TCR_FAILED") { setMessage("❌ " + (data.error || "Campaign failed.")); setA2pStep(0); return; }
+      setMessage("✅ " + (data.message || "Submitted — we'll take it from here."));
+      window.setTimeout(() => setMessage(""), 6000);
+      setA2pStep(2);
+      await refreshCurrentUser();
+      return true;
+    } catch {
+      setMessage("❌ Something went wrong. Please try again.");
+      return false;
+    } finally {
+      setA2pLoading(false);
     }
-    setMessage("⏳ Campaign is still processing. Check back shortly.");
+  };
+
+  // "Check status": ask the server to take a turn now and show where things
+  // stand. The server owns progress, so this is a convenience, not a driver.
+  const handleA2pCheck = async () => {
+    if (!currentUser) return;
+    setA2pLoading(true);
+    try {
+      const res = await authFetch("/api/register-10dlc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser.id, action: "check_campaign" }),
+      });
+      const data = await res.json();
+      setMessage(data.success ? "✅ " + (data.message || "Checked.") : "❌ " + (data.error || "Could not check status."));
+      window.setTimeout(() => setMessage(""), 5000);
+      await refreshCurrentUser();
+    } catch {
+      setMessage("❌ Could not check status.");
+    } finally {
+      setA2pLoading(false);
+    }
   };
 
   const personalizationFields = [
@@ -5777,7 +5716,8 @@ export default function DashboardPage() {
               authFetch={authFetch}
               onStart={() => { setOnboardingStep(1); setShowOnboarding(true); }}
               onFixDetails={() => { setActiveTab("settings"); setSettingsSubTab("10dlc"); }}
-              onAddFunds={() => { void handleAddFunds(20); }}
+              onAddFunds={(need) => { void handleAddFunds(Math.max(20, Math.ceil(need / 5) * 5)); }}
+              onFixSubscription={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
             />
 
             {/* ═══════════════ HERO METRIC ROW ═══════════════
@@ -12122,7 +12062,7 @@ export default function DashboardPage() {
                 </div>
                 {(currentUser.a2pRegistration.status === "campaign_pending" || currentUser.a2pRegistration.status === "brand_pending") && (
                   <button
-                    onClick={currentUser.a2pRegistration.status === "campaign_pending" ? handleA2pCheckCampaign : handleA2pCheckBrand}
+                    onClick={handleA2pCheck}
                     disabled={a2pLoading}
                     className="mt-3 rounded-xl bg-yellow-600 px-4 py-2 text-sm font-medium hover:bg-yellow-700 disabled:opacity-50"
                   >
@@ -12132,35 +12072,28 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* Registration Form - show if not started, failed, or no registration */}
+            {/* Business details — shown until the registration is under way, and
+                again if it was rejected so it can be corrected and re-sent. */}
             {(!currentUser?.a2pRegistration || currentUser.a2pRegistration.status === "not_started" ||
               currentUser.a2pRegistration.status === "brand_failed" || currentUser.a2pRegistration.status === "campaign_failed") && (
-              <div className="space-y-4 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
-                <h3 className="text-lg font-semibold">Business Information</h3>
-                <p className="text-sm text-zinc-400">Enter your business details. We&apos;ll register your brand, create a messaging campaign, and assign your phone numbers automatically.</p>
+              <div className="space-y-5 rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
+                <div>
+                  <h3 className="text-lg font-semibold">Business Information</h3>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Enter your details once. We build your website, register your business with the carriers, file your messaging
+                    registration and attach a phone number — automatically, even if you close this page.
+                  </p>
+                </div>
 
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Business Name *</label>
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Acme Marketing LLC"
-                      value={a2pForm.businessName}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessName: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">EIN (Employer ID Number) *</label>
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="12-3456789"
-                      value={a2pForm.ein}
-                      onChange={(e) => setA2pForm({ ...a2pForm, ein: formatEin(e.target.value) })}
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-1 block text-sm text-zinc-400">EIN Certificate (CP-575 or EIN verification letter)</label>
-                    <EinCertificateUpload
+                <BusinessDetailsForm
+                  values={bizForm}
+                  onChange={(patch) => setBizForm((prev) => ({ ...prev, ...patch }))}
+                  authFetch={authFetch}
+                />
+
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-zinc-400">EIN Certificate (CP-575 or EIN verification letter) — optional</label>
+                  <EinCertificateUpload
                       userId={userId}
                       certificate={currentUser?.a2pRegistration ? {
                         path: currentUser.a2pRegistration.einCertificatePath || null,
@@ -12196,214 +12129,16 @@ export default function DashboardPage() {
                         });
                       }}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Business Type</label>
-                    <select
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      value={a2pForm.businessType}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessType: e.target.value as typeof a2pForm.businessType })}
-                    >
-                      <option value="llc">LLC</option>
-                      <option value="corporation">Corporation</option>
-                      <option value="partnership">Partnership</option>
-                      <option value="non_profit">Non-Profit</option>
-                      {/* Sole Proprietor is intentionally only shown when the
-                          user has NOT entered an EIN. SP brands are capped at
-                          ~75-200 msgs/day per area code by carriers and TCR
-                          forbids vetting them — picking SP when you have an
-                          EIN is the single biggest deliverability mistake we
-                          see (we just spent debugging time fixing it for two
-                          users). If they have an EIN, force them into
-                          PRIVATE_PROFIT-equivalent options. */}
-                      {!a2pForm.ein.trim() && (
-                        <option value="sole_proprietor">Sole Proprietor (no EIN)</option>
-                      )}
-                    </select>
-                    {a2pForm.businessType === "sole_proprietor" && (
-                      <div className="mt-2 rounded-lg border border-amber-800/40 bg-amber-950/20 p-3 text-xs text-amber-200/80">
-                        ⚠️ Sole Proprietor brands are capped at ~75–200 messages/day per area code by carriers and cannot be vetted.
-                        If your business has an EIN, enter it above and pick LLC / Corporation instead — your throughput will be 10x+ higher.
-                      </div>
-                    )}
-                  </div>
-                  <div className="md:col-span-2">
-                    <label className="mb-2 block text-sm text-zinc-400">
-                      Do you have a business website? *
-                    </label>
-                    <div className="flex gap-3">
-                      <button
-                        type="button"
-                        onClick={() => setA2pForm({ ...a2pForm, hasWebsite: "yes", buildPage: false })}
-                        className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition ${
-                          a2pForm.hasWebsite === "yes"
-                            ? "border-violet-500 bg-violet-600/20 text-violet-300"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-                        }`}
-                      >
-                        Yes, I have a website
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setA2pForm({ ...a2pForm, hasWebsite: "no", website: "" })}
-                        className={`flex-1 rounded-xl border px-4 py-3 text-sm font-medium transition ${
-                          a2pForm.hasWebsite === "no"
-                            ? "border-violet-500 bg-violet-600/20 text-violet-300"
-                            : "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-zinc-600"
-                        }`}
-                      >
-                        No, I don&apos;t have one
-                      </button>
-                    </div>
-                  </div>
-
-                  {a2pForm.hasWebsite === "yes" && (
-                    <div className="md:col-span-2">
-                      <label className="mb-1 block text-sm text-zinc-400">Website URL *</label>
-                      <input
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                        placeholder="https://yourbusiness.com"
-                        value={a2pForm.website}
-                        onChange={(e) => setA2pForm({ ...a2pForm, website: e.target.value })}
-                      />
-                      <p className="mt-1 text-xs text-zinc-500">
-                        A Facebook Business page, LinkedIn company page, or Google Business Profile URL also works.
-                      </p>
-                    </div>
-                  )}
-
-                  {a2pForm.hasWebsite === "no" && (
-                    <div className="md:col-span-2 space-y-4">
-                      {/* MNOs (the big 3 carriers) reject 10DLC campaigns
-                          hosted on shared subdomains because they look like
-                          generic SaaS landing pages, not real businesses.
-                          We previously offered a text2sale.com/biz/<slug>
-                          subdomain here — that's now removed. The user must
-                          supply their OWN TLD. We auto-build the compliance
-                          content; they just need to point a domain at it. */}
-                      <div className="rounded-2xl border border-violet-800/40 bg-violet-950/20 p-4">
-                        <div className="font-medium text-violet-300">We&apos;ll build your compliance site for free</div>
-                        <p className="mt-1 text-sm text-zinc-400">
-                          We auto-generate a branded business page (homepage, opt-in form, privacy policy, terms) using your business info. Carriers
-                          require this for 10DLC approval — but it must live on a <strong className="text-violet-300">real domain you own</strong>, not
-                          a subdomain. Buy one from <a href="https://www.namecheap.com" target="_blank" rel="noopener noreferrer" className="underline">Namecheap</a> (~$3–12/yr for .info / .com)
-                          or any registrar, then enter it below.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-sm text-zinc-400">Your custom domain *</label>
-                        <input
-                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                          placeholder="yourbusinessname.com"
-                          value={a2pForm.customDomain}
-                          onChange={(e) => setA2pForm({ ...a2pForm, customDomain: e.target.value.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/$/, "") })}
-                        />
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Just the domain — no <code className="rounded bg-zinc-800 px-1 text-zinc-400">https://</code> or trailing slashes.
-                          After 10DLC submission we&apos;ll show you the exact DNS records to paste into your registrar.
-                        </p>
-                      </div>
-
-                      <div>
-                        <label className="mb-1 block text-sm text-zinc-400">
-                          Short description of your business (optional)
-                        </label>
-                        <textarea
-                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                          rows={3}
-                          placeholder="We help families find affordable health insurance plans tailored to their needs..."
-                          value={a2pForm.businessDescription}
-                          onChange={(e) => setA2pForm({ ...a2pForm, businessDescription: e.target.value })}
-                        />
-                        <p className="mt-1 text-xs text-zinc-500">
-                          Leave blank to use a default description. You can edit your page anytime.
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <h4 className="mt-4 font-medium text-zinc-300">Business Address</h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div className="md:col-span-2">
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="Street Address"
-                      value={a2pForm.businessAddress}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessAddress: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="City"
-                      value={a2pForm.businessCity}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessCity: e.target.value })}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <select
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      value={a2pForm.businessState}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessState: e.target.value })}
-                    >
-                      <option value="">Select State</option>
-                      {["AL","AK","AZ","AR","CA","CO","CT","DE","DC","FL","GA","HI","ID","IL","IN","IA","KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ","NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT","VA","WA","WV","WI","WY"].map((s) => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                    <input
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="ZIP"
-                      value={a2pForm.businessZip}
-                      onChange={(e) => setA2pForm({ ...a2pForm, businessZip: e.target.value })}
-                    />
-                  </div>
-                </div>
-
-                <h4 className="mt-4 font-medium text-zinc-300">Contact Information</h4>
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Contact Email</label>
-                    <input
-                      type="email"
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="email@example.com"
-                      value={a2pForm.contactEmail}
-                      onChange={(e) => setA2pForm({ ...a2pForm, contactEmail: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-sm text-zinc-400">Contact Phone</label>
-                    <input
-                      type="tel"
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 focus:border-violet-500 focus:outline-none"
-                      placeholder="(555) 123-4567"
-                      value={a2pForm.contactPhone}
-                      onChange={(e) => setA2pForm({ ...a2pForm, contactPhone: formatPhoneNumber(e.target.value) })}
-                    />
-                  </div>
                 </div>
 
                 <button
                   onClick={() => handleA2pRegister()}
-                  disabled={
-                    a2pLoading ||
-                    !a2pForm.businessName ||
-                    !a2pForm.ein ||
-                    (a2pForm.hasWebsite === "yes" && !a2pForm.website) ||
-                    (a2pForm.hasWebsite === "no" && !a2pForm.buildPage)
-                  }
-                  className="mt-4 w-full rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50"
+                  disabled={a2pLoading || !!businessFormProblem(bizForm)}
+                  className="w-full rounded-2xl bg-violet-600 px-8 py-3 font-medium hover:bg-violet-700 disabled:opacity-50"
                 >
-                  {a2pLoading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/></svg>
-                      Registering...
-                    </span>
-                  ) : "Register & Start Sending"}
+                  {a2pLoading ? "Submitting…" : "Create my website & activate texting"}
                 </button>
+                {businessFormProblem(bizForm) && <p className="text-center text-xs text-zinc-500">{businessFormProblem(bizForm)}</p>}
               </div>
             )}
 
@@ -12539,19 +12274,9 @@ export default function DashboardPage() {
                         className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white"
                       >
                         <option value="">Select your industry...</option>
-                        <option value="health_insurance">Health Insurance</option>
-                        <option value="life_insurance">Life Insurance</option>
-                        <option value="auto_insurance">Auto Insurance</option>
-                        <option value="home_insurance">Home / Property Insurance</option>
-                        <option value="medicare">Medicare</option>
-                        <option value="real_estate">Real Estate</option>
-                        <option value="solar">Solar Energy</option>
-                        <option value="roofing">Roofing / Home Services</option>
-                        <option value="financial_services">Financial Services</option>
-                        <option value="auto_dealer">Auto Dealership</option>
-                        <option value="debt_settlement">Debt Settlement / Credit Repair</option>
-                        <option value="legal">Legal Services</option>
-                        <option value="other">Other</option>
+                        {INDUSTRIES.map((i) => (
+                          <option key={i.id} value={i.id}>{i.label}</option>
+                        ))}
                       </select>
                       <p className="mt-1 text-xs text-zinc-500">The AI will be trained as a top producer in your industry — handling objections, rebuttals, and closing like the best in the business.</p>
                     </div>
@@ -12564,9 +12289,28 @@ export default function DashboardPage() {
                             window.setTimeout(() => setMessage(""), 3000);
                             return;
                           }
-                          await persistProfile({ ai_plan: true, industry: currentUser.industry });
-                          setMessage("✅ AI plan activated! Your AI is trained for " + (currentUser.industry || "").replace(/_/g, " ") + ".");
-                          window.setTimeout(() => setMessage(""), 4000);
+                          // Charged first, then switched on — see /api/upgrade-plan.
+                          // This used to write the flag straight to the profile,
+                          // which the database refuses, and report success anyway.
+                          setMessage("Upgrading your plan…");
+                          try {
+                            const res = await authFetch("/api/upgrade-plan", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ industry: currentUser.industry }),
+                            });
+                            const data = await res.json();
+                            if (!data.success) {
+                              setMessage("❌ " + (data.error || "Upgrade failed"));
+                              window.setTimeout(() => setMessage(""), 7000);
+                              return;
+                            }
+                            await refreshCurrentUser();
+                            setMessage("✅ AI plan activated! Your AI is trained for " + (currentUser.industry || "").replace(/_/g, " ") + ".");
+                          } catch {
+                            setMessage("❌ Upgrade failed — you haven't been charged. Please try again.");
+                          }
+                          window.setTimeout(() => setMessage(""), 5000);
                         }}
                         className="rounded-2xl bg-cyan-600 px-6 py-3 text-sm font-semibold text-white hover:bg-cyan-700"
                       >
@@ -12574,7 +12318,7 @@ export default function DashboardPage() {
                       </button>
                     </div>
                   </div>
-                  <p className="mt-2 text-xs text-zinc-500">AI messages billed at $0.025 each from wallet. Regular SMS stays at $0.012.</p>
+                  <p className="mt-2 text-xs text-zinc-500">AI messages billed at $0.025 each from wallet. Regular SMS stays at $0.012. The upgrade is charged to your card on file now (prorated for this month) — if the charge fails, nothing changes.</p>
                 </div>
               )}
             </div>
@@ -12629,19 +12373,9 @@ export default function DashboardPage() {
                       className="flex-1 rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-3 text-sm text-white"
                     >
                       <option value="">Select your industry...</option>
-                      <option value="health_insurance">Health Insurance</option>
-                      <option value="life_insurance">Life Insurance</option>
-                      <option value="auto_insurance">Auto Insurance</option>
-                      <option value="home_insurance">Home / Property Insurance</option>
-                      <option value="medicare">Medicare</option>
-                      <option value="real_estate">Real Estate</option>
-                      <option value="solar">Solar Energy</option>
-                      <option value="roofing">Roofing / Home Services</option>
-                      <option value="financial_services">Financial Services</option>
-                      <option value="auto_dealer">Auto Dealership</option>
-                      <option value="debt_settlement">Debt Settlement / Credit Repair</option>
-                      <option value="legal">Legal Services</option>
-                      <option value="other">Other</option>
+                      {INDUSTRIES.map((i) => (
+                        <option key={i.id} value={i.id}>{i.label}</option>
+                      ))}
                     </select>
                     {currentUser.industry && (
                       <span className="rounded-full bg-cyan-900/40 px-3 py-1.5 text-xs font-medium text-cyan-300">
@@ -14435,27 +14169,32 @@ export default function DashboardPage() {
               <div className="text-center">
                 <div className="mb-3 text-4xl">🚀</div>
                 <h3 className="mb-1 text-2xl font-bold">Welcome to Text2Sale!</h3>
-                <p className="mb-6 text-sm text-zinc-400">The SMS CRM built for insurance agents and sales teams. Let's get you set up in minutes.</p>
+                <p className="mb-6 text-sm text-zinc-400">The SMS CRM built for insurance agents and sales teams. Let&apos;s get you set up in minutes.</p>
                 <div className="mb-4 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left">
                   <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-zinc-500">Your Plan</div>
                   <div className="flex items-baseline gap-1">
                     <span className="text-2xl font-bold">${currentUser.plan.price}</span>
                     <span className="text-sm text-zinc-400">/month</span>
+                    <span className="ml-2 text-xs text-zinc-500">{packageForPlan(currentUser.plan) === "ai" ? "Text2Sale + AI" : "Standard"}</span>
                   </div>
                   <div className="mt-2 space-y-1 text-xs text-zinc-400">
                     <div>✓ Unlimited contacts</div>
-                    <div>✓ AI-powered replies</div>
+                    {packageForPlan(currentUser.plan) === "ai" && <div>✓ AI-powered replies</div>}
                     <div>✓ Campaign broadcasting</div>
+                    <div>✓ We build your website and handle carrier registration for you</div>
                   </div>
                 </div>
                 <button
-                  onClick={() => { handleSubscribe(); setOnboardingStep(1); }}
+                  onClick={() => { void handleSubscribe(); }}
                   className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 transition"
                 >
                   Subscribe &amp; Continue →
                 </button>
-                <button onClick={() => setOnboardingStep(1)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — already subscribed
+                {/* Texting setup is paid work, so the wizard only moves on once
+                    the subscription is active — a skip link here used to let
+                    anyone reach (and submit) the registration unpaid. */}
+                <button onClick={() => window.location.reload()} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
+                  Already subscribed? Refresh
                 </button>
               </div>
             )}
@@ -14464,221 +14203,85 @@ export default function DashboardPage() {
             {onboardingStep === 1 && (
               <div>
                 <div className="mb-1 text-center text-3xl">🏢</div>
-                <h3 className="mb-1 text-center text-xl font-bold">Register Your Business (10DLC)</h3>
-                <p className="mb-4 text-center text-sm text-zinc-400">We submit your brand &amp; campaign straight to Telnyx — carriers require this before your texts can send.</p>
-                <div className="max-h-[46vh] space-y-3 overflow-y-auto pr-1">
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-400">Legal Business Name *</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. Johnson Health Insurance LLC"
-                      value={onboardingBiz.businessName}
-                      onChange={e => setOnboardingBiz(b => ({ ...b, businessName: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">Business Type *</label>
-                      <select
-                        value={onboardingBiz.businessType}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, businessType: e.target.value as typeof b.businessType }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
-                      >
-                        <option value="llc">LLC</option>
-                        <option value="corporation">Corporation</option>
-                        <option value="partnership">Partnership</option>
-                        <option value="non_profit">Non-Profit</option>
-                      </select>
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">EIN (Tax ID) *</label>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        placeholder="XX-XXXXXXX"
-                        value={onboardingBiz.ein}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, ein: formatEin(e.target.value) }))}
-                        className={`w-full rounded-xl border bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500 ${onboardingBiz.ein && !isValidEin(onboardingBiz.ein) ? "border-red-500/60" : "border-zinc-700"}`}
-                      />
-                      {onboardingBiz.ein && !isValidEin(onboardingBiz.ein) && (
-                        <p className="mt-1 text-[10px] text-red-400">EIN must be 9 digits (XX-XXXXXXX).</p>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-400">Business Address *</label>
-                    <input
-                      type="text"
-                      placeholder="123 Main St, Suite 100"
-                      value={onboardingBiz.businessAddress}
-                      onChange={e => setOnboardingBiz(b => ({ ...b, businessAddress: e.target.value }))}
-                      className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
-                    />
-                    <p className="mt-1 text-[10px] text-zinc-600">Must match your IRS records exactly, or carriers reject the brand.</p>
-                  </div>
-                  <div className="grid grid-cols-6 gap-2">
-                    <div className="col-span-3">
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">City *</label>
-                      <input
-                        type="text"
-                        value={onboardingBiz.businessCity}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, businessCity: e.target.value }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
-                      />
-                    </div>
-                    <div className="col-span-1">
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">State *</label>
-                      <input
-                        type="text"
-                        placeholder="FL"
-                        maxLength={2}
-                        value={onboardingBiz.businessState}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, businessState: e.target.value.toUpperCase() }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-2 py-2.5 text-sm uppercase outline-none focus:border-violet-500"
-                      />
-                    </div>
-                    <div className="col-span-2">
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">ZIP *</label>
-                      <input
-                        type="text"
-                        value={onboardingBiz.businessZip}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, businessZip: e.target.value }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-3 py-2.5 text-sm outline-none focus:border-violet-500"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="mb-1 block text-xs font-medium text-zinc-400">Business Phone *</label>
-                    <input
-                      type="tel"
-                      inputMode="tel"
-                      placeholder="(555) 555-5555"
-                      value={onboardingBiz.contactPhone}
-                      onChange={e => setOnboardingBiz(b => ({ ...b, contactPhone: formatPhoneNumber(e.target.value) }))}
-                      className={`w-full rounded-xl border bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500 ${onboardingBiz.contactPhone && onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 ? "border-red-500/60" : "border-zinc-700"}`}
-                    />
-                    {onboardingBiz.contactPhone && onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 && (
-                      <p className="mt-1 text-[10px] text-red-400">Enter a 10-digit US phone number.</p>
-                    )}
-                  </div>
-                  <div>
-                    <label className="mb-1.5 block text-xs font-medium text-zinc-400">Do you have a business website? *</label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setOnboardingBiz(b => ({ ...b, hasWebsite: "yes" }))}
-                        className={`flex-1 rounded-xl border px-4 py-2 text-xs font-medium transition ${onboardingBiz.hasWebsite === "yes" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
-                      >Yes, I have one</button>
-                      <button
-                        onClick={() => setOnboardingBiz(b => ({ ...b, hasWebsite: "no", website: "" }))}
-                        className={`flex-1 rounded-xl border px-4 py-2 text-xs font-medium transition ${onboardingBiz.hasWebsite === "no" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
-                      >No website yet</button>
-                    </div>
-                  </div>
-                  {onboardingBiz.hasWebsite === "yes" && (
-                    <div>
-                      <label className="mb-1 block text-xs font-medium text-zinc-400">Website URL *</label>
-                      <input
-                        type="url"
-                        placeholder="https://yoursite.com"
-                        value={onboardingBiz.website}
-                        onChange={e => setOnboardingBiz(b => ({ ...b, website: e.target.value }))}
-                        className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
-                      />
-                    </div>
-                  )}
-                  {onboardingBiz.hasWebsite === "no" && (
-                    <div className="space-y-2">
-                      <div>
-                        <label className="mb-1 block text-xs font-medium text-zinc-400">Domain you own *</label>
-                        <input
-                          type="text"
-                          placeholder="yourbusiness.com"
-                          value={onboardingBiz.customDomain}
-                          onChange={e => setOnboardingBiz(b => ({ ...b, customDomain: e.target.value }))}
-                          className="w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500"
-                        />
-                      </div>
-                      <div className="rounded-xl border border-amber-800/40 bg-amber-950/30 p-3 text-xs text-amber-300">
-                        💡 We&apos;ll auto-build a compliant business page on your domain — carriers require one. You point its DNS to us afterward.
-                      </div>
-                    </div>
-                  )}
+                <h3 className="mb-1 text-center text-xl font-bold">Tell us about your business</h3>
+                <p className="mb-4 text-center text-sm text-zinc-400">
+                  Once, and that&apos;s it: we build your website, register your business with the carriers and set up your number — automatically.
+                </p>
+                <div className="max-h-[46vh] overflow-y-auto pr-1">
+                  <BusinessDetailsForm
+                    values={bizForm}
+                    onChange={(patch) => setBizForm((prev) => ({ ...prev, ...patch }))}
+                    authFetch={authFetch}
+                  />
                 </div>
                 <button
-                  disabled={
-                    !onboardingBiz.businessName.trim() || !isValidEin(onboardingBiz.ein) ||
-                    !onboardingBiz.businessAddress.trim() || !onboardingBiz.businessCity.trim() ||
-                    !onboardingBiz.businessState.trim() || !onboardingBiz.businessZip.trim() ||
-                    onboardingBiz.contactPhone.replace(/\D/g, "").length !== 10 ||
-                    (onboardingBiz.hasWebsite === "yes" && !onboardingBiz.website.trim()) ||
-                    (onboardingBiz.hasWebsite === "no" && !onboardingBiz.customDomain.trim()) ||
-                    onboardingBizSaving
-                  }
+                  disabled={!!businessFormProblem(bizForm) || onboardingBizSaving}
                   onClick={async () => {
                     if (!currentUser) return;
                     setOnboardingBizSaving(true);
-                    // Build the full registration form from onboarding values and
-                    // pass it directly (React state set here would be stale).
-                    const form = {
-                      ...a2pForm,
-                      businessName: onboardingBiz.businessName,
-                      businessType: onboardingBiz.businessType,
-                      ein: onboardingBiz.ein,
-                      businessAddress: onboardingBiz.businessAddress,
-                      businessCity: onboardingBiz.businessCity,
-                      businessState: onboardingBiz.businessState,
-                      businessZip: onboardingBiz.businessZip,
-                      contactPhone: onboardingBiz.contactPhone,
-                      businessDescription: onboardingBiz.businessDescription,
-                      website: onboardingBiz.website,
-                      customDomain: onboardingBiz.customDomain.trim().replace(/^https?:\/\//, "").replace(/\/$/, ""),
-                      hasWebsite: onboardingBiz.hasWebsite,
-                      contactEmail: a2pForm.contactEmail || currentUser.email || "",
-                    };
-                    setA2pForm(form); // keep Settings → 10DLC in sync
                     try {
-                      await handleA2pRegister(form);
+                      // Only move on when the server accepted the details, so
+                      // a rejected field can be fixed without starting over.
+                      if (await handleA2pRegister(bizForm)) setOnboardingStep(2);
                     } finally {
                       setOnboardingBizSaving(false);
-                      setOnboardingStep(2);
                     }
                   }}
                   className="mt-4 w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 disabled:opacity-40 transition"
                 >
-                  {onboardingBizSaving ? "Registering with Telnyx…" : "Register with Telnyx →"}
+                  {onboardingBizSaving ? "Submitting…" : "Create my website & activate texting →"}
                 </button>
+                {businessFormProblem(bizForm) && (
+                  <p className="mt-2 text-center text-[11px] text-zinc-500">{businessFormProblem(bizForm)}</p>
+                )}
                 <button onClick={() => setOnboardingStep(2)} className="mt-3 w-full text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — I&apos;ll register later in Settings
+                  Skip — I&apos;ll do this later in Settings
                 </button>
               </div>
             )}
 
-            {/* Step 2 — Buy a Number */}
+            {/* Step 2 — Phone number (automatic) */}
             {onboardingStep === 2 && (
               <div className="text-center">
                 <div className="mb-3 text-4xl">📱</div>
-                <h3 className="mb-1 text-xl font-bold">Get a Phone Number</h3>
-                <p className="mb-5 text-sm text-zinc-400">You need at least one 10DLC number to send messages to your contacts.</p>
+                <h3 className="mb-1 text-xl font-bold">Your phone number</h3>
+                <p className="mb-5 text-sm text-zinc-400">
+                  We pick and attach a local number for you as soon as your messaging is approved — usually within a day or two. Nothing to buy or click.
+                </p>
                 <div className="mb-5 rounded-2xl border border-zinc-700 bg-zinc-800 p-4 text-left space-y-2">
                   <div className="flex justify-between text-sm">
-                    <span className="text-zinc-400">One-time purchase</span>
+                    <span className="text-zinc-400">One-time, taken from your balance</span>
                     <span className="font-semibold">$1.50</span>
                   </div>
                   <div className="flex justify-between text-sm">
                     <span className="text-zinc-400">Monthly fee</span>
                     <span className="font-semibold">$1.00/mo</span>
                   </div>
-                  <div className="border-t border-zinc-700 pt-2 text-xs text-zinc-500">Numbers are local 10-digit long codes (10DLC) — required for business SMS.</div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-zinc-400">Your balance</span>
+                    <span className="font-semibold">${(currentUser.walletBalance ?? 0).toFixed(2)}</span>
+                  </div>
+                  <div className="border-t border-zinc-700 pt-2 text-xs text-zinc-500">Nothing is bought until the money is in your balance. If it&apos;s short, we pause and finish the moment you add funds.</div>
                 </div>
+                {(currentUser.walletBalance ?? 0) < 20 && (
+                  <button
+                    onClick={() => { void handleAddFunds(20); }}
+                    className="mb-3 w-full rounded-2xl border border-emerald-500/40 bg-emerald-500/10 px-6 py-3 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 transition"
+                  >
+                    Add $20 to my balance
+                  </button>
+                )}
                 <button
-                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); setShowOnboarding(false); }}
+                  onClick={() => setOnboardingStep(3)}
                   className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold hover:bg-violet-700 transition"
                 >
-                  Buy a Number →
+                  Continue →
                 </button>
-                <button onClick={() => setOnboardingStep(3)} className="mt-3 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — I already have one
+                <button
+                  onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); setShowOnboarding(false); }}
+                  className="mt-3 text-xs text-zinc-500 hover:text-zinc-300"
+                >
+                  I&apos;d rather choose my own number
                 </button>
               </div>
             )}

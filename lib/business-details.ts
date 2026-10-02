@@ -74,7 +74,8 @@ export function validateBusinessDetails(body: Record<string, unknown>): Validate
 
   const businessAddress = str(body.businessAddress, 100);
   const businessCity = str(body.businessCity, 100);
-  const businessState = str(body.businessState, 2).toUpperCase();
+  // Not truncated: "Texas" would otherwise pass as "TE".
+  const businessState = str(body.businessState, 30).toUpperCase();
   const businessZip = str(body.businessZip, 10);
   if (businessAddress.length < 3) return { ok: false, error: "Enter your business street address." };
   if (businessCity.length < 2) return { ok: false, error: "Enter your business city." };

@@ -1,9 +1,6 @@
-import { notFound } from "next/navigation";
-import { fetchBusiness, getBusinessName } from "@/lib/biz-fetch";
+import { consentText, loadSite } from "@/lib/biz-site";
 import { cleanBizMetadata } from "@/lib/biz-metadata";
 import OptInForm from "./OptInForm";
-
-export const revalidate = 60;
 
 export async function generateMetadata({
   params,
@@ -11,12 +8,12 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const biz = await fetchBusiness(slug);
-  if (!biz) return { title: "Not Found" };
-  const name = getBusinessName(biz);
+  const site = await loadSite(slug);
+  if (!site) return { title: "Not Found" };
   return cleanBizMetadata({
-    title: `SMS Opt-In | ${name}`,
-    description: `Sign up to receive recurring SMS updates, appointment reminders, and promotional messages from ${name}. Reply STOP to opt out at any time.`,
+    title: `SMS Opt-In | ${site.name}`,
+    description: `Sign up to receive text messages from ${site.name}: ${site.industry.messageTypes}. Message frequency varies. Reply STOP to opt out at any time.`,
+    canonical: site.canonical("/opt-in"),
   });
 }
 
@@ -26,8 +23,18 @@ export default async function OptInPageWrapper({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const biz = await fetchBusiness(slug);
-  if (!biz) notFound();
+  const site = (await loadSite(slug, { required: true }))!;
 
-  return <OptInForm businessName={getBusinessName(biz)} slug={slug} />;
+  return (
+    <OptInForm
+      businessName={site.name}
+      slug={slug}
+      messageTypes={site.industry.messageTypes}
+      consent={consentText(site.name, site.industry)}
+      privacyHref={site.href("/privacy-policy")}
+      termsHref={site.href("/terms")}
+      supportEmail={site.contact.email}
+      supportPhone={site.contact.phone}
+    />
+  );
 }

@@ -23,6 +23,11 @@ type StatusPayload = {
   error: string | null;
   activeNumber: string | null;
   amountNeeded: number;
+  awaiting?: "domain" | "number" | null;
+  needsSubscription?: boolean;
+  websiteNote?: string | null;
+  website?: string | null;
+  steps?: { key: string; label: string; state: "done" | "current" | "waiting" | "pending" | "failed" }[];
 };
 
 const POLL_MS = 15_000;
@@ -32,6 +37,7 @@ export default function ActivationStatus({
   onActive,
   onFixDetails,
   onAddFunds,
+  onFixSubscription,
   onStart,
 }: {
   /** Injected so this component doesn't need to know how auth is wired. */
@@ -39,6 +45,7 @@ export default function ActivationStatus({
   onActive?: () => void;
   onFixDetails?: () => void;
   onAddFunds?: (amountNeeded: number) => void;
+  onFixSubscription?: () => void;
   onStart?: () => void;
 }) {
   const [state, setState] = useState<StatusPayload | null>(null);
@@ -70,7 +77,10 @@ export default function ActivationStatus({
           }
           // Nothing left to wait for: stop polling rather than hitting the
           // endpoint forever on a settled account.
-          if (data.status === "ACTIVE" || data.needsCustomerAction) {
+          // Funds and subscription prompts keep polling: the account resumes
+          // by itself the moment the customer pays, and the screen should
+          // follow it without a refresh.
+          if (data.status === "ACTIVE" || (data.needsCustomerAction && !data.amountNeeded && !data.needsSubscription)) {
             if (timer) window.clearInterval(timer);
             timer = undefined;
           }
@@ -120,6 +130,35 @@ export default function ActivationStatus({
         {isActive && <span className="text-2xl" aria-hidden="true">✓</span>}
       </div>
 
+      {state.steps && !notStarted && !isProblem && (
+        <ol className="mt-5 flex flex-wrap gap-x-5 gap-y-2 text-xs">
+          {state.steps.map((st) => (
+            <li
+              key={st.key}
+              className={`flex items-center gap-1.5 ${
+                st.state === "done" ? "text-emerald-300" : st.state === "pending" ? "text-zinc-600" : "text-zinc-300"
+              }`}
+            >
+              <span
+                aria-hidden="true"
+                className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
+                  st.state === "done"
+                    ? "bg-emerald-400 text-zinc-950"
+                    : st.state === "pending"
+                      ? "bg-zinc-800 text-zinc-600"
+                      : st.state === "failed"
+                        ? "bg-red-400 text-zinc-950"
+                        : "bg-sky-400 text-zinc-950"
+                }`}
+              >
+                {st.state === "done" ? "✓" : st.state === "failed" ? "!" : ""}
+              </span>
+              {st.label}
+            </li>
+          ))}
+        </ol>
+      )}
+
       {!isActive && !isProblem && !notStarted && (
         <div className="mt-6">
           <div
@@ -147,7 +186,25 @@ export default function ActivationStatus({
         <p className="mt-5 text-lg font-bold text-emerald-300">{state.activeNumber}</p>
       )}
 
-      {needsFunds && (
+      {state.websiteNote && (
+        <p className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4 text-sm leading-6 text-zinc-300">
+          {state.websiteNote}
+        </p>
+      )}
+
+      {state.needsSubscription && (
+        <div className="mt-6">
+          <button
+            type="button"
+            onClick={() => onFixSubscription?.()}
+            className="rounded-2xl bg-white px-6 py-3 font-bold text-zinc-950 hover:bg-zinc-200"
+          >
+            Review my subscription
+          </button>
+        </div>
+      )}
+
+      {needsFunds && !state.needsSubscription && (
         <div className="mt-6">
           <p className="text-sm text-zinc-400">
             Add ${state.amountNeeded.toFixed(2)} and we&apos;ll finish automatically — no need to come back to

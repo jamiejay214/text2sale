@@ -18,3 +18,25 @@ export function isCustomComplianceHost(host: string | null | undefined): boolean
   const h = host.split(":")[0].toLowerCase();
   return CUSTOM_DOMAIN_HOSTS.has(h);
 }
+
+// ── Branded hosts ──────────────────────────────────────────────────────────
+// The list above only covers the launch customers. Every customer who gets a
+// domain through the activation flow is looked up in the database instead, so
+// "is this a customer's site?" can't be answered from a hard-coded list.
+// Everything that isn't Text2Sale's own host (or a preview/dev host) is one.
+
+const MAIN_HOSTS = new Set(["text2sale.com", "www.text2sale.com", "localhost", "127.0.0.1"]);
+
+export function normalizeHost(host: string | null | undefined): string {
+  return (host || "").split(":")[0].toLowerCase();
+}
+
+export function isMainSiteHost(host: string | null | undefined): boolean {
+  const h = normalizeHost(host);
+  return !h || MAIN_HOSTS.has(h) || h.endsWith(".vercel.app");
+}
+
+/** True for a customer's own domain (their compliance site), false for Text2Sale. */
+export function isBrandedHost(host: string | null | undefined): boolean {
+  return !isMainSiteHost(host);
+}

@@ -103,8 +103,6 @@ export const PROFILE_COLUMNS =
 /** Outcome of advancing one account, for run summaries and API responses. */
 export type StepResult = { userId: string; from: MessagingStatus; to: MessagingStatus; note?: string };
 
-type AdminAlert = NonNullable<A2PRegistration["adminAlert"]>;
-
 const hoursSince = (iso: string | null | undefined) =>
   iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / 3_600_000) : 0;
 

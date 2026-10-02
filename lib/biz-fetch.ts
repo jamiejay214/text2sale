@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 export type BusinessProfile = {
@@ -6,6 +7,8 @@ export type BusinessProfile = {
   last_name: string | null;
   email: string | null;
   phone: string | null;
+  industry: string | null;
+  custom_domain: string | null;
   business_slug: string | null;
   business_description: string | null;
   business_logo_url: string | null;
@@ -17,10 +20,15 @@ export type BusinessProfile = {
     businessZip?: string;
     contactEmail?: string;
     contactPhone?: string;
+    optInMessage?: string;
   } | null;
 };
 
-export async function fetchBusiness(slug: string): Promise<BusinessProfile | null> {
+/**
+ * Cached per request: the layout, the metadata function and the page all ask
+ * for the same business, which used to be three identical queries per view.
+ */
+export const fetchBusiness = cache(async (slug: string): Promise<BusinessProfile | null> => {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const supabaseKey =
     process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -30,13 +38,13 @@ export async function fetchBusiness(slug: string): Promise<BusinessProfile | nul
   const { data } = await supabase
     .from("profiles")
     .select(
-      "id, first_name, last_name, email, phone, business_slug, business_description, business_logo_url, a2p_registration"
+      "id, first_name, last_name, email, phone, industry, custom_domain, business_slug, business_description, business_logo_url, a2p_registration"
     )
     .eq("business_slug", slug)
     .maybeSingle();
 
   return (data as BusinessProfile) || null;
-}
+});
 
 export function getBusinessName(biz: BusinessProfile): string {
   return (
@@ -54,5 +62,7 @@ export function getBusinessContact(biz: BusinessProfile) {
     address: [reg.businessAddress, reg.businessCity, reg.businessState, reg.businessZip]
       .filter(Boolean)
       .join(", "),
+    city: reg.businessCity || "",
+    state: reg.businessState || "",
   };
 }

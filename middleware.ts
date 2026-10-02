@@ -55,16 +55,27 @@ const STATIC_SLUG_BY_HOST = new Map(
   CUSTOM_DOMAINS.map((d) => [d.domain, d.slug] as const)
 );
 
-// Supabase-backed lookup cache. Keys are lower-cased hosts; value `null`
-// means "definitely not one of ours, don't re-query." Populated lazily.
-const dynamicSlugByHost = new Map<string, string | null>();
+// Supabase-backed lookup cache. Entries expire: a miss for 30 seconds, a hit
+// for 5 minutes. They used to live for the whole life of the edge instance,
+// so a domain that was requested a moment before its profile row was written
+// — the activation flow probes a new domain the instant it is attached —
+// stayed "not one of ours" for hours, and a changed or removed domain kept
+// being served just as long.
+type CacheEntry = { slug: string | null; at: number };
+const dynamicSlugByHost = new Map<string, CacheEntry>();
+const HIT_TTL_MS = 5 * 60_000;
+const MISS_TTL_MS = 30_000;
 
 async function lookupSlugForHost(host: string): Promise<string | null> {
   // Fast path: hardcoded launch customers
   if (STATIC_SLUG_BY_HOST.has(host)) return STATIC_SLUG_BY_HOST.get(host)!;
 
-  // Memoized Supabase lookup
-  if (dynamicSlugByHost.has(host)) return dynamicSlugByHost.get(host)!;
+  // The host goes into a PostgREST filter below; only ever look up things
+  // that are plain hostnames.
+  if (!/^[a-z0-9.-]{3,253}$/.test(host)) return null;
+
+  const cached = dynamicSlugByHost.get(host);
+  if (cached && Date.now() - cached.at < (cached.slug ? HIT_TTL_MS : MISS_TTL_MS)) return cached.slug;
 
   try {
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -81,11 +92,11 @@ async function lookupSlugForHost(host: string): Promise<string | null> {
       .limit(1)
       .maybeSingle();
     const slug = data?.business_slug || null;
-    dynamicSlugByHost.set(host, slug);
+    dynamicSlugByHost.set(host, { slug, at: Date.now() });
     return slug;
   } catch {
-    // DB down / anon role misconfig — cache null briefly to avoid thrashing
-    dynamicSlugByHost.set(host, null);
+    // DB down / anon role misconfig — remember briefly to avoid thrashing
+    dynamicSlugByHost.set(host, { slug: null, at: Date.now() });
     return null;
   }
 }
@@ -110,6 +121,12 @@ export async function middleware(req: NextRequest) {
   const path = req.nextUrl.pathname.toLowerCase();
 
   // Any other host reaching this deployment is a customer's branded domain.
+  //
+  // Its robots.txt and sitemap.xml must describe THIS site, not Text2Sale's
+  // (which would advertise 278 URLs on a host that serves four).
+  if (path === "/robots.txt") return NextResponse.rewrite(new URL("/api/branded/robots", req.url));
+  if (path === "/sitemap.xml") return NextResponse.rewrite(new URL("/api/branded/sitemap", req.url));
+
   if (isMarketingPath(path)) return redirectToMainSite(req);
 
   if (!COMPLIANCE_PATHS.has(path)) return NextResponse.next();
@@ -124,7 +141,15 @@ export async function middleware(req: NextRequest) {
 
   // Self-serve custom domain → Supabase lookup
   const slug = await lookupSlugForHost(host);
-  if (!slug) return NextResponse.next();
+  if (!slug) {
+    // A host we don't know must never serve Text2Sale's pages as its own: "/"
+    // there would be the marketing homepage, the one thing a customer's domain
+    // must not show while carriers review it. Send visitors to the real site.
+    // Temporary (307) on purpose: a brand-new customer domain can be requested
+    // a moment before its profile row is visible here, and a cached permanent
+    // redirect would stick to it in browsers and crawlers.
+    return NextResponse.redirect(new URL(req.nextUrl.pathname + req.nextUrl.search, "https://text2sale.com"), 307);
+  }
 
   const url = req.nextUrl.clone();
   url.pathname = path === "/" ? `/biz/${slug}` : `/biz/${slug}${path}`;
@@ -134,5 +159,10 @@ export async function middleware(req: NextRequest) {
 export const config = {
   // Skip middleware for static + API routes so we don't pay the host-check
   // cost on every asset fetch. The matcher runs before middleware itself.
-  matcher: ["/((?!api|_next/static|_next/image|favicon|.*\\.(?:png|jpg|jpeg|svg|webp|ico|css|js|map|txt|xml|woff2?|ttf)).*)"],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon|.*\\.(?:png|jpg|jpeg|svg|webp|ico|css|js|map|txt|xml|woff2?|ttf)).*)",
+    // The two metadata files that differ on a customer's domain.
+    "/robots.txt",
+    "/sitemap.xml",
+  ],
 };
