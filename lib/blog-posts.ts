@@ -6,6 +6,7 @@
 
 import { BLOG_POSTS_2 } from "./blog-posts-2";
 import { BLOG_POSTS_3 } from "./blog-posts-3";
+import { BLOG_POSTS_4 } from "./blog-posts-4";
 
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
@@ -8201,6 +8202,7 @@ export const BLOG_POSTS: BlogPost[] = [
   // Volume 2 lives in its own file — see lib/blog-posts-2.ts.
   ...BLOG_POSTS_2,
   ...BLOG_POSTS_3,
+  ...BLOG_POSTS_4,
 ];
 
 export function getAllPosts(): BlogPost[] {
