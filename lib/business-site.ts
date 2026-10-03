@@ -70,6 +70,10 @@ export function siteUrls(base: string) {
 
 export type ProbeResult = { live: boolean; status: number; reason: string };
 
+export type ComplianceProbeResult = ProbeResult & {
+  page?: "home" | "opt-in" | "privacy-policy" | "terms";
+};
+
 /**
  * Is this page up, and is it the right page?
  *
@@ -102,4 +106,81 @@ export async function probeSite(url: string, expectText?: string): Promise<Probe
     const msg = e instanceof Error ? e.message : "request failed";
     return { live: false, status: 0, reason: /enotfound|getaddrinfo|dns/i.test(msg) ? "Domain is not resolving yet (DNS)" : `Could not reach the site (${msg})` };
   }
+}
+
+async function probeRequiredText(
+  page: ComplianceProbeResult["page"],
+  url: string,
+  required: string[],
+): Promise<ComplianceProbeResult> {
+  try {
+    const res = await fetch(url, {
+      redirect: "follow",
+      signal: AbortSignal.timeout(10_000),
+      headers: { "user-agent": "Text2SaleComplianceCheck/2.0", accept: "text/html" },
+      cache: "no-store",
+    });
+    if (res.status !== 200) {
+      return { live: false, status: res.status, page, reason: `${page} returned HTTP ${res.status}` };
+    }
+    const html = (await res.text())
+      .toLowerCase()
+      .replace(/&amp;/g, "&")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/\s+/g, " ");
+    const missing = required.find((phrase) => !html.includes(phrase.toLowerCase()));
+    if (missing) {
+      return {
+        live: false,
+        status: 200,
+        page,
+        reason: `${page} is missing required content (${missing})`,
+      };
+    }
+    return { live: true, status: 200, page, reason: "live" };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "request failed";
+    return {
+      live: false,
+      status: 0,
+      page,
+      reason: /enotfound|getaddrinfo|dns/i.test(message)
+        ? "Domain is not resolving yet (DNS)"
+        : `Could not reach ${page} (${message})`,
+    };
+  }
+}
+
+/**
+ * Verify the exact four-page experience submitted to Telnyx. A homepage-only
+ * check can pass while the consent or legal routes still 404, which is enough
+ * for a carrier reviewer to reject the campaign.
+ */
+export async function probeComplianceSite(base: string, businessName: string): Promise<ComplianceProbeResult> {
+  const urls = siteUrls(base);
+  const checks: Array<Promise<ComplianceProbeResult>> = [
+    probeRequiredText("home", urls.home, [businessName]),
+    probeRequiredText("opt-in", urls.optIn, [
+      businessName,
+      "message frequency varies",
+      "message and data rates may apply",
+      "reply stop",
+      "privacy policy",
+      "terms of service",
+    ]),
+    probeRequiredText("privacy-policy", urls.privacy, [
+      businessName,
+      "mobile information",
+      "marketing or promotional purposes",
+      "reply stop",
+    ]),
+    probeRequiredText("terms", urls.terms, [
+      businessName,
+      "sms text messaging program",
+      "message and data rates may apply",
+      "reply stop",
+    ]),
+  ];
+  const results = await Promise.all(checks);
+  return results.find((result) => !result.live) || { live: true, status: 200, reason: "all compliance pages live" };
 }
