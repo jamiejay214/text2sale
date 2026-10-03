@@ -105,6 +105,18 @@ const BOT_RE = /bot|crawl|spider|slurp|bing|google|yahoo|duckduck|baidu|yandex|f
 
 export default function Tracker() {
   useEffect(() => {
+    // The middleware serves customer compliance sites from this same app.
+    // Never track those hosts; besides protecting their consent pages, this
+    // keeps the root layout static instead of reading request headers.
+    const host = window.location.hostname.toLowerCase();
+    const isMainHost =
+      host === "text2sale.com" ||
+      host === "www.text2sale.com" ||
+      host === "localhost" ||
+      host === "127.0.0.1" ||
+      host.endsWith(".vercel.app");
+    if (!isMainHost) return;
+
     // Skip on admin/internal routes to keep the dashboard out of the data
     const path = window.location.pathname;
     if (path.startsWith("/admin") || path.startsWith("/command") || path.startsWith("/dashboard") || path.startsWith("/api/")) return;
