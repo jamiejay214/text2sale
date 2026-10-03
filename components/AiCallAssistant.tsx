@@ -85,6 +85,7 @@ export default function AiCallAssistant() {
     try {
       const res = await authFetch("/api/ai-call");
       const json: Payload = await res.json();
+      if (!res.ok) { setError("Could not load AI calling settings. Please sign in again or try later."); return; }
       setPayload(json);
       if (json.settings) setDraft(json.settings);
     } catch {
@@ -126,7 +127,7 @@ export default function AiCallAssistant() {
   if (!payload) {
     return (
       <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6 text-sm text-zinc-500">
-        Loading call assistant…
+        {error || "Loading call assistant…"}
       </div>
     );
   }
@@ -136,7 +137,7 @@ export default function AiCallAssistant() {
       <div className="rounded-3xl border border-amber-900/50 bg-amber-950/20 p-6">
         <h3 className="text-lg font-bold text-amber-200">AI Call Assistant — not set up yet</h3>
         <p className="mt-2 text-sm text-amber-300/80">
-          {payload.message || "The database migration for this feature hasn't been applied."}
+          {payload.message || "AI calling is being set up. Contact support for availability."}
         </p>
       </div>
     );

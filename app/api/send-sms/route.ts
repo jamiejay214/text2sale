@@ -34,10 +34,14 @@ async function getAuthedUserId(req: NextRequest): Promise<string | null> {
 
 export async function POST(req: NextRequest) {
   const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);
-  // Set once the wallet has been charged for this message, so any failure
-  // after that point can give the money back.
-  let charged = 0;
-  let refund: (why: string) => Promise<void> = async () => {};
+  let chargedAmount = 0;
+  let chargedUserId: string | null = null;
+  let providerMayHaveAccepted = false;
+  const attemptId = crypto.randomUUID();
+  const refund = async () => {
+    if (!chargedUserId || !chargedAmount || providerMayHaveAccepted) return;
+    await adminSupabase.rpc("credit_wallet",{p_user_id:chargedUserId,p_amount:chargedAmount,p_idempotency_key:`refund_sms_${attemptId}`,p_description:"Refund — message rejected before delivery"});
+  };
   try {
     const userId = await getAuthedUserId(req);
     if (!userId) {
@@ -49,7 +53,7 @@ export async function POST(req: NextRequest) {
 
     const { to, body, from } = await req.json();
 
-    if (!to || !body || !from) {
+    if (typeof to !== "string" || typeof body !== "string" || !body.trim() || body.length > 5000 || typeof from !== "string") {
       return NextResponse.json(
         { success: false, error: "Missing required fields: to, body, from" },
         { status: 400 }
@@ -62,6 +66,9 @@ export async function POST(req: NextRequest) {
 
     const fromDigits = from.replace(/\D/g, "");
     const fromNormalized = fromDigits.startsWith("1") ? fromDigits.slice(1) : fromDigits;
+    if (!/^1?\d{10}$/.test(toDigits) || !/^1?\d{10}$/.test(fromDigits)) {
+      return NextResponse.json({success:false,error:"Enter a valid 10-digit US phone number."},{status:400});
+    }
     const fromE164 = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
 
     // Verify the caller actually owns this from-number. Anyone can spoof
@@ -84,14 +91,11 @@ export async function POST(req: NextRequest) {
     // Look up the contact we're texting (for state → timezone → quiet hours).
     // If we can't find a matching contact, we still allow the send — a user
     // manually texting a brand-new number that isn't in contacts yet is valid.
-    const { data: contactRow } = await adminSupabase
-      .from("contacts")
-      .select("state, dnc")
-      .eq("user_id", userId)
-      .eq("phone", to)
-      .maybeSingle();
+    const {data:contactRows,error:contactError}=await adminSupabase.rpc("find_sms_contacts",{p_user_id:userId,p_digits:toDigits.slice(-10)});
+    if (contactError) return NextResponse.json({success:false,error:"Could not verify opt-out status. Message not sent."},{status:503});
+    const contactRow=contactRows?.[0];
 
-    if (contactRow?.dnc) {
+    if (contactRows?.some((contact: {dnc:boolean})=>contact.dnc)) {
       return NextResponse.json(
         { success: false, error: "This contact has opted out (DNC). Message not sent." },
         { status: 400 }
@@ -102,10 +106,13 @@ export async function POST(req: NextRequest) {
     // per-campaign override here because this is an ad-hoc reply/send.
     const { data: profileCfg } = await adminSupabase
       .from("profiles")
-      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour")
+      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour, plan, paused, subscription_status, free_subscription")
       .eq("id", userId)
       .single();
 
+    if (!profileCfg || profileCfg.paused || (!profileCfg.free_subscription && !["active","canceling"].includes(profileCfg.subscription_status))) {
+      return NextResponse.json({success:false,error:"An active account and subscription are required."},{status:403});
+    }
     const qhEnabled = profileCfg?.quiet_hours_enabled ?? true;
     const qhStart = profileCfg?.quiet_hours_start_hour ?? 21;
     const qhEnd = profileCfg?.quiet_hours_end_hour ?? 8;
@@ -146,49 +153,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // ── Pay first ───────────────────────────────────────────────────────
-    // The wallet is charged BEFORE Telnyx is asked to send, and refunded if
-    // the send then fails. This used to send first and charge afterwards,
-    // ignoring a failed charge — so an account with an empty balance could
-    // keep texting for free while Text2Sale paid Telnyx for every message.
-    // Charged per segment: a 200-char reply is 2 GSM-7 segments and Telnyx
-    // bills us twice.
-    const { data: planRow } = await adminSupabase.from("profiles").select("plan").eq("id", userId).single();
-    const planObj = (planRow?.plan as Record<string, unknown> | null) || null;
-    const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
-    const segments = countSegments(sanitizedBody);
-    const totalCost = Number((messageCost * Math.max(1, segments)).toFixed(4));
-    const { data: newBalance, error: debitErr } = await adminSupabase.rpc("decrement_wallet", {
-      p_user_id: userId,
-      p_amount: totalCost,
-    });
-    if (debitErr || newBalance === null) {
-      return NextResponse.json(
-        {
-          success: false,
-          insufficientFunds: true,
-          error: "Your balance is too low to send this message. Add funds and try again.",
-        },
-        { status: 402 }
-      );
-    }
-    charged = totalCost;
-    const refundCharge = async (why: string) => {
-      if (!charged) return;
-      try {
-        await adminSupabase.rpc("credit_wallet", {
-          p_user_id: userId,
-          p_amount: charged,
-          p_idempotency_key: null,
-          p_description: `Refund — message not sent: ${why.slice(0, 60)}`,
-        });
-        charged = 0;
-      } catch (e) {
-        console.error("[send-sms] refund failed — needs reconciliation:", userId, e);
-      }
-    };
-    refund = refundCharge;
-
     // Build Telnyx payload — include messaging_profile_id when available
     // so messages route through the correct 10DLC campaign.
     const telnyxPayload: Record<string, string> = {
@@ -201,7 +165,17 @@ export async function POST(req: NextRequest) {
       telnyxPayload.messaging_profile_id = messagingProfileId;
     }
 
+    // Reserve funds before contacting the provider. A zero balance never sends.
+    const messageCost=Number(profileCfg.plan?.messageCost ?? 0.012);
+    if (!Number.isFinite(messageCost) || messageCost<0) throw new Error("Invalid messaging price");
+    const totalCost=Number((messageCost*Math.max(1,countSegments(sanitizedBody))).toFixed(4));
+    const {data:newBalance,error:debitError}=await adminSupabase.rpc("decrement_wallet",{p_user_id:userId,p_amount:totalCost});
+    if (debitError) return NextResponse.json({success:false,error:"Could not reserve funds. Message not sent."},{status:503});
+    if (newBalance === null) return NextResponse.json({success:false,error:"Insufficient funds. Add funds before sending."},{status:402});
+    chargedAmount=totalCost; chargedUserId=userId;
+
     // Send via Telnyx Messaging API
+    providerMayHaveAccepted = true;
     const res = await fetch("https://api.telnyx.com/v2/messages", {
       method: "POST",
       headers: {
@@ -209,14 +183,16 @@ export async function POST(req: NextRequest) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(telnyxPayload),
+      signal: AbortSignal.timeout(15000),
     });
 
     const data = await res.json();
 
-    if (data.errors) {
-      const errMsg = data.errors[0]?.detail || "Failed to send";
+    if (data.errors || !res.ok) {
+      providerMayHaveAccepted = res.status >= 500;
+      await refund();
+      const errMsg = data.errors?.[0]?.detail || "Failed to send";
       console.error("Telnyx send error:", JSON.stringify(data.errors));
-      await refundCharge(errMsg);
       return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
     }
 
@@ -228,9 +204,9 @@ export async function POST(req: NextRequest) {
       status: "sent",
     });
   } catch (error: unknown) {
-    const errMsg = error instanceof Error ? error.message : "Unknown error";
-    console.error("Telnyx send error:", errMsg);
-    await refund(errMsg);
+    await refund();
+    const errMsg = providerMayHaveAccepted ? "Delivery could not be confirmed. Avoid retrying until support checks this message." : (error instanceof Error ? error.message : "Unknown error");
+    console.error("Telnyx send error:", attemptId, errMsg);
     return NextResponse.json({ success: false, error: errMsg }, { status: 500 });
   }
 }

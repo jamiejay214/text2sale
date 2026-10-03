@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
 // Command Center desktop shell.
 // Wraps the live web app in a native window so it installs as a real .dmg/.exe.
 // Point it anywhere with the CC_URL env var (defaults to production).

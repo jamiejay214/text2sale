@@ -41,15 +41,19 @@ export default function Toasts({ message }: { message: string }) {
     if (message === lastMessageRef.current) return;
     lastMessageRef.current = message;
 
-    const id = Date.now() + Math.random();
+    const createdAt = Date.now();
+    const id = createdAt + Math.random();
     const kind = kindFromMessage(message);
     const text = message.replace(/^([✅❌⚠️⚠])\s*/, "");
-    setItems((prev) => [...prev, { id, text, kind, createdAt: Date.now() }]);
-    const timer = window.setTimeout(() => {
-      setItems((prev) => prev.filter((i) => i.id !== id));
-      timersRef.current = timersRef.current.filter((t) => t !== timer);
-    }, TOAST_TTL_MS);
-    timersRef.current.push(timer);
+    const queueTimer = window.setTimeout(() => {
+      setItems((prev) => [...prev, { id, text, kind, createdAt }]);
+      const removalTimer = window.setTimeout(() => {
+        setItems((prev) => prev.filter((i) => i.id !== id));
+        timersRef.current = timersRef.current.filter((t) => t !== removalTimer);
+      }, TOAST_TTL_MS);
+      timersRef.current.push(removalTimer);
+    }, 0);
+    return () => window.clearTimeout(queueTimer);
   }, [message]);
 
   // One-time unmount cleanup: blow away any in-flight timers. No per-effect

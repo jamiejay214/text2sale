@@ -88,7 +88,7 @@ export default async function BlogTagPage({
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
 

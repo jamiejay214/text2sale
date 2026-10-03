@@ -52,7 +52,7 @@ export default function BlogIndexPage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
 
       <section className="mx-auto max-w-5xl px-6 py-20">

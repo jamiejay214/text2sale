@@ -26,12 +26,15 @@ export default function SmartReplies({ suggestions, sentiment, onPick, className
 
   // Restore preference on mount
   useEffect(() => {
-    try {
-      const v = window.localStorage.getItem(STORAGE_KEY);
-      if (v === "1") setCollapsed(true);
-    } catch {
-      /* ignore */
-    }
+    const timer = window.setTimeout(() => {
+      try {
+        const v = window.localStorage.getItem(STORAGE_KEY);
+        if (v === "1") setCollapsed(true);
+      } catch {
+        /* ignore */
+      }
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   const toggle = () => {

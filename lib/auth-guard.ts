@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import type { User } from "@supabase/supabase-js";
+import { isOwnerEmail } from "./owner";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -108,6 +109,9 @@ export async function authenticateOrInternal(req: NextRequest): Promise<AuthResu
  * otherwise returns a 403 response.
  */
 export async function requireAdmin(user: User): Promise<NextResponse | null> {
+  if (!isOwnerEmail(user.email) || !user.email_confirmed_at) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   const svc = createClient(supabaseUrl, serviceKey);
   const { data } = await svc

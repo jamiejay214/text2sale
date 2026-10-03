@@ -220,14 +220,16 @@ export function Donut({ data, size = 150 }: { data: Bar[]; size?: number }) {
   const cx = size / 2;
   const cy = size / 2;
   const circ = 2 * Math.PI * r;
-  let offset = 0;
+  const dashes = data.map((d) => (d.value / total) * circ);
+  const offsets = dashes.map((_, index) =>
+    dashes.slice(0, index).reduce((sum, dash) => sum + dash, 0)
+  );
   return (
     <div className="flex items-center gap-4">
       <svg width={size} height={size} className="-rotate-90">
         {data.map((d, i) => {
-          const frac = d.value / total;
-          const dash = frac * circ;
-          const el = (
+          const dash = dashes[i];
+          return (
             <circle
               key={d.label}
               cx={cx}
@@ -237,12 +239,10 @@ export function Donut({ data, size = 150 }: { data: Bar[]; size?: number }) {
               stroke={DONUT_COLORS[i % DONUT_COLORS.length]}
               strokeWidth="14"
               strokeDasharray={`${dash} ${circ - dash}`}
-              strokeDashoffset={-offset}
+              strokeDashoffset={-offsets[i]}
               style={{ filter: `drop-shadow(0 0 4px ${DONUT_COLORS[i % DONUT_COLORS.length]}80)` }}
             />
           );
-          offset += dash;
-          return el;
         })}
       </svg>
       <div className="space-y-1.5">

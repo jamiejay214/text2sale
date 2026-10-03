@@ -5,6 +5,7 @@ export const dynamic = "force-dynamic";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import { isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
 import {
   fetchAllProfiles, fetchAllCampaigns, updateProfile,
@@ -300,6 +301,8 @@ export default function AdminPage() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.user) { router.replace("/"); return; }
 
+      const { data: { user: verifiedUser } } = await supabase.auth.getUser();
+      if (!verifiedUser?.email_confirmed_at || !isOwnerEmail(verifiedUser.email)) { router.replace("/dashboard"); return; }
       const myProfile = await fetchProfile(session.user.id);
       if (!myProfile || myProfile.role !== "admin") { router.replace("/dashboard"); return; }
       setAdminUserId(session.user.id);
@@ -1112,7 +1115,7 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-zinc-950 text-white">
+    <main className="crm-theme t2s-light relative min-h-screen overflow-hidden bg-zinc-950 text-white">
       {/* Ambient gradient mesh — gives the admin surface a premium depth
           without being distracting. Pinned to the top of the page so it
           fades out as you scroll into tables and dense content. */}
@@ -1211,6 +1214,9 @@ export default function AdminPage() {
           // the hero cards, sparklines, and feed. We deliberately do not
           // add new API calls here — everything below is derived from the
           // accounts/campaigns/traffic state loaded on mount.
+          // This snapshot intentionally anchors all cards in this render to
+          // the same instant.
+          // eslint-disable-next-line react-hooks/purity
           const now = Date.now();
           const DAY = 86400000;
 

@@ -87,7 +87,7 @@ export default function PrivateVsMarketplaceInsurancePage() {
   };
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }}

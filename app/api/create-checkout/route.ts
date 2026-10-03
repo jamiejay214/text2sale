@@ -19,11 +19,11 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.response;
 
     const stripe = getStripe();
-    const { amount, userId, userEmail } = await req.json();
+    const { amount, userId } = await req.json();
 
-    if (!amount || !userId) {
+    if (typeof amount !== "number" || !Number.isFinite(amount) || amount < 1 || amount > 100000 || Math.abs(Math.round(amount * 100) - amount * 100) > 0.000001 || !userId) {
       return NextResponse.json(
-        { success: false, error: "Missing amount or userId" },
+        { success: false, error: "Enter a valid amount from $1 to $100,000, with at most two decimal places." },
         { status: 400 }
       );
     }
@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
 
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ["card"],
-      customer_email: userEmail || undefined,
+      customer_email: auth.user.email || undefined,
       line_items: [
         {
           price_data: {

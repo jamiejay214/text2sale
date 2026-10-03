@@ -60,11 +60,13 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
 
   // Reset when re-opened
   useEffect(() => {
-    if (open) {
+    if (!open) return;
+    const timer = window.setTimeout(() => {
       setQuery("");
       setActive(0);
-      setTimeout(() => inputRef.current?.focus(), 20);
-    }
+      inputRef.current?.focus();
+    }, 20);
+    return () => window.clearTimeout(timer);
   }, [open]);
 
   const ranked = useMemo(() => {
@@ -86,7 +88,8 @@ export default function CommandPalette({ open, onClose, commands }: Props) {
 
   // Reset active index when results change
   useEffect(() => {
-    setActive(0);
+    const timer = window.setTimeout(() => setActive(0), 0);
+    return () => window.clearTimeout(timer);
   }, [query]);
 
   // Keyboard nav

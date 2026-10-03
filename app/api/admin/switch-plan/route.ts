@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate } from "@/lib/auth-guard";
+import { authenticate, requireAdmin } from "@/lib/auth-guard";
 import { PACKAGES, type PackageKey } from "@/lib/packages";
 
 // ─── Admin: swap a user's subscription package ────────────────────────────
@@ -33,15 +33,8 @@ export async function POST(req: NextRequest) {
 
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Gate: caller must be admin. We trust the admin flag on profiles.role.
-    const { data: callerProfile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", auth.user.id)
-      .single();
-    if (callerProfile?.role !== "admin") {
-      return NextResponse.json({ success: false, error: "Admin only" }, { status: 403 });
-    }
+    const forbidden = await requireAdmin(auth.user);
+    if (forbidden) return forbidden;
 
     const { userId, pkg } = (await req.json()) as { userId?: string; pkg?: PackageKey };
     if (!userId || !pkg || !(pkg in PACKAGES)) {

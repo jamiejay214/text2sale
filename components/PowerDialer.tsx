@@ -29,6 +29,7 @@ export type PowerDialerEntry = {
   phone: string;
   city?: string;
   state?: string;
+  zip?: string;
   notes?: string;
   tags?: string[];
   lastMessage?: string;
@@ -337,9 +338,9 @@ export default function PowerDialer(props: Props) {
                   <div className="mt-1 font-mono text-base tabular-nums text-zinc-300">
                     {entry.phone}
                   </div>
-                  {(entry.city || entry.state) && (
+                  {(entry.city || entry.state || entry.zip) && (
                     <div className="mt-0.5 text-[12px] text-zinc-500">
-                      {[entry.city, entry.state].filter(Boolean).join(", ")}
+                      {[entry.city, entry.state].filter(Boolean).join(", ")}{entry.zip ? ` ${entry.zip}` : ""}
                     </div>
                   )}
                   {!!entry.tags?.length && (

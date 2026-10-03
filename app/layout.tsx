@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { isBrandedHost } from "@/lib/custom-domains";
 import Tracker from "@/components/Tracker";
 import "./globals.css";
+import "./workspace-theme.css";
 
 const META_PIXEL_ID = "959512910266492";
 

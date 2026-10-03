@@ -1,5 +1,6 @@
 import React from "react";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { LEGAL_TERMS_SECTIONS, LEGAL_EFFECTIVE_DATE, LEGAL_COMPANY, LEGAL_WEBSITE } from "@/lib/legal-text";
 
 export const metadata: Metadata = {
@@ -10,12 +11,12 @@ export const metadata: Metadata = {
 
 export default function TermsPage() {
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-3xl px-6 py-16">
-        <a href="/" className="inline-flex items-center gap-2 text-sm text-violet-400 hover:text-violet-300 mb-8">
+        <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm text-lime-300 hover:text-lime-200">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           Back to {LEGAL_COMPANY}
-        </a>
+        </Link>
 
         <h1 className="text-4xl font-bold tracking-tight">Terms and Conditions</h1>
         <p className="mt-2 text-sm text-zinc-500">Effective Date: {LEGAL_EFFECTIVE_DATE} &mdash; Website: {LEGAL_WEBSITE}</p>

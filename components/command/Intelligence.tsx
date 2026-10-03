@@ -593,13 +593,15 @@ function VisitorTimeline({ visitorId, token, demo }: { visitorId: string; token:
   const [events, setEvents] = useState<{ at: string; type: string; label: string; detail?: string }[] | null>(null);
   useEffect(() => {
     if (demo) {
-      setEvents([
-        { at: new Date().toISOString(), type: "page", label: "/pricing", detail: "organic · google.com" },
-        { at: new Date(Date.now() - 60_000).toISOString(), type: "intent", label: "form_start", detail: "/pricing · email" },
-        { at: new Date(Date.now() - 120_000).toISOString(), type: "page", label: "/features" },
-        { at: new Date(Date.now() - 600_000).toISOString(), type: "exit", label: "Exit → gohighlevel.com", detail: "/text2sale-vs-gohighlevel" },
-      ]);
-      return;
+      const timer = window.setTimeout(() => {
+        setEvents([
+          { at: new Date().toISOString(), type: "page", label: "/pricing", detail: "organic · google.com" },
+          { at: new Date(Date.now() - 60_000).toISOString(), type: "intent", label: "form_start", detail: "/pricing · email" },
+          { at: new Date(Date.now() - 120_000).toISOString(), type: "page", label: "/features" },
+          { at: new Date(Date.now() - 600_000).toISOString(), type: "exit", label: "Exit → gohighlevel.com", detail: "/text2sale-vs-gohighlevel" },
+        ]);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
     if (!token) return;
     fetch(`/api/command-center/visitor/${encodeURIComponent(visitorId)}`, { headers: { authorization: `Bearer ${token}` } })

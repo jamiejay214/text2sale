@@ -4,6 +4,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation";
 import Papa from "papaparse";
 import Logo from "@/components/Logo";
+import WorkspaceNavigation from "@/components/WorkspaceNavigation";
+import { isOwnerEmail } from "@/lib/owner";
 import CommandPalette, { type Command } from "@/components/CommandPalette";
 import Toasts from "@/components/Toasts";
 import Sparkline from "@/components/Sparkline";
@@ -194,7 +196,7 @@ type DashboardTab = "overview" | "conversations" | "pipeline" | "calls" | "aical
 // on their side. Flip this to `true` when support ticket resolves and the
 // in-app WebRTC dialer is back online. Leaving all the code intact so we
 // can just flip the flag rather than re-implementing.
-const CALLING_ENABLED = false;
+const CALLING_ENABLED = process.env.NEXT_PUBLIC_CALLING_ENABLED === "true";
 
 // ── Pipeline stages ───────────────────────────────────────────────────────
 // The pipeline is a lightweight CRM lane view over contacts. Each contact
@@ -667,7 +669,7 @@ export default function DashboardPage() {
     notes?: string | null;
   };
   const [callHistory, setCallHistory] = useState<CallRecord[]>([]);
-  const [themeMode, setThemeMode] = useState<"dark" | "light">("dark");
+  const [themeMode, setThemeMode] = useState<"dark" | "light">("light");
   const [newCampaignForm, setNewCampaignForm] = useState<NewCampaignForm>({
     name: "",
     steps: [{ id: `step_${Date.now()}`, message: "", delayMinutes: 0 }],
@@ -977,7 +979,7 @@ export default function DashboardPage() {
 
       if (impersonateId && impersonateId !== realUid) {
         const canImpersonate =
-          myProfile.role === "admin" ||
+          (myProfile.role === "admin" && isOwnerEmail(session.user.email)) ||
           (myProfile.role === "manager" && (await fetchProfile(impersonateId))?.manager_id === realUid);
 
         if (canImpersonate) {
@@ -1168,7 +1170,7 @@ export default function DashboardPage() {
       // Handle tab redirect (e.g. from Stripe portal return / thank-you page)
       const tabParam = params.get("tab");
       const subtabParam = params.get("subtab");
-      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","aicalls","campaigns","contacts","appointments","upload","templates","settings","learn"];
+      const validTabs: DashboardTab[] = ["overview","conversations","pipeline","calls","aicalls","campaigns","contacts","appointments","upload","templates","settings","learn"];
       const validSubtabs: SettingsSubTab[] = ["numbers","billing","opt-out","activity","team","10dlc","biz-page","ai","integrations"];
       if (tabParam && validTabs.includes(tabParam as DashboardTab)) {
         setActiveTab(tabParam as DashboardTab);
@@ -1200,7 +1202,7 @@ export default function DashboardPage() {
       // Load theme preference
       try {
         const savedTheme = window.localStorage.getItem("t2s_theme");
-        if (savedTheme === "light") setThemeMode("light");
+        if (savedTheme === "light" || savedTheme === "dark") setThemeMode(savedTheme);
       } catch { /* ignore */ }
 
       setMounted(true);
@@ -1432,27 +1434,22 @@ export default function DashboardPage() {
       )
       .subscribe();
 
-    // 5s polling backstop so the wallet card visibly ticks down during a
-    // campaign send even when Supabase realtime misses an event (flaky
-    // network, REPLICA IDENTITY surprises, etc.). Campaigns decrement per
-    // 100-message chunk so the balance updates every few seconds on a
-    // running send — polling at 5s is what makes that feel live.
+    // Realtime remains primary; poll once a second only while this tab is visible.
+    let polling = false;
+    let disposed = false;
     const interval = window.setInterval(async () => {
-      const { data } = await supabase
-        .from("profiles")
-        .select("wallet_balance")
-        .eq("id", userId)
-        .single();
-      if (data) {
-        const fresh = Number(data.wallet_balance);
-        if (!Number.isFinite(fresh)) return;
-        setCurrentUser((prev) => {
-          if (!prev || prev.walletBalance === fresh) return prev;
-          return { ...prev, walletBalance: fresh };
-        });
-      }
-    }, 5000);
+      if (polling || document.visibilityState !== "visible") return;
+      polling = true;
+      try {
+        const { data } = await supabase.from("profiles").select("wallet_balance").eq("id", userId).single();
+        if (!disposed && data?.wallet_balance != null) {
+          const fresh = Number(data.wallet_balance);
+          if (Number.isFinite(fresh)) setCurrentUser(prev => !prev || prev.walletBalance === fresh ? prev : { ...prev, walletBalance: fresh });
+        }
+      } finally { polling = false; }
+    }, 1000);
     return () => {
+      disposed = true;
       window.clearInterval(interval);
       supabase.removeChannel(channel);
     };
@@ -2358,6 +2355,7 @@ export default function DashboardPage() {
           phone: c.phone,
           city: c.city,
           state: c.state,
+          zip: c.zip,
           notes: c.notes,
           tags: c.tags,
           dnc: c.dnc,
@@ -4265,204 +4263,19 @@ export default function DashboardPage() {
       return;
     }
 
-    // If the campaign already completed, automatically reset it to Draft so
-    // the user can re-launch with newly uploaded contacts. Without this, the
-    // API returns a 409 and the send silently never fires — a very confusing
-    // experience when someone uploads a fresh CSV to an existing campaign.
-    if (campaign.status === "Completed") {
-      const { error: resetErr } = await supabase
-        .from("campaigns")
-        .update({ status: "Draft", sent: 0, failed: 0 })
-        .eq("id", campaignId);
-      if (resetErr) {
-        setMessage("❌ Could not reset campaign — please try again");
-        window.setTimeout(() => setMessage(""), 3000);
-        return;
-      }
-      setCampaigns((prev) =>
-        prev.map((c) => c.id === campaignId ? { ...c, status: "Draft" as const, sent: 0, failed: 0 } : c)
-      );
-    }
-
-    const ownedNumbers = currentUser.ownedNumbers || [];
-    if (ownedNumbers.length === 0) {
-      setMessage("❌ Buy a phone number first before launching a campaign");
-      window.setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-
-    // Use campaign's stored selected numbers, or fall back to all owned numbers
-    const fromNumbers = campaign.selectedNumbers && campaign.selectedNumbers.length > 0
-      ? campaign.selectedNumbers
-      : ownedNumbers.map((n) => n.number);
-
-    // Audience = contacts assigned to this campaign, or all non-DNC if none assigned
-    const campaignContacts = contacts.filter((c) => !c.dnc && c.campaign === campaign.name);
-    const hasCampaignContacts = campaignContacts.length > 0;
-    const audience = hasCampaignContacts ? campaignContacts.length : contacts.filter((c) => !c.dnc).length;
-
-    if (audience === 0) {
-      setMessage("❌ No eligible contacts for this campaign");
-      window.setTimeout(() => setMessage(""), 3000);
-      return;
-    }
-
-    const steps = campaign.steps && campaign.steps.length > 0 ? campaign.steps : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
-    const totalMessages = audience * steps.length;
-    const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
-    const walletBalance = currentUser.walletBalance || 0;
-    const minWaveCost = 1000 * (currentUser.plan.messageCost || 0.012);
-
-    if (walletBalance < minWaveCost) {
-      setMessage(`❌ Insufficient funds. Need at least ${formatCurrency(minWaveCost)} to start sending (you have ${formatCurrency(walletBalance)})`);
-      window.setTimeout(() => setMessage(""), 3500);
-      return;
-    }
-
+    const assigned = contacts.some(c => !c.dnc && c.campaign === campaign.name);
     setLaunchingCampaignId(campaignId);
-
-    // NOTE: wallet charge moved to the server — send-campaign debits the
-    // balance atomically as each chunk sends, so the dashboard ticks the
-    // wallet down live and we never overcharge if the send halts early.
-
-    // Optimistic UI only — do NOT write "Sending" to the DB here.
-    // The server atomically flips Draft/Scheduled/Paused → Sending as its
-    // idempotency guard. If we pre-set the DB status the guard will always
-    // see "Sending" and reject every launch with a 409.
-    setCampaigns((prev) => prev.map((c) =>
-      c.id === campaignId ? { ...c, status: "Sending" as const, audience } : c
-    ));
-
-    setMessage(`✅ Campaign launched — sending ${steps.length} step${steps.length > 1 ? "s" : ""} to ${audience} contacts...`);
-
-    // Send each step via send-campaign API
     try {
-      let totalSent = 0;
-      let totalFailed = 0;
-
-      for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
-        const step = steps[stepIdx];
-
-        // Before each step, re-check the campaign's status so a pause while
-        // waiting between steps actually stops the next step from firing.
-        const { data: liveCampaign } = await supabase
-          .from("campaigns")
-          .select("status")
-          .eq("id", campaignId)
-          .single();
-        if (liveCampaign?.status === "Paused") {
-          setMessage(`⏸ Campaign paused — stopped before step ${stepIdx + 1}/${steps.length}`);
-          break;
-        }
-
-        // Wait for delay (skip delay for first step)
-        if (stepIdx > 0 && step.delayMinutes > 0) {
-          setMessage(`⏳ Step ${stepIdx + 1}/${steps.length} — waiting ${step.delayMinutes} minute${step.delayMinutes !== 1 ? "s" : ""}...`);
-          await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
-        }
-
-        const WAVE_SIZE = 1500;
-        const WAVE_DELAY_MS = 0;
-        let waveOffset = 0;
-        let waveNum = 1;
-        let stepDone = false;
-
-        while (!stepDone) {
-          // Re-check pause status before each wave
-          const { data: liveCampaign } = await supabase
-            .from("campaigns")
-            .select("status")
-            .eq("id", campaignId)
-            .single();
-          if (liveCampaign?.status === "Paused") {
-            setMessage(`⏸ Campaign paused — ${totalSent} sent`);
-            setCampaigns((prev) => prev.map((c) =>
-              c.id === campaignId ? { ...c, status: "Paused" as const, sent: totalSent, failed: totalFailed } : c
-            ));
-            setLaunchingCampaignId(null);
-            window.setTimeout(() => setMessage(""), 4000);
-            return;
-          }
-
-          setMessage(`📤 Sending${steps.length > 1 ? ` step ${stepIdx + 1}/${steps.length}` : ""} — ${totalSent} sent so far...`);
-
-          const res = await authFetch("/api/send-campaign", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              campaignId,
-              userId,
-              fromNumbers,
-              messageTemplate: step.message,
-              campaignName: hasCampaignContacts ? campaign.name : undefined,
-              stepIndex: stepIdx,
-              totalSteps: steps.length,
-              waveOffset,
-              waveSize: WAVE_SIZE,
-              priorSent: totalSent,
-              priorFailed: totalFailed,
-            }),
-          });
-
-          const data = await res.json();
-          if (data.success) {
-            totalSent += data.sent;
-            totalFailed += data.failed;
-
-            if (data.paused || data.outOfFunds) {
-              const msg = data.paused
-                ? `⏸ Campaign paused — ${totalSent} sent`
-                : `💸 Wallet ran out — ${totalSent} sent`;
-              setMessage(msg);
-              setCampaigns((prev) => prev.map((c) =>
-                c.id === campaignId ? {
-                  ...c, status: data.paused ? "Paused" as const : "Completed" as const,
-                  sent: totalSent, failed: totalFailed, audience,
-                } : c
-              ));
-              setLaunchingCampaignId(null);
-              window.setTimeout(() => setMessage(""), 4000);
-              return;
-            }
-
-            // If there are more contacts, continue immediately
-            if (data.nextOffset !== null && data.nextOffset !== undefined) {
-              waveOffset = data.nextOffset;
-              waveNum++;
-              if (WAVE_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
-            } else {
-              stepDone = true;
-            }
-          } else {
-            setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
-            stepDone = true;
-          }
-        } // end wave while loop
-      } // end step for loop
-
-      // If the outer loop broke on pause, reflect that status instead of Completed.
-      const { data: finalCampaign } = await supabase
-        .from("campaigns")
-        .select("status")
-        .eq("id", campaignId)
-        .single();
-      const finalStatus: "Completed" | "Paused" =
-        finalCampaign?.status === "Paused" ? "Paused" : "Completed";
-      setCampaigns((prev) => prev.map((c) =>
-        c.id === campaignId ? {
-          ...c, status: finalStatus,
-          sent: totalSent, failed: totalFailed, audience,
-        } : c
-      ));
-      if (finalStatus === "Completed") {
-        setMessage(`✅ Campaign complete — ${totalSent} sent, ${totalFailed} failed across ${steps.length} step${steps.length > 1 ? "s" : ""}`);
-      }
-    } catch {
-      setMessage("❌ Could not connect to SMS service");
-    }
-
-    setLaunchingCampaignId(null);
-    window.setTimeout(() => setMessage(""), 4000);
+      const res = await authFetch("/api/campaigns/enroll", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({campaignId, audience:assigned ? "assigned" : "all", resume:campaign.status === "Paused"}),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMessage(`❌ ${data.error || "Could not queue this campaign"}`); return; }
+      setCampaigns(prev => prev.map(c => c.id === campaignId ? {...c, status:data.status, audience:data.audience, ...(data.resumed ? {} : {sent:0,failed:0})} : c));
+      setMessage(`✅ ${data.resumed ? "Resumed" : "Queued"} ${data.queued.toLocaleString()} messages. Follow-ups continue when you close this tab and stop when a contact replies.`);
+    } catch { setMessage("❌ Could not queue this campaign. Please check its status before trying again."); }
+    finally { setLaunchingCampaignId(null); }
   };
 
   const handlePauseCampaign = async (campaignId: string) => {
@@ -4490,18 +4303,18 @@ export default function DashboardPage() {
       return;
     }
 
-    // Store the schedule on the campaign (update status to indicate scheduled)
-    const campaign = campaigns.find((c) => c.id === scheduleCampaignId);
+    const campaign = campaigns.find(c => c.id === scheduleCampaignId);
     if (!campaign) return;
-
-    await dbUpdateCampaign(scheduleCampaignId, {
-      status: "Scheduled" as Campaign["status"],
-      scheduled_at: scheduledAt.toISOString(),
-    } as Partial<Campaign>);
-
-    setCampaigns((prev) =>
-      prev.map((c) => c.id === scheduleCampaignId ? { ...c, status: "Scheduled" as const, scheduledAt: scheduledAt.toISOString() } : c)
-    );
+    const assigned = contacts.some(c => !c.dnc && c.campaign === campaign.name);
+    try {
+      const res = await authFetch("/api/campaigns/enroll", {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({campaignId:scheduleCampaignId,audience:assigned ? "assigned" : "all",startsAt:scheduledAt.toISOString()}),
+      });
+      const data = await res.json();
+      if (!res.ok) { setMessage(`❌ ${data.error || "Could not schedule campaign"}`); return; }
+      setCampaigns(prev => prev.map(c => c.id === scheduleCampaignId ? {...c,status:data.status,scheduledAt:scheduledAt.toISOString(),audience:data.audience,sent:0,failed:0} : c));
+    } catch { setMessage("❌ Could not schedule this campaign. Check its status before retrying."); return; }
 
     setScheduleCampaignId(null);
     setCampaignScheduleDate("");
@@ -5084,161 +4897,18 @@ export default function DashboardPage() {
           return;
         }
 
-        const fromNumbers = campaign.selectedNumbers && campaign.selectedNumbers.length > 0
-          ? campaign.selectedNumbers
-          : ownedNumbers.map((n) => n.number);
-
-        const steps = campaign.steps && campaign.steps.length > 0
-          ? campaign.steps
-          : [{ id: "1", message: campaign.message || "", delayMinutes: 0 }];
-
-        const totalMessages = totalImported * steps.length;
-        const cost = totalMessages * (currentUser.plan.messageCost || 0.012);
-        const walletBalance = currentUser.walletBalance || 0;
-        const minWaveCostCsv = 1000 * (currentUser.plan.messageCost || 0.012);
-
-        if (walletBalance < minWaveCostCsv) {
-          setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — but insufficient funds to send. Need at least ${formatCurrency(minWaveCostCsv)} to start (you have ${formatCurrency(walletBalance)}).`);
-          window.setTimeout(() => setMessage(""), 5000);
-          csvUploadingRef.current = false;
-          setCsvUploading(false);
-          resetCSVWizard();
-          return;
-        }
-
-        // If the campaign previously completed, reset it to Draft before
-        // relaunching. Without this the server-side lock rejects the send
-        // (Draft/Scheduled/Paused only) and the whole import appears to work
-        // but nothing gets delivered — a silent failure that's very confusing.
-        if (campaign.status === "Completed") {
-          await supabase
-            .from("campaigns")
-            .update({ status: "Draft", sent: 0, failed: 0 })
-            .eq("id", csvCampaignId);
-        }
-
-        // NOTE: We no longer charge the wallet up front. send-campaign now
-        // decrements the balance atomically as each chunk of messages is
-        // actually sent, so the user sees their balance tick down live and
-        // doesn't get double-charged for sends that never went through.
-
-        // Optimistic UI only — do NOT pre-set "Sending" in the DB.
-        // The server atomically flips Draft → Sending as its idempotency guard.
-        // Pre-writing Sending here breaks the guard and causes every launch to
-        // return 409 without sending anything.
-        setCampaigns((prev) => prev.map((c) =>
-          c.id === csvCampaignId ? { ...c, status: "Sending" as const, audience: totalImported } : c
-        ));
-
-        setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts — sending campaign "${campaign.name}"...`);
-
-        const WAVE_SIZE = 1500;
-        const WAVE_DELAY_MS = 0;
-
         try {
-          let totalSent = 0;
-          let totalFailed = 0;
-
-          for (let stepIdx = 0; stepIdx < steps.length; stepIdx++) {
-            const step = steps[stepIdx];
-            if (stepIdx > 0 && step.delayMinutes > 0) {
-              setMessage(`⏳ Step ${stepIdx + 1}/${steps.length} — waiting ${step.delayMinutes} minute${step.delayMinutes !== 1 ? "s" : ""}...`);
-              await new Promise((resolve) => setTimeout(resolve, step.delayMinutes * 60 * 1000));
-            }
-
-            let waveOffset = 0;
-            let waveNum = 1;
-            let stepDone = false;
-
-            while (!stepDone) {
-              setMessage(`📤 Sending${steps.length > 1 ? ` step ${stepIdx + 1}/${steps.length}` : ""} — ${totalSent} of ${totalImported} sent so far...`);
-
-              const res = await authFetch("/api/send-campaign", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  campaignId: csvCampaignId,
-                  userId,
-                  fromNumbers,
-                  messageTemplate: step.message,
-                  campaignName: campaign.name,
-                  stepIndex: stepIdx,
-                  totalSteps: steps.length,
-                  importedSinceIso,
-                  waveOffset,
-                  waveSize: WAVE_SIZE,
-                  priorSent: totalSent,
-                  priorFailed: totalFailed,
-                }),
-              });
-
-              const data = await res.json();
-              if (data.success) {
-                totalSent += data.sent;
-                totalFailed += data.failed;
-
-                if (data.paused || data.outOfFunds) {
-                  const msg = data.paused
-                    ? `⏸ Campaign paused — ${totalSent} sent`
-                    : `💸 Wallet ran out — ${totalSent} sent`;
-                  setMessage(msg);
-                  setCampaigns((prev) => prev.map((c) =>
-                    c.id === csvCampaignId ? {
-                      ...c,
-                      status: data.paused ? "Paused" as const : "Completed" as const,
-                      sent: totalSent, failed: totalFailed,
-                    } : c
-                  ));
-                  window.setTimeout(() => setMessage(""), 5000);
-                  csvUploadingRef.current = false;
-                  setCsvUploading(false);
-                  resetCSVWizard();
-                  return;
-                }
-
-                if (data.nextOffset !== null && data.nextOffset !== undefined) {
-                  waveOffset = data.nextOffset;
-                  waveNum++;
-                  if (WAVE_DELAY_MS > 0) await new Promise((resolve) => setTimeout(resolve, WAVE_DELAY_MS));
-                } else {
-                  stepDone = true;
-                }
-              } else {
-                setMessage(`❌ Step ${stepIdx + 1} error: ${data.error}`);
-                stepDone = true;
-              }
-            }
+          const res = await authFetch("/api/campaigns/enroll", {
+            method:"POST", headers:{"Content-Type":"application/json"},
+            body:JSON.stringify({campaignId:csvCampaignId,audience:"assigned",importedSinceIso}),
+          });
+          const data = await res.json();
+          if (!res.ok) setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts. Campaign not queued: ${data.error || "Please try again."}`);
+          else {
+            setCampaigns(prev => prev.map(c => c.id === csvCampaignId ? {...c,status:data.status,audience:data.audience,sent:0,failed:0} : c));
+            setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts and queued ${data.queued.toLocaleString()} messages. You can close this tab; follow-ups run automatically.`);
           }
-
-          setCampaigns((prev) => prev.map((c) =>
-            c.id === csvCampaignId ? {
-              ...c, status: "Completed" as const,
-              sent: (c.sent || 0) + totalSent, failed: (c.failed || 0) + totalFailed, audience: (c.audience || 0) + totalImported,
-            } : c
-          ));
-          await dbUpdateCampaign(csvCampaignId, { status: "Completed", sent: totalSent, failed: totalFailed, audience: totalImported });
-
-          // Update the csv_uploads record with the actual charged amount so
-          // the CHARGED column shows the real cost instead of N/A.
-          const charged = Number((totalSent * (currentUser.plan.messageCost || 0.012)).toFixed(2));
-          await supabase
-            .from("csv_uploads")
-            .update({ charged })
-            .eq("id", record.id);
-          setCsvUploadHistory((prev) =>
-            prev.map((r) => r.id === record.id ? { ...r, charged } : r)
-          );
-
-          setMessage(`✅ Done — ${totalSent} sent, ${totalFailed} failed`);
-          const { data: fresh } = await supabase
-            .from("profiles")
-            .select("wallet_balance")
-            .eq("id", userId)
-            .single();
-          if (fresh) checkAutoRecharge(Number(fresh.wallet_balance) || 0);
-        } catch {
-          setMessage("❌ Could not connect to SMS service");
-        }
+        } catch { setMessage(`✅ Imported ${totalImported.toLocaleString()} contacts. Could not queue the campaign; check its status before retrying.`); }
 
         window.setTimeout(() => setMessage(""), 5000);
         csvUploadingRef.current = false;
@@ -5324,7 +4994,7 @@ export default function DashboardPage() {
 
   if (!mounted) {
     return (
-      <main className="min-h-screen bg-zinc-950 text-white">
+      <main className="crm-theme min-h-screen bg-zinc-950 text-white">
         <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-zinc-300">
             Loading dashboard...
@@ -5336,7 +5006,7 @@ export default function DashboardPage() {
 
   if (!currentUser) {
     return (
-      <main className="min-h-screen bg-zinc-950 text-white">
+      <main className="crm-theme min-h-screen bg-zinc-950 text-white">
         <div className="mx-auto flex min-h-screen max-w-screen-2xl items-center justify-center px-8 py-10">
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 px-6 py-4 text-zinc-300">
             Redirecting...
@@ -5380,7 +5050,7 @@ export default function DashboardPage() {
   // ── Paywall Gate ── show subscription wall before accessing the platform
   if (!isSubscribed && !demoMode) {
     return (
-      <main className="min-h-screen bg-zinc-950 text-white">
+      <main className="crm-theme min-h-screen bg-zinc-950 text-white">
         <div className="mx-auto flex min-h-screen max-w-screen-xl flex-col items-center justify-center px-6 py-16">
           <Logo size="xl" />
 
@@ -5395,7 +5065,7 @@ export default function DashboardPage() {
             {/* Subscribe Button */}
             <button
               onClick={handleSubscribe}
-              className="w-full rounded-2xl bg-violet-600 px-8 py-5 text-xl font-bold shadow-lg shadow-violet-600/20 transition hover:bg-violet-700 hover:shadow-violet-600/30"
+              className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-lime-400 px-8 py-5 text-xl font-bold text-emerald-950 shadow-lg shadow-emerald-500/20 transition hover:brightness-110"
             >
               Subscribe — {formatCurrency(currentUser.plan.price)}/month
             </button>
@@ -5486,12 +5156,12 @@ export default function DashboardPage() {
     { id: "act-unread",       section: "Actions", label: "Show unread conversations", onRun: () => { setActiveTab("conversations"); setConvShowUnread(true); setConvShowRecents(false); setConvShowArchived(false); setConvShowWorking(false); }, icon: <span className="text-base">🔥</span> },
     { id: "act-buy-number",   section: "Actions", label: "Buy a phone number",    onRun: () => { setActiveTab("settings"); setSettingsSubTab("numbers"); }, icon: <span className="text-base">➕</span> },
     { id: "act-toggle-theme", section: "Actions", label: `Switch to ${themeMode === "dark" ? "light" : "dark"} mode`, onRun: () => { const next = themeMode === "dark" ? "light" : "dark"; setThemeMode(next); try { window.localStorage.setItem("t2s_theme", next); } catch {} }, icon: <span className="text-base">{themeMode === "dark" ? "☀️" : "🌙"}</span> },
-    ...(currentUser?.role === "admin" ? [{ id: "act-admin", section: "Actions", label: "Open Admin Portal", onRun: () => router.push("/admin"), icon: <span className="text-base">🛡️</span> } as Command] : []),
+    ...((currentUser?.role === "admin" && isOwnerEmail(currentUser.email)) ? [{ id: "act-admin", section: "Actions", label: "Open Admin Portal", onRun: () => router.push("/admin"), icon: <span className="text-base">🛡️</span> } as Command] : []),
     { id: "act-logout", section: "Actions", label: "Log out", onRun: () => handleLogout(), icon: <span className="text-base">🚪</span> },
   ];
 
   return (
-    <main className={`min-h-screen transition-colors duration-300 ${themeMode === "light" ? "t2s-light bg-gray-50 text-zinc-900" : "bg-zinc-950 text-white"}`}>
+    <main className={`crm-theme workspace-app min-h-screen transition-colors duration-300 ${themeMode === "light" ? "t2s-light bg-gray-50 text-zinc-900" : "bg-zinc-950 text-white"}`}>
       {/* Demo Mode Banner */}
       {demoMode && !isSubscribed && (
         <div className="sticky top-0 z-50 flex items-center justify-between bg-gradient-to-r from-violet-700 to-violet-600 px-6 py-3 text-white shadow-lg">
@@ -5533,180 +5203,18 @@ export default function DashboardPage() {
           </button>
         </div>
       )}
-      <div className="mx-auto max-w-screen-2xl px-6 py-8 lg:px-8">
-        {/* ─── Premium top bar ─────────────────────────────────────────
-            Compact row with logo, glass-style search trigger that opens
-            the command palette, and a cluster of avatar/theme/logout
-            actions. Works on all breakpoints. */}
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <Logo size="sm" />
-            <span className="hidden h-6 w-px bg-zinc-800 sm:block" />
-            {impersonating && (
-              <span className="hidden rounded-full bg-amber-500/15 px-3 py-1 text-[10px] font-semibold uppercase tracking-widest text-amber-300 sm:inline-block">
-                Viewing {impersonatingUserName}
-              </span>
-            )}
-            {/* Realtime connection chip — green pulse when live, amber when
-                reconnecting, red when offline. Driven by the consolidated
-                postgres_changes channel + browser online/offline events. */}
-            <div
-              className={`hidden items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium sm:flex ${
-                liveStatus === "live"
-                  ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-                  : liveStatus === "connecting"
-                  ? "border-amber-500/30 bg-amber-500/10 text-amber-300"
-                  : "border-red-500/30 bg-red-500/10 text-red-300"
-              }`}
-              title={
-                liveStatus === "live"
-                  ? "Realtime sync active — contacts, calls, messages & campaigns stream live."
-                  : liveStatus === "connecting"
-                  ? "Reconnecting to realtime stream…"
-                  : "Offline — reconnect to resume live updates."
-              }
-            >
-              <span className="relative flex h-1.5 w-1.5">
-                {liveStatus === "live" && (
-                  <span className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-60"></span>
-                )}
-                <span
-                  className={`relative inline-flex h-1.5 w-1.5 rounded-full ${
-                    liveStatus === "live"
-                      ? "bg-emerald-400"
-                      : liveStatus === "connecting"
-                      ? "bg-amber-400 animate-pulse"
-                      : "bg-red-400"
-                  }`}
-                ></span>
-              </span>
-              <span>
-                {liveStatus === "live" ? "Live" : liveStatus === "connecting" ? "Syncing" : "Offline"}
-              </span>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {/* Command palette trigger */}
-            <button
-              onClick={() => setPaletteOpen(true)}
-              className="group flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm text-zinc-400 transition hover:border-violet-500/40 hover:bg-zinc-900 hover:text-white"
-              title="Search (⌘K)"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-              <span className="hidden sm:inline">Search or jump…</span>
-              <kbd className="hidden rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[10px] font-medium text-zinc-500 sm:inline">⌘K</kbd>
-            </button>
-
-            {/* Wallet chip */}
-            <button
-              onClick={() => { setActiveTab("settings"); setSettingsSubTab("billing"); }}
-              className="hidden items-center gap-2 rounded-2xl border border-emerald-500/20 bg-gradient-to-r from-emerald-500/10 to-emerald-500/5 px-3 py-2 text-sm font-semibold text-emerald-300 transition hover:border-emerald-500/40 sm:flex"
-              title="Billing & wallet"
-            >
-              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M20 12v4H6a2 2 0 0 0 0 4h14v-4"/><circle cx="16" cy="14" r="1"/>
-              </svg>
-              <span className="tabular-nums">{formatCurrency(currentUser.walletBalance || 0)}</span>
-            </button>
-
-            <button
-              onClick={() => {
-                const next = themeMode === "dark" ? "light" : "dark";
-                setThemeMode(next);
-                try { window.localStorage.setItem("t2s_theme", next); } catch { /* ignore */ }
-              }}
-              className="flex h-9 w-9 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-900/60 text-lg transition hover:border-zinc-700 hover:bg-zinc-900"
-              title={themeMode === "dark" ? "Switch to light mode" : "Switch to dark mode"}
-            >
-              {themeMode === "dark" ? "☀️" : "🌙"}
-            </button>
-
-            {currentUser.role === "admin" && (
-              <button
-                onClick={() => router.push("/admin")}
-                className="hidden rounded-2xl border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-sm font-medium text-zinc-300 transition hover:border-zinc-700 hover:text-white md:inline-flex"
-              >
-                Admin
-              </button>
-            )}
-
-            {/* Avatar menu (logout) */}
-            <button
-              onClick={handleLogout}
-              className="group flex items-center gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/60 px-2 py-1.5 text-sm transition hover:border-red-500/40 hover:bg-red-500/10"
-              title="Log out"
-            >
-              <span className="flex h-7 w-7 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-500 text-xs font-bold text-white">
-                {(currentUser.firstName?.[0] || "?").toUpperCase()}{(currentUser.lastName?.[0] || "").toUpperCase()}
-              </span>
-              <svg className="h-4 w-4 text-zinc-500 transition group-hover:text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* ─── Hero welcome block ─────────────────────────────────── */}
-        <div className="mb-8 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <div className="text-[11px] font-semibold uppercase tracking-[0.2em] text-violet-400">
-              {new Date().toLocaleDateString("en-US", { weekday: "long" })} · {new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}
-            </div>
-            <h1 className="mt-1.5 bg-gradient-to-r from-white to-zinc-400 bg-clip-text text-4xl font-bold tracking-tight text-transparent sm:text-5xl">
-              Welcome back, {currentUser.firstName ? currentUser.firstName.charAt(0).toUpperCase() + currentUser.firstName.slice(1) : "there"}
-            </h1>
-            <p className="mt-2 text-[15px] text-zinc-400 italic">
-              &ldquo;{dailyQuote}&rdquo;
-            </p>
-          </div>
-        </div>
-
-        <div className="mb-8 flex flex-wrap gap-2 border-b border-zinc-800 pb-3">
-          {(() => {
-            // Badge count must match the Unread tab filter — count the
-            // conversations where the contact's reply is the newest message
-            // (and they aren't DNC). One badge unit per waiting conversation,
-            // so the number always equals the rows shown under the Unread tab.
-            const totalUnread = conversationsWithContacts.reduce((sum, c) => {
-              if (c.contact?.dnc) return sum;
-              return latestMessageIsInbound(c) ? sum + 1 : sum;
-            }, 0);
-            return (([
-              { id: "overview", label: "Overview" },
-              { id: "conversations", label: "Conversations" },
-              { id: "pipeline", label: "Pipeline" },
-              ...(CALLING_ENABLED ? [{ id: "calls" as DashboardTab, label: "📞 Calls" }] : []),
-              { id: "campaigns", label: "Campaigns" },
-              { id: "contacts", label: "Contacts" },
-              { id: "appointments", label: "Appointments" },
-              { id: "aicalls", label: "🤖 AI Receptionist" },
-              { id: "upload", label: "Upload CSV" },
-              { id: "templates", label: "Templates" },
-              { id: "settings", label: "Settings" },
-              { id: "learn", label: "📖 Learn" },
-            ] as { id: DashboardTab; label: string }[])).map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 rounded-2xl px-5 py-3 text-sm font-medium transition ${
-                  activeTab === tab.id
-                    ? "bg-violet-600 text-white"
-                    : "text-zinc-400 hover:bg-zinc-900 hover:text-white"
-                }`}
-              >
-                {tab.label}
-                {tab.id === "conversations" && totalUnread > 0 && (
-                  <span className="flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-xs font-semibold text-white">
-                    {totalUnread > 99 ? "99+" : totalUnread}
-                  </span>
-                )}
-              </button>
-            ));
-          })()}
-        </div>
+      <WorkspaceNavigation
+        activeTab={activeTab} settingsTab={settingsSubTab}
+        onNavigate={(tab, sub) => { setActiveTab(tab); if (sub) setSettingsSubTab(sub as SettingsSubTab); }}
+        name={currentUser.firstName || "Your"} balance={currentUser.walletBalance || 0}
+        unread={conversationsWithContacts.filter(c => !c.contact?.dnc && latestMessageIsInbound(c)).length}
+        theme={themeMode} onTheme={() => { const next = themeMode === "dark" ? "light" : "dark"; setThemeMode(next); try { localStorage.setItem("t2s_theme", next); } catch {} }}
+        onSearch={() => setPaletteOpen(true)} onLogout={handleLogout}
+        owner={currentUser.role === "admin" && isOwnerEmail(currentUser.email)} onAdmin={() => router.push("/admin")}
+      />
+      <div className="workspace-content">
+        {activeTab === "overview" && <div className="workspace-intro"><small>YOUR WORKSPACE, CONNECTED</small><h1>Welcome back, {currentUser.firstName || "there"}.</h1><p>Your conversations, opportunities, and next steps. All in one place.</p></div>}
+        {activeTab === "calls" && !CALLING_ENABLED && <section className="calling-unavailable"><span>CALLING WORKSPACE</span><h2>Calling is temporarily unavailable</h2><p>Browser calling and the power dialer are paused while the phone provider resolves a routing issue. Your conversations, campaigns, and contacts are still available. Support can help with calling availability.</p><button onClick={() => { setActiveTab("settings"); setSettingsSubTab("numbers"); }}>Manage phone numbers</button></section>}
 
         {activeTab === "overview" && (
           <div className="space-y-8">
@@ -6359,6 +5867,7 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {scheduledMessages.some(m => m.status === "failed" && m.last_error) && <section className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-5"><h2 className="text-lg font-semibold">Messages needing attention</h2><p className="mt-2 text-sm text-zinc-400">Review delivery issues before retrying. Contact support if a message says its provider outcome is uncertain.</p><ul className="mt-3 space-y-2">{scheduledMessages.filter(m => m.status === "failed" && m.last_error).slice(-10).map(m => <li className="text-sm" key={m.id}>{contacts.find(c => c.id === m.contact_id)?.firstName || "Contact"}: {m.last_error}</li>)}</ul></section>}
             {/* Scheduled Messages */}
             {scheduledMessages.filter((m) => m.status === "pending").length > 0 && (
               <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-6">
@@ -7305,7 +6814,7 @@ export default function DashboardPage() {
                         <div className="mb-2 flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
                           <svg className="h-3.5 w-3.5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                           <span>
-                            It's <b>{sw.contactLocalTimeLabel}</b> for this contact. Better window opens around <b>{sw.suggestedLabel}</b>.
+                            It&apos;s <b>{sw.contactLocalTimeLabel}</b> for this contact. Better window opens around <b>{sw.suggestedLabel}</b>.
                           </span>
                         </div>
                       );
@@ -8362,7 +7871,7 @@ export default function DashboardPage() {
                   </div>
                   {callHistory.length === 0 ? (
                     <div className="p-10 text-center text-sm text-zinc-500">
-                      No calls yet. Click a contact's phone number to start dialing.
+                      No calls yet. Click a contact&apos;s phone number to start dialing.
                     </div>
                   ) : (
                     <div className="max-h-[60vh] overflow-y-auto">
@@ -12979,6 +12488,7 @@ export default function DashboardPage() {
               <p className="mt-2 text-zinc-400">Step-by-step guide to get you up and running. Click each section to expand.</p>
             </div>
 
+            <section className="rounded-2xl border border-zinc-800 bg-zinc-900 p-6"><h2 className="text-xl font-semibold">Campaigns that continue after you sign out</h2><ol className="mt-4 list-decimal space-y-3 pl-5 text-sm text-zinc-400"><li>Open Campaigns and create a campaign. Write one text, or add follow-up steps.</li><li>Choose a delay for each follow-up, such as 1 hour, 1 day, or 3 days. Use message variations like {"{Hi|Hello}"} and fields like {"{firstName}"}.</li><li>Assign contacts or select the campaign while importing a CSV. Launch now, or choose a future start time.</li><li>The sequence runs in the background. Each contact&apos;s next wait begins after the previous text is accepted for sending. Quiet hours can delay delivery.</li><li>Pause to hold remaining steps; resume to continue. A reply cancels that contact&apos;s follow-ups. Review delivery failures before starting again.</li></ol></section>
             {/* Tutorial sections */}
             {[
               {
@@ -14307,7 +13817,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 <button onClick={() => setOnboardingStep(4)} className="mt-1 text-xs text-zinc-500 hover:text-zinc-300">
-                  Skip — I'll add contacts later
+                  Skip — I&apos;ll add contacts later
                 </button>
               </div>
             )}
@@ -14316,7 +13826,7 @@ export default function DashboardPage() {
             {onboardingStep === 4 && (
               <div className="text-center">
                 <div className="mb-3 text-5xl">🎉</div>
-                <h3 className="mb-1 text-2xl font-bold">You're all set!</h3>
+                <h3 className="mb-1 text-2xl font-bold">You&apos;re all set!</h3>
                 <p className="mb-6 text-sm text-zinc-400">Your account is ready. Launch your first campaign and start closing more deals with SMS.</p>
                 <button
                   onClick={() => { setActiveTab("campaigns"); setShowOnboarding(false); }}
