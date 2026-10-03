@@ -39,6 +39,7 @@ const VALID_TABS = new Set<WorkspaceTab>([
   "appointments",
   "upload",
   "templates",
+  "website",
   "settings",
   "learn",
 ]);
@@ -293,6 +294,7 @@ export default function WorkspaceApp() {
                 ["campaigns", "Build a campaign"],
                 ["contacts", "Find a contact"],
                 ["calls", "Open the power dialer"],
+                ["website", "Edit your website"],
                 ["settings", "Manage phone numbers"],
                 ["learn", "Open tutorials"],
               ].map(([tab, label]) => (
