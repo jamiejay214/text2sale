@@ -70,6 +70,7 @@ function payload(profile: SiteProfile, config: BusinessSiteConfig) {
     },
     config,
     domain: profile.custom_domain,
+    requestedDomain: reg?.domainRequest?.domain || null,
     slug: profile.business_slug,
     previewUrl: slug ? `https://text2sale.com/biz/${slug}` : null,
     liveUrl: domainReady ? `https://${profile.custom_domain}` : null,
@@ -81,6 +82,8 @@ function payload(profile: SiteProfile, config: BusinessSiteConfig) {
       pagesVerified: live && (reg?.siteVerifiedVersion || 0) >= 2,
       carrierSubmitted,
       messagingApproved,
+      awaitingDomainFunds:
+        profile.messaging_status === "AWAITING_PAYMENT" && reg?.awaiting === "domain",
     },
   };
 }
@@ -109,24 +112,19 @@ export async function PATCH(req: NextRequest) {
   if (!profile) return NextResponse.json({ success: false, error: "Profile not found" }, { status: 404 });
 
   const body = await req.json().catch(() => ({}));
-  const publish = body.publish === true;
-  if (publish && !profile.custom_domain) {
-    return NextResponse.json(
-      { success: false, error: "Choose and purchase your website address before publishing." },
-      { status: 409 },
-    );
-  }
-  if (publish && (!profile.a2p_registration?.businessName || !profile.a2p_registration?.businessAddress)) {
-    return NextResponse.json(
-      { success: false, error: "Finish Messaging setup first so the website has your verified business details." },
-      { status: 409 },
-    );
-  }
-
   const normalized = normalizeSiteConfig(body.config, seed(profile));
-  const config = publish
+  const alreadyPublished = !!profile.a2p_registration?.siteConfig?.publishedAt;
+  const setupSubmitted =
+    alreadyPublished ||
+    !!profile.custom_domain ||
+    !!profile.a2p_registration?.domainRequest ||
+    !!profile.a2p_registration?.website;
+  // Messaging Setup is the only publish step. Before setup, this remains a
+  // draft; afterward every edit stays public automatically. Do not trust a
+  // client-provided publishedAt value to publish an unconfigured website.
+  const config = setupSubmitted
     ? publishSiteConfig(normalized, seed(profile))
-    : { ...normalized, updatedAt: new Date().toISOString() };
+    : { ...normalized, publishedAt: null, updatedAt: new Date().toISOString() };
   const registration = { ...(profile.a2p_registration || {}), siteConfig: config };
   const { error } = await createServiceClient()
     .from("profiles")
