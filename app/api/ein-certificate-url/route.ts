@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { authenticate, requireAdmin } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -28,16 +28,9 @@ export async function POST(req: NextRequest) {
 
     const admin = createClient(supabaseUrl, serviceKey);
 
-    // Authorize: requester must be admin, or requesting their own certificate
-    const { data: requester } = await admin
-      .from("profiles")
-      .select("role")
-      .eq("id", requestingUserId)
-      .single();
-
-    const isAdmin = requester?.role === "admin";
-    if (!isAdmin && requestingUserId !== userId) {
-      return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    if (requestingUserId !== userId) {
+      const forbidden = await requireAdmin(auth.user);
+      if (forbidden) return forbidden;
     }
 
     // Look up path

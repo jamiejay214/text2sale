@@ -38,7 +38,7 @@ function contactLocalHour(state: string | undefined): number | null {
   const offset = STATE_TZ_OFFSET[state.toUpperCase().trim()];
   if (offset === undefined) return null;
   const utcHour = new Date().getUTCHours();
-  let h = (utcHour + offset + 24) % 24;
+  const h = (utcHour + offset + 24) % 24;
   return h;
 }
 

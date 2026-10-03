@@ -77,7 +77,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
     .filter((p): p is BlogPost => Boolean(p));
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
       {faqSchema && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />

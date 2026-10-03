@@ -66,12 +66,18 @@ export async function GET(req: NextRequest) {
         available: false,
         reason: "migration_not_applied",
         message:
-          "Run supabase/migrations/011_ai_call_assistant.sql to enable the AI call assistant.",
+          "AI calling is still being set up for this workspace. Contact support for availability.",
       },
       { status: 200 }
     );
   }
 
+  if (profileRes.error || sessionsRes.error || !profileRes.data) {
+    return NextResponse.json({error:"Could not load your AI calling settings. Please try again."},{status:503});
+  }
+  if (!process.env.TELNYX_API_KEY || !process.env.ANTHROPIC_API_KEY) {
+    return NextResponse.json({available:false,message:"AI calling is still being connected. Contact support for availability."});
+  }
   return NextResponse.json({
     available: true,
     settings: settingsFromProfile(profileRes.data),
@@ -93,6 +99,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  if (body.enabled === true && (!process.env.TELNYX_API_KEY || !process.env.ANTHROPIC_API_KEY)) {
+    return NextResponse.json({error:"AI calling is not connected yet."},{status:503});
+  }
+  for (const key of ["enabled","afterHoursOnly"]) {
+    if (key in body && typeof body[key] !== "boolean") return NextResponse.json({error:"Invalid setting value."},{status:400});
+  }
   const update: Record<string, unknown> = {};
 
   if ("enabled" in body) update.ai_call_enabled = !!body.enabled;

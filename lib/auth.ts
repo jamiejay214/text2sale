@@ -104,9 +104,10 @@ export async function signupUser(input: {
   }
 
   const { data, error } = await supabase.auth.signUp({
-    email: input.email.trim(),
+    email: input.email.trim().toLowerCase(),
     password: input.password,
     options: {
+      emailRedirectTo: typeof window !== "undefined" ? `${window.location.origin}/dashboard` : undefined,
       data: {
         first_name: input.firstName.trim(),
         last_name: input.lastName.trim(),
@@ -147,21 +148,9 @@ export async function signupUser(input: {
     return { success: false as const, message: "An account with this email already exists. Please log in instead." };
   }
 
-  // If email confirmation is enabled, there's no session yet.
-  // Auto sign-in after signup to get a session.
+  // Confirmation is a successful signup, not a failed login.
   if (!data.session) {
-    const { data: signInData, error: signInError } =
-      await supabase.auth.signInWithPassword({
-        email: input.email.trim(),
-        password: input.password,
-      });
-
-    if (signInError || !signInData.session) {
-      return {
-        success: false as const,
-        message: "Account created but sign-in failed. Please confirm your email or try logging in.",
-      };
-    }
+    return { success: true as const, requiresEmailConfirmation: true as const, user: null };
   }
 
   // Small delay to let the trigger create the profile
@@ -173,7 +162,7 @@ export async function signupUser(input: {
   }
 
   const profile = await fetchProfile(session.user.id);
-  return { success: true as const, user: profile };
+  return { success: true as const, requiresEmailConfirmation: false as const, user: profile };
 }
 
 export async function logoutUser() {

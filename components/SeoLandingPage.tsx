@@ -89,7 +89,7 @@ export default function SeoLandingPage({
   // Plain <script> tags, not next/script: next/script injects inline JSON-LD
   // on the client, so it was missing from the HTML crawlers fetch.
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
+    <main className="public-theme min-h-screen bg-zinc-950 text-white">
       {faqSchema && (
         <script
           type="application/ld+json"

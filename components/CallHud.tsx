@@ -43,19 +43,17 @@ type Props = {
 };
 
 export default function CallHud({ call, onHangup, onClose, onMute, onUnmute }: Props) {
-  const [tick, setTick] = useState(0);
+  const [tick, setTick] = useState(() => Date.now());
 
   // Tick every second so the live timer renders in real time.
   useEffect(() => {
     if (!call) return;
-    const t = window.setInterval(() => setTick((n) => n + 1), 500);
+    const t = window.setInterval(() => setTick(Date.now()), 500);
     return () => window.clearInterval(t);
   }, [call]);
 
   if (!call) return null;
-  void tick; // silence unused
-
-  const now = Date.now();
+  const now = tick;
   const answeredMs = call.answeredAt ? call.answeredAt : 0;
   const liveDuration = answeredMs
     ? Math.max(0, Math.floor((now - answeredMs) / 1000))
