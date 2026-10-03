@@ -100,6 +100,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const [saving, setSaving] = useState(false);
   const [launching, setLaunching] = useState(false);
   const [pendingContactIds, setPendingContactIds] = useState<string[]>([]);
+  const [assignOnCreate, setAssignOnCreate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
 
   const load = useCallback(async () => {
@@ -117,8 +118,16 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     try {
       const stored = JSON.parse(window.sessionStorage.getItem("t2s_campaign_contact_ids") || "[]");
       if (Array.isArray(stored)) setPendingContactIds(stored.filter((id): id is string => typeof id === "string"));
+      if (window.sessionStorage.getItem("t2s_campaign_create_for_selected") === "1") {
+        setSelectedId(null);
+        setDraft(blankDraft());
+        setActiveStep(0);
+        setAssignOnCreate(true);
+        window.sessionStorage.removeItem("t2s_campaign_create_for_selected");
+      }
     } catch {
       window.sessionStorage.removeItem("t2s_campaign_contact_ids");
+      window.sessionStorage.removeItem("t2s_campaign_create_for_selected");
     }
   }, []);
 
@@ -143,6 +152,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     setSelectedId(campaign.id);
     setDraft(campaignDraft(campaign));
     setActiveStep(0);
+    setAssignOnCreate(false);
     setNotice(null);
   };
 
@@ -150,6 +160,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     setSelectedId(null);
     setDraft(blankDraft());
     setActiveStep(0);
+    setAssignOnCreate(pendingContactIds.length > 0);
     setNotice(null);
   };
 
@@ -220,6 +231,23 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     );
     setSelectedId(result.id);
     setDraft(campaignDraft(result));
+    if (!selected && assignOnCreate && pendingContactIds.length) {
+      const { error: assignmentError } = await supabase
+        .from("contacts")
+        .update({ campaign: result.name })
+        .eq("user_id", profile.id)
+        .in("id", pendingContactIds);
+      if (assignmentError) {
+        setNotice({ tone: "error", text: "The workflow was saved, but the selected leads could not be assigned. Use the assignment bar to try again." });
+        return;
+      }
+      const count = pendingContactIds.length;
+      window.sessionStorage.removeItem("t2s_campaign_contact_ids");
+      setPendingContactIds([]);
+      setAssignOnCreate(false);
+      setNotice({ tone: "ok", text: `Workflow saved and ${count} selected lead${count === 1 ? "" : "s"} assigned.` });
+      return;
+    }
     setNotice({ tone: "ok", text: "Campaign and follow-up workflow saved." });
   };
 
@@ -323,9 +351,9 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       {pendingContactIds.length > 0 && (
         <div className="v2-campaign-handoff">
           <span><Users size={17} /><strong>{pendingContactIds.length} selected lead{pendingContactIds.length === 1 ? "" : "s"}</strong> from Conversations</span>
-          <span>{selected ? `Ready to move into ${selected.name}.` : "Choose a campaign, then assign them together."}</span>
-          <button className="v2-btn v2-btn-accent" disabled={!selected} onClick={assignPendingContacts}>Assign to campaign</button>
-          <button className="v2-icon-btn" aria-label="Cancel assignment" onClick={() => { window.sessionStorage.removeItem("t2s_campaign_contact_ids"); setPendingContactIds([]); }}><X size={15} /></button>
+          <span>{assignOnCreate ? "Build and save this new workflow. These leads will be assigned automatically." : selected ? `Ready to move into ${selected.name}.` : "Choose a campaign, then assign them together."}</span>
+          {!assignOnCreate && <button className="v2-btn v2-btn-accent" disabled={!selected} onClick={assignPendingContacts}>Assign to campaign</button>}
+          <button className="v2-icon-btn" aria-label="Cancel assignment" onClick={() => { window.sessionStorage.removeItem("t2s_campaign_contact_ids"); setPendingContactIds([]); setAssignOnCreate(false); }}><X size={15} /></button>
         </div>
       )}
       <div className="v2-campaign-layout">
