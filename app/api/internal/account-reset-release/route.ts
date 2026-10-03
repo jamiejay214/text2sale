@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 type OwnedNumber = {
   number?: unknown;
@@ -51,17 +51,27 @@ function shortDetail(body: unknown): string | undefined {
 }
 
 async function telnyxJson(url: string, init: RequestInit, apiKey: string) {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      Authorization: "Bearer " + apiKey,
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-    cache: "no-store",
-  });
-  const body = await response.json().catch(() => ({}));
-  return { response, body };
+  let response: Response | null = null;
+  let body: unknown = {};
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    response = await fetch(url, {
+      ...init,
+      headers: {
+        Authorization: "Bearer " + apiKey,
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+      cache: "no-store",
+    });
+    body = await response.json().catch(() => ({}));
+    if (response.status !== 429) return { response, body };
+    const retryAfterSeconds = Number(response.headers.get("retry-after") || 0);
+    const waitMs = retryAfterSeconds > 0
+      ? Math.min(retryAfterSeconds * 1000, 15_000)
+      : Math.min(1_000 * 2 ** attempt, 15_000);
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
+  return { response: response as Response, body };
 }
 
 async function inspectOrReleaseNumber(
@@ -269,7 +279,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const results = await runWithConcurrency(uniqueDigits, 4, (digits) =>
+  const results = await runWithConcurrency(uniqueDigits, 1, (digits) =>
     inspectOrReleaseNumber(digits, execute, apiKey),
   );
   const successfulDigits = results
