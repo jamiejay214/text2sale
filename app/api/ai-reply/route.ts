@@ -129,9 +129,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    if (!profile.ai_plan) {
+    if (!profile.ai_plan && !profile.free_ai_plan) {
       return NextResponse.json(
-        { error: "AI replies require the Text2Sale + AI plan ($59.99/mo). Upgrade in Settings." },
+        { error: "AI replies require the Text2Sale + AI plan ($119.99/mo). Upgrade in Settings." },
         { status: 403 }
       );
     }

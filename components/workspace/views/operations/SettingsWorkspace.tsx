@@ -27,7 +27,16 @@ import BusinessDetailsForm, { EMPTY_BUSINESS_FORM, businessFormProblem, type Bus
 import { authFetch } from "@/lib/auth-fetch";
 import { fetchCampaigns, fetchProfile, joinTeamByCode, leaveTeam, updateProfile } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
-import type { Campaign, OwnedNumber, Profile } from "@/lib/types";
+import { hasNonGsmChars, sanitizeForSms } from "@/lib/sms-text";
+import { PACKAGES } from "@/lib/packages";
+import {
+  DEFAULT_FIRST_MESSAGE_OPT_OUT,
+  MANDATORY_OPT_OUT_KEYWORDS,
+  hasOptOutInstruction,
+  normalizeOptOutKeyword,
+  normalizeOptOutSettings,
+} from "@/lib/opt-out";
+import type { Campaign, OptOutSettings, OwnedNumber, Profile } from "@/lib/types";
 import type { WorkspaceViewProps } from "../../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../../WorkspacePrimitives";
 
@@ -99,11 +108,90 @@ function Numbers({ profile, onProfile, onNavigate }: Props) {
   </>;
 }
 
-function Billing({ profile, onProfile }: Props) {
+function AiUpgrade({ profile, onProfile, onNavigate }: Props) {
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
+  const subscribed = !!profile.free_subscription || ["active", "canceling"].includes(profile.subscription_status);
+
+  const upgrade = async () => {
+    if (busy) return;
+    setBusy(true);
+    setNotice("");
+    try {
+      if (subscribed) {
+        const response = await authFetch("/api/upgrade-plan", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ industry: profile.industry || null }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || "The AI upgrade could not be completed.");
+        const latest = await fetchProfile(profile.id);
+        if (latest) onProfile(latest);
+        onNavigate("settings", "ai");
+        return;
+      }
+
+      const planResponse = await authFetch("/api/onboarding/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package: "ai", industry: profile.industry || null }),
+      });
+      const planData = await planResponse.json().catch(() => ({}));
+      if (!planResponse.ok) throw new Error(planData.error || "The AI plan could not be selected.");
+      const checkoutResponse = await authFetch("/api/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.id, userEmail: profile.email }),
+      });
+      const checkoutData = await checkoutResponse.json().catch(() => ({}));
+      if (!checkoutResponse.ok || !checkoutData.url) throw new Error(checkoutData.error || "Secure checkout could not be opened.");
+      window.location.href = checkoutData.url;
+    } catch (reason) {
+      setNotice(reason instanceof Error ? reason.message : "The AI upgrade could not be completed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (aiAccess) {
+    return <><PageHeader eyebrow="Text2Sale + AI" title="Your AI workspace is unlocked." description="AI texting, AI calling, training, qualification, and appointment booking are ready." actions={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("settings", "ai")}>Open AI texting <ArrowRight size={15} /></button>} /><Panel><EmptyState title="AI plan active" description="Use the AI texting and AI receptionist tabs to train and control your assistants." /></Panel></>;
+  }
+
+  return <>
+    <PageHeader eyebrow="Upgrade to Text2Sale + AI" title="Put follow-up and phone coverage on autopilot." description="Standard includes the complete CRM. Upgrade when you want trained AI to text, qualify, call, and book for you." />
+    {notice ? <div className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div> : null}
+    <div className="v2-ai-upgrade-layout">
+      <Panel className="v2-ai-upgrade-offer">
+        <span className="v2-ai-upgrade-kicker"><Sparkles size={14} /> Text2Sale + AI</span>
+        <div className="v2-ai-upgrade-price"><strong>${PACKAGES.ai.price.toFixed(2)}</strong><span>/month</span></div>
+        <p>AI feature access is included. Texts, AI replies, and AI call minutes use your wallet at the rates shown in the workspace.</p>
+        <button className="v2-btn v2-btn-accent" onClick={upgrade} disabled={busy || !!profile.is_usha}>{busy ? "Opening secure upgrade…" : subscribed ? "Upgrade to AI" : "Choose AI & continue to Stripe"}<ArrowRight size={16} /></button>
+        <small>{profile.is_usha ? "The AI package is not available for this partner account." : subscribed ? "Stripe securely charges the prorated plan difference before AI is unlocked." : "You will review the $119.99 monthly subscription in Stripe before paying."}</small>
+      </Panel>
+      <Panel className="v2-ai-upgrade-features">
+        <div className="v2-panel-head"><div><h2>Everything AI unlocks</h2><p>One upgrade across the entire workspace</p></div><Bot size={19} /></div>
+        <div>
+          {[
+            ["AI texting", "Responds in your voice, qualifies leads, handles objections, and follows your rules."],
+            ["AI calling receptionist", "Answers inbound calls, gathers lead details, books appointments, and transfers when needed."],
+            ["Workspace training", "Set goals, tone, business knowledge, scripts, guardrails, and handoff instructions."],
+            ["Per-conversation control", "Use AI everywhere or switch it on and off for one lead at a time."],
+            ["Calendar booking", "Offers available times and keeps booked appointments connected to your CRM."],
+          ].map(([title, detail]) => <article key={title}><span><Check size={14} /></span><div><strong>{title}</strong><small>{detail}</small></div></article>)}
+        </div>
+      </Panel>
+    </div>
+  </>;
+}
+
+function Billing({ profile, onProfile, onNavigate }: Props) {
   const [amount, setAmount] = useState(50);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const subscribed = profile.free_subscription || ["active", "canceling"].includes(profile.subscription_status);
+  const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
   const checkout = async () => {
     if (amount < 20) { setNotice("The minimum wallet add is $20."); return; }
     setBusy("funds");
@@ -121,7 +209,7 @@ function Billing({ profile, onProfile }: Props) {
     <div className="v2-billing-grid">
       <Panel className="v2-wallet-card"><div className="v2-wallet-hero"><span><Wallet size={22} /></span><p>Available balance</p><strong>${Number(profile.wallet_balance || 0).toFixed(2)}</strong><small>Updates automatically after payments and usage</small></div><div className="v2-fund-picker"><label>Add funds<input type="number" min={20} step={10} value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label><div>{[20, 50, 100, 250, 500].map((value) => <button className={amount === value ? "is-active" : ""} key={value} onClick={() => setAmount(value)}>${value}</button>)}</div>{amount >= 500 && <p><Sparkles size={14} /> You receive ${amount.toFixed(2)} in credit and pay ${(amount * .9).toFixed(2)}.</p>}<button className="v2-btn v2-btn-accent" onClick={checkout} disabled={!subscribed || busy === "funds"}><CreditCard size={16} /> {busy === "funds" ? "Opening Stripe…" : `Add $${amount.toFixed(2)}`}</button>{!subscribed && <small>Activate your subscription before adding usage funds.</small>}</div></Panel>
       <div className="v2-billing-stack">
-        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{profile.plan?.name || "Text2Sale"}</strong><small>Texts, calls, campaigns, AI, imports, and integrations</small></span><b>${Number(profile.plan?.price || 39.99).toFixed(2)}<small>/month</small></b></div>{subscribed ? <button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button> : <button className="v2-settings-row" onClick={subscribe}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Activate Text2Sale</strong><small>Choose a card securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
+        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{profile.plan?.name || "Text2Sale"}</strong><small>{aiAccess ? "CRM, AI texting, AI calling, imports, and integrations" : "CRM, texting, calling, campaigns, imports, and integrations"}</small></span><b>${Number(profile.plan?.price || 39.99).toFixed(2)}<small>/month</small></b></div>{subscribed ? <><button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button>{!aiAccess ? <button className="v2-settings-row" onClick={() => onNavigate("settings", "upgrade")}><span className="v2-settings-icon"><Sparkles size={16} /></span><span><strong>Upgrade to Text2Sale + AI</strong><small>Unlock AI texting and the AI calling receptionist for $119.99/month.</small></span><ArrowRight size={15} /></button> : null}</> : <button className="v2-settings-row" onClick={subscribe}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Activate Text2Sale</strong><small>Choose a card securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
         <Panel><div className="v2-panel-head"><div><h2>Auto recharge</h2><p>Protect active campaigns from a low balance.</p></div><label className="v2-compact-switch"><input type="checkbox" checked={profile.auto_recharge?.enabled || false} onChange={(event) => saveAutoRecharge(event.target.checked)} /><i /></label></div><div className="v2-auto-recharge"><div><span>When balance falls below</span><strong>${Number(profile.auto_recharge?.threshold || 10).toFixed(2)}</strong></div><ArrowRight size={16} /><div><span>Automatically add</span><strong>${Number(profile.auto_recharge?.amount || 50).toFixed(2)}</strong></div></div></Panel>
       </div>
       <Panel className="v2-usage-panel"><div className="v2-panel-head"><div><h2>Recent account activity</h2><p>Wallet deposits, message usage, and number purchases</p></div></div>{profile.usage_history?.length ? <div>{profile.usage_history.slice(0, 20).map((entry) => <article key={entry.id}><span className="v2-usage-icon">{entry.amount >= 0 ? "+" : "−"}</span><div><strong>{entry.description}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></div><b className={entry.amount >= 0 ? "is-credit" : ""}>{entry.amount >= 0 ? "+" : ""}${Math.abs(entry.amount).toFixed(2)}</b></article>)}</div> : <EmptyState title="No billing activity yet" description="Deposits and usage will appear here." />}</Panel>
@@ -198,15 +286,103 @@ function Integrations({ profile, onProfile }: Props) {
   </>;
 }
 
+function OptOutEditor({ profile, onProfile }: Pick<Props, "profile" | "onProfile">) {
+  const [settings, setSettings] = useState<OptOutSettings>(() =>
+    normalizeOptOutSettings(profile.opt_out_settings),
+  );
+  const [newKeyword, setNewKeyword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+
+  const mandatory = new Set<string>(MANDATORY_OPT_OUT_KEYWORDS);
+  const customKeywords = settings.keywords.filter((keyword) => !mandatory.has(keyword));
+  const firstMessageText = settings.firstMessageText ?? DEFAULT_FIRST_MESSAGE_OPT_OUT;
+
+  const addKeyword = () => {
+    const keyword = normalizeOptOutKeyword(newKeyword);
+    if (!keyword) return;
+    if (settings.keywords.includes(keyword)) {
+      setNotice({ tone: "error", text: `${keyword} is already an opt-out trigger.` });
+      return;
+    }
+    setSettings((current) => ({ ...current, keywords: [...current.keywords, keyword] }));
+    setNewKeyword("");
+    setNotice(null);
+  };
+
+  const save = async () => {
+    const sanitizedText = sanitizeForSms(firstMessageText.trim());
+    if (!sanitizedText || !hasOptOutInstruction(sanitizedText, settings.keywords)) {
+      setNotice({
+        tone: "error",
+        text: "Use a clear instruction such as ‘Reply STOP to opt out.’",
+      });
+      return;
+    }
+    if (hasNonGsmChars(sanitizedText)) {
+      setNotice({ tone: "error", text: "Remove emojis or unsupported characters from the opt-out text." });
+      return;
+    }
+    setSaving(true);
+    const nextSettings = normalizeOptOutSettings({
+      ...settings,
+      firstMessageText: sanitizedText,
+    });
+    const latest = await updateProfile(profile.id, { opt_out_settings: nextSettings });
+    setSaving(false);
+    if (!latest) {
+      setNotice({ tone: "error", text: "The opt-out settings could not be saved." });
+      return;
+    }
+    onProfile(latest);
+    setSettings(nextSettings);
+    setNotice({ tone: "ok", text: "Opt-out settings saved." });
+  };
+
+  return (
+    <Panel className="v2-optout-card">
+      <div className="v2-panel-head">
+        <div><h2>Message opt-out</h2><p>Required on the first campaign text only.</p></div>
+        <ShieldCheck size={18} />
+      </div>
+      <div className="v2-optout-body">
+        {notice ? <div className={`v2-optout-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={13} /></button></div> : null}
+        <label>
+          First-message opt-out line
+          <textarea
+            rows={3}
+            maxLength={160}
+            value={firstMessageText}
+            onChange={(event) => setSettings((current) => ({ ...current, firstMessageText: event.target.value }))}
+            placeholder={DEFAULT_FIRST_MESSAGE_OPT_OUT}
+          />
+          <small>Added automatically to step one. Follow-up texts do not repeat it. {firstMessageText.length}/160</small>
+        </label>
+        <div className="v2-optout-preview"><span>First text preview</span><p>Hi Jamie, thanks for requesting information.<br /><b>{firstMessageText || "Your opt-out line appears here."}</b></p></div>
+        <div className="v2-optout-keywords">
+          <div><strong>Opt-out triggers</strong><small>Carrier-required words stay locked. Add your own word or phrase.</small></div>
+          <div className="v2-optout-chips">
+            {MANDATORY_OPT_OUT_KEYWORDS.map((keyword) => <span className="is-locked" key={keyword}><ShieldCheck size={11} /> {keyword}</span>)}
+            {customKeywords.map((keyword) => <span key={keyword}>{keyword}<button aria-label={`Remove ${keyword}`} onClick={() => setSettings((current) => ({ ...current, keywords: current.keywords.filter((item) => item !== keyword) }))}><X size={11} /></button></span>)}
+          </div>
+          <div className="v2-optout-add"><input value={newKeyword} maxLength={40} onChange={(event) => setNewKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addKeyword(); } }} placeholder="Add a custom trigger" /><button onClick={addKeyword} disabled={!newKeyword.trim()}><Plus size={14} /> Add</button></div>
+        </div>
+        <button className="v2-btn v2-btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save opt-out settings"}</button>
+      </div>
+    </Panel>
+  );
+}
+
 function Team({ profile, onProfile }: Props) {
   const [code, setCode] = useState(""); const [notice, setNotice] = useState("");
   const join = async () => { const result = await joinTeamByCode(profile.id, code.trim().toUpperCase()); if (!result.success) { setNotice(result.error || "Could not join team."); return; } const latest = await fetchProfile(profile.id); if (latest) onProfile(latest); setNotice(`Joined ${result.managerName || "the team"}.`); setCode(""); };
   const leave = async () => { if (!window.confirm("Leave your current team?")) return; await leaveTeam(profile.id); const latest = await fetchProfile(profile.id); if (latest) onProfile(latest); };
-  return <><SettingsHeader eyebrow="Workspace settings" title="Your workspace, team, and account." description="Manage team membership and the identity your users see inside Text2Sale." />{notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}<div className="v2-team-grid"><Panel><div className="v2-panel-head"><div><h2>Workspace identity</h2><p>Signed in account</p></div><Users size={17} /></div><dl className="v2-account-details"><div><dt>Name</dt><dd>{profile.first_name} {profile.last_name}</dd></div><div><dt>Email</dt><dd>{profile.email}</dd></div><div><dt>Role</dt><dd><StatusPill tone="info">{profile.role}</StatusPill></dd></div><div><dt>Workspace code</dt><dd><code>{profile.team_code || profile.referral_code || "Not created"}</code></dd></div></dl></Panel><Panel><div className="v2-panel-head"><div><h2>Team membership</h2><p>Share data with a manager workspace.</p></div></div><div className="v2-join-team">{profile.manager_id ? <><span><Check size={18} /></span><h3>Connected to a team</h3><p>Your manager can view team-level performance and help manage the account.</p><button className="v2-btn" onClick={leave}>Leave team</button></> : <><span><Link2 size={18} /></span><h3>Join with a team code</h3><p>Enter the code your manager shared with you.</p><div><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="TEAM-CODE" /><button onClick={join} disabled={!code.trim()}>Join</button></div></>}</div></Panel></div></>;
+  return <><SettingsHeader eyebrow="Workspace settings" title="Your workspace, compliance, and team." description="Manage workspace identity, first-message opt-outs, and team membership in one place." />{notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}<div className="v2-team-grid"><Panel><div className="v2-panel-head"><div><h2>Workspace identity</h2><p>Signed in account</p></div><Users size={17} /></div><dl className="v2-account-details"><div><dt>Name</dt><dd>{profile.first_name} {profile.last_name}</dd></div><div><dt>Email</dt><dd>{profile.email}</dd></div><div><dt>Role</dt><dd><StatusPill tone="info">{profile.role}</StatusPill></dd></div><div><dt>Workspace code</dt><dd><code>{profile.team_code || profile.referral_code || "Not created"}</code></dd></div></dl></Panel><OptOutEditor profile={profile} onProfile={onProfile} /><Panel className="v2-team-membership-card"><div className="v2-panel-head"><div><h2>Team membership</h2><p>Share data with a manager workspace.</p></div></div><div className="v2-join-team">{profile.manager_id ? <><span><Check size={18} /></span><h3>Connected to a team</h3><p>Your manager can view team-level performance and help manage the account.</p><button className="v2-btn" onClick={leave}>Leave team</button></> : <><span><Link2 size={18} /></span><h3>Join with a team code</h3><p>Enter the code your manager shared with you.</p><div><input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="TEAM-CODE" /><button onClick={join} disabled={!code.trim()}>Join</button></div></>}</div></Panel></div></>;
 }
 
 export default function SettingsWorkspace(props: Props) {
   switch (props.settingsTab) {
+    case "upgrade": return <AiUpgrade {...props} />;
     case "billing": return <Billing {...props} />;
     case "10dlc": return <Registration {...props} />;
     case "integrations": return <Integrations {...props} />;

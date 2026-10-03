@@ -7,7 +7,7 @@ import { PACKAGES, type PackageKey } from "@/lib/packages";
 // ─── Admin: swap a user's subscription package ────────────────────────────
 // The app ships two packages:
 //   Standard  — $39.99 / mo, $0.012 per msg, no AI
-//   AI        — $59.99 / mo, $0.012 per msg, AI auto-reply on
+//   AI        — $119.99 / mo, $0.012 per msg, AI auto-reply on
 // Occasionally a user signs up for the wrong one and we need to move them
 // without asking them to cancel + re-subscribe. This endpoint:
 //   1. Writes the new plan shape to profiles.plan (+ ai_plan flag)

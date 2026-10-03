@@ -79,7 +79,7 @@ export default function AiTextingCrmPage() {
         },
         {
           question: "How much does the AI plan cost?",
-          answer: "The Text2Sale + AI plan is $59.99 per month, plus $0.012 per text and $0.025 per AI reply.",
+          answer: "The Text2Sale + AI plan is $119.99 per month, plus $0.012 per text and $0.025 per AI reply.",
         },
         {
           question: "Will AI replace my sales team?",

@@ -20,7 +20,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "How much does Text2Sale cost?",
     answer:
-      "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $59.99 per month. Texts cost $0.012 each and AI replies cost $0.025 each. Calls cost $0.045 per minute outbound and $0.025 per minute inbound. You save 10% when you add $500 or more to your wallet, and there is no long-term contract.",
+      "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month. The AI plan includes access to AI texting and the AI calling receptionist. Texts cost $0.012 each, AI replies cost $0.025 each, and AI-assisted calls cost $0.18 per minute from your wallet. Standard calls cost $0.045 per minute outbound and $0.025 per minute inbound. You save 10% when you add $500 or more to your wallet, and there is no long-term contract.",
   },
   {
     question: "Is Text2Sale TCPA compliant?",
@@ -41,7 +41,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "What does the AI plan add?",
     answer:
-      "The Text2Sale + AI plan replies to inbound texts for you, handles common objections, and books appointments that sync to Google Calendar. You can turn AI on or off for each conversation, so new leads get an answer while you are on other calls.",
+      "The Text2Sale + AI plan replies to inbound texts, handles common objections, and books appointments that sync to Google Calendar. It also includes an AI calling receptionist that can answer inbound calls, qualify a lead, book the next conversation, and transfer to a person when needed. You can control AI workspace-wide or one conversation at a time.",
     link: { href: "/ai-texting-crm", label: "See the AI texting CRM" },
   },
 ];

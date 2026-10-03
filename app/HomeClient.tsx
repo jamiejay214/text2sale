@@ -221,10 +221,11 @@ export default function HomeClient({
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-white">$59.99</span>
+                  <span className="text-5xl font-black text-white">$119.99</span>
                   <span className="text-sm text-zinc-400">/month</span>
                 </div>
-                <div className="mt-1 text-sm text-zinc-400">+ $0.012 per SMS · $0.025 per AI reply</div>
+                <div className="mt-1 text-sm text-zinc-300">AI texting + calling included · usage billed from wallet</div>
+                <div className="mt-1 text-xs text-zinc-400">$0.012/SMS · $0.025/AI reply · $0.18/AI call minute</div>
 
                 <ul className="mt-6 space-y-2.5 text-sm text-zinc-200">
                   {[
@@ -233,6 +234,7 @@ export default function HomeClient({
                     "Full AI mode — handles every reply",
                     "Per-conversation AI toggle",
                     "AI appointment booking",
+                    "AI calling receptionist — answers, qualifies & books",
                     "Google Calendar sync",
                     "Sentiment-scored bubbles + smart replies",
                     "SPIN selling & objection handling",
@@ -351,7 +353,7 @@ export default function HomeClient({
                           <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${selectedPlan === "ai" ? "bg-lime-300" : "bg-emerald-400"}`} />
                         </span>
                         <span className="text-sm font-semibold text-white">
-                          {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — <span className="text-zinc-400">${selectedPlan === "ai" ? "59.99" : "39.99"}/mo</span>
+                          {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — <span className="text-zinc-400">${selectedPlan === "ai" ? "119.99" : "39.99"}/mo</span>
                         </span>
                       </div>
                       <button

@@ -4,6 +4,7 @@ import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { countSegments } from "@/lib/sms-text";
 import { inboundSmsCost } from "@/lib/sms-pricing";
+import { MANDATORY_OPT_OUT_KEYWORDS, normalizeOptOutSettings } from "@/lib/opt-out";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -202,22 +203,13 @@ export async function POST(req: NextRequest) {
       .eq("id", contact.user_id)
       .single();
 
-    const optSettings = profile?.opt_out_settings || {
-      keywords: ["STOP", "UNSUBSCRIBE", "CANCEL", "END", "QUIT"],
-      optInKeywords: ["START", "SUBSCRIBE", "UNSTOP", "YES"],
-      autoReplyMessage: "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.",
-      optInReplyMessage: "You have been re-subscribed. Reply STOP to unsubscribe.",
-      confirmOptOut: true,
-      autoMarkDnc: true,
-      includeCompanyName: true,
-      companyName: "",
-    };
+    const optSettings = normalizeOptOutSettings(profile?.opt_out_settings);
 
     // CTIA / carrier-mandated opt-out keywords. These MUST be honored regardless
     // of what the user has configured — failing to honor STOP/END/QUIT/CANCEL/
     // UNSUBSCRIBE is a fast path to 10DLC suspension. Merge them with the user's
     // custom list so custom keywords still work, but the mandatory five always do.
-    const MANDATORY_STOP = ["STOP", "END", "QUIT", "CANCEL", "UNSUBSCRIBE"];
+    const MANDATORY_STOP = [...MANDATORY_OPT_OUT_KEYWORDS];
     const MANDATORY_HELP = ["HELP", "INFO"];
     const MANDATORY_START = ["START", "UNSTOP", "YES"];
 

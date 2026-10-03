@@ -71,7 +71,7 @@ export default function MassTextingCrmPage() {
           heading: "Built for compliance and deliverability",
           paragraphs: [
             "Mass texting only works if your messages get delivered. Text2Sale walks you through 10DLC registration, records STOP replies automatically, excludes opted-out contacts from every future campaign, and applies quiet-hours sending windows.",
-            "Pricing is straightforward: the Standard plan is $39.99 per month and the Text2Sale + AI plan is $59.99 per month, with texts at $0.012 per segment and 10% off when you add $500 or more to your wallet.",
+            "Pricing is straightforward: the Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month, with texts at $0.012 per segment and 10% off when you add $500 or more to your wallet.",
           ],
         },
       ]}
@@ -94,7 +94,7 @@ export default function MassTextingCrmPage() {
         },
         {
           question: "How much does Text2Sale cost?",
-          answer: "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $59.99 per month. Texts cost $0.012 each and AI replies cost $0.025 each. There is no long-term contract.",
+          answer: "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month. Texts cost $0.012 each and AI replies cost $0.025 each. There is no long-term contract.",
         },
       ]}
       relatedPages={[

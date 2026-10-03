@@ -843,7 +843,7 @@ export default function AdminPage() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  // Swap a user between the Standard ($39.99) and AI ($59.99) packages.
+  // Swap a user between the Standard ($39.99) and AI ($119.99) packages.
   // Updates plan shape + ai_plan flag in Supabase AND swaps their Stripe
   // subscription line item to the matching recurring price (Stripe prorates
   // the partial period automatically on the next invoice). No-op on
@@ -858,7 +858,7 @@ export default function AdminPage() {
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-    const label = targetIsAi ? "AI ($59.99/mo)" : "Standard ($39.99/mo)";
+    const label = targetIsAi ? "AI ($119.99/mo)" : "Standard ($39.99/mo)";
     if (!window.confirm(`Move ${acct.firstName} ${acct.lastName} to ${label}?\n\nStripe will prorate the partial period on their next invoice.`)) return;
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -1887,7 +1887,7 @@ export default function AdminPage() {
                               ? "bg-cyan-900 text-cyan-300"
                               : "bg-violet-900 text-violet-300"
                           }`}>
-                            {acct.aiPlan ? "AI · $59.99" : "STANDARD · $39.99"}
+                            {acct.aiPlan ? "AI · $119.99" : "STANDARD · $39.99"}
                           </span>
                           {acct.freeAiPlan && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE AI</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
@@ -2146,7 +2146,7 @@ export default function AdminPage() {
                               ? "bg-cyan-900 text-cyan-300"
                               : "bg-violet-900 text-violet-300"
                           }`}>
-                            {selectedAccount.aiPlan ? "AI — $59.99/mo" : "STANDARD — $39.99/mo"}
+                            {selectedAccount.aiPlan ? "AI — $119.99/mo" : "STANDARD — $39.99/mo"}
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-zinc-400">
@@ -2177,7 +2177,7 @@ export default function AdminPage() {
                             : "bg-zinc-900 text-zinc-300 hover:bg-cyan-600/20 hover:text-cyan-300 ring-1 ring-zinc-700 hover:ring-cyan-500/50"
                         }`}
                       >
-                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $59.99
+                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $119.99
                       </button>
                     </div>
                   </div>
@@ -2266,7 +2266,7 @@ export default function AdminPage() {
                       <div className="text-xs text-zinc-400">
                         {selectedAccount.aiPlan
                           ? "AI auto-reply and appointment booking are enabled."
-                          : "Enable AI features ($59.99/mo plan) for this user."}
+                          : "Enable AI features ($119.99/mo plan) for this user."}
                       </div>
                     </div>
                     <button
@@ -2291,7 +2291,7 @@ export default function AdminPage() {
                       <div className="text-sm font-medium text-white">Free AI Plan</div>
                       <div className="text-xs text-zinc-400">
                         {selectedAccount.freeAiPlan
-                          ? "User has free AI access — no $59.99/mo charge."
+                          ? "User has free AI access — no $119.99/mo charge."
                           : "Grant this user AI features at no cost."}
                       </div>
                     </div>

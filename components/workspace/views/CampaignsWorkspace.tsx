@@ -14,6 +14,7 @@ import {
   Play,
   Plus,
   Save,
+  ShieldCheck,
   Sparkles,
   Trash2,
   Users,
@@ -30,6 +31,7 @@ import {
   updateCampaign,
 } from "@/lib/supabase-data";
 import type { Campaign, CampaignStep } from "@/lib/types";
+import { normalizeOptOutSettings } from "@/lib/opt-out";
 
 const TOKENS = ["{firstName}", "{lastName}", "{phone}", "{city}", "{state}"];
 
@@ -147,6 +149,8 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   );
   const ownedNumbers = profile.owned_numbers || [];
   const validSteps = draft.steps.filter((step) => step.message.trim());
+  const firstMessageOptOut = normalizeOptOutSettings(profile.opt_out_settings).firstMessageText;
+  const allNumbersSelected = ownedNumbers.length > 0 && ownedNumbers.every((number) => draft.selectedNumbers.includes(number.number));
 
   const chooseCampaign = (campaign: Campaign) => {
     setSelectedId(campaign.id);
@@ -449,12 +453,13 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                   <div className="v2-message-meta"><span>{active.message.length} characters</span><span>Personalize:</span></div>
                   <div className="v2-token-row">{TOKENS.map((token) => <button key={token} onClick={() => patchStep(activeStep, { message: `${active.message}${active.message && !active.message.endsWith(" ") ? " " : ""}${token}` })}>{token}</button>)}</div>
                 </div>
+                {activeStep === 0 ? <div className="v2-first-optout"><ShieldCheck size={16} /><div><strong>First-message opt-out</strong><p><b>{firstMessageOptOut}</b> is added automatically when this campaign starts. Follow-up steps do not repeat it.</p></div><button onClick={() => onNavigate("settings", "team")}>Edit</button></div> : null}
                 <div className="v2-spin-help">
                   <Sparkles size={16} />
                   <div><strong>Spin text</strong><p>Use braces and pipes to rotate wording: <code>{"{Hi|Hey|Hello}"}</code>. Each lead receives one variation.</p></div>
                 </div>
                 <div className="v2-field">
-                  <label>Sending numbers</label>
+                  <div className="v2-field-label-row"><label>Sending numbers</label>{ownedNumbers.length > 1 ? <button disabled={allNumbersSelected} onClick={() => setDraft((current) => ({ ...current, selectedNumbers: ownedNumbers.map((number) => number.number) }))}><Check size={13} /> {allNumbersSelected ? "All selected" : `Select all ${ownedNumbers.length}`}</button> : null}</div>
                   {ownedNumbers.length ? <div className="v2-number-picks">{ownedNumbers.map((number) => {
                     const checked = draft.selectedNumbers.includes(number.number);
                     return <button className={checked ? "is-active" : ""} key={number.id || number.number} onClick={() => setDraft((current) => ({ ...current, selectedNumbers: checked ? current.selectedNumbers.filter((item) => item !== number.number) : [...current.selectedNumbers, number.number] }))}><span>{checked ? <Check size={13} /> : null}</span>{number.alias || number.number}<small>{number.number}</small></button>;

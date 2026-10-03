@@ -76,6 +76,7 @@ export default function WorkspaceApp() {
   const impersonateId = searchParams.get("impersonate") || "";
   const activeTab = requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "overview";
   const settingsTab = searchParams.get("subtab") || "numbers";
+  const aiAccess = !!profile?.ai_plan || !!profile?.free_ai_plan;
 
   const loadShell = useCallback(async () => {
     setLoading(true);
@@ -184,14 +185,17 @@ export default function WorkspaceApp() {
 
   const navigate = useCallback(
     (tab: WorkspaceTab, subtab?: string) => {
+      const aiOnly = tab === "aicalls" || (tab === "settings" && subtab === "ai");
+      const destinationTab = aiOnly && !aiAccess ? "settings" : tab;
+      const destinationSubtab = aiOnly && !aiAccess ? "upgrade" : subtab;
       const params = new URLSearchParams();
       if (impersonateId) params.set("impersonate", impersonateId);
-      if (tab !== "overview") params.set("tab", tab);
-      if (tab === "settings" && subtab) params.set("subtab", subtab);
+      if (destinationTab !== "overview") params.set("tab", destinationTab);
+      if (destinationTab === "settings" && destinationSubtab) params.set("subtab", destinationSubtab);
       const query = params.toString();
       router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
-    [impersonateId, router],
+    [aiAccess, impersonateId, router],
   );
 
   const toggleTheme = () => {
@@ -210,6 +214,9 @@ export default function WorkspaceApp() {
   const view = useMemo(() => {
     if (!profile) return null;
     const shared: WorkspaceViewProps = { profile, onProfile: setProfile, onNavigate: navigate };
+    if (!aiAccess && (activeTab === "aicalls" || (activeTab === "settings" && settingsTab === "ai"))) {
+      return <OperationsWorkspace {...shared} tab="settings" settingsTab="upgrade" />;
+    }
     switch (activeTab) {
       case "overview":
         return <OverviewWorkspace {...shared} />;
@@ -222,7 +229,7 @@ export default function WorkspaceApp() {
       default:
         return <OperationsWorkspace {...shared} tab={activeTab} settingsTab={settingsTab} />;
     }
-  }, [activeTab, navigate, profile, settingsTab]);
+  }, [activeTab, aiAccess, navigate, profile, settingsTab]);
 
   if (loading) {
     return (
@@ -259,6 +266,7 @@ export default function WorkspaceApp() {
         onSearch={() => setSearchOpen(true)}
         onLogout={logout}
         owner={isOwnerEmail(viewerEmail)}
+        aiAccess={aiAccess}
         onAdmin={() => router.push("/admin")}
       />
       <section className="workspace-content v2-workspace-content">

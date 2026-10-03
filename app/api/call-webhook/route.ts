@@ -24,7 +24,7 @@ export const maxDuration = 30;
 // Everything the assistant needs off the profile row. Kept as one literal
 // (not a concatenation) so supabase-js can still infer the row type.
 const AI_PROFILE_COLUMNS =
-  "first_name, last_name, industry, a2p_registration, available_hours, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
+  "first_name, last_name, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 // The old B-leg dial path used TELNYX_VOICE_APP_ID to stamp newly-created
@@ -170,7 +170,9 @@ export async function POST(req: NextRequest) {
         const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
         const inHours = isWithinBusinessHours(hours);
         const shouldAnswer =
-          settings.enabled && !(settings.afterHoursOnly && inHours);
+          !!(profile?.ai_plan || profile?.free_ai_plan) &&
+          settings.enabled &&
+          !(settings.afterHoursOnly && inHours);
 
         if (shouldAnswer) {
           // Session first, reserve second. The session row is unique per

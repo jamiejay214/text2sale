@@ -7,6 +7,7 @@ import {
   sequenceTimes,
 } from "@/lib/campaign-sequence";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
+import { withFirstMessageOptOut } from "@/lib/opt-out";
 
 export const maxDuration = 300;
 
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle(),
       db
         .from("profiles")
-        .select("paused, subscription_status, free_subscription, owned_numbers")
+        .select("paused, subscription_status, free_subscription, owned_numbers, opt_out_settings")
         .eq("id", auth.user.id)
         .single(),
     ]);
@@ -160,16 +161,36 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     const times = sequenceTimes(steps, startsAt);
-    const rows = contacts.flatMap((contact, index) =>
-      steps.map((step, stepIndex) => ({
-        contact_id: contact.id,
-        body: sanitizeForSms(renderCampaignMessage(step.message, contact)),
-        from_number: numbers[index % numbers.length],
-        scheduled_at: times[stepIndex],
-        step_index: stepIndex,
-        delay_minutes: step.delayMinutes,
-      })),
-    );
+    let rows;
+    try {
+      rows = contacts.flatMap((contact, index) =>
+        steps.map((step, stepIndex) => {
+          const rendered = renderCampaignMessage(step.message, contact);
+          return {
+            contact_id: contact.id,
+            body: sanitizeForSms(
+              stepIndex === 0
+                ? withFirstMessageOptOut(rendered, profile.opt_out_settings)
+                : rendered,
+            ),
+            from_number: numbers[index % numbers.length],
+            scheduled_at: times[stepIndex],
+            step_index: stepIndex,
+            delay_minutes: step.delayMinutes,
+          };
+        }),
+      );
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Add opt-out instructions to the first message before launching.",
+        },
+        { status: 400 },
+      );
+    }
     if (rows.some((row) => hasNonGsmChars(row.body)))
       return NextResponse.json(
         {

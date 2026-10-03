@@ -79,6 +79,9 @@ function smsRoute({
       hasNonGsmChars: () => false,
       countSegments: () => 1,
     },
+    "@/lib/opt-out": {
+      withFirstMessageOptOut: (body) => `${body}\nReply STOP to opt out.`,
+    },
   };
   const exports = {};
   const code = ts.transpileModule(

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
+import { withFirstMessageOptOut } from "@/lib/opt-out";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { to, body, from } = await req.json();
+    const { to, body, from, conversationId } = await req.json();
 
     if (typeof to !== "string" || typeof body !== "string" || !body.trim() || body.length > 5000 || typeof from !== "string") {
       return NextResponse.json(
@@ -106,7 +107,7 @@ export async function POST(req: NextRequest) {
     // per-campaign override here because this is an ad-hoc reply/send.
     const { data: profileCfg } = await adminSupabase
       .from("profiles")
-      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour, plan, paused, subscription_status, free_subscription")
+      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour, plan, paused, subscription_status, free_subscription, opt_out_settings")
       .eq("id", userId)
       .single();
 
@@ -131,12 +132,49 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    let outboundBody = body;
+    if (typeof conversationId === "string" && conversationId) {
+      const { data: conversation, error: conversationError } = await adminSupabase
+        .from("conversations")
+        .select("id")
+        .eq("id", conversationId)
+        .eq("user_id", userId)
+        .maybeSingle();
+      if (conversationError || !conversation) {
+        return NextResponse.json(
+          { success: false, error: "Could not verify this conversation. Message not sent." },
+          { status: 403 },
+        );
+      }
+      const { count: outboundCount, error: outboundCountError } = await adminSupabase
+        .from("messages")
+        .select("id", { count: "exact", head: true })
+        .eq("conversation_id", conversationId)
+        .eq("direction", "outbound");
+      if (outboundCountError) {
+        return NextResponse.json(
+          { success: false, error: "Could not verify the first-message opt-out. Message not sent." },
+          { status: 503 },
+        );
+      }
+      if ((outboundCount || 0) === 0) {
+        try {
+          outboundBody = withFirstMessageOptOut(body, profileCfg.opt_out_settings);
+        } catch (error) {
+          return NextResponse.json(
+            { success: false, error: error instanceof Error ? error.message : "Add opt-out instructions before sending." },
+            { status: 400 },
+          );
+        }
+      }
+    }
+
     // Sanitize smart quotes / em-dashes / ellipsis back to ASCII equivalents
     // BEFORE Telnyx sees the text. A single curly apostrophe forces the
     // whole SMS into UCS-2 (70 chars/segment instead of 160) and silently
     // 2-3× the bill. macOS, iOS keyboards, and LLM-generated replies all
     // introduce these substitutions by default — this normalizes them.
-    const sanitizedBody = sanitizeForSms(body);
+    const sanitizedBody = sanitizeForSms(outboundBody);
 
     // Hard block UCS-2: after sanitization, if any non-GSM-7 character
     // remains (emoji, accented letters, exotic punctuation), refuse the
@@ -202,6 +240,7 @@ export async function POST(req: NextRequest) {
       success: true,
       sid: data.data?.id || "",
       status: "sent",
+      body: sanitizedBody,
     });
   } catch (error: unknown) {
     await refund();

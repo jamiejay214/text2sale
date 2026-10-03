@@ -6,7 +6,7 @@
 
 export const PACKAGES = {
   standard: { key: "standard", name: "Text2Sale Standard", price: 39.99, messageCost: 0.012, aiPlan: false },
-  ai: { key: "ai", name: "Text2Sale AI", price: 59.99, messageCost: 0.012, aiPlan: true },
+  ai: { key: "ai", name: "Text2Sale AI", price: 119.99, messageCost: 0.012, aiPlan: true },
 } as const;
 
 export type PackageKey = keyof typeof PACKAGES;

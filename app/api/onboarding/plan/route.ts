@@ -6,7 +6,7 @@ import { isIndustryId } from "@/lib/industries";
 
 // ── Record the plan chosen at signup ───────────────────────────────────────
 //
-// The homepage lets a visitor pick Standard ($39.99) or AI ($59.99) — AI is
+// The homepage lets a visitor pick Standard ($39.99) or AI ($119.99) — AI is
 // preselected — but signup only sent name, email, phone and password, so every
 // account got the default Standard plan and was billed $39.99 at checkout
 // whatever they had been shown. This route stores the choice so Stripe
