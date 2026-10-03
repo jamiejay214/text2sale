@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { LockKeyhole, MailCheck } from "lucide-react";
+import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 
 export default function AccountRecovery({
@@ -147,13 +148,16 @@ export default function AccountRecovery({
   return (
     <main className="recovery-page">
       <section className="recovery-card">
-        <span className="brand-symbol">
-          {mode === "reset" ? (
-            <LockKeyhole size={20} />
-          ) : (
-            <MailCheck size={20} />
-          )}
-        </span>
+        <div className="recovery-brand">
+          <Logo size="sm" />
+          <span className="brand-symbol">
+            {mode === "reset" ? (
+              <LockKeyhole size={18} />
+            ) : (
+              <MailCheck size={18} />
+            )}
+          </span>
+        </div>
         <h1>{copy.title}</h1>
         {checking ? (
           <p role="status">Checking your reset link…</p>
