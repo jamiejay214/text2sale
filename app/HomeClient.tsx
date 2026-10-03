@@ -307,7 +307,12 @@ export default function HomeClient({
                       />
                     </div>
                     <div>
-                      <label className="mb-2 block text-sm font-semibold text-zinc-200">Password</label>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <label className="block text-sm font-semibold text-zinc-200">Password</label>
+                        <Link href="/forgot-password" className="text-xs font-semibold text-lime-300 hover:text-lime-200">
+                          Forgot password?
+                        </Link>
+                      </div>
                       <input
                         type="password"
                         value={loginPassword}
