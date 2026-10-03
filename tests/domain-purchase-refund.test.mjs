@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import vm from "node:vm";
 import ts from "typescript";
 
-function domainPurchaseHarness({ refundFailures = 0 } = {}) {
+function domainPurchaseHarness({ refundFailures = 0, domain = "example.com", buySucceeds = false } = {}) {
   const events = [];
   let failuresLeft = refundFailures;
   const profile = {
@@ -15,6 +15,7 @@ function domainPurchaseHarness({ refundFailures = 0 } = {}) {
     business_slug: "jamie-health",
     a2p_registration: {
       businessName: "Jamie Health",
+      businessType: "llc",
       businessAddress: "123 Main St",
       businessCity: "Fort Lauderdale",
       businessState: "FL",
@@ -58,10 +59,12 @@ function domainPurchaseHarness({ refundFailures = 0 } = {}) {
   const mocks = {
     "./vercel-domains": {
       attachDomainToProject: async () => {},
-      buyDomain: async () => {
+      buyDomain: async (args) => {
+        events.push({ type: "buy-domain", args });
+        if (buySucceeds) return { domain: args.domain, orderId: "order-1" };
         throw new Error("registrar request failed (403)");
       },
-      getDomainOrder: async () => ({ status: "pending" }),
+      getDomainOrder: async () => ({ status: buySucceeds ? "completed" : "pending" }),
       isDomainAvailable: async () => ({ available: true, price: 7.99 }),
       isDomainOwned: async () => false,
     },
@@ -86,7 +89,7 @@ function domainPurchaseHarness({ refundFailures = 0 } = {}) {
   return {
     events,
     profile,
-    purchase: () => exports.purchaseDomainForUser(db, "user-1", "example.com", 12.99),
+    purchase: () => exports.purchaseDomainForUser(db, "user-1", domain, 12.99),
   };
 }
 
@@ -120,4 +123,15 @@ test("a failed refund keeps the charge marker and retries without charging twice
   assert.equal(credits.length, 2);
   assert.equal(credits[1].args.p_idempotency_key, firstKey);
   assert.equal(harness.profile.a2p_registration.domainPurchase.state, "refunded");
+});
+
+test("a .us business domain supplies the required registry declarations", async () => {
+  const harness = domainPurchaseHarness({ domain: "example.us", buySucceeds: true });
+  await harness.purchase();
+  const purchase = harness.events.find((event) => event.type === "buy-domain");
+
+  assert.deepEqual(
+    JSON.parse(JSON.stringify(purchase.args.additional)),
+    { nexus_category: "C21", app_purpose: "P1" },
+  );
 });
