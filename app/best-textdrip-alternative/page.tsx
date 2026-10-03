@@ -65,7 +65,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost?",
-          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $59.99 per month plus $0.025 per AI reply. There is no long-term contract.",
+          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $119.99 per month plus $0.025 per AI reply. There is no long-term contract.",
         },
         {
           question: "Can I import my contacts from another platform?",

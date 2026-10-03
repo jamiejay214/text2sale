@@ -190,6 +190,26 @@
   padding: 1px 6px;
   border-radius: 5px;
 }
+.workspace-ai-badge {
+  margin-left: auto;
+  border: 1px solid #587644;
+  border-radius: 6px;
+  padding: 2px 5px;
+  background: #203f2f;
+  color: #d9f779;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 9px;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.workspace-nav-group button.is-active .workspace-ai-badge {
+  border-color: #4d6a34;
+  background: #153b2a;
+  color: #d9f779;
+}
 .workspace-sidebar-footer {
   border-top: 1px solid #304b3c;
   margin-top: 15px;

@@ -444,7 +444,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "How much do AI replies cost in Text2Sale?",
         answer:
-          "On the Text2Sale + AI plan ($59.99 per month), AI replies cost $0.025 each, plus $0.012 per text segment sent.",
+          "On the Text2Sale + AI plan ($119.99 per month), AI replies cost $0.025 each, plus $0.012 per text segment sent.",
       },
     ],
     relatedSlugs: ["sales-rep-texting-kpis", "sms-marketing-roi-metrics", "writing-instructions-for-an-ai-appointment-setter", "appointment-reminder-text-templates"],

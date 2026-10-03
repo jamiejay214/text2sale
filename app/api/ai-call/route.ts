@@ -18,7 +18,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const PROFILE_COLUMNS =
-  "ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, " +
+  "ai_plan, free_ai_plan, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, " +
   "ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 // Telnyx voices we expose in the UI. Kept short on purpose — a long list
@@ -75,12 +75,23 @@ export async function GET(req: NextRequest) {
   if (profileRes.error || sessionsRes.error || !profileRes.data) {
     return NextResponse.json({error:"Could not load your AI calling settings. Please try again."},{status:503});
   }
+  const profile = profileRes.data as unknown as Record<string, unknown> & {
+    ai_plan?: boolean;
+    free_ai_plan?: boolean;
+  };
+  if (!profile.ai_plan && !profile.free_ai_plan) {
+    return NextResponse.json({
+      available: false,
+      reason: "plan_required",
+      message: "AI calling is included with the Text2Sale + AI plan ($119.99/month). Upgrade to train and activate your receptionist.",
+    });
+  }
   if (!process.env.TELNYX_API_KEY || !process.env.ANTHROPIC_API_KEY) {
     return NextResponse.json({available:false,message:"AI calling is still being connected. Contact support for availability."});
   }
   return NextResponse.json({
     available: true,
-    settings: settingsFromProfile(profileRes.data),
+    settings: settingsFromProfile(profile),
     voices: VOICES,
     pricing: {
       perMinute: AI_CALL_RATE_PER_MIN,
@@ -93,6 +104,22 @@ export async function GET(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authenticate(req);
   if (!auth.ok) return auth.response;
+
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  const { data: entitlement, error: entitlementError } = await supabase
+    .from("profiles")
+    .select("ai_plan, free_ai_plan")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  if (entitlementError || !entitlement) {
+    return NextResponse.json({ error: "Could not verify AI plan access." }, { status: 503 });
+  }
+  if (!entitlement.ai_plan && !entitlement.free_ai_plan) {
+    return NextResponse.json(
+      { error: "AI calling requires the Text2Sale + AI plan ($119.99/month)." },
+      { status: 403 },
+    );
+  }
 
   const body = await req.json().catch(() => null);
   if (!body || typeof body !== "object") {
@@ -173,7 +200,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: "Nothing to update" }, { status: 400 });
   }
 
-  const supabase = createClient(supabaseUrl, supabaseKey);
   const { data, error } = await supabase
     .from("profiles")
     .update(update)

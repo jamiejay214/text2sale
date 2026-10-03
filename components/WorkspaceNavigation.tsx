@@ -24,6 +24,7 @@ import {
   Menu,
   X,
   ArrowUpRight,
+  LockKeyhole,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 
@@ -52,6 +53,7 @@ type Props = {
   onSearch: () => void;
   onLogout: () => void;
   owner: boolean;
+  aiAccess: boolean;
   onAdmin: () => void;
 };
 
@@ -62,8 +64,8 @@ const groups = [
       { tab: "overview", label: "Overview", icon: LayoutDashboard },
       { tab: "conversations", label: "Conversations", icon: MessageSquare },
       { tab: "calls", label: "Calling", icon: Phone },
-      { tab: "settings", sub: "ai", label: "AI texting", icon: Sparkles },
-      { tab: "aicalls", label: "AI receptionist", icon: Phone },
+      { tab: "settings", sub: "ai", label: "AI texting", icon: Sparkles, aiOnly: true },
+      { tab: "aicalls", label: "AI receptionist", icon: Phone, aiOnly: true },
       { tab: "campaigns", label: "Campaigns", icon: Megaphone },
     ],
   },
@@ -161,6 +163,7 @@ export default function WorkspaceNavigation(props: Props) {
               <p>{group.label}</p>
               {group.items.map((item) => {
                 const sub = "sub" in item ? item.sub : undefined;
+                const locked = "aiOnly" in item && item.aiOnly && !props.aiAccess;
                 const active =
                   props.activeTab === item.tab &&
                   (!sub || props.settingsTab === sub);
@@ -178,6 +181,7 @@ export default function WorkspaceNavigation(props: Props) {
                         {props.unread > 99 ? "99+" : props.unread}
                       </b>
                     )}
+                    {locked && <b className="workspace-ai-badge"><LockKeyhole size={10} /> Upgrade</b>}
                   </button>
                 );
               })}
@@ -209,7 +213,7 @@ export default function WorkspaceNavigation(props: Props) {
           </button>
           <span>
             Workspace <span className="workspace-divider">/</span>{" "}
-            <strong>{selected?.label || "Settings"}</strong>
+            <strong>{selected?.label || (props.settingsTab === "upgrade" ? "Upgrade to AI" : "Settings")}</strong>
           </span>
         </div>
         <div className="workspace-topbar-actions">

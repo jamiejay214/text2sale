@@ -163,6 +163,7 @@ export type OptOutSettings = {
   companyName: string;
   confirmOptOut: boolean;
   autoMarkDnc: boolean;
+  firstMessageText?: string;
 };
 
 export type Plan = {

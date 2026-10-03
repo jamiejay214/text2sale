@@ -164,7 +164,27 @@ function Dialer({ profile, onNavigate }: Props) {
     Promise.all([
       fetchContactsPage(profile.id, { pageSize: 100 }),
       supabase.from("calls").select("id,contact_id,to_number,direction,status,duration_seconds,outcome,started_at").eq("user_id", profile.id).order("started_at", { ascending: false }).limit(30),
-    ]).then(([contactPage, callResult]) => { setContacts(contactPage.rows.filter((contact) => contact.phone && !contact.dnc)); setHistory((callResult.data || []) as CallRow[]); });
+    ]).then(([contactPage, callResult]) => {
+      const eligibleContacts = contactPage.rows.filter((contact) => contact.phone && !contact.dnc);
+      setContacts(eligibleContacts);
+      setHistory((callResult.data || []) as CallRow[]);
+      try {
+        const stored = window.sessionStorage.getItem("t2s_call_lead");
+        if (stored) {
+          const lead = JSON.parse(stored) as { contactId?: string; phone?: string };
+          const contact = eligibleContacts.find((item) => item.id === lead.contactId || item.phone === lead.phone);
+          if (contact) {
+            setActiveContact(contact);
+            setNumber(contact.phone);
+          } else if (lead.phone) {
+            setNumber(lead.phone);
+          }
+          window.sessionStorage.removeItem("t2s_call_lead");
+        }
+      } catch {
+        window.sessionStorage.removeItem("t2s_call_lead");
+      }
+    });
     if (CALLING_ENABLED) authFetch("/api/telnyx/webrtc-token").then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => response.ok ? setToken(data.token) : setNotice(data.error || "Browser calling is unavailable."));
   }, [profile.id]);
 

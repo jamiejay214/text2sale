@@ -81,7 +81,7 @@ export default function SmsCrmForInsuranceAgentsPage() {
         },
         {
           question: "What does Text2Sale cost for an insurance agent?",
-          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $59.99 per month plus $0.025 per AI reply, and adds AI replies and appointment booking.",
+          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $119.99 per month plus $0.025 per AI reply, and adds AI replies and appointment booking.",
         },
       ]}
       relatedPages={[

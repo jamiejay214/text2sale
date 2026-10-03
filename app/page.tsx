@@ -71,12 +71,12 @@ const softwareApplicationSchema = {
     {
       "@type": "Offer",
       name: "Text2Sale + AI",
-      price: "59.99",
+      price: "119.99",
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
       priceSpecification: {
         "@type": "UnitPriceSpecification",
-        price: "59.99",
+        price: "119.99",
         priceCurrency: "USD",
         unitText: "MONTH",
         billingDuration: "P1M",
@@ -93,6 +93,7 @@ const softwareApplicationSchema = {
     "Quiet hours sending windows",
     "Team management",
     "AI auto-replies and appointment booking",
+    "AI calling receptionist with qualification and booking",
   ],
 };
 

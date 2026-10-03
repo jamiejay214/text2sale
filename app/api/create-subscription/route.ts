@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { packageForPlan } from "@/lib/packages";
+import { PACKAGES, packageForPlan, planShape } from "@/lib/packages";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -60,11 +60,15 @@ export async function POST(req: NextRequest) {
     const pkg = packageForPlan(profile?.plan);
 
     // Get the user's plan price (default to $39.99 if not set)
-    const planPrice = profile?.plan?.price || 39.99;
+    const planPrice = pkg === "ai" ? PACKAGES.ai.price : profile?.plan?.price || PACKAGES.standard.price;
     const planPriceCents = Math.round(planPrice * 100);
     const messageCost = profile?.plan?.messageCost || 0.012;
 
     let customerId = profile?.stripe_customer_id;
+
+    if (pkg === "ai" && Number(profile?.plan?.price) !== PACKAGES.ai.price) {
+      await supabase.from("profiles").update({ plan: planShape("ai") }).eq("id", userId);
+    }
 
     // Create or reuse Stripe customer
     if (!customerId) {
