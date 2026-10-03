@@ -1,7 +1,11 @@
 import { createClient } from '@supabase/supabase-js'
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+// Keep static builds and design previews renderable when deployment secrets are
+// not mounted. Real environments always override these public client values.
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://build-placeholder.supabase.co"
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "build-placeholder-anon-key"
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
