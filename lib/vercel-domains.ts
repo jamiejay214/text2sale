@@ -37,6 +37,7 @@ export async function isDomainAvailable(domain: string): Promise<{
   available: boolean;
   premium?: boolean;
   price?: number;
+  renewalPrice?: number;
   period?: number;
 }> {
   const { token, teamId } = getAuth();
@@ -63,11 +64,14 @@ export async function isDomainAvailable(domain: string): Promise<{
   const price = (await priceRes.json().catch(() => ({}))) as {
     years?: number | string;
     purchasePrice?: number | string;
+    renewalPrice?: number | string;
   };
   const purchasePrice = Number(price.purchasePrice);
+  const renewalPrice = Number(price.renewalPrice);
   return {
     available: !!status.available,
     price: Number.isFinite(purchasePrice) ? purchasePrice : undefined,
+    renewalPrice: Number.isFinite(renewalPrice) ? renewalPrice : undefined,
     period: Number(price.years) || 1,
     // Vercel doesn't flag premium explicitly — anything $50+/yr on a
     // non-.com is usually premium pricing, worth surfacing to the caller.
@@ -232,7 +236,10 @@ export function suggestDomainBase(businessName: string): string {
     .split(/\s+/)
     .filter(Boolean);
   let base = words.join("");
-  if (base.length > 15) base = base.slice(0, 15);
+  // Keep the recognizable business name whenever possible. Domain labels may
+  // be up to 63 characters; 40 remains readable without turning a name such
+  // as "Johnson Health Quotes" into an unclear abbreviation.
+  if (base.length > 40) base = base.slice(0, 40);
   return base;
 }
 
@@ -256,18 +263,18 @@ export function suggestDomains(businessName: string, industry?: string | null): 
   const base = suggestDomainBase(businessName);
   if (!base) return [];
   const suffix = (industry && INDUSTRY_SUFFIX[industry]) || "";
-  // .com first (most credible with carriers). .info and similar bulk-spam
-  // TLDs are deliberately left out: carriers' URL filters treat them with
-  // suspicion, which defeats the point of a registered brand website.
+  // Compare the exact same business name across familiar extensions first.
+  // Low-trust bulk-spam TLDs stay excluded because they can hurt link
+  // deliverability and defeat the purpose of a registered brand website.
   const candidates = [
     `${base}.com`,
-    suffix ? `${base}${suffix}.com` : "",
-    `${base}.net`,
     `${base}.org`,
+    `${base}.net`,
+    `${base}.us`,
+    `${base}.co`,
+    suffix ? `${base}${suffix}.com` : "",
     `get${base}.com`,
     `${base}hq.com`,
-    `${base}.us`,
-    `${base}online.com`,
   ].filter(Boolean);
   return [...new Set(candidates)];
 }
