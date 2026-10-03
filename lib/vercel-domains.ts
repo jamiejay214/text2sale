@@ -41,10 +41,10 @@ export async function isDomainAvailable(domain: string): Promise<{
 }> {
   const { token, teamId } = getAuth();
   const [statusRes, priceRes] = await Promise.all([
-    fetch(withTeam(`${VERCEL_API}/v4/domains/status?name=${encodeURIComponent(domain)}`, teamId), {
+    fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/availability`, teamId), {
       headers: { Authorization: `Bearer ${token}` },
     }),
-    fetch(withTeam(`${VERCEL_API}/v4/domains/price?name=${encodeURIComponent(domain)}`, teamId), {
+    fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/price?years=1`, teamId), {
       headers: { Authorization: `Bearer ${token}` },
     }),
   ]);
@@ -54,15 +54,24 @@ export async function isDomainAvailable(domain: string): Promise<{
   if (statusRes.status === 401 || statusRes.status === 403 || priceRes.status === 401 || priceRes.status === 403) {
     throw new Error("Domain registrar credentials were rejected");
   }
+  if (!statusRes.ok || !priceRes.ok) {
+    const problem = !statusRes.ok ? statusRes : priceRes;
+    const json = (await problem.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(json.error?.message || `Domain registrar request failed (${problem.status})`);
+  }
   const status = (await statusRes.json().catch(() => ({}))) as { available?: boolean };
-  const price = (await priceRes.json().catch(() => ({}))) as { price?: number; period?: number };
+  const price = (await priceRes.json().catch(() => ({}))) as {
+    years?: number | string;
+    purchasePrice?: number | string;
+  };
+  const purchasePrice = Number(price.purchasePrice);
   return {
     available: !!status.available,
-    price: price.price,
-    period: price.period,
+    price: Number.isFinite(purchasePrice) ? purchasePrice : undefined,
+    period: Number(price.years) || 1,
     // Vercel doesn't flag premium explicitly — anything $50+/yr on a
     // non-.com is usually premium pricing, worth surfacing to the caller.
-    premium: (price.price || 0) >= 50,
+    premium: (Number.isFinite(purchasePrice) ? purchasePrice : 0) >= 50,
   };
 }
 
@@ -109,31 +118,31 @@ export interface BuyDomainArgs {
 
 export async function buyDomain(args: BuyDomainArgs): Promise<{
   domain: string;
-  orderId?: string;
-  verified?: boolean;
+  orderId: string;
 }> {
   const { token, teamId } = getAuth();
-  const res = await fetch(withTeam(`${VERCEL_API}/v5/domains/buy`, teamId), {
+  const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(args.domain)}/buy`, teamId), {
     method: "POST",
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      name: args.domain,
+      autoRenew: args.renew ?? true,
+      years: args.period ?? 1,
       expectedPrice: args.expectedPrice,
-      period: args.period ?? 1,
-      renew: args.renew ?? true,
-      country: args.country ?? "US",
-      orgName: args.orgName || undefined,
-      firstName: args.firstName,
-      lastName: args.lastName,
-      address1: args.address1,
-      city: args.city,
-      state: args.state,
-      postalCode: args.postalCode,
-      phone: args.phone,
-      email: args.email,
+      contactInformation: {
+        firstName: args.firstName,
+        lastName: args.lastName,
+        email: args.email,
+        phone: args.phone,
+        address1: args.address1,
+        city: args.city,
+        state: args.state,
+        zip: args.postalCode,
+        country: args.country ?? "US",
+        companyName: args.orgName || undefined,
+      },
     }),
   });
   const json = (await res.json()) as Record<string, unknown>;
@@ -144,11 +153,39 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
         : null) || `Vercel buy failed (${res.status})`;
     throw new Error(err);
   }
-  return {
-    domain: args.domain,
-    orderId: (json as { orderId?: string }).orderId,
-    verified: true,
+  const orderId = (json as { orderId?: string }).orderId;
+  if (!orderId) throw new Error("Vercel accepted the order but did not return an order ID");
+  return { domain: args.domain, orderId };
+}
+
+export async function getDomainOrder(orderId: string): Promise<{
+  status: "completed" | "failed" | "pending";
+  message?: string;
+}> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(
+    withTeam(`${VERCEL_API}/v1/registrar/orders/${encodeURIComponent(orderId)}`, teamId),
+    { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" },
+  );
+  const json = (await res.json().catch(() => ({}))) as {
+    status?: string;
+    error?: { message?: string } | string;
+    domains?: Array<{ status?: string; error?: { message?: string } | string }>;
   };
+  if (!res.ok) {
+    const message = typeof json.error === "string" ? json.error : json.error?.message;
+    throw new Error(message || `Domain order check failed (${res.status})`);
+  }
+  const raw = String(json.status || json.domains?.[0]?.status || "").toLowerCase();
+  if (["completed", "complete", "succeeded", "success", "active"].includes(raw)) return { status: "completed" };
+  if (["failed", "failure", "cancelled", "canceled", "rejected"].includes(raw)) {
+    const error = json.domains?.[0]?.error ?? json.error;
+    return {
+      status: "failed",
+      message: typeof error === "string" ? error : error?.message || "Domain registration failed",
+    };
+  }
+  return { status: "pending" };
 }
 
 // ── Attach the purchased domain to the text2sale project ────────────────
