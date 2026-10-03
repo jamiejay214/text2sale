@@ -25,6 +25,7 @@ import {
   X,
   ArrowUpRight,
 } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export type WorkspaceTab =
   | "overview"
@@ -136,10 +137,7 @@ export default function WorkspaceNavigation(props: Props) {
         aria-label="Workspace navigation"
       >
         <a className="workspace-brand" href="/dashboard">
-          <span className="brand-symbol">
-            <MessageSquare size={19} />
-          </span>
-          text2sale<span className="brand-dot">.</span>
+          <Logo size="sm" />
         </a>
         <button
           className="workspace-mobile-close"

@@ -66,6 +66,56 @@ export async function fetchContacts(userId: string): Promise<Contact[]> {
   return all;
 }
 
+export type PageResult<T> = {
+  rows: T[];
+  total: number;
+  hasMore: boolean;
+};
+
+/**
+ * Lightweight contact page for interactive workspace screens.
+ *
+ * The legacy dashboard intentionally fetched every contact (up to 50k) on
+ * mount. That made a simple input update compete with a very large in-memory
+ * array. New workspace screens use this function and only keep the visible
+ * page in React state.
+ */
+export async function fetchContactsPage(
+  userId: string,
+  options: { page?: number; pageSize?: number; search?: string } = {},
+): Promise<PageResult<Contact>> {
+  const page = Math.max(0, options.page ?? 0);
+  const pageSize = Math.min(200, Math.max(20, options.pageSize ?? 50));
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  let query = supabase
+    .from("contacts")
+    .select(
+      "id,user_id,first_name,last_name,phone,email,city,state,tags,notes,dnc,campaign,address,zip,lead_source,quote,policy_id,timeline,household_size,date_of_birth,age,created_at",
+      { count: "exact" },
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  const search = (options.search || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9+@.\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+  if (search) {
+    query = query.or(
+      `first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`,
+    );
+  }
+
+  const { data, error, count } = await query;
+  if (error) throw error;
+  const rows = (data || []) as Contact[];
+  const total = count || 0;
+  return { rows, total, hasMore: from + rows.length < total };
+}
+
 export async function insertContact(
   contact: Omit<Contact, "id" | "created_at">
 ): Promise<Contact | null> {
@@ -177,6 +227,53 @@ export async function fetchConversations(userId: string): Promise<Conversation[]
     if (page > 50) break; // safety cap
   }
   return all;
+}
+
+/** Paginated conversation summaries. Message bodies are fetched on demand. */
+export async function fetchConversationsPage(
+  userId: string,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<PageResult<Conversation>> {
+  const page = Math.max(0, options.page ?? 0);
+  const pageSize = Math.min(100, Math.max(20, options.pageSize ?? 50));
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  const { data, error, count } = await supabase
+    .from("conversations")
+    .select(
+      "id,user_id,contact_id,preview,unread,last_message_at,starred,created_at,from_number,ai_enabled,agent_enabled,ai_skipped_reason",
+      { count: "exact" },
+    )
+    .eq("user_id", userId)
+    .order("last_message_at", { ascending: false })
+    .range(from, to);
+  if (error) throw error;
+  const rows = (data || []) as Conversation[];
+  const total = count || 0;
+  return { rows, total, hasMore: from + rows.length < total };
+}
+
+/** Latest messages for one open thread, returned oldest-to-newest for chat. */
+export async function fetchMessagesPage(
+  conversationId: string,
+  options: { page?: number; pageSize?: number } = {},
+): Promise<PageResult<Message>> {
+  const page = Math.max(0, options.page ?? 0);
+  const pageSize = Math.min(200, Math.max(20, options.pageSize ?? 80));
+  const from = page * pageSize;
+  const to = from + pageSize - 1;
+  const { data, error, count } = await supabase
+    .from("messages")
+    .select("id,conversation_id,direction,body,status,created_at,from_number", {
+      count: "exact",
+    })
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .range(from, to);
+  if (error) throw error;
+  const rows = ((data || []) as Message[]).reverse();
+  const total = count || 0;
+  return { rows, total, hasMore: from + rows.length < total };
 }
 
 export async function fetchMessages(conversationId: string): Promise<Message[]> {

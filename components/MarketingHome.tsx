@@ -13,7 +13,10 @@ import {
   ShieldCheck,
   Plug,
   Kanban,
+  PhoneCall,
+  Workflow,
 } from "lucide-react";
+import Logo from "@/components/Logo";
 
 export default function MarketingHome({
   onLogin,
@@ -27,10 +30,7 @@ export default function MarketingHome({
       <section className="marketing-hero">
         <nav className="marketing-nav">
           <Link href="/" className="workspace-brand">
-            <span className="brand-symbol">
-              <MessageSquare size={20} />
-            </span>
-            text2sale<span className="brand-dot">.</span>
+            <Logo size="sm" />
           </Link>
           <div className="marketing-nav-links">
             <a href="#product">Platform</a>
@@ -48,19 +48,18 @@ export default function MarketingHome({
           <div className="marketing-hero-copy">
             <div className="marketing-eyebrow">
               <span />
-              YOUR NEXT CONVERSATION STARTS HERE
+              THE AI CONVERSATION CRM FOR SALES TEAMS
             </div>
             <h1>
-              Less chasing.
+              Every lead.
               <br />
-              More connecting.
+              Every channel.
               <br />
-              <em>All Text2Sale.</em>
+              <em>One next move.</em>
             </h1>
             <p>
-              Turn a list of leads into a day full of opportunities. Your texts,
-              follow-ups, AI assistant, and pipeline—together in one beautifully
-              simple workspace.
+              Text, call, automate follow-up, train an AI assistant, and move
+              every opportunity forward—from one fast, focused command center.
             </p>
             <div className="marketing-hero-actions">
               <button className="marketing-button lime" onClick={onSignup}>
@@ -71,8 +70,12 @@ export default function MarketingHome({
               </a>
             </div>
             <div className="marketing-hero-note">
-              <Check size={15} /> One workspace. Every stage of the
-              conversation.
+              <Check size={15} /> Guided 10DLC setup · No long-term contract · Secure Stripe billing
+            </div>
+            <div className="marketing-proof-grid">
+              <div><Upload size={15} /><span><strong>Import</strong><small>Map any CSV</small></span></div>
+              <div><Workflow size={15} /><span><strong>Automate</strong><small>Text + wait steps</small></span></div>
+              <div><PhoneCall size={15} /><span><strong>Connect</strong><small>Text and call</small></span></div>
             </div>
           </div>
           <div
@@ -176,6 +179,20 @@ export default function MarketingHome({
           <b>AI follow-ups</b>
           <b>Campaigns & automation</b>
           <b>Your entire pipeline</b>
+        </div>
+      </section>
+      <section className="marketing-command-section" aria-label="Text2Sale platform overview">
+        <div className="marketing-command-heading">
+          <small>FROM RAW LEAD TO REAL CONVERSATION</small>
+          <h2>A complete sales motion.<br /><em>Not another tab to manage.</em></h2>
+          <p>Bring leads in, decide the right follow-up, and keep the human connection at the center—without stitching together five different tools.</p>
+        </div>
+        <div className="marketing-command-flow">
+          {[
+            { number: "01", title: "Capture", body: "CSV imports, lead-vendor webhooks, custom field mapping, and duplicate checks." },
+            { number: "02", title: "Engage", body: "Two-way texting, browser calling, power queues, campaigns, and trained AI replies." },
+            { number: "03", title: "Convert", body: "Pipeline stages, shared scheduling, Google Calendar, and clear conversation history." },
+          ].map((item) => <article key={item.number}><span>{item.number}</span><h3>{item.title}</h3><p>{item.body}</p><i><ArrowRight size={16} /></i></article>)}
         </div>
       </section>
       <section id="product" className="marketing-section">
