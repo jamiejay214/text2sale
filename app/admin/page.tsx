@@ -1115,7 +1115,7 @@ export default function AdminPage() {
   };
 
   return (
-    <main className="crm-theme t2s-light relative min-h-screen overflow-hidden bg-zinc-950 text-white">
+    <main className="crm-theme admin-console relative min-h-screen overflow-hidden bg-zinc-950 text-white">
       {/* Ambient gradient mesh — gives the admin surface a premium depth
           without being distracting. Pinned to the top of the page so it
           fades out as you scroll into tables and dense content. */}
