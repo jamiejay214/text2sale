@@ -11,6 +11,7 @@ import { notFound } from "next/navigation";
 import { fetchBusiness, getBusinessContact, getBusinessName, type BusinessProfile } from "./biz-fetch";
 import { getIndustry, type Industry } from "./industries";
 import { isBrandedHost } from "./custom-domains";
+import { normalizeSiteConfig, type BusinessSiteConfig } from "./site-config";
 
 /**
  * When the policy and terms templates last changed. These pages used to print
@@ -28,6 +29,7 @@ export type SiteContext = {
   industry: Industry;
   /** The customer's own description, or the industry default. */
   description: string;
+  config: BusinessSiteConfig;
   /** True when this request came in on the customer's own domain. */
   onOwnDomain: boolean;
   /** Build an href to one of this business's pages. */
@@ -47,6 +49,12 @@ export async function loadSite(slug: string, opts: { required?: boolean } = {}):
   const onOwnDomain = isBrandedHost(host);
   const name = getBusinessName(biz);
   const industry = getIndustry(biz.industry);
+  const config = normalizeSiteConfig(biz.a2p_registration?.siteConfig, {
+    businessName: name,
+    industry: biz.industry,
+    description: biz.business_description,
+    logoUrl: biz.business_logo_url,
+  });
   const prefix = onOwnDomain ? "" : `/biz/${slug}`;
   const origin = biz.custom_domain ? `https://${biz.custom_domain}` : `https://text2sale.com/biz/${slug}`;
 
@@ -56,7 +64,8 @@ export async function loadSite(slug: string, opts: { required?: boolean } = {}):
     name,
     contact: getBusinessContact(biz),
     industry,
-    description: biz.business_description?.trim() || industry.defaultDescription(name),
+    description: config.subheadline,
+    config,
     onOwnDomain,
     href: (path) => `${prefix}${path}` || "/",
     canonical: (path) => `${origin}${path}`,

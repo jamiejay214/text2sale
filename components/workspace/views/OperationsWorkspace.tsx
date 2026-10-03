@@ -11,6 +11,7 @@ const BusinessWorkspace = dynamic(() => import("./operations/BusinessWorkspace")
 const UploadWorkspace = dynamic(() => import("./operations/UploadWorkspace"), { loading: ScreenLoading });
 const SettingsWorkspace = dynamic(() => import("./operations/SettingsWorkspace"), { loading: ScreenLoading });
 const LearnWorkspace = dynamic(() => import("./operations/LearnWorkspace"), { loading: ScreenLoading });
+const WebsiteWorkspace = dynamic(() => import("./WebsiteWorkspace"), { loading: ScreenLoading });
 
 function ScreenLoading() {
   return <div className="v2-loading"><span /><strong>Opening workspace</strong><small>Loading only this feature.</small></div>;
@@ -22,5 +23,6 @@ export default function OperationsWorkspace(props: Props) {
   if (props.tab === "upload") return <UploadWorkspace {...props} />;
   if (props.tab === "settings") return <SettingsWorkspace {...props} />;
   if (props.tab === "learn") return <LearnWorkspace {...props} />;
+  if (props.tab === "website") return <WebsiteWorkspace {...props} />;
   return <BusinessWorkspace {...props} mode={props.tab as "pipeline" | "appointments" | "templates"} />;
 }

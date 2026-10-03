@@ -52,7 +52,7 @@ import {
   submitCampaign,
   telnyxRequest,
 } from "./telnyx-10dlc";
-import { MAIN_SITE, getUniqueSlug, probeSite, siteBase, siteUrls, toSlug, type Db } from "./business-site";
+import { MAIN_SITE, getUniqueSlug, probeComplianceSite, probeSite, siteBase, siteUrls, toSlug, type Db } from "./business-site";
 import { ensureDomainAttached, purchaseDomainForUser } from "./domain-purchase";
 import { sendAdminAlertSMS } from "./admin-alert";
 
@@ -258,12 +258,13 @@ type WebsiteOutcome =
  */
 async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcome> {
   const reg = profile.a2p_registration || {};
-  if (reg.siteLiveAt && reg.website) return { ok: true };
+  if (reg.siteLiveAt && reg.website && Number(reg.siteVerifiedVersion || 0) >= 2) return { ok: true };
 
   const inStage = hoursSince(profile.messaging_status_at);
   const patchLive = async (website: string) => {
     reg.website = website;
     reg.siteLiveAt = new Date().toISOString();
+    reg.siteVerifiedVersion = 2;
     profile.a2p_registration = { ...reg };
   };
 
@@ -271,7 +272,8 @@ async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcom
   if (reg.websiteMode === "own") {
     const url = reg.website;
     if (!url) return { ok: false, action: "reject", message: "Add your website address to continue." };
-    const probe = await probeSite(url);
+    const businessName = String(reg.businessName || "");
+    const probe = await probeSite(url, businessName || undefined);
     if (!probe.live) {
       return {
         ok: false,
@@ -281,6 +283,20 @@ async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcom
         alert:
           inStage > SITE_WAIT_ALERT_HOURS
             ? { code: "site_down", message: `Customer's website ${url} isn't reachable: ${probe.reason}` }
+            : undefined,
+      };
+    }
+    const consentBase = `${MAIN_SITE}/biz/${profile.business_slug || ""}`;
+    const compliance = await probeComplianceSite(consentBase, businessName);
+    if (!compliance.live) {
+      return {
+        ok: false,
+        action: "hold",
+        minutes: 3,
+        note: compliance.reason,
+        alert:
+          inStage > SITE_WAIT_ALERT_HOURS
+            ? { code: "site_compliance", message: `Hosted consent pages are not ready: ${compliance.reason}` }
             : undefined,
       };
     }
@@ -307,6 +323,8 @@ async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcom
     await refresh(db, profile);
     if (!result.ok) {
       switch (result.code) {
+        case "pending":
+          return { ok: false, action: "hold", minutes: 2, note: result.message };
         case "insufficient":
           return { ok: false, action: "funds", note: result.message };
         case "not_configured":
@@ -340,7 +358,7 @@ async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcom
 
   const domain = profile.custom_domain!;
   const name = String(profile.a2p_registration?.businessName || "");
-  const probe = await probeSite(`https://${domain}/privacy-policy`, name || undefined);
+  const probe = await probeComplianceSite(`https://${domain}`, name);
   if (!probe.live) {
     // A purchase can succeed while the attach failed, and a domain the
     // customer already owned needs attaching too. Both are safe to repeat.

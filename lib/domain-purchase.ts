@@ -9,7 +9,7 @@
 // charge so a later attempt resumes the purchase instead of charging a second
 // time.
 
-import { attachDomainToProject, buyDomain, isDomainAvailable, isDomainOwned } from "./vercel-domains";
+import { attachDomainToProject, buyDomain, getDomainOrder, isDomainAvailable, isDomainOwned } from "./vercel-domains";
 import { getUniqueSlug, isValidDomain, normalizeDomain, toSlug, type Db } from "./business-site";
 
 /** What we add to the registrar price, covering renewal and handling. */
@@ -30,6 +30,7 @@ export type DomainPurchaseFailure = {
     | "price_changed"
     | "missing_details"
     | "insufficient"
+    | "pending"
     | "registrar"
     | "not_configured";
   message: string;
@@ -51,9 +52,10 @@ export type DomainPurchaseSuccess = {
 
 type Marker = {
   domain: string;
-  state: "charged" | "bought" | "refunded";
+  state: "charged" | "ordered" | "bought" | "refunded";
   charged: number;
   at: string;
+  orderId?: string;
 };
 
 type Reg = Record<string, unknown> & { domainPurchase?: Marker };
@@ -102,7 +104,7 @@ export async function purchaseDomainForUser(
 
   const reg = ((profile.a2p_registration as Reg | null) || {}) as Reg & Record<string, string | undefined>;
   const marker = reg.domainPurchase && reg.domainPurchase.domain === domain ? reg.domainPurchase : null;
-  const resuming = marker?.state === "charged" || marker?.state === "bought";
+  const resuming = marker?.state === "charged" || marker?.state === "ordered" || marker?.state === "bought";
 
   // ── Registrant details (before any money moves) ─────────────────────────
   // ICANN requires real WHOIS contact details, and they must be the
@@ -134,7 +136,35 @@ export async function purchaseDomainForUser(
 
   // ── Quote ───────────────────────────────────────────────────────────────
   let quote: Awaited<ReturnType<typeof isDomainAvailable>> | null = null;
-  const owned = resuming ? await isDomainOwned(domain).catch(() => false) : false;
+  let owned = marker?.state === "bought";
+
+  // Registrar purchases are asynchronous. Once an order ID exists, check it
+  // instead of attempting another purchase or re-quoting a now-reserved name.
+  if (marker?.state === "ordered" && marker.orderId) {
+    let order: Awaited<ReturnType<typeof getDomainOrder>>;
+    try {
+      order = await getDomainOrder(marker.orderId);
+    } catch (error) {
+      return {
+        ok: false,
+        code: "pending",
+        message: error instanceof Error ? error.message : "Domain registration is still processing.",
+        price: marker.charged,
+      };
+    }
+    if (order.status === "pending") {
+      return { ok: false, code: "pending", message: "Domain registration is still processing.", price: marker.charged };
+    }
+    if (order.status === "failed") {
+      await refund(db, userId, marker.charged, `domain order failed: ${order.message || "registrar rejected order"}`);
+      await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "refunded" } });
+      return { ok: false, code: "registrar", message: order.message || "Domain registration failed" };
+    }
+    owned = true;
+    await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "bought" } });
+  } else if (marker?.state === "charged") {
+    owned = await isDomainOwned(domain).catch(() => false);
+  }
   if (!owned) {
     try {
       quote = await isDomainAvailable(domain);
@@ -144,6 +174,15 @@ export async function purchaseDomainForUser(
     }
     if (!quote.available || quote.price == null) {
       if (resuming && marker?.state === "charged") {
+        const chargedMinutes = Math.max(0, (Date.now() - new Date(marker.at).getTime()) / 60_000);
+        if (chargedMinutes < 10) {
+          return {
+            ok: false,
+            code: "pending",
+            message: "The registrar is confirming your domain order.",
+            price: marker.charged,
+          };
+        }
         // Charged earlier, and the name has since gone. Refund below via the
         // generic failure path rather than leaving the customer out of pocket.
         await refund(db, userId, marker.charged, "domain no longer available");
@@ -192,20 +231,63 @@ export async function purchaseDomainForUser(
   }
 
   // ── Register ────────────────────────────────────────────────────────────
+  let purchaseOrderId = marker?.orderId;
   if (!owned) {
+    let order: Awaited<ReturnType<typeof buyDomain>>;
     try {
-      await buyDomain({ domain, expectedPrice: quote!.price!, ...registrant, phone });
+      order = await buyDomain({ domain, expectedPrice: quote!.price!, ...registrant, phone });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
+      if (/fetch failed|network|timeout|timed out|abort/i.test(msg)) {
+        return {
+          ok: false,
+          code: "pending",
+          message: "The registrar is confirming your domain order.",
+          price: chargedAmount,
+        };
+      }
       await refund(db, userId, chargedAmount, `domain purchase failed: ${msg}`);
       await patchRegistration(db, userId, {
         domainPurchase: { domain, state: "refunded", charged: chargedAmount, at: new Date().toISOString() } satisfies Marker,
       });
       return { ok: false, code: "registrar", message: msg };
     }
+    purchaseOrderId = order.orderId;
+    const orderedMarker: Marker = {
+      domain,
+      state: "ordered",
+      charged: chargedAmount,
+      at: new Date().toISOString(),
+      orderId: order.orderId,
+    };
+    await patchRegistration(db, userId, { domainPurchase: orderedMarker });
+    let status: Awaited<ReturnType<typeof getDomainOrder>>;
+    try {
+      status = await getDomainOrder(order.orderId);
+    } catch {
+      // The purchase request already returned an order ID, so a failed status
+      // lookup is uncertain. Keep the charge/order and retry; never refund an
+      // order that may already be completing at the registrar.
+      return { ok: false, code: "pending", message: "Domain registration is still processing.", price: chargedAmount };
+    }
+    if (status.status === "pending") {
+      return { ok: false, code: "pending", message: "Domain registration is still processing.", price: chargedAmount };
+    }
+    if (status.status === "failed") {
+      await refund(db, userId, chargedAmount, `domain order failed: ${status.message || "registrar rejected order"}`);
+      await patchRegistration(db, userId, { domainPurchase: { ...orderedMarker, state: "refunded" } });
+      return { ok: false, code: "registrar", message: status.message || "Domain registration failed" };
+    }
+    owned = true;
   }
   await patchRegistration(db, userId, {
-    domainPurchase: { domain, state: "bought", charged: chargedAmount, at: new Date().toISOString() } satisfies Marker,
+    domainPurchase: {
+      domain,
+      state: "bought",
+      charged: chargedAmount,
+      at: new Date().toISOString(),
+      orderId: purchaseOrderId,
+    } satisfies Marker,
   });
 
   // Registered and paid for. An attach failure from here is recoverable and
@@ -220,17 +302,19 @@ export async function purchaseDomainForUser(
   }
   await db.from("profiles").update({ custom_domain: domain, business_slug: slug }).eq("id", userId);
 
-  if (!resuming) {
-    // Show the charge in the customer's history, like the number purchase does.
-    const { data: current } = await db.from("profiles").select("usage_history").eq("id", userId).single();
-    const usage = Array.isArray(current?.usage_history) ? (current!.usage_history as unknown[]) : [];
+  // Show the charge in the customer's history exactly once, including when
+  // an asynchronous order completed on a later activation pass.
+  const { data: current } = await db.from("profiles").select("usage_history").eq("id", userId).single();
+  const usage = Array.isArray(current?.usage_history) ? (current!.usage_history as Array<Record<string, unknown>>) : [];
+  const historyId = `domain_${domain}`;
+  if (!usage.some((entry) => entry.id === historyId)) {
     await db
       .from("profiles")
       .update({
         usage_history: [
           ...usage,
           {
-            id: `domain_${Date.now()}`,
+            id: historyId,
             type: "charge",
             amount: chargedAmount,
             description: `Website domain ${domain} (1 year)`,

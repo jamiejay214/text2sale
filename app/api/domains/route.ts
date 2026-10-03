@@ -44,6 +44,7 @@ const FAILURE_STATUS: Record<DomainPurchaseFailure["code"], number> = {
   invalid: 400,
   missing_details: 400,
   insufficient: 402,
+  pending: 202,
   unavailable: 409,
   price_changed: 409,
   not_configured: 503,
@@ -93,13 +94,19 @@ export async function POST(req: NextRequest) {
     );
 
     const suggestions = results.filter((r) => r.available && r.price != null && !r.premium).slice(0, 6);
+    if (registrarProblem && suggestions.length === 0) {
+      console.error("[domains] registrar unavailable:", registrarProblem);
+    }
     return NextResponse.json({
       success: true,
       suggestions,
       // True when the registrar isn't configured or rejected us: the screen
       // then falls back to "I already own a domain".
       registrarAvailable: !(registrarProblem && suggestions.length === 0),
-      registrarProblem: suggestions.length === 0 ? registrarProblem : null,
+      registrarProblem:
+        suggestions.length === 0 && registrarProblem
+          ? "Automatic domain registration is not connected yet. Please try again shortly."
+          : null,
     });
   }
 
@@ -141,6 +148,15 @@ export async function POST(req: NextRequest) {
 
     const result = await purchaseDomainForUser(createServiceClient(), auth.user.id, domain, agreedPrice);
     if (!result.ok) {
+      if (result.code === "pending") {
+        return NextResponse.json({
+          success: true,
+          pending: true,
+          domain,
+          charged: result.price ?? agreedPrice,
+          message: result.message,
+        }, { status: 202 });
+      }
       return NextResponse.json(
         {
           success: false,

@@ -99,6 +99,7 @@ function DomainPicker({
   const [loading, setLoading] = useState(false);
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [registrarAvailable, setRegistrarAvailable] = useState(true);
+  const [registrarProblem, setRegistrarProblem] = useState("");
   const [error, setError] = useState("");
   const [useOwned, setUseOwned] = useState(!!values.customDomain);
   const searchedFor = useRef("");
@@ -112,6 +113,7 @@ function DomainPicker({
     searchedFor.current = key;
     setLoading(true);
     setError("");
+    setRegistrarProblem("");
     try {
       const res = await authFetch("/api/domains", {
         method: "POST",
@@ -125,7 +127,7 @@ function DomainPicker({
       }
       setSuggestions(data.suggestions || []);
       setRegistrarAvailable(data.registrarAvailable !== false);
-      if (data.registrarAvailable === false) setUseOwned(true);
+      setRegistrarProblem(data.registrarAvailable === false ? data.registrarProblem || "Automatic domain registration is temporarily unavailable." : "");
       // Keep a previous choice only if it is still on offer.
       if (values.domainRequest && !(data.suggestions || []).some((s: Suggestion) => s.domain === values.domainRequest!.domain)) {
         onChange({ domainRequest: null });
@@ -214,20 +216,21 @@ function DomainPicker({
         </div>
       )}
 
-      {registrarAvailable || useOwned ? (
-        <button
-          type="button"
-          onClick={() => {
-            setUseOwned(!useOwned);
-            onChange({ domainRequest: null, customDomain: "" });
-          }}
-          className="text-[11px] text-zinc-400 underline hover:text-zinc-200"
-        >
-          {useOwned && registrarAvailable ? "← Pick an address for me instead" : !useOwned ? "I already own a domain" : ""}
-        </button>
-      ) : null}
-      {!registrarAvailable && (
-        <p className="text-[11px] text-amber-300/80">Automatic address registration isn&apos;t available right now, so please use a domain you already own.</p>
+      <button
+        type="button"
+        onClick={() => {
+          setUseOwned(!useOwned);
+          onChange({ domainRequest: null, customDomain: "" });
+        }}
+        className="text-[11px] text-zinc-400 underline hover:text-zinc-200"
+      >
+        {useOwned ? "← Let Text2Sale find and buy my address" : "I already own a domain"}
+      </button>
+      {!registrarAvailable && !useOwned && (
+        <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3 text-[11px] leading-relaxed text-amber-200">
+          <strong className="block text-amber-100">We couldn&apos;t reach the domain registrar.</strong>
+          Your choice has not changed and nothing was purchased. {registrarProblem || "Try Search again in a moment."}
+        </div>
       )}
     </div>
   );

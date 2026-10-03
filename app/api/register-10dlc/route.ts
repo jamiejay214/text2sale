@@ -5,6 +5,7 @@ import { validateBusinessDetails } from "@/lib/business-details";
 import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 import { getUniqueSlug, toSlug } from "@/lib/business-site";
+import { publishSiteConfig } from "@/lib/site-config";
 
 // ── Start texting activation ───────────────────────────────────────────────
 //
@@ -164,6 +165,12 @@ export async function POST(req: NextRequest) {
         (await getUniqueSlug(db, toSlug(d.businessName) || `site-${userId.slice(0, 6)}`, userId));
 
       const now = new Date().toISOString();
+      const siteConfig = publishSiteConfig(reg.siteConfig, {
+        businessName: d.businessName,
+        industry: d.industry,
+        description: d.businessDescription,
+        logoUrl: null,
+      });
       const next: Registration = {
         ...reg,
         // Brand and campaign state: carried over when reusing the brand,
@@ -203,6 +210,8 @@ export async function POST(req: NextRequest) {
         helpMessage: "",
         hasEmbeddedLinks: true,
         hasEmbeddedPhone: true,
+        siteConfig,
+        siteVerifiedVersion: 0,
         awaiting: null,
         adminAlert: null,
         errors: [],
