@@ -152,6 +152,10 @@ export type A2PRegistration = {
   campaignAttempt?: number;
   /** How many brands have been submitted for this account (each costs a fee). */
   brandSubmissions?: number;
+  /** Customer-editable presentation for the public business website. */
+  siteConfig?: import("./site-config").BusinessSiteConfig | null;
+  /** Bumped when the homepage, opt-in, privacy, and terms pages pass live checks. */
+  siteVerifiedVersion?: number;
 };
 
 export type OptOutSettings = {
