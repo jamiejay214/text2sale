@@ -970,6 +970,19 @@
   border-radius: 20px;
   padding: 35px;
 }
+.recovery-brand {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #fff;
+}
+.recovery-brand .brand-symbol {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #567159;
+  background: #214b37;
+  color: #d6f584;
+}
 .recovery-card h1 {
   font-size: 28px;
   font-weight: 600;
