@@ -25,6 +25,7 @@ import {
   X,
   ArrowUpRight,
   LockKeyhole,
+  Globe2,
 } from "lucide-react";
 import Logo from "@/components/Logo";
 
@@ -39,6 +40,7 @@ export type WorkspaceTab =
   | "appointments"
   | "upload"
   | "templates"
+  | "website"
   | "settings"
   | "learn";
 type Props = {
@@ -76,6 +78,7 @@ const groups = [
       { tab: "upload", label: "Lead imports", icon: Upload },
       { tab: "pipeline", label: "Pipeline", icon: Kanban },
       { tab: "appointments", label: "Calendar", icon: CalendarDays },
+      { tab: "website", label: "Website", icon: Globe2 },
       { tab: "templates", label: "Message templates", icon: FileText },
     ],
   },
