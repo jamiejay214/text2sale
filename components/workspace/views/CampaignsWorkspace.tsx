@@ -238,14 +238,14 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
         .eq("user_id", profile.id)
         .in("id", pendingContactIds);
       if (assignmentError) {
-        setNotice({ tone: "error", text: "The workflow was saved, but the selected leads could not be assigned. Use the assignment bar to try again." });
+        setNotice({ tone: "error", text: "The campaign was saved, but the selected leads could not be added. Use the assignment bar to try again." });
         return;
       }
       const count = pendingContactIds.length;
       window.sessionStorage.removeItem("t2s_campaign_contact_ids");
       setPendingContactIds([]);
       setAssignOnCreate(false);
-      setNotice({ tone: "ok", text: `Workflow saved and ${count} selected lead${count === 1 ? "" : "s"} assigned.` });
+      setNotice({ tone: "ok", text: `Campaign saved. ${count} selected lead${count === 1 ? " was" : "s were"} added.` });
       return;
     }
     setNotice({ tone: "ok", text: "Campaign and follow-up workflow saved." });
@@ -351,7 +351,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       {pendingContactIds.length > 0 && (
         <div className="v2-campaign-handoff">
           <span><Users size={17} /><strong>{pendingContactIds.length} selected lead{pendingContactIds.length === 1 ? "" : "s"}</strong> from Conversations</span>
-          <span>{assignOnCreate ? "Build and save this new workflow. These leads will be assigned automatically." : selected ? `Ready to move into ${selected.name}.` : "Choose a campaign, then assign them together."}</span>
+          <span>{assignOnCreate ? `Create and save the campaign below. ${pendingContactIds.length === 1 ? "This lead will" : "These leads will"} be added automatically.` : selected ? `Ready to move into ${selected.name}.` : "Choose a campaign, then assign them together."}</span>
           {!assignOnCreate && <button className="v2-btn v2-btn-accent" disabled={!selected} onClick={assignPendingContacts}>Assign to campaign</button>}
           <button className="v2-icon-btn" aria-label="Cancel assignment" onClick={() => { window.sessionStorage.removeItem("t2s_campaign_contact_ids"); setPendingContactIds([]); setAssignOnCreate(false); }}><X size={15} /></button>
         </div>

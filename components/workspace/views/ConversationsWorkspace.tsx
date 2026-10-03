@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Bot, Check, ChevronLeft, ChevronRight, Loader2, MessageSquare, MoreHorizontal, Search, Send, Trash2, UserRound, Workflow, X } from "lucide-react";
+import { Archive, Bot, Check, ChevronLeft, ChevronRight, Loader2, Megaphone, MessageSquare, MoreHorizontal, Search, Send, Trash2, UserRound, X } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
@@ -349,7 +349,12 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             <div className="v2-bulk-actions">
               <strong>{checked.size} selected</strong>
               <button onClick={() => setChecked(new Set(visible.map((conversation) => conversation.id)))}><Check size={14} /> Select page</button>
-              <button onClick={() => moveToCampaign(true)}><Workflow size={14} /> New workflow</button>
+              <button
+                title="Create a campaign for the selected leads"
+                onClick={() => moveToCampaign(true)}
+              >
+                <Megaphone size={14} /> Add to new campaign
+              </button>
               <button onClick={archiveChecked}><Archive size={14} /> {filter === "archived" ? "Restore" : "Archive"}</button>
               <button className="is-danger" onClick={deleteChecked}><Trash2 size={14} /> Delete</button>
             </div>
