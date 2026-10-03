@@ -1,5 +1,6 @@
 import { cache } from "react";
 import { createClient } from "@supabase/supabase-js";
+import type { BusinessSiteConfig } from "./site-config";
 
 export type BusinessProfile = {
   id: string;
@@ -21,6 +22,7 @@ export type BusinessProfile = {
     contactEmail?: string;
     contactPhone?: string;
     optInMessage?: string;
+    siteConfig?: BusinessSiteConfig | null;
   } | null;
 };
 
