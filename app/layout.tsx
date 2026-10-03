@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import Script from "next/script";
-import { headers } from "next/headers";
-import { isBrandedHost } from "@/lib/custom-domains";
 import Tracker from "@/components/Tracker";
 import "./globals.css";
 import "./workspace-theme.css";
@@ -57,26 +55,11 @@ export const metadata: Metadata = {
   },
 };
 
-export default async function RootLayout({
+export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  // ─── Tracking suppression on compliance domains ─────────────────────
-  // Custom-domain compliance sites (e.g. northernlegacyia.info) must NOT
-  // advertise themselves as a mass-texting CRM via Schema.org, or MNOs
-  // flag the opt-in page and reject the 10DLC campaign. They also must
-  // NOT load Meta Pixel (carrier reviewers treat 3rd-party tracking on
-  // consent pages as a consent-leak risk). We detect the host per-request
-  // and serve a stripped <head> for those domains.
-  const hdrs = await headers();
-  const host = hdrs.get("host");
-  // Any host that isn't Text2Sale's own is a customer's site. This used to
-  // check a hand-maintained list, so a domain the activation flow had just
-  // bought served the Meta Pixel and Tracker on a page carriers were about
-  // to review.
-  const isComplianceSite = isBrandedHost(host);
-
   return (
     <html lang="en" className="h-full antialiased">
       <head>
@@ -84,11 +67,13 @@ export default async function RootLayout({
             domains like northernlegacyia.info) get a clean head so carriers
             don't flag the opt-in page. Homepage structured data lives in
             app/page.tsx, blog markup in the blog routes. */}
-        {!isComplianceSite && (
-          <>
-            {/* Meta Pixel */}
-            <Script id="meta-pixel" strategy="afterInteractive">
-              {`
+        {/* This script exists in the static root layout but exits before loading
+            anything unless the browser is on Text2Sale's own host. That keeps
+            customer compliance domains clean without forcing every route to
+            call headers() and become request-time rendered. */}
+        <Script id="meta-pixel" strategy="afterInteractive">
+          {`
+if (/^(text2sale\.com|www\.text2sale\.com|localhost|127\.0\.0\.1)$/.test(location.hostname) || location.hostname.endsWith('.vercel.app')) {
 !function(f,b,e,v,n,t,s)
 {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
 n.callMethod.apply(n,arguments):n.queue.push(arguments)};
@@ -99,25 +84,12 @@ s.parentNode.insertBefore(t,s)}(window, document,'script',
 'https://connect.facebook.net/en_US/fbevents.js');
 fbq('init', '${META_PIXEL_ID}');
 fbq('track', 'PageView');
+}
               `}
-            </Script>
-          </>
-        )}
+        </Script>
       </head>
       <body className="min-h-full bg-background text-foreground">
-        {!isComplianceSite && (
-          <noscript>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              height="1"
-              width="1"
-              style={{ display: "none" }}
-              src={`https://www.facebook.com/tr?id=${META_PIXEL_ID}&ev=PageView&noscript=1`}
-              alt=""
-            />
-          </noscript>
-        )}
-        {!isComplianceSite && <Tracker />}
+        <Tracker />
         {children}
       </body>
     </html>
