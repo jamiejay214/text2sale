@@ -14,6 +14,14 @@
   background: #f5f7f3;
   color: #193e31;
 }
+.crm-theme.admin-console {
+  background: #0b1f18;
+  color: #f4faf5;
+}
+.crm-theme.admin-console ::selection {
+  background: #d9f779;
+  color: #153f32;
+}
 .crm-theme [class*="bg-violet-6"],
 .crm-theme [class*="bg-violet-5"],
 .crm-theme [class*="bg-gradient-to-"][class*="from-violet"],
