@@ -32,9 +32,8 @@ import { PACKAGES } from "@/lib/packages";
 import {
   DEFAULT_FIRST_MESSAGE_OPT_OUT,
   MANDATORY_OPT_OUT_KEYWORDS,
-  hasOptOutInstruction,
-  normalizeOptOutKeyword,
   normalizeOptOutSettings,
+  normalizeOptOutTrigger,
 } from "@/lib/opt-out";
 import type { Campaign, OptOutSettings, OwnedNumber, Profile } from "@/lib/types";
 import type { WorkspaceViewProps } from "../../WorkspaceApp";
@@ -290,43 +289,26 @@ function OptOutEditor({ profile, onProfile }: Pick<Props, "profile" | "onProfile
   const [settings, setSettings] = useState<OptOutSettings>(() =>
     normalizeOptOutSettings(profile.opt_out_settings),
   );
-  const [newKeyword, setNewKeyword] = useState("");
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-
-  const mandatory = new Set<string>(MANDATORY_OPT_OUT_KEYWORDS);
-  const customKeywords = settings.keywords.filter((keyword) => !mandatory.has(keyword));
-  const firstMessageText = settings.firstMessageText ?? DEFAULT_FIRST_MESSAGE_OPT_OUT;
-
-  const addKeyword = () => {
-    const keyword = normalizeOptOutKeyword(newKeyword);
-    if (!keyword) return;
-    if (settings.keywords.includes(keyword)) {
-      setNotice({ tone: "error", text: `${keyword} is already an opt-out trigger.` });
-      return;
-    }
-    setSettings((current) => ({ ...current, keywords: [...current.keywords, keyword] }));
-    setNewKeyword("");
-    setNotice(null);
-  };
+  const trigger = settings.firstMessageText ?? DEFAULT_FIRST_MESSAGE_OPT_OUT;
 
   const save = async () => {
-    const sanitizedText = sanitizeForSms(firstMessageText.trim());
-    if (!sanitizedText || !hasOptOutInstruction(sanitizedText, settings.keywords)) {
-      setNotice({
-        tone: "error",
-        text: "Use a clear instruction such as ‘Reply STOP to opt out.’",
-      });
+    const sanitizedTrigger = sanitizeForSms(trigger.trim());
+    const normalizedTrigger = normalizeOptOutTrigger(sanitizedTrigger);
+    if (!normalizedTrigger) {
+      setNotice({ tone: "error", text: "Enter one short opt-out trigger, such as N or NO THANKS." });
       return;
     }
-    if (hasNonGsmChars(sanitizedText)) {
-      setNotice({ tone: "error", text: "Remove emojis or unsupported characters from the opt-out text." });
+    if (hasNonGsmChars(sanitizedTrigger)) {
+      setNotice({ tone: "error", text: "Remove emojis or unsupported characters from the opt-out trigger." });
       return;
     }
     setSaving(true);
     const nextSettings = normalizeOptOutSettings({
       ...settings,
-      firstMessageText: sanitizedText,
+      keywords: [...MANDATORY_OPT_OUT_KEYWORDS, normalizedTrigger],
+      firstMessageText: normalizedTrigger,
     });
     const latest = await updateProfile(profile.id, { opt_out_settings: nextSettings });
     setSaving(false);
@@ -336,38 +318,33 @@ function OptOutEditor({ profile, onProfile }: Pick<Props, "profile" | "onProfile
     }
     onProfile(latest);
     setSettings(nextSettings);
-    setNotice({ tone: "ok", text: "Opt-out settings saved." });
+    setNotice({ tone: "ok", text: "Opt-out trigger saved." });
   };
 
   return (
     <Panel className="v2-optout-card">
       <div className="v2-panel-head">
-        <div><h2>Message opt-out</h2><p>Required on the first campaign text only.</p></div>
+        <div><h2>Campaign opt-out trigger</h2><p>One trigger, added automatically to message one.</p></div>
         <ShieldCheck size={18} />
       </div>
       <div className="v2-optout-body">
         {notice ? <div className={`v2-optout-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={13} /></button></div> : null}
         <label>
-          First-message opt-out line
-          <textarea
-            rows={3}
-            maxLength={160}
-            value={firstMessageText}
-            onChange={(event) => setSettings((current) => ({ ...current, firstMessageText: event.target.value }))}
+          Opt-out trigger
+          <input
+            maxLength={20}
+            value={trigger}
+            onChange={(event) => { setSettings((current) => ({ ...current, firstMessageText: event.target.value.toUpperCase() })); setNotice(null); }}
             placeholder={DEFAULT_FIRST_MESSAGE_OPT_OUT}
           />
-          <small>Added automatically to step one. Follow-up texts do not repeat it. {firstMessageText.length}/160</small>
+          <small>Use a short trigger such as N. It will appear at the very end of the first campaign message only.</small>
         </label>
-        <div className="v2-optout-preview"><span>First text preview</span><p>Hi Jamie, thanks for requesting information.<br /><b>{firstMessageText || "Your opt-out line appears here."}</b></p></div>
-        <div className="v2-optout-keywords">
-          <div><strong>Opt-out triggers</strong><small>Carrier-required words stay locked. Add your own word or phrase.</small></div>
-          <div className="v2-optout-chips">
-            {MANDATORY_OPT_OUT_KEYWORDS.map((keyword) => <span className="is-locked" key={keyword}><ShieldCheck size={11} /> {keyword}</span>)}
-            {customKeywords.map((keyword) => <span key={keyword}>{keyword}<button aria-label={`Remove ${keyword}`} onClick={() => setSettings((current) => ({ ...current, keywords: current.keywords.filter((item) => item !== keyword) }))}><X size={11} /></button></span>)}
-          </div>
-          <div className="v2-optout-add"><input value={newKeyword} maxLength={40} onChange={(event) => setNewKeyword(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addKeyword(); } }} placeholder="Add a custom trigger" /><button onClick={addKeyword} disabled={!newKeyword.trim()}><Plus size={14} /> Add</button></div>
+        <div className="v2-optout-preview"><span>First campaign message</span><p>Hi Jamie, are you still looking for a health plan? <b>{trigger || DEFAULT_FIRST_MESSAGE_OPT_OUT}</b></p></div>
+        <div className="v2-optout-rule">
+          <ShieldCheck size={17} />
+          <div><strong>Follow-ups stay clean</strong><small>Messages two and later will not repeat the trigger. STOP, END, QUIT, CANCEL, and UNSUBSCRIBE continue working automatically.</small></div>
         </div>
-        <button className="v2-btn v2-btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save opt-out settings"}</button>
+        <button className="v2-btn v2-btn-primary" onClick={save} disabled={saving}>{saving ? "Saving…" : "Save opt-out trigger"}</button>
       </div>
     </Panel>
   );

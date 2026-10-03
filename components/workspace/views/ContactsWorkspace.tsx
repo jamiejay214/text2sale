@@ -253,6 +253,7 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
         <div className="v2-contacts-toolbar">
           <div className="v2-contacts-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, or email…" /></div>
           <button className="v2-btn"><Filter size={15} /> Filters</button>
+          <button className={`v2-btn v2-select-page ${allPageSelected ? "is-active" : ""}`} aria-pressed={allPageSelected} disabled={!contacts.length || loading} onClick={togglePage}><Check size={15} /> {allPageSelected ? "Clear page" : `Select all ${contacts.length || ""}`}</button>
           <span>{total.toLocaleString()} contacts</span>
         </div>
         {selected.size > 0 && (

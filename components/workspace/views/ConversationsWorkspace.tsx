@@ -1,16 +1,23 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Bot, Check, ChevronLeft, ChevronRight, Loader2, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Search, Send, Trash2, UserRound, X } from "lucide-react";
+import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
-import { fetchCampaigns, fetchConversationsPage, fetchMessagesPage, insertMessage, updateConversation } from "@/lib/supabase-data";
+import { fetchCampaigns, fetchConversationsPage, fetchMessagesPage, insertMessage, updateContact, updateConversation } from "@/lib/supabase-data";
 import type { Campaign, Contact, Conversation, Message } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
 
 type InboxFilter = "inbox" | "unread" | "ai" | "archived";
+
+type ContactRailDraft = Pick<Contact,
+  "first_name" | "last_name" | "email" | "phone" | "tags" | "date_of_birth" |
+  "age" | "address" | "city" | "state" | "zip" | "lead_source"
+>;
+
+type ContactRailTextField = Exclude<keyof ContactRailDraft, "tags">;
 
 const SALES_QUOTES = [
   "The next conversation could be the one.",
@@ -42,6 +49,202 @@ function campaignStatusTone(status: Campaign["status"]) {
   if (status === "Scheduled") return "success" as const;
   if (status === "Paused") return "warning" as const;
   return "neutral" as const;
+}
+
+function contactRailDraft(contact: Contact): ContactRailDraft {
+  return {
+    first_name: contact.first_name || "",
+    last_name: contact.last_name || "",
+    email: contact.email || "",
+    phone: contact.phone || "",
+    tags: Array.isArray(contact.tags) ? contact.tags : [],
+    date_of_birth: contact.date_of_birth || "",
+    age: contact.age || "",
+    address: contact.address || "",
+    city: contact.city || "",
+    state: contact.state || "",
+    zip: contact.zip || "",
+    lead_source: contact.lead_source || "",
+  };
+}
+
+function ageFromBirthDate(value: string) {
+  const parsed = new Date(value);
+  if (!value.trim() || Number.isNaN(parsed.getTime())) return "";
+  const today = new Date();
+  let age = today.getFullYear() - parsed.getFullYear();
+  const birthdayPending = today.getMonth() < parsed.getMonth() ||
+    (today.getMonth() === parsed.getMonth() && today.getDate() < parsed.getDate());
+  if (birthdayPending) age -= 1;
+  return age >= 0 && age < 130 ? String(age) : "";
+}
+
+function ContactDetailsRail({
+  contact,
+  conversation,
+  onClose,
+  onSave,
+  onViewContact,
+  onCallQueue,
+}: {
+  contact: Contact;
+  conversation: Conversation;
+  onClose: () => void;
+  onSave: (draft: ContactRailDraft) => Promise<Contact | null>;
+  onViewContact: () => void;
+  onCallQueue: () => void;
+}) {
+  const [draft, setDraft] = useState<ContactRailDraft>(() => contactRailDraft(contact));
+  const [newTag, setNewTag] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [copied, setCopied] = useState("");
+  const original = contactRailDraft(contact);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(original);
+
+  const patch = (field: ContactRailTextField, value: string) => {
+    setDraft((current) => {
+      const next = { ...current, [field]: value };
+      if (field === "date_of_birth") {
+        const calculatedAge = ageFromBirthDate(value);
+        if (calculatedAge) next.age = calculatedAge;
+      }
+      return next;
+    });
+    setNotice(null);
+  };
+
+  const addTag = () => {
+    const value = newTag.trim();
+    if (!value) return;
+    setDraft((current) => current.tags.some((tag) => tag.toLowerCase() === value.toLowerCase())
+      ? current
+      : { ...current, tags: [...current.tags, value] });
+    setNewTag("");
+    setNotice(null);
+  };
+
+  const removeTag = (value: string) => {
+    setDraft((current) => ({ ...current, tags: current.tags.filter((tag) => tag !== value) }));
+    setNotice(null);
+  };
+
+  const copy = async (label: string, value: string) => {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(label);
+      window.setTimeout(() => setCopied(""), 1_500);
+    } catch {
+      setNotice({ tone: "error", text: `${label} could not be copied.` });
+    }
+  };
+
+  const save = async () => {
+    if (!draft.phone.trim() || saving) return;
+    setSaving(true);
+    setNotice(null);
+    const updated = await onSave({
+      ...draft,
+      first_name: draft.first_name.trim(),
+      last_name: draft.last_name.trim(),
+      email: draft.email.trim(),
+      phone: draft.phone.trim(),
+      tags: draft.tags.map((tag) => tag.trim()).filter(Boolean),
+      date_of_birth: draft.date_of_birth.trim(),
+      age: draft.age.trim(),
+      address: draft.address.trim(),
+      city: draft.city.trim(),
+      state: draft.state.trim().toUpperCase(),
+      zip: draft.zip.trim(),
+      lead_source: draft.lead_source.trim(),
+    });
+    setSaving(false);
+    setNotice(updated
+      ? { tone: "ok", text: "Client information saved." }
+      : { tone: "error", text: "Client information could not be saved." });
+  };
+
+  const field = (
+    label: string,
+    name: ContactRailTextField,
+    options?: { type?: string; placeholder?: string; copy?: boolean; maxLength?: number; valid?: boolean },
+  ) => (
+    <label className="v2-client-field">
+      <span>{label}</span>
+      <div className={`${options?.copy ? "has-leading-action" : ""} ${options?.valid ? "is-valid" : ""}`}>
+        {options?.copy ? <button type="button" title={`Copy ${label.toLowerCase()}`} aria-label={`Copy ${label.toLowerCase()}`} onClick={() => void copy(label, draft[name])}>{copied === label ? <Check size={15} /> : <Copy size={14} />}</button> : null}
+        <input
+          type={options?.type || "text"}
+          value={draft[name]}
+          placeholder={options?.placeholder}
+          maxLength={options?.maxLength}
+          onChange={(event) => patch(name, event.target.value)}
+        />
+        {options?.valid ? <CheckCircle2 className="v2-client-field-check" size={17} /> : null}
+      </div>
+    </label>
+  );
+
+  return (
+    <aside className="v2-contact-rail" id="conversation-contact-details" aria-label={`Client information for ${contactName(contact)}`}>
+      <header className="v2-contact-rail-head">
+        <div><span>Client profile</span><strong>{contactName(contact)}</strong></div>
+        <button className="v2-contact-rail-close" aria-label="Close client information" onClick={onClose}><X size={18} /></button>
+      </header>
+      <div className="v2-contact-rail-body">
+        <div className="v2-contact-rail-summary">
+          <span className="v2-avatar">{initials(contact)}</span>
+          <div><strong>{contactName(contact)}</strong><small>{contact.campaign || contact.lead_source || "Unassigned lead"}</small></div>
+          <span className={`v2-client-status ${contact.dnc ? "is-danger" : conversation.ai_enabled ? "is-ai" : "is-active"}`}>{contact.dnc ? "DNC" : conversation.ai_enabled ? "AI on" : "Active"}</span>
+        </div>
+
+        <section className="v2-client-form" aria-label="Editable client fields">
+          <div className="v2-client-form-grid is-two">
+            {field("First name", "first_name")}
+            {field("Last name", "last_name")}
+          </div>
+          {field("Email", "email", { type: "email", placeholder: "client@example.com", copy: true })}
+          {field("Phone number", "phone", { type: "tel", placeholder: "(954) 555-0123", copy: true, valid: !!draft.phone.trim() })}
+
+          <div className="v2-client-tags">
+            <span><Tag size={14} /> Tags</span>
+            <div className="v2-client-tag-list">
+              {draft.tags.map((tag) => <button type="button" key={tag} title={`Remove ${tag}`} onClick={() => removeTag(tag)}>{tag}<X size={12} /></button>)}
+              {!draft.tags.length ? <small>No tags yet</small> : null}
+            </div>
+            <div className="v2-client-tag-add">
+              <input value={newTag} placeholder="Add a tag" onChange={(event) => setNewTag(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addTag(); } }} />
+              <button type="button" onClick={addTag} disabled={!newTag.trim()}><Plus size={14} /> Add</button>
+            </div>
+          </div>
+
+          <div className="v2-client-form-grid is-birth">
+            {field("Date of birth", "date_of_birth", { placeholder: "MM/DD/YYYY", copy: true })}
+            {field("Age", "age", { placeholder: "—", maxLength: 3 })}
+          </div>
+          {field("Address", "address", { placeholder: "Street address" })}
+          {field("City", "city")}
+          <div className="v2-client-form-grid is-location">
+            {field("State", "state", { maxLength: 2 })}
+            {field("ZIP code", "zip", { copy: true, maxLength: 10 })}
+          </div>
+          {field("Lead source", "lead_source", { placeholder: "Website, referral, Facebook…" })}
+        </section>
+
+        <section className="v2-client-context" aria-label="Client campaign details">
+          <div><span>Campaign</span><strong>{contact.campaign || "Unassigned"}</strong></div>
+          <div><span>Conversation</span><strong>{contact.dnc ? "Sending disabled" : conversation.ai_enabled ? "AI assisting" : "Manual replies"}</strong></div>
+        </section>
+
+        {notice ? <p className={`v2-client-save-notice is-${notice.tone}`}>{notice.tone === "ok" ? <CheckCircle2 size={15} /> : <X size={15} />}{notice.text}</p> : null}
+      </div>
+      <footer className="v2-contact-rail-footer">
+        <div><button className="v2-btn" onClick={onViewContact}>Full contact</button><button className="v2-btn" onClick={onCallQueue}><UserRound size={15} /> Call queue</button></div>
+        <button className="v2-btn v2-btn-primary" disabled={!dirty || !draft.phone.trim() || saving} onClick={() => void save()}>{saving ? <Loader2 className="v2-spin" size={16} /> : <Check size={16} />}{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</button>
+      </footer>
+    </aside>
+  );
 }
 
 const ConversationList = memo(function ConversationList({
@@ -362,6 +565,18 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     onNavigate("calls");
   };
 
+  const saveContactDetails = async (draft: ContactRailDraft) => {
+    if (!selectedContact) return null;
+    const updated = await updateContact(selectedContact.id, draft);
+    if (!updated) return null;
+    setContacts((current) => {
+      const next = new Map(current);
+      next.set(updated.id, updated);
+      return next;
+    });
+    return updated;
+  };
+
   const deleteChecked = async () => {
     if (!checked.size || !window.confirm(`Delete ${checked.size} conversation${checked.size === 1 ? "" : "s"}? This cannot be undone.`)) return;
     const ids = [...checked];
@@ -511,22 +726,17 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           )}
         </section>
 
-        {contactRailOpen && selectedContact ? <aside className="v2-contact-rail" id="conversation-contact-details">
-          {selectedContact ? (
-            <>
-              <button className="v2-contact-rail-close" aria-label="Close contact details" onClick={() => setContactRailOpen(false)}><X size={17} /></button>
-              <div className="v2-contact-hero"><span className="v2-avatar">{initials(selectedContact)}</span><strong>{contactName(selectedContact)}</strong><small>{selectedContact.phone}</small></div>
-              <dl>
-                <div><dt>Location</dt><dd>{[selectedContact.city, selectedContact.state, selectedContact.zip].filter(Boolean).join(", ") || "Not provided"}</dd></div>
-                <div><dt>Lead source</dt><dd>{selectedContact.lead_source || "Not provided"}</dd></div>
-                <div><dt>Campaign</dt><dd>{selectedContact.campaign || "Unassigned"}</dd></div>
-                <div><dt>Status</dt><dd>{selectedContact.dnc ? "Do not contact" : selected?.ai_enabled ? "AI assisting" : "Active lead"}</dd></div>
-              </dl>
-              <button className="v2-btn" onClick={() => onNavigate("contacts")}>View full contact</button>
-              <button className="v2-btn" onClick={() => onNavigate("calls")}><UserRound size={15} /> Add to call queue</button>
-            </>
-          ) : null}
-        </aside> : null}
+        {contactRailOpen && selectedContact && selected ? (
+          <ContactDetailsRail
+            key={selectedContact.id}
+            contact={selectedContact}
+            conversation={selected}
+            onClose={() => setContactRailOpen(false)}
+            onSave={saveContactDetails}
+            onViewContact={() => onNavigate("contacts")}
+            onCallQueue={openLeadInDialer}
+          />
+        ) : null}
       </Panel>
       {campaignPickerOpen ? (
         <div className="v2-modal-backdrop" onMouseDown={() => { if (!campaignPickerSaving) { setCampaignPickerOpen(false); setCampaignTargetIds([]); } }}>
