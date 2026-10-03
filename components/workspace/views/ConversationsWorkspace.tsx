@@ -52,17 +52,36 @@ const ConversationList = memo(function ConversationList({
         const contact = contacts.get(conversation.contact_id);
         const active = conversation.id === selectedId;
         const isChecked = checked.has(conversation.id);
+        const toggle = () => (selectMode ? onCheck(conversation.id) : onOpen(conversation.id));
         return (
-          <button
+          <div
             key={conversation.id}
-            className={`${active ? "is-active" : ""} ${isChecked ? "is-checked" : ""}`}
-            onClick={() => (selectMode ? onCheck(conversation.id) : onOpen(conversation.id))}
+            className={`v2-inbox-item ${active ? "is-active" : ""} ${isChecked ? "is-checked" : ""}`}
+            role="button"
+            tabIndex={0}
+            aria-current={active ? "true" : undefined}
+            onClick={toggle}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                toggle();
+              }
+            }}
           >
-            {selectMode ? (
-              <span className={`v2-list-check ${isChecked ? "is-on" : ""}`}>{isChecked ? <Check size={13} /> : null}</span>
-            ) : (
+            <button
+              type="button"
+              className={`v2-inbox-avatar-picker ${isChecked ? "is-on" : ""}`}
+              aria-label={`${isChecked ? "Deselect" : "Select"} ${contactName(contact)}`}
+              aria-pressed={isChecked}
+              title={`${isChecked ? "Deselect" : "Select"} conversation`}
+              onClick={(event) => {
+                event.stopPropagation();
+                onCheck(conversation.id);
+              }}
+            >
               <span className="v2-avatar">{initials(contact)}</span>
-            )}
+              <span className="v2-avatar-picker-hint" aria-hidden="true"><Check size={10} /></span>
+            </button>
             <span className="v2-inbox-copy">
               <span><strong>{contactName(contact)}</strong><small>{relativeTime(conversation.last_message_at)}</small></span>
               <span>{conversation.preview || "Conversation started"}</span>
@@ -72,7 +91,7 @@ const ConversationList = memo(function ConversationList({
               </span>
             </span>
             {conversation.unread > 0 ? <b>{conversation.unread > 9 ? "9+" : conversation.unread}</b> : null}
-          </button>
+          </div>
         );
       })}
     </div>
@@ -269,14 +288,19 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
   };
 
   const archiveChecked = () => {
+    const archivedIds = new Set(checked);
+    const restoring = filter === "archived";
     setArchived((current) => {
       const next = new Set(current);
       for (const id of checked) {
-        if (filter === "archived") next.delete(id);
+        if (restoring) next.delete(id);
         else next.add(id);
       }
       return next;
     });
+    if (!restoring && archivedIds.has(selectedId)) {
+      setSelectedId(visible.find((conversation) => !archivedIds.has(conversation.id))?.id || "");
+    }
     setChecked(new Set()); setSelectMode(false);
   };
 
@@ -290,9 +314,11 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     setSelectedId(""); setChecked(new Set()); setSelectMode(false);
   };
 
-  const moveToCampaign = () => {
+  const moveToCampaign = (createNew = false) => {
     const contactIds = conversations.filter((item) => checked.has(item.id)).map((item) => item.contact_id);
     window.sessionStorage.setItem("t2s_campaign_contact_ids", JSON.stringify(contactIds));
+    if (createNew) window.sessionStorage.setItem("t2s_campaign_create_for_selected", "1");
+    else window.sessionStorage.removeItem("t2s_campaign_create_for_selected");
     onNavigate("campaigns");
   };
 
@@ -322,14 +348,15 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           {selectMode && checked.size > 0 ? (
             <div className="v2-bulk-actions">
               <strong>{checked.size} selected</strong>
-              <button onClick={moveToCampaign}><Workflow size={14} /> Campaign</button>
+              <button onClick={() => setChecked(new Set(visible.map((conversation) => conversation.id)))}><Check size={14} /> Select page</button>
+              <button onClick={() => moveToCampaign(true)}><Workflow size={14} /> New workflow</button>
               <button onClick={archiveChecked}><Archive size={14} /> {filter === "archived" ? "Restore" : "Archive"}</button>
               <button className="is-danger" onClick={deleteChecked}><Trash2 size={14} /> Delete</button>
             </div>
           ) : null}
           {loading ? <div className="v2-thread-loading"><Loader2 size={17} className="v2-spin" /> Loading inbox</div> : null}
           {!loading && visible.length === 0 ? <EmptyState title="Nothing here" description={filter === "archived" ? "Archived conversations will stay available here." : "New replies will appear here as soon as they arrive."} /> : null}
-          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={setSelectedId} onCheck={(id) => setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; })} />
+          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={setSelectedId} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
           <div className="v2-page-controls">
             <button disabled={page === 0} onClick={() => loadPage(page - 1)}><ChevronLeft size={15} /></button>
             <span>{total ? `${page * 50 + 1}–${Math.min(total, (page + 1) * 50)} of ${total}` : "0 conversations"}</span>
