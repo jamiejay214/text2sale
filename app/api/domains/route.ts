@@ -83,17 +83,21 @@ export async function POST(req: NextRequest) {
             available: status.available,
             premium: status.premium ?? false,
             price: status.price != null ? priceToCharge(status.price) : null,
+            renewalPrice: status.renewalPrice != null ? priceToCharge(status.renewalPrice) : null,
           };
         } catch (e) {
           // Remember why, so "nothing available" and "registrar not set up"
           // aren't the same message to the customer.
           registrarProblem = e instanceof Error ? e.message : "Registrar unavailable";
-          return { domain, available: false, premium: false, price: null };
+          return { domain, available: false, premium: false, price: null, renewalPrice: null };
         }
       })
     );
 
-    const suggestions = results.filter((r) => r.available && r.price != null && !r.premium).slice(0, 6);
+    const suggestions = results
+      .filter((r) => r.available && r.price != null && !r.premium)
+      .sort((a, b) => (a.price ?? Number.POSITIVE_INFINITY) - (b.price ?? Number.POSITIVE_INFINITY))
+      .slice(0, 8);
     if (registrarProblem && suggestions.length === 0) {
       console.error("[domains] registrar unavailable:", registrarProblem);
     }
@@ -124,6 +128,7 @@ export async function POST(req: NextRequest) {
         available: status.available,
         premium: status.premium ?? false,
         price: status.price != null ? priceToCharge(status.price) : null,
+        renewalPrice: status.renewalPrice != null ? priceToCharge(status.renewalPrice) : null,
       });
     } catch (e) {
       return NextResponse.json(
