@@ -22,6 +22,22 @@ export function priceToCharge(registrarPrice: number): number {
   return Math.round((registrarPrice + DOMAIN_MARKUP) * 100) / 100;
 }
 
+/** Registry-specific ownership declarations required by Vercel Registrar. */
+export function registrarAdditionalForDomain(
+  domain: string,
+  businessType: string | undefined
+): Record<string, string> | undefined {
+  if (!domain.toLowerCase().endsWith(".us")) return undefined;
+
+  // The registration form requires a US business address and EIN. C21 is the
+  // .us nexus category for a US entity/organization, while P1/P2 describe the
+  // business or non-profit purpose of the website.
+  return {
+    nexus_category: "C21",
+    app_purpose: businessType === "non_profit" ? "P2" : "P1",
+  };
+}
+
 export type DomainPurchaseFailure = {
   ok: false;
   code:
@@ -252,7 +268,13 @@ export async function purchaseDomainForUser(
   if (!owned) {
     let order: Awaited<ReturnType<typeof buyDomain>>;
     try {
-      order = await buyDomain({ domain, expectedPrice: quote!.price!, ...registrant, phone });
+      order = await buyDomain({
+        domain,
+        expectedPrice: quote!.price!,
+        ...registrant,
+        phone,
+        additional: registrarAdditionalForDomain(domain, reg.businessType),
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
       if (/fetch failed|network|timeout|timed out|abort/i.test(msg)) {

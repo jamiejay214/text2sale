@@ -113,6 +113,12 @@ export interface BuyDomainArgs {
   postalCode: string;
   country?: string; // ISO-2, defaults to "US"
   orgName?: string;
+  /**
+   * Registry-specific contact fields. Some TLDs reject an otherwise valid
+   * purchase without these values; for example, .us requires a nexus
+   * category and the registrant's application purpose.
+   */
+  additional?: Record<string, string>;
   // Registration period in years. Default 1.
   period?: number;
   // Auto-renew. Default true — we don't want domains expiring out from
@@ -146,15 +152,30 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
         zip: args.postalCode,
         country: args.country ?? "US",
         companyName: args.orgName || undefined,
+        additional: args.additional,
       },
     }),
   });
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
-    const detail =
-      (json && typeof json === "object" && "error" in json
-        ? (json as { error?: { message?: string } }).error?.message
-        : null) || `registrar request failed (${res.status})`;
+    const topMessage = typeof json?.message === "string" ? json.message : null;
+    const topCode = typeof json?.code === "string" ? json.code : null;
+    const nested = json?.error;
+    const nestedMessage =
+      typeof nested === "string"
+        ? nested
+        : nested && typeof nested === "object" && "message" in nested && typeof nested.message === "string"
+          ? nested.message
+          : null;
+    const nestedCode =
+      nested && typeof nested === "object" && "code" in nested && typeof nested.code === "string"
+        ? nested.code
+        : null;
+    const message = topMessage || nestedMessage;
+    const code = topCode || nestedCode;
+    const detail = message
+      ? `${message}${code ? ` (${code})` : ""}`
+      : code || `registrar request failed (${res.status})`;
     console.error(`[vercel-domains] registrar purchase failed (${res.status}): ${detail}`);
     if (res.status === 401 || res.status === 403) {
       throw new Error("Automatic domain registration is temporarily unavailable. Our team has been notified and the setup will retry automatically.");
