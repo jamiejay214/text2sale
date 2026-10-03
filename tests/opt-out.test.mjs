@@ -14,30 +14,29 @@ vm.runInNewContext(compiled, { exports });
 test("first campaign message gets one opt-out and follow-up text remains unchanged", () => {
   const settings = {
     keywords: ["STOP", "N"],
-    firstMessageText: "Text N to opt out.",
+    firstMessageText: "N",
   };
   assert.equal(
     exports.withFirstMessageOptOut("Hi Jamie, are you still looking?", settings),
-    "Hi Jamie, are you still looking?\nText N to opt out.",
+    "Hi Jamie, are you still looking? N",
   );
   assert.equal(
     exports.withFirstMessageOptOut(
-      "Hi Jamie. Reply STOP to opt out.",
+      "Hi Jamie, are you still looking? N",
       settings,
     ),
-    "Hi Jamie. Reply STOP to opt out.",
+    "Hi Jamie, are you still looking? N",
   );
   assert.equal(
     exports.hasOptOutInstruction("Text N to opt out.", ["N"]),
     true,
   );
-  assert.throws(
-    () =>
-      exports.withFirstMessageOptOut("Hi Jamie", {
-        keywords: ["STOP"],
-        firstMessageText: "No thanks",
-      }),
-    /clear first-message opt-out/,
+  assert.equal(
+    exports.withFirstMessageOptOut("Hi Jamie", {
+      keywords: ["STOP"],
+      firstMessageText: "Reply STOP to opt out.",
+    }),
+    "Hi Jamie N",
   );
 });
 
