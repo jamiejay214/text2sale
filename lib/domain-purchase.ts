@@ -60,6 +60,13 @@ type Marker = {
 
 type Reg = Record<string, unknown> & { domainPurchase?: Marker };
 
+const refundPending = (price: number): DomainPurchaseFailure => ({
+  ok: false,
+  code: "pending",
+  message: "We’re restoring your balance before retrying domain registration.",
+  price,
+});
+
 async function patchRegistration(db: Db, userId: string, patch: Record<string, unknown>) {
   const { data } = await db.from("profiles").select("a2p_registration").eq("id", userId).single();
   const reg = ((data?.a2p_registration as Reg | null) || {}) as Reg;
@@ -156,8 +163,13 @@ export async function purchaseDomainForUser(
       return { ok: false, code: "pending", message: "Domain registration is still processing.", price: marker.charged };
     }
     if (order.status === "failed") {
-      await refund(db, userId, marker.charged, `domain order failed: ${order.message || "registrar rejected order"}`);
-      await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "refunded" } });
+      const refunded = await refundMarker(
+        db,
+        userId,
+        marker,
+        `domain order failed: ${order.message || "registrar rejected order"}`
+      );
+      if (!refunded) return refundPending(marker.charged);
       return { ok: false, code: "registrar", message: order.message || "Domain registration failed" };
     }
     owned = true;
@@ -185,8 +197,8 @@ export async function purchaseDomainForUser(
         }
         // Charged earlier, and the name has since gone. Refund below via the
         // generic failure path rather than leaving the customer out of pocket.
-        await refund(db, userId, marker.charged, "domain no longer available");
-        await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "refunded" } });
+        const refunded = await refundMarker(db, userId, marker, "domain no longer available");
+        if (!refunded) return refundPending(marker.charged);
       }
       return { ok: false, code: "unavailable", message: "That domain is no longer available" };
     }
@@ -205,6 +217,7 @@ export async function purchaseDomainForUser(
   // ── Charge before buying ────────────────────────────────────────────────
   let balance: number | null = null;
   let chargedAmount = marker?.charged ?? charge;
+  let activeMarker = marker;
   if (!resuming) {
     const { data: newBalance, error: debitErr } = await db.rpc("decrement_wallet", {
       p_user_id: userId,
@@ -225,9 +238,13 @@ export async function purchaseDomainForUser(
     }
     balance = Number(newBalance);
     chargedAmount = charge;
-    await patchRegistration(db, userId, {
-      domainPurchase: { domain, state: "charged", charged: charge, at: new Date().toISOString() } satisfies Marker,
-    });
+    activeMarker = {
+      domain,
+      state: "charged",
+      charged: charge,
+      at: new Date().toISOString(),
+    } satisfies Marker;
+    await patchRegistration(db, userId, { domainPurchase: activeMarker });
   }
 
   // ── Register ────────────────────────────────────────────────────────────
@@ -246,10 +263,12 @@ export async function purchaseDomainForUser(
           price: chargedAmount,
         };
       }
-      await refund(db, userId, chargedAmount, `domain purchase failed: ${msg}`);
-      await patchRegistration(db, userId, {
-        domainPurchase: { domain, state: "refunded", charged: chargedAmount, at: new Date().toISOString() } satisfies Marker,
-      });
+      if (!activeMarker) {
+        console.error("[domain-purchase] missing charge marker during refund:", userId, domain);
+        return refundPending(chargedAmount);
+      }
+      const refunded = await refundMarker(db, userId, activeMarker, `domain purchase failed: ${msg}`);
+      if (!refunded) return refundPending(chargedAmount);
       return { ok: false, code: "registrar", message: msg };
     }
     purchaseOrderId = order.orderId;
@@ -274,8 +293,13 @@ export async function purchaseDomainForUser(
       return { ok: false, code: "pending", message: "Domain registration is still processing.", price: chargedAmount };
     }
     if (status.status === "failed") {
-      await refund(db, userId, chargedAmount, `domain order failed: ${status.message || "registrar rejected order"}`);
-      await patchRegistration(db, userId, { domainPurchase: { ...orderedMarker, state: "refunded" } });
+      const refunded = await refundMarker(
+        db,
+        userId,
+        orderedMarker,
+        `domain order failed: ${status.message || "registrar rejected order"}`
+      );
+      if (!refunded) return refundPending(chargedAmount);
       return { ok: false, code: "registrar", message: status.message || "Domain registration failed" };
     }
     owned = true;
@@ -329,15 +353,34 @@ export async function purchaseDomainForUser(
   return { ok: true, domain, charged: chargedAmount, balance, slug, attachWarning };
 }
 
-async function refund(db: Db, userId: string, amount: number, why: string) {
+function refundIdempotencyKey(userId: string, marker: Marker) {
+  const attempt = marker.orderId || marker.at;
+  return `domain_refund_${userId}_${marker.domain}_${attempt}`;
+}
+
+async function refundMarker(db: Db, userId: string, marker: Marker, why: string): Promise<boolean> {
+  const refunded = await refund(db, userId, marker, why);
+  if (refunded) {
+    await patchRegistration(db, userId, { domainPurchase: { ...marker, state: "refunded" } });
+  }
+  return refunded;
+}
+
+async function refund(db: Db, userId: string, marker: Marker, why: string): Promise<boolean> {
   try {
-    await db.rpc("credit_wallet", {
+    const { data, error } = await db.rpc("credit_wallet", {
       p_user_id: userId,
-      p_amount: amount,
-      p_idempotency_key: null,
+      p_amount: marker.charged,
+      p_idempotency_key: refundIdempotencyKey(userId, marker),
       p_description: `Refund — ${why}`.slice(0, 120),
     });
+    if (error || data === null) {
+      console.error("[domain-purchase] refund failed — needs reconciliation:", userId, error);
+      return false;
+    }
+    return true;
   } catch (e) {
     console.error("[domain-purchase] refund failed — needs reconciliation:", userId, e);
+    return false;
   }
 }
