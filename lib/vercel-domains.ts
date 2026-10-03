@@ -151,11 +151,15 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
   });
   const json = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
-    const err =
+    const detail =
       (json && typeof json === "object" && "error" in json
         ? (json as { error?: { message?: string } }).error?.message
-        : null) || `Vercel buy failed (${res.status})`;
-    throw new Error(err);
+        : null) || `registrar request failed (${res.status})`;
+    console.error(`[vercel-domains] registrar purchase failed (${res.status}): ${detail}`);
+    if (res.status === 401 || res.status === 403) {
+      throw new Error("Automatic domain registration is temporarily unavailable. Our team has been notified and the setup will retry automatically.");
+    }
+    throw new Error(detail);
   }
   const orderId = (json as { orderId?: string }).orderId;
   if (!orderId) throw new Error("Vercel accepted the order but did not return an order ID");
