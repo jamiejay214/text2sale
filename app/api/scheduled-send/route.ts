@@ -4,6 +4,8 @@ import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, countSegments } from "@/lib/sms-text";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 import { renderCampaignMessage } from "@/lib/campaign-sequence";
+import { customerSmsRate } from "@/lib/sms-pricing";
+import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -34,6 +36,13 @@ export async function POST(req: NextRequest) {
     const userId = auth.user.id;
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (!(await hasEINCertificate(supabase, userId))) {
+      return NextResponse.json(
+        { success: false, error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
+        { status: 412 }
+      );
+    }
 
     const fromDigits = fromNumber.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
     if (fromDigits.length !== 10) {
@@ -127,10 +136,18 @@ export async function GET(req: NextRequest) {
         .select("plan")
         .eq("id", userId)
         .single();
-      const plan = (data?.plan as Record<string, unknown> | null) || null;
-      const cost = Number((plan?.messageCost as number) ?? 0.012);
+      const plan = (data?.plan as { messageCost?: number | null } | null) || null;
+      const cost = customerSmsRate(plan);
       costCache.set(userId, cost);
       return cost;
+    };
+
+    const certificateCache = new Map<string, boolean>();
+    const canSendMessages = async (userId: string): Promise<boolean> => {
+      if (certificateCache.has(userId)) return certificateCache.get(userId)!;
+      const allowed = await hasEINCertificate(supabase, userId);
+      certificateCache.set(userId, allowed);
+      return allowed;
     };
 
     let sent = 0;
@@ -179,6 +196,15 @@ export async function GET(req: NextRequest) {
             return;
           }
         }
+
+        if (!(await canSendMessages(msg.user_id))) {
+          await supabase
+            .from("scheduled_messages")
+            .update({ processing_at: null, last_error: EIN_CERTIFICATE_REQUIRED_MESSAGE })
+            .eq("id", msg.id);
+          return;
+        }
+
         const { data: contact } = await supabase
           .from("contacts").select("*").eq("id", msg.contact_id).eq("user_id", msg.user_id).single();
 
