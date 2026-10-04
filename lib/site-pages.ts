@@ -25,6 +25,7 @@ export type SitePage = {
 const REFRESH_2026_09 = "2026-09-28";
 
 export const SITE_PAGES: SitePage[] = [
+  { path: "/sms-character-counter", label: "Free SMS character counter", group: "guide", priority: 0.85, updated: "2026-10-04" },
   { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
   { path: "/ai-texting-crm", label: "AI texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
   { path: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
