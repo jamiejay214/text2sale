@@ -1,12 +1,13 @@
-// ── Subscription packages ──────────────────────────────────────────────────
+// ── Subscription package ──────────────────────────────────────────────────
+// Text2Sale now has one paid platform plan. AI access is included in the
+// subscription and usage is billed separately from the wallet.
 //
-// The two plans the homepage sells. Prices live here once so signup, the
-// Stripe checkout, the in-app AI upgrade and the admin plan switch can never
-// quote different numbers.
+// Keep the legacy "ai" key as an alias so old Stripe metadata / admin links
+// continue to resolve safely during the transition.
 
 export const PACKAGES = {
-  standard: { key: "standard", name: "Text2Sale Standard", price: 39.99, messageCost: 0.012, aiPlan: false },
-  ai: { key: "ai", name: "Text2Sale AI", price: 119.99, messageCost: 0.012, aiPlan: true },
+  standard: { key: "standard", name: "Text2Sale", price: 39.99, messageCost: 0.015, aiPlan: true },
+  ai: { key: "ai", name: "Text2Sale", price: 39.99, messageCost: 0.015, aiPlan: true },
 } as const;
 
 export type PackageKey = keyof typeof PACKAGES;
@@ -15,22 +16,17 @@ export function isPackageKey(value: unknown): value is PackageKey {
   return value === "standard" || value === "ai";
 }
 
-/** The `profiles.plan` JSON shape for a package. */
-export function planShape(key: PackageKey) {
-  const p = PACKAGES[key];
+/** The `profiles.plan` JSON shape for the unified paid plan. */
+export function planShape(_key: PackageKey = "standard") {
+  const p = PACKAGES.standard;
   return { name: p.name, price: p.price, messageCost: p.messageCost };
 }
 
 /**
- * Which package a stored `plan` belongs to.
- *
- * Existing rows predate this module ("Text2Sale Package" at $39.99 is
- * Standard) and an admin can set a custom price, so this reads the name and
- * the price instead of requiring an exact match.
+ * Legacy plans all map to the unified paid package. This keeps existing
+ * accounts and old Stripe subscription metadata compatible without preserving
+ * the old $119.99 AI tier.
  */
-export function packageForPlan(plan: { name?: string | null; price?: number | null } | null | undefined): PackageKey {
-  if (!plan) return "standard";
-  if (typeof plan.name === "string" && /\bAI\b/.test(plan.name)) return "ai";
-  if (typeof plan.price === "number" && plan.price >= 55) return "ai";
+export function packageForPlan(_plan: { name?: string | null; price?: number | null } | null | undefined): PackageKey {
   return "standard";
 }

@@ -30,7 +30,6 @@ import { authFetch } from "@/lib/auth-fetch";
 import { fetchCampaigns, fetchProfile, joinTeamByCode, leaveTeam, updateProfile } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
 import { hasNonGsmChars, sanitizeForSms } from "@/lib/sms-text";
-import { PACKAGES } from "@/lib/packages";
 import {
   DEFAULT_FIRST_MESSAGE_OPT_OUT,
   MANDATORY_OPT_OUT_KEYWORDS,
@@ -103,87 +102,16 @@ function Numbers({ profile, onProfile, onNavigate }: Props) {
     <SettingsHeader eyebrow="Phone numbers" title="Your numbers, reputation, and reach." description="Buy or replace local numbers and see 30-day deliverability before a problem becomes a campaign failure." />
     {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
     <div className="v2-number-layout">
-      <Panel className="v2-number-search-card"><div className="v2-panel-head"><div><h2>Find a business number</h2><p>$1.50 to activate · $1/month</p></div><Phone size={18} /></div><div className="v2-number-search-body">{!approved && <button className="v2-setup-warning" onClick={() => onNavigate("settings", "10dlc")}><ShieldCheck size={17} /><span><strong>Messaging registration required</strong><small>Finish the guided carrier setup before buying a number.</small></span><ArrowRight size={15} /></button>}<label>Preferred area code<div><input inputMode="numeric" maxLength={3} value={areaCode} onChange={(event) => setAreaCode(event.target.value.replace(/\D/g, ""))} placeholder="954" onKeyDown={(event) => event.key === "Enter" && void search()} /><button onClick={search} disabled={busy === "search"}><Search size={15} />{busy === "search" ? "Searching…" : "Search"}</button></div></label><div className="v2-available-numbers">{available.map((number) => <button key={number.raw} onClick={() => buy(number)} disabled={busy === number.raw || !approved}><span><strong>{number.display}</strong><small>{[number.locality, number.region].filter(Boolean).join(", ") || "United States"}</small></span><span><i>SMS</i><i>Voice</i></span><b>{busy === number.raw ? "Buying…" : "$1.50"}</b></button>)}</div></div></Panel>
+      <Panel className="v2-number-search-card"><div className="v2-panel-head"><div><h2>Find a business number</h2><p>$1.50/month · no activation fee</p></div><Phone size={18} /></div><div className="v2-number-search-body">{!approved && <button className="v2-setup-warning" onClick={() => onNavigate("settings", "10dlc")}><ShieldCheck size={17} /><span><strong>Messaging registration required</strong><small>Finish the guided carrier setup before buying a number.</small></span><ArrowRight size={15} /></button>}<label>Preferred area code<div><input inputMode="numeric" maxLength={3} value={areaCode} onChange={(event) => setAreaCode(event.target.value.replace(/\D/g, ""))} placeholder="954" onKeyDown={(event) => event.key === "Enter" && void search()} /><button onClick={search} disabled={busy === "search"}><Search size={15} />{busy === "search" ? "Searching…" : "Search"}</button></div></label><div className="v2-available-numbers">{available.map((number) => <button key={number.raw} onClick={() => buy(number)} disabled={busy === number.raw || !approved}><span><strong>{number.display}</strong><small>{[number.locality, number.region].filter(Boolean).join(", ") || "United States"}</small></span><span><i>SMS</i><i>Voice</i></span><b>{busy === number.raw ? "Connecting…" : "$1.50/mo"}</b></button>)}</div></div></Panel>
       <Panel className="v2-owned-numbers"><div className="v2-panel-head"><div><h2>Connected numbers</h2><p>{profile.owned_numbers?.length || 0} active lines · delivery health updates live</p></div><button className="v2-icon-btn" onClick={refreshDelivery}><RefreshCw size={15} /></button></div>{profile.owned_numbers?.length ? <div className="v2-number-cards">{profile.owned_numbers.map((number) => { const digits = number.number.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); const stats = deliverability[digits]; const receipts = (stats?.delivered || 0) + (stats?.failed || 0); const rate = receipts ? Math.round((stats.delivered / receipts) * 1000) / 10 : null; const tone = rate === null ? "neutral" : rate >= 90 ? "success" : rate >= 70 ? "warning" : "danger"; return <article key={number.id}><header><span className="v2-number-icon"><Phone size={16} /></span><div><small>{number.alias || "Business line"}</small><strong>{number.number}</strong></div><button onClick={() => release(number)} disabled={busy === number.id}><Trash2 size={14} /></button></header><div className="v2-delivery-row"><StatusPill tone={tone}>{rate === null ? stats?.total ? "Awaiting receipts" : "No sends yet" : `${rate}% delivered`}</StatusPill><span>{stats?.total?.toLocaleString() || 0} sent in 30 days</span></div><div className="v2-delivery-bar"><span style={{ width: `${rate ?? 0}%` }} /></div><footer><span>{stats?.delivered || 0} delivered</span><span>{stats?.failed || 0} failed</span><span>{stats?.pending || 0} pending</span></footer></article>; })}</div> : <EmptyState title="No phone numbers yet" description="Complete messaging registration, then search for the local number you want customers to see." />}</Panel>
     </div>
   </>;
 }
 
-function AiUpgrade({ profile, onProfile, onNavigate }: Props) {
-  const [busy, setBusy] = useState(false);
-  const [notice, setNotice] = useState("");
-  const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
-  const subscribed = !!profile.free_subscription || ["active", "canceling"].includes(profile.subscription_status);
-
-  const upgrade = async () => {
-    if (busy) return;
-    setBusy(true);
-    setNotice("");
-    try {
-      if (subscribed) {
-        const response = await authFetch("/api/upgrade-plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ industry: profile.industry || null }),
-        });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(data.error || "The AI upgrade could not be completed.");
-        const latest = await fetchProfile(profile.id);
-        if (latest) onProfile(latest);
-        onNavigate("settings", "ai");
-        return;
-      }
-
-      const planResponse = await authFetch("/api/onboarding/plan", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package: "ai", industry: profile.industry || null }),
-      });
-      const planData = await planResponse.json().catch(() => ({}));
-      if (!planResponse.ok) throw new Error(planData.error || "The AI plan could not be selected.");
-      const checkoutResponse = await authFetch("/api/create-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: profile.id, userEmail: profile.email }),
-      });
-      const checkoutData = await checkoutResponse.json().catch(() => ({}));
-      if (!checkoutResponse.ok || !checkoutData.url) throw new Error(checkoutData.error || "Secure checkout could not be opened.");
-      window.location.href = checkoutData.url;
-    } catch (reason) {
-      setNotice(reason instanceof Error ? reason.message : "The AI upgrade could not be completed.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (aiAccess) {
-    return <><PageHeader eyebrow="Text2Sale + AI" title="Your AI workspace is unlocked." description="AI texting, AI calling, training, qualification, and appointment booking are ready." actions={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("settings", "ai")}>Open AI texting <ArrowRight size={15} /></button>} /><Panel><EmptyState title="AI plan active" description="Use the AI texting and AI receptionist tabs to train and control your assistants." /></Panel></>;
-  }
-
+function AiUpgrade({ onNavigate }: Props) {
   return <>
-    <PageHeader eyebrow="Upgrade to Text2Sale + AI" title="Put follow-up and phone coverage on autopilot." description="Standard includes the complete CRM. Upgrade when you want trained AI to text, qualify, call, and book for you." />
-    {notice ? <div className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div> : null}
-    <div className="v2-ai-upgrade-layout">
-      <Panel className="v2-ai-upgrade-offer">
-        <span className="v2-ai-upgrade-kicker"><Sparkles size={14} /> Text2Sale + AI</span>
-        <div className="v2-ai-upgrade-price"><strong>${PACKAGES.ai.price.toFixed(2)}</strong><span>/month</span></div>
-        <p>AI feature access is included. Texts, AI replies, and AI call minutes use your wallet at the rates shown in the workspace.</p>
-        <button className="v2-btn v2-btn-accent" onClick={upgrade} disabled={busy || !!profile.is_usha}>{busy ? "Opening secure upgrade…" : subscribed ? "Upgrade to AI" : "Choose AI & continue to Stripe"}<ArrowRight size={16} /></button>
-        <small>{profile.is_usha ? "The AI package is not available for this partner account." : subscribed ? "Stripe securely charges the prorated plan difference before AI is unlocked." : "You will review the $119.99 monthly subscription in Stripe before paying."}</small>
-      </Panel>
-      <Panel className="v2-ai-upgrade-features">
-        <div className="v2-panel-head"><div><h2>Everything AI unlocks</h2><p>One upgrade across the entire workspace</p></div><Bot size={19} /></div>
-        <div>
-          {[
-            ["AI texting", "Responds in your voice, qualifies leads, handles objections, and follows your rules."],
-            ["AI calling receptionist", "Answers inbound calls, gathers lead details, books appointments, and transfers when needed."],
-            ["Workspace training", "Set goals, tone, business knowledge, scripts, guardrails, and handoff instructions."],
-            ["Per-conversation control", "Use AI everywhere or switch it on and off for one lead at a time."],
-            ["Calendar booking", "Offers available times and keeps booked appointments connected to your CRM."],
-          ].map(([title, detail]) => <article key={title}><span><Check size={14} /></span><div><strong>{title}</strong><small>{detail}</small></div></article>)}
-        </div>
-      </Panel>
-    </div>
+    <PageHeader eyebrow="AI included" title="AI is included with every paid Text2Sale account." description="There is no separate AI subscription anymore. AI texting, qualification, appointment booking, and AI calling are available on the $39.99/month plan; usage is billed from the wallet." actions={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("settings", "ai")}>Open AI texting <ArrowRight size={15} /></button>} />
+    <Panel><EmptyState title="No upgrade required" description="AI replies are $0.020 each plus the outbound SMS segment charge. AI calls are $0.18/minute." /></Panel>
   </>;
 }
 
@@ -192,12 +120,11 @@ function Billing({ profile, onProfile, onNavigate }: Props) {
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState("");
   const subscribed = profile.free_subscription || ["active", "canceling"].includes(profile.subscription_status);
-  const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
+  const aiAccess = subscribed || !!profile.free_ai_plan;
   const checkout = async () => {
     if (amount < 20) { setNotice("The minimum wallet add is $20."); return; }
     setBusy("funds");
-    const paid = amount >= 500 ? Number((amount * .9).toFixed(2)) : amount;
-    const response = await authFetch("/api/create-checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount: paid, creditAmount: amount, userId: profile.id, userEmail: profile.email }) });
+    const response = await authFetch("/api/create-checkout", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ amount, userId: profile.id, userEmail: profile.email }) });
     const data = await response.json(); setBusy("");
     if (data.success && data.url) window.location.href = data.url; else setNotice(data.error || "Could not open secure checkout.");
   };
@@ -208,9 +135,9 @@ function Billing({ profile, onProfile, onNavigate }: Props) {
     <SettingsHeader eyebrow="Billing & funds" title="Keep every conversation moving." description="Your live wallet balance stays in the top bar. Add funds securely through Stripe, manage cards, and prevent campaigns from stopping." />
     {notice && <div className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}>×</button></div>}
     <div className="v2-billing-grid">
-      <Panel className="v2-wallet-card"><div className="v2-wallet-hero"><span><Wallet size={22} /></span><p>Available balance</p><strong>${Number(profile.wallet_balance || 0).toFixed(2)}</strong><small>Updates automatically after payments and usage</small></div><div className="v2-fund-picker"><label>Add funds<input type="number" min={20} step={10} value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label><div>{[20, 50, 100, 250, 500].map((value) => <button className={amount === value ? "is-active" : ""} key={value} onClick={() => setAmount(value)}>${value}</button>)}</div>{amount >= 500 && <p><Sparkles size={14} /> You receive ${amount.toFixed(2)} in credit and pay ${(amount * .9).toFixed(2)}.</p>}<button className="v2-btn v2-btn-accent" onClick={checkout} disabled={!subscribed || busy === "funds"}><CreditCard size={16} /> {busy === "funds" ? "Opening Stripe…" : `Add $${amount.toFixed(2)}`}</button>{!subscribed && <small>Activate your subscription before adding usage funds.</small>}</div></Panel>
+      <Panel className="v2-wallet-card"><div className="v2-wallet-hero"><span><Wallet size={22} /></span><p>Available balance</p><strong>${Number(profile.wallet_balance || 0).toFixed(2)}</strong><small>Updates automatically after payments and usage</small></div><div className="v2-fund-picker"><label>Add funds<input type="number" min={20} step={10} value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label><div>{[20, 50, 100, 250, 500].map((value) => <button className={amount === value ? "is-active" : ""} key={value} onClick={() => setAmount(value)}>${value}</button>)}</div>{amount >= 500 && <p><Sparkles size={14} /> $500+ unlocks the $0.0135/SMS volume rate. You pay and receive the full ${amount.toFixed(2)}.</p>}<button className="v2-btn v2-btn-accent" onClick={checkout} disabled={!subscribed || busy === "funds"}><CreditCard size={16} /> {busy === "funds" ? "Opening Stripe…" : `Add $${amount.toFixed(2)}`}</button>{!subscribed && <small>Activate your subscription before adding usage funds.</small>}</div></Panel>
       <div className="v2-billing-stack">
-        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{profile.plan?.name || "Text2Sale"}</strong><small>{aiAccess ? "CRM, AI texting, AI calling, imports, and integrations" : "CRM, texting, calling, campaigns, imports, and integrations"}</small></span><b>${Number(profile.plan?.price || 39.99).toFixed(2)}<small>/month</small></b></div>{subscribed ? <><button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button>{!aiAccess ? <button className="v2-settings-row" onClick={() => onNavigate("settings", "upgrade")}><span className="v2-settings-icon"><Sparkles size={16} /></span><span><strong>Upgrade to Text2Sale + AI</strong><small>Unlock AI texting and the AI calling receptionist for $119.99/month.</small></span><ArrowRight size={15} /></button> : null}</> : <button className="v2-settings-row" onClick={subscribe}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Activate Text2Sale</strong><small>Choose a card securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
+        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{profile.plan?.name || "Text2Sale"}</strong><small>CRM, AI texting, AI calling, campaigns, imports, and integrations</small></span><b>${Number(profile.plan?.price || 39.99).toFixed(2)}<small>/month</small></b></div>{subscribed ? <><button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button></> : <button className="v2-settings-row" onClick={subscribe}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Activate Text2Sale</strong><small>Choose a card securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
         <Panel><div className="v2-panel-head"><div><h2>Auto recharge</h2><p>Protect active campaigns from a low balance.</p></div><label className="v2-compact-switch"><input type="checkbox" checked={profile.auto_recharge?.enabled || false} onChange={(event) => saveAutoRecharge(event.target.checked)} /><i /></label></div><div className="v2-auto-recharge"><div><span>When balance falls below</span><strong>${Number(profile.auto_recharge?.threshold || 10).toFixed(2)}</strong></div><ArrowRight size={16} /><div><span>Automatically add</span><strong>${Number(profile.auto_recharge?.amount || 50).toFixed(2)}</strong></div></div></Panel>
       </div>
       <Panel className="v2-usage-panel"><div className="v2-panel-head"><div><h2>Recent account activity</h2><p>Wallet deposits, message usage, and number purchases</p></div></div>{profile.usage_history?.length ? <div>{profile.usage_history.slice(0, 20).map((entry) => <article key={entry.id}><span className="v2-usage-icon">{entry.amount >= 0 ? "+" : "−"}</span><div><strong>{entry.description}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></div><b className={entry.amount >= 0 ? "is-credit" : ""}>{entry.amount >= 0 ? "+" : ""}${Math.abs(entry.amount).toFixed(2)}</b></article>)}</div> : <EmptyState title="No billing activity yet" description="Deposits and usage will appear here." />}</Panel>

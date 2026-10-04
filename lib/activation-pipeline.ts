@@ -138,8 +138,9 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
   // How far the account got, treating REJECTED as "stopped at" its stage.
   let rank = RANK[status];
   if (status === "REJECTED") rank = rejectedAt === "campaign" ? 4 : 1;
-  if (status === "AWAITING_PAYMENT" && awaiting === "domain") rank = 1;
-  if (status === "AWAITING_PAYMENT" && awaiting !== "domain") rank = 5;
+  if (status === "AWAITING_PAYMENT" && (awaiting === "domain" || awaiting === "brand")) rank = 1;
+  if (status === "AWAITING_PAYMENT" && awaiting === "campaign") rank = 3;
+  if (status === "AWAITING_PAYMENT" && awaiting === "number") rank = 5;
 
   const alerts: Alert[] = [];
   const steps: PipelineStep[] = [];
@@ -215,6 +216,8 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
     });
   } else if (rejectedAt === "brand") {
     steps.push({ key: "brand", label: LABELS.brand, state: "failed", detail: p.messaging_error || "Rejected" });
+  } else if (status === "AWAITING_PAYMENT" && awaiting === "brand") {
+    steps.push({ key: "brand", label: LABELS.brand, state: "waiting", detail: "Waiting for $4.50 carrier registration fee" });
   } else if (status === "BRAND_PENDING") {
     steps.push({ key: "brand", label: LABELS.brand, state: "waiting", detail: `In review for ${ago(hours)}` });
   } else if (siteLive && entitled && status === "BUSINESS_SUBMITTED") {
@@ -228,6 +231,8 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
     steps.push({ key: "campaign", label: LABELS.campaign, state: "done", detail: reg.campaignStatus || "Approved" });
   } else if (rejectedAt === "campaign") {
     steps.push({ key: "campaign", label: LABELS.campaign, state: "failed", detail: p.messaging_error || "Rejected" });
+  } else if (status === "AWAITING_PAYMENT" && awaiting === "campaign") {
+    steps.push({ key: "campaign", label: LABELS.campaign, state: "waiting", detail: "Waiting for $15 carrier review fee" });
   } else if (status === "CAMPAIGN_PENDING") {
     steps.push({
       key: "campaign",
@@ -244,8 +249,8 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
   // ── Number ───────────────────────────────────────────────────────────────
   if (rank >= 6) {
     steps.push({ key: "number", label: LABELS.number, state: "done", detail: `${numbers || 1} number${numbers === 1 ? "" : "s"} attached` });
-  } else if (status === "AWAITING_PAYMENT" && awaiting !== "domain") {
-    steps.push({ key: "number", label: LABELS.number, state: "waiting", detail: "Waiting for funds ($1.50)" });
+  } else if (status === "AWAITING_PAYMENT" && awaiting === "number") {
+    steps.push({ key: "number", label: LABELS.number, state: "waiting", detail: "Waiting to connect a phone number" });
   } else if (status === "CAMPAIGN_APPROVED") {
     steps.push({ key: "number", label: LABELS.number, state: "current", detail: numbers ? "Attaching your number" : "Buying a number" });
   } else {

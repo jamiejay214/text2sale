@@ -142,7 +142,7 @@ export type A2PRegistration = {
   /** The domain the customer chose and agreed to pay for, before it is bought. */
   domainRequest?: { domain: string; price: number; requestedAt: string } | null;
   /** Set while the account is parked waiting for the customer to add funds. */
-  awaiting?: "domain" | "number" | null;
+  awaiting?: "domain" | "brand" | "campaign" | "number" | null;
   /** Something only the operator can fix (Telnyx balance, credentials, a stalled site). */
   adminAlert?: { code: string; message: string; at: string; notifiedAt?: string } | null;
   desiredAreaCode?: string | null;
@@ -152,6 +152,10 @@ export type A2PRegistration = {
   campaignAttempt?: number;
   /** How many brands have been submitted for this account (each costs a fee). */
   brandSubmissions?: number;
+  /** Highest brand submission attempt whose carrier fee has been debited. */
+  brandFeePaidThrough?: number;
+  /** Highest campaign submission attempt whose carrier review fee has been debited. */
+  campaignFeePaidThrough?: number;
   /** Customer-editable presentation for the public business website. */
   siteConfig?: import("./site-config").BusinessSiteConfig | null;
   /** Bumped when the homepage, opt-in, privacy, and terms pages pass live checks. */

@@ -42,7 +42,7 @@ export default function SmsCrmForInsuranceAgentsPage() {
           heading: "Insurance sales is a follow-up game",
           paragraphs: [
             "Calls matter, but many prospects answer texts faster than phone calls. Internet leads often hear from several agents within an hour of requesting a quote, and the agent who responds first with something useful usually gets the conversation. Text2Sale helps agents turn aged leads, new inquiries, referral lists, and reactivation campaigns into live conversations without bouncing between a dialer, a spreadsheet, and a personal phone.",
-            "The platform brings the pieces together: CSV lead uploads, bulk campaigns, drip sequences that stop when someone replies, a two-way inbox, AI replies on the AI plan, and appointment booking that syncs to Google Calendar.",
+            "The platform brings the pieces together: CSV lead uploads, bulk campaigns, drip sequences that stop when someone replies, a two-way inbox, AI replies with AI, and appointment booking that syncs to Google Calendar.",
           ],
         },
         {
@@ -81,7 +81,7 @@ export default function SmsCrmForInsuranceAgentsPage() {
         },
         {
           question: "What does Text2Sale cost for an insurance agent?",
-          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $119.99 per month plus $0.025 per AI reply, and adds AI replies and appointment booking.",
+          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. AI replies and appointment booking are included with the platform.",
         },
       ]}
       relatedPages={[

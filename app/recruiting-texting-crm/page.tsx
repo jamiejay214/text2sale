@@ -67,7 +67,7 @@ export default function Page() {
         },
         {
           question: "Can AI answer candidate questions?",
-          answer: "On the Text2Sale + AI plan, AI can reply to routine questions and help schedule interviews. You can turn it off for any conversation and step in yourself.",
+          answer: "With Text2Sale AI, AI can reply to routine questions and help schedule interviews. You can turn it off for any conversation and step in yourself.",
         },
       ]}
       relatedPages={[

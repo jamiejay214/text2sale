@@ -30,7 +30,7 @@ export default function Page() {
           heading: "Speed to lead is a team problem",
           paragraphs: [
             "Most sales teams know that responding within minutes matters. The problem is execution: new leads arrive while reps are on calls, in meetings, or off shift, and a lead that waits an hour has often already talked to a competitor. Individual discipline does not fix that. A system does.",
-            "Text2Sale can send a first-touch text automatically when a lead arrives through a connected form or integration, and campaigns reach uploaded lists in one step. Every reply lands in the rep's two-way inbox, and managers can see conversations across the team. On the AI plan, AI can respond to inbound replies immediately and book a call, so the lead gets an answer even when every rep is busy.",
+            "Text2Sale can send a first-touch text automatically when a lead arrives through a connected form or integration, and campaigns reach uploaded lists in one step. Every reply lands in the rep's two-way inbox, and managers can see conversations across the team. With AI enabled, AI can respond to inbound replies immediately and book a call, so the lead gets an answer even when every rep is busy.",
           ],
         },
         {
@@ -65,11 +65,11 @@ export default function Page() {
         },
         {
           question: "How does AI help a sales team?",
-          answer: "On the Text2Sale + AI plan, AI replies to inbound texts, handles common objections, and books appointments that sync to Google Calendar, so leads get an answer when reps are busy. AI can be switched off per conversation.",
+          answer: "With Text2Sale AI, AI replies to inbound texts, handles common objections, and books appointments that sync to Google Calendar, so leads get an answer when reps are busy. AI can be switched off per conversation.",
         },
         {
           question: "What does it cost?",
-          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $119.99 per month plus $0.025 per AI reply. There is no long-term contract.",
+          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract.",
         },
       ]}
       relatedPages={[

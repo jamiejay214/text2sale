@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import type { Db } from "@/lib/business-site";
+import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
+import { NUMBER_MONTHLY_FEE, TEN_DLC_MIXED_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -129,13 +131,31 @@ export async function POST(req: NextRequest) {
           // itself is already settled atomically above.
           const { data: profile } = await supabase
             .from("profiles")
-            .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name")
+            .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name, plan")
             .eq("id", userId)
             .single();
 
           if (profile) {
             const newBalance = Number(profile.wallet_balance) || 0;
             const newTotalDeposited = Number(profile.total_deposited || 0);
+
+            // A single $500+ wallet purchase unlocks the approved volume SMS
+            // rate. The customer still pays the full wallet amount and receives
+            // the full wallet amount; the discount lives only in SMS pricing.
+            if (amount >= VOLUME_SMS_UNLOCK_AMOUNT) {
+              const currentPlan = (profile.plan || {}) as Record<string, unknown>;
+              await supabase
+                .from("profiles")
+                .update({
+                  plan: {
+                    ...currentPlan,
+                    name: "Text2Sale",
+                    price: 39.99,
+                    messageCost: VOLUME_SMS_RATE_PER_SEGMENT,
+                  },
+                })
+                .eq("id", userId);
+            }
 
             const entry = {
               id: `stripe_${event.id}`,
@@ -283,9 +303,8 @@ export async function POST(req: NextRequest) {
         // and a Standard one never gets AI for free. Subscriptions that
         // predate the stamp have no package and are left as they are, as are
         // accounts an admin has comped.
-        const pkg = subscription.metadata?.package;
-        if (!current?.free_subscription && !current?.free_ai_plan && (pkg === "ai" || pkg === "standard")) {
-          update.ai_plan = pkg === "ai" && (subStatus === "active" || subStatus === "canceling" || subStatus === "past_due");
+        if (!current?.free_subscription && !current?.free_ai_plan) {
+          update.ai_plan = subStatus === "active" || subStatus === "canceling";
         }
         await supabase.from("profiles").update(update).eq("id", userId);
 
@@ -331,7 +350,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("usage_history, owned_numbers, wallet_balance")
+            .select("usage_history, owned_numbers, wallet_balance, a2p_registration")
             .eq("id", userId)
             .single();
 
@@ -350,7 +369,7 @@ export async function POST(req: NextRequest) {
               status: "succeeded",
             });
 
-            // Charge $1/month per owned phone number — via the SAME atomic,
+            // Charge recurring phone-number + carrier campaign fees via the SAME atomic,
             // period-claimed RPC the /api/billing/numbers cron uses, keyed on
             // the invoice's billing month. This prevents BOTH (a) double
             // billing when this webhook and the monthly cron both run, and
@@ -358,13 +377,16 @@ export async function POST(req: NextRequest) {
             // claims the month first wins; the others become no-ops.
             const ownedNumbers = profile.owned_numbers || [];
             const numberCount = ownedNumbers.length;
+            const reg = (profile.a2p_registration || {}) as { campaignSid?: string | null };
+            const campaignFee = reg.campaignSid ? TEN_DLC_MIXED_MONTHLY_FEE : 0;
 
-            if (numberCount > 0) {
-              const numberCharge = numberCount * 1;
+            if (numberCount > 0 || campaignFee > 0) {
+              const numberCharge = numberCount * NUMBER_MONTHLY_FEE;
+              const recurringCharge = Number((numberCharge + campaignFee).toFixed(2));
               const period = now.slice(0, 7); // "YYYY-MM"
               const { data: billed, error: billErr } = await supabase.rpc("bill_number_fee", {
                 p_user_id: userId,
-                p_amount: numberCharge,
+                p_amount: recurringCharge,
                 p_period: period,
               });
               if (billErr) {
@@ -374,8 +396,8 @@ export async function POST(req: NextRequest) {
                 entries.push({
                   id: `numfee_${invoice.id}`,
                   type: "charge",
-                  amount: numberCharge,
-                  description: `Monthly phone number fee — ${numberCount} number${numberCount > 1 ? "s" : ""} × $1.00`,
+                  amount: recurringCharge,
+                  description: `Monthly messaging fees — ${numberCount} number${numberCount > 1 ? "s" : ""} × $${NUMBER_MONTHLY_FEE.toFixed(2)}${campaignFee ? ` + $${campaignFee.toFixed(2)} 10DLC campaign` : ""}`,
                   createdAt: now,
                   status: "succeeded",
                 });

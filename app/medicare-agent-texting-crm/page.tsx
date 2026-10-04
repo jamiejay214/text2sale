@@ -50,7 +50,7 @@ export default function Page() {
           heading: "Plan around the enrollment calendar",
           paragraphs: [
             "Volume in Medicare is seasonal. The Annual Enrollment Period runs October 15 through December 7, the Medicare Advantage Open Enrollment Period runs January 1 through March 31, and turning-65 prospects have a seven-month Initial Enrollment Period around their birthday month. Each window changes what a beneficiary can do, so your messages should reflect the window they are in.",
-            "A texting CRM helps you get ahead of the rush. Segment contacts by the window that applies to them, prepare templates in advance, and let the two-way inbox collect replies during AEP when phones are ringing all day. The AI plan can answer routine scheduling questions and hand anything about plan choice back to a licensed agent.",
+            "A texting CRM helps you get ahead of the rush. Segment contacts by the window that applies to them, prepare templates in advance, and let the two-way inbox collect replies during AEP when phones are ringing all day. AI can answer routine scheduling questions and hand anything about plan choice back to a licensed agent.",
           ],
         },
       ]}
@@ -69,7 +69,7 @@ export default function Page() {
         },
         {
           question: "Can AI reply to Medicare prospects for me?",
-          answer: "On the Text2Sale + AI plan, AI can answer routine questions like rescheduling and confirm appointment times. You can switch AI off for any conversation, and plan recommendations should always come from a licensed agent.",
+          answer: "With Text2Sale AI, AI can answer routine questions like rescheduling and confirm appointment times. You can switch AI off for any conversation, and plan recommendations should always come from a licensed agent.",
         },
         {
           question: "Is this legal advice?",

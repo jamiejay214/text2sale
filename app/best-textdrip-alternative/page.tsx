@@ -30,7 +30,7 @@ export default function Page() {
           heading: "Drips start conversations; people finish them",
           paragraphs: [
             "Automated drip sequences are good at one thing: making sure follow-up happens on schedule. But the value of a drip shows up when a lead replies, and that is where many teams struggle. Replies arrive at all hours, reps miss them, and a warm lead waits while the next automated message goes out.",
-            "Text2Sale treats the drip as the start of the workflow. Sequences stop when a contact replies or opts out, replies land in your two-way inbox, and on the AI plan, AI can answer immediately and book a call so the lead is not left waiting.",
+            "Text2Sale treats the drip as the start of the workflow. Sequences stop when a contact replies or opts out, replies land in your two-way inbox, and with AI, AI can answer immediately and book a call so the lead is not left waiting.",
           ],
         },
         {
@@ -57,15 +57,15 @@ export default function Page() {
       faq={[
         {
           question: "Does Text2Sale have drip campaigns like Textdrip?",
-          answer: "Yes. Text2Sale includes drip sequences as part of its campaign builder, along with mass texting, a two-way inbox, and AI replies on the Text2Sale + AI plan.",
+          answer: "Yes. Text2Sale includes drip sequences as part of its campaign builder, along with mass texting, a two-way inbox, and AI replies with Text2Sale.",
         },
         {
           question: "What happens when a lead replies to a drip?",
-          answer: "The sequence stops for that contact and the reply lands in your two-way inbox, so you, or AI on the AI plan, can respond right away.",
+          answer: "The sequence stops for that contact and the reply lands in your two-way inbox, so you, or AI with AI, can respond right away.",
         },
         {
           question: "How much does Text2Sale cost?",
-          answer: "The Standard plan is $39.99 per month plus $0.012 per text. The Text2Sale + AI plan is $119.99 per month plus $0.025 per AI reply. There is no long-term contract.",
+          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract.",
         },
         {
           question: "Can I import my contacts from another platform?",

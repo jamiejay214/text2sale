@@ -56,27 +56,13 @@ const softwareApplicationSchema = {
   offers: [
     {
       "@type": "Offer",
-      name: "Standard",
+      name: "Text2Sale",
       price: "39.99",
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
       priceSpecification: {
         "@type": "UnitPriceSpecification",
         price: "39.99",
-        priceCurrency: "USD",
-        unitText: "MONTH",
-        billingDuration: "P1M",
-      },
-    },
-    {
-      "@type": "Offer",
-      name: "Text2Sale + AI",
-      price: "119.99",
-      priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: "119.99",
         priceCurrency: "USD",
         unitText: "MONTH",
         billingDuration: "P1M",

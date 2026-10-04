@@ -61,7 +61,7 @@ export default function BulkSmsSoftwarePage() {
           heading: "Write messages people answer",
           paragraphs: [
             "The texts that get replies are short, personal, and specific. Use the contact's first name, say who you are, reference why you are texting, and end with one question that is easy to answer. Every first message to a contact should include opt-out language.",
-            "Keep an eye on length and characters. A standard SMS segment holds 160 GSM-7 characters, but a single emoji or some special characters switch the whole message to Unicode, which cuts a segment to 70 characters. Text2Sale charges $0.012 per segment on either plan, so a message that splits into three segments costs three times as much. You save 10% when you add $500 or more to your wallet.",
+            "Keep an eye on length and characters. A standard SMS segment holds 160 GSM-7 characters, but a single emoji or some special characters switch the whole message to Unicode, which cuts a segment to 70 characters. Text2Sale charges $0.015 per outbound segment, or $0.0135 after a qualifying $500+ wallet purchase, so a message that splits into three segments costs three times as much. Incoming SMS is free.",
           ],
         },
       ]}
@@ -72,7 +72,7 @@ export default function BulkSmsSoftwarePage() {
         },
         {
           question: "How much does bulk SMS cost with Text2Sale?",
-          answer: "Texts are $0.012 per segment, and the Standard plan is $39.99 per month. A standard segment holds 160 characters, or 70 if the message contains emoji. You save 10% when you add $500 or more to your wallet.",
+          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, or $0.0135 after a qualifying $500+ wallet purchase; incoming SMS is free. A standard segment holds 160 GSM-7 characters, or 70 with Unicode.",
         },
         {
           question: "Can I upload a CSV of contacts?",

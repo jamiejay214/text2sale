@@ -44,7 +44,8 @@ import {
   type MessagingStatus,
 } from "./messaging-status";
 import {
-  NUMBER_PURCHASE_COST,
+  TEN_DLC_BRAND_FEE,
+  TEN_DLC_CAMPAIGN_REVIEW_FEE,
   assignNumberToCampaign,
   findAvailableNumber,
   orderNumber,
@@ -228,6 +229,88 @@ export async function setStatus(db: Db, profile: ProfileRow, status: MessagingSt
   }
 }
 
+/**
+ * Debit a carrier registration/review fee exactly once per submission attempt.
+ * The marker lives in a2p_registration so driver retries cannot double-charge.
+ */
+async function ensureCarrierFee(
+  db: Db,
+  profile: ProfileRow,
+  opts: {
+    attempt: number;
+    paidThroughKey: "brandFeePaidThrough" | "campaignFeePaidThrough";
+    amount: number;
+    awaiting: "brand" | "campaign";
+    resumeStatus: MessagingStatus;
+    label: string;
+  }
+): Promise<boolean> {
+  const reg = profile.a2p_registration || {};
+  if (Number(reg[opts.paidThroughKey] || 0) >= opts.attempt) return true;
+
+  const { data: newBalance, error } = await db.rpc("decrement_wallet", {
+    p_user_id: profile.id,
+    p_amount: opts.amount,
+  });
+
+  if (error) {
+    await setStatus(db, profile, opts.resumeStatus, {
+      mode: "hold",
+      holdMinutes: 15,
+      alert: { code: "carrier_fee_billing", message: `Could not reserve ${opts.label} fee: ${error.message}` },
+    });
+    return false;
+  }
+
+  if (newBalance === null || newBalance === undefined) {
+    await setStatus(db, profile, "AWAITING_PAYMENT", {
+      mode: "hold",
+      holdMinutes: 5,
+      error: `Add funds for the ${opts.amount.toFixed(2)} ${opts.label} carrier fee.`,
+      patch: { awaiting: opts.awaiting } as Partial<Registration>,
+    });
+    return false;
+  }
+
+  await setStatus(db, profile, opts.resumeStatus, {
+    patch: {
+      [opts.paidThroughKey]: opts.attempt,
+      awaiting: null,
+    } as Partial<Registration>,
+  });
+
+  // Make every pass-through fee visible in the customer's billing history.
+  try {
+    const { data: current } = await db
+      .from("profiles")
+      .select("usage_history")
+      .eq("id", profile.id)
+      .single();
+    const history = Array.isArray(current?.usage_history) ? current!.usage_history : [];
+    await db
+      .from("profiles")
+      .update({
+        usage_history: [
+          {
+            id: `${opts.awaiting}_fee_${opts.attempt}_${Date.now()}`,
+            type: "charge",
+            amount: opts.amount,
+            description: `Carrier fee — ${opts.label} (submission ${opts.attempt})`,
+            createdAt: new Date().toISOString(),
+            status: "succeeded",
+          },
+          ...history,
+        ],
+      })
+      .eq("id", profile.id);
+  } catch (historyError) {
+    console.error("[messaging-driver] carrier fee history write failed:", historyError);
+  }
+
+  profile.wallet_balance = Number(newBalance);
+  return true;
+}
+
 /** Re-read the row after a helper wrote to it directly. */
 async function refresh(db: Db, profile: ProfileRow) {
   const { data } = await db.from("profiles").select(PROFILE_COLUMNS).eq("id", profile.id).single();
@@ -408,10 +491,9 @@ async function ensureOwnedRow(db: Db, userId: string, digits: string, display: s
 
 type NumberOutcome =
   | { status: "NUMBER_ASSIGNED"; note: string }
-  | { status: "CAMPAIGN_APPROVED"; note: string; hold?: boolean }
-  | { status: "AWAITING_PAYMENT"; note: string };
+  | { status: "CAMPAIGN_APPROVED"; note: string; hold?: boolean };
 
-/** Buy (if needed) and attach a number. Charges first, refunds on failure. */
+/** Buy (if needed) and attach a number. There is no upfront customer charge. */
 async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutcome> {
   const reg = profile.a2p_registration || {};
   const campaignId = reg.campaignSid;
@@ -448,11 +530,6 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
     };
   }
 
-  // No point searching (or asking Telnyx anything) for someone who can't pay.
-  if ((Number(profile.wallet_balance) || 0) < NUMBER_PURCHASE_COST) {
-    return { status: "AWAITING_PAYMENT", note: `Needs $${NUMBER_PURCHASE_COST.toFixed(2)} in the balance` };
-  }
-
   // Search first: nothing should move in the wallet if there's nothing to buy.
   let candidate = await findAvailableNumber(reg.desiredAreaCode || undefined);
   if (!candidate && reg.desiredAreaCode) {
@@ -462,40 +539,14 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
   }
   if (!candidate) return { status: "CAMPAIGN_APPROVED", note: "No SMS-capable numbers available right now" };
 
-  // ── Pay first ───────────────────────────────────────────────────────────
-  // decrement_wallet is atomic and returns null when the balance is short, so
-  // a concurrent run can't double-spend and we can't order a number the
-  // customer hasn't paid for.
-  const { data: newBalance, error: debitErr } = await db.rpc("decrement_wallet", {
-    p_user_id: profile.id,
-    p_amount: NUMBER_PURCHASE_COST,
-  });
-  if (debitErr || newBalance === null) {
-    return { status: "AWAITING_PAYMENT", note: `Needs $${NUMBER_PURCHASE_COST.toFixed(2)} in the balance` };
-  }
-
-  const refund = async (why: string) => {
-    try {
-      await db.rpc("credit_wallet", {
-        p_user_id: profile.id,
-        p_amount: NUMBER_PURCHASE_COST,
-        p_idempotency_key: null,
-        p_description: `Refund — auto-provision failed: ${why.slice(0, 80)}`,
-      });
-    } catch (e) {
-      console.error("[messaging-driver] refund failed — needs reconciliation:", profile.id, e);
-    }
-  };
-
   const order = await orderNumber(candidate);
   if (!order.ok) {
-    await refund(order.error);
     return { status: "CAMPAIGN_APPROVED", note: `Order failed: ${order.error}` };
   }
 
-  // Record the number before attaching. If attachment lags the customer still
-  // owns what they paid for and a later run finishes the job. Re-read the
-  // columns we're about to extend so a concurrent purchase isn't overwritten.
+  // Record the number before attaching. If attachment lags, a later run
+  // finishes the job. Re-read the columns we're about to extend so a
+  // concurrent purchase isn't overwritten.
   const { digits, display } = displayNumber(order.number);
   const { data: current } = await db
     .from("profiles")
@@ -514,8 +565,8 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
         {
           id: `number_${Date.now()}`,
           type: "number_purchase",
-          amount: NUMBER_PURCHASE_COST,
-          description: `Purchased number ${display}`,
+          amount: 0,
+          description: `Connected number ${display} — $1.50/month`,
           createdAt: new Date().toISOString(),
           status: "succeeded",
         },
@@ -527,7 +578,7 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
 
   const assigned = await assignNumberToCampaign(order.number, campaignId);
   if (!assigned.assigned) {
-    // Paid for, owned, not yet attached — retry attachment, don't refund.
+    // Number is owned but not yet attached — retry attachment later.
     return { status: "CAMPAIGN_APPROVED", note: `Bought ${order.number}, attach pending: ${assigned.error}` };
   }
   return { status: "NUMBER_ASSIGNED", note: `Provisioned ${order.number}` };
@@ -566,9 +617,11 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
     const reg = profile.a2p_registration || {};
     let status = profile.messaging_status;
 
-    // Waiting on funds for the website address is part of the first stage.
-    const awaitingDomain = status === "AWAITING_PAYMENT" && reg.awaiting === "domain";
-    if (awaitingDomain) status = "BUSINESS_SUBMITTED";
+    // Resume the correct stage after the customer adds funds.
+    const awaiting = status === "AWAITING_PAYMENT" ? reg.awaiting : null;
+    if (awaiting === "domain" || awaiting === "brand") status = "BUSINESS_SUBMITTED";
+    if (awaiting === "campaign") status = "BRAND_APPROVED";
+    if (awaiting === "number") status = "CAMPAIGN_APPROVED";
 
     // ── Pay-first gate ────────────────────────────────────────────────────
     // Polling Telnyx for status is free; everything after it isn't. An
@@ -617,6 +670,17 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         await setStatus(db, profile, "BRAND_PENDING");
         continue;
       }
+
+      const brandAttempt = (Number(r.brandSubmissions) || 0) + 1;
+      const brandFeeReady = await ensureCarrierFee(db, profile, {
+        attempt: brandAttempt,
+        paidThroughKey: "brandFeePaidThrough",
+        amount: TEN_DLC_BRAND_FEE,
+        awaiting: "brand",
+        resumeStatus: "BUSINESS_SUBMITTED",
+        label: "10DLC business registration",
+      });
+      if (!brandFeeReady) return done(profile, from, "waiting for brand carrier fee");
 
       const submitted = await submitBrand({
         businessName: String(r.businessName || ""),
@@ -714,6 +778,16 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         continue;
       }
       const attempt = (reg.campaignAttempt ?? 0) + 1;
+      const campaignFeeReady = await ensureCarrierFee(db, profile, {
+        attempt,
+        paidThroughKey: "campaignFeePaidThrough",
+        amount: TEN_DLC_CAMPAIGN_REVIEW_FEE,
+        awaiting: "campaign",
+        resumeStatus: "BRAND_APPROVED",
+        label: "10DLC campaign review",
+      });
+      if (!campaignFeeReady) return done(profile, from, "waiting for campaign carrier fee");
+
       const submitted = await submitCampaign({
         brandId: String(reg.brandRegistrationSid),
         businessName: String(reg.businessName || "Text2Sale User"),
@@ -800,21 +874,12 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
     }
 
     // ── Number ────────────────────────────────────────────────────────────
-    if (status === "CAMPAIGN_APPROVED" || (status === "AWAITING_PAYMENT" && !awaitingDomain)) {
+    if (status === "CAMPAIGN_APPROVED") {
       const result = await provisionNumber(db, profile);
       note = result.note;
       if (result.status === "NUMBER_ASSIGNED") {
         await setStatus(db, profile, "NUMBER_ASSIGNED");
         continue;
-      }
-      if (result.status === "AWAITING_PAYMENT") {
-        await setStatus(db, profile, "AWAITING_PAYMENT", {
-          mode: "hold",
-          holdMinutes: 5,
-          error: result.note,
-          patch: { awaiting: "number" },
-        });
-        return done(profile, from, note);
       }
       if (result.hold) {
         await setStatus(db, profile, "CAMPAIGN_APPROVED", { mode: "hold", holdMinutes: 15, error: result.note });
