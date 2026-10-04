@@ -70,8 +70,8 @@ export async function isDomainAvailable(domain: string): Promise<{
   const renewalPrice = Number(price.renewalPrice);
   return {
     available: !!status.available,
-    price: Number.isFinite(purchasePrice) ? purchasePrice : undefined,
-    renewalPrice: Number.isFinite(renewalPrice) ? renewalPrice : undefined,
+    price: Number.isFinite(purchasePrice) && purchasePrice > 0 ? purchasePrice : undefined,
+    renewalPrice: Number.isFinite(renewalPrice) && renewalPrice > 0 ? renewalPrice : undefined,
     period: Number(price.years) || 1,
     // Vercel doesn't flag premium explicitly — anything $50+/yr on a
     // non-.com is usually premium pricing, worth surfacing to the caller.
@@ -93,9 +93,8 @@ export async function isDomainOwned(domain: string): Promise<boolean> {
 // ── Purchase + auto-attach to the project ───────────────────────────────
 // WHOIS contact info is required by ICANN. We use the user's own info from
 // their a2p_registration so the registration is in their name, not ours.
-// Vercel returns 200 once payment succeeds; the domain's DNS is configured
-// to point at Vercel automatically, so the biz page goes live within a
-// minute or two.
+// Vercel returns an order ID, NOT a completed registration. Check both the
+// order and the individual domain before attaching or publishing the site.
 export interface BuyDomainArgs {
   domain: string;
   // Expected price gate — we pass back whatever /price returned to prevent
@@ -113,12 +112,13 @@ export interface BuyDomainArgs {
   postalCode: string;
   country?: string; // ISO-2, defaults to "US"
   orgName?: string;
+  businessType?: string;
   /**
    * Registry-specific contact fields. Some TLDs reject an otherwise valid
    * purchase without these values; for example, .us requires a nexus
    * category and the registrant's application purpose.
    */
-  additional?: Record<string, string>;
+  additional?: Record<string, Record<string, string>>;
   // Registration period in years. Default 1.
   period?: number;
   // Auto-renew. Default true — we don't want domains expiring out from
@@ -126,10 +126,110 @@ export interface BuyDomainArgs {
   renew?: boolean;
 }
 
+export class DomainContactError extends Error {
+  constructor(message: string, public readonly missing: string[]) {
+    super(message);
+    this.name = "DomainContactError";
+  }
+}
+
+/** An accepted/uncertain purchase must be reconciled, not purchased again. */
+export class DomainPurchasePendingError extends Error {}
+
+type ContactField = {
+  type: string;
+  required: boolean;
+  options?: Array<{ value: string }>;
+};
+
+const preparedPurchases = new WeakSet<BuyDomainArgs>();
+
+/**
+ * Read the current registry requirements before charging a customer. The
+ * registrar accepts additional contact fields as a record of TLD records,
+ * not a flat dictionary (the latter is rejected by its request decoder).
+ * All entry points, including owner purchases, use this same preparation.
+ */
+export async function prepareDomainPurchase(args: BuyDomainArgs): Promise<BuyDomainArgs> {
+  const country = (args.country || "US").trim().toUpperCase();
+  const rawPhone = args.phone.trim();
+  const digits = rawPhone.replace(/\D/g, "");
+  const phone = rawPhone.startsWith("+")
+    ? `+${digits}`
+    : country === "US" && digits.length === 10
+      ? `+1${digits}`
+      : country === "US" && digits.length === 11 && digits.startsWith("1")
+        ? `+${digits}`
+        : "";
+  const contact = {
+    firstName: args.firstName.trim(), lastName: args.lastName.trim(),
+    email: args.email.trim(), phone, address1: args.address1.trim(),
+    city: args.city.trim(), state: args.state.trim(), postalCode: args.postalCode.trim(),
+    country,
+  };
+  const missing = Object.entries(contact).filter(([, value]) => !value).map(([key]) => key);
+  if (contact.email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) missing.push("email");
+  if (phone && !/^\+[1-9]\d{7,14}$/.test(phone)) missing.push("phone");
+  if (!/^[A-Z]{2}$/.test(country)) missing.push("country");
+  if (missing.length) {
+    throw new DomainContactError("Please complete valid business address and contact details before registering your website.", [...new Set(missing)]);
+  }
+  if (!Number.isFinite(args.expectedPrice) || args.expectedPrice < 0.01) {
+    throw new Error("A valid registrar price is required before purchase.");
+  }
+  if (args.period != null && (!Number.isInteger(args.period) || args.period < 1)) {
+    throw new Error("A valid domain registration period is required.");
+  }
+
+  const domain = args.domain.trim().toLowerCase();
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/contact-info/schema`, teamId), {
+    headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`We could not check this extension's registration requirements (${res.status}). No new wallet charge was made.`);
+  const schema = await res.json() as Record<string, ContactField>;
+  if (!schema || typeof schema !== "object" || Array.isArray(schema)) {
+    throw new Error("The registrar returned invalid registration requirements. No new wallet charge was made.");
+  }
+
+  const tld = domain.split(".").at(-1)!;
+  if (args.additional && Object.values(args.additional).some((value) => !value || typeof value !== "object" || Array.isArray(value))) {
+    throw new DomainContactError("Registry contact fields must be grouped by extension.", ["additional"]);
+  }
+  const supplied = args.additional?.[tld];
+  if (supplied != null && (typeof supplied !== "object" || Array.isArray(supplied))) {
+    throw new DomainContactError("Registry contact fields must be grouped by extension.", ["additional"]);
+  }
+  const fields: Record<string, string> = { ...supplied };
+  // The US business setup collects the organization's name, EIN and US
+  // address. Do not infer citizenship or eligibility for a foreign registrant.
+  if (tld === "us" && country === "US" && args.orgName?.trim() && args.businessType) {
+    fields.nexus_category ??= "C21";
+    fields.app_purpose ??= args.businessType === "non_profit" ? "P2" : "P1";
+  }
+  const invalid: string[] = [];
+  for (const [name, field] of Object.entries(schema)) {
+    if (!field || typeof field !== "object" || typeof field.type !== "string" || typeof field.required !== "boolean") {
+      throw new Error("The registrar returned unrecognized registration requirements. No new wallet charge was made.");
+    }
+    const value = fields[name];
+    if (field.required && (typeof value !== "string" || !value.trim())) invalid.push(name);
+    else if (value != null && (typeof value !== "string" || (field.type === "enum" && !field.options?.some((option) => option.value === value)))) invalid.push(name);
+  }
+  if (invalid.length) {
+    throw new DomainContactError(`This extension needs additional registration details (${invalid.join(", ")}). Complete them or choose another extension such as .com, .net, or .org.`, invalid);
+  }
+  const additional = Object.keys(fields).length ? Object.freeze({ [tld]: Object.freeze(fields) }) : undefined;
+  const prepared = Object.freeze({ ...args, ...contact, domain, orgName: args.orgName?.trim() || undefined, additional });
+  preparedPurchases.add(prepared);
+  return prepared;
+}
+
 export async function buyDomain(args: BuyDomainArgs): Promise<{
   domain: string;
   orderId: string;
 }> {
+  if (!preparedPurchases.has(args)) args = await prepareDomainPurchase(args);
   const { token, teamId } = getAuth();
   const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(args.domain)}/buy`, teamId), {
     method: "POST",
@@ -156,7 +256,7 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
       },
     }),
   });
-  const json = (await res.json()) as Record<string, unknown>;
+  const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) {
     const topMessage = typeof json?.message === "string" ? json.message : null;
     const topCode = typeof json?.code === "string" ? json.code : null;
@@ -177,17 +277,18 @@ export async function buyDomain(args: BuyDomainArgs): Promise<{
       ? `${message}${code ? ` (${code})` : ""}`
       : code || `registrar request failed (${res.status})`;
     console.error(`[vercel-domains] registrar purchase failed (${res.status}): ${detail}`);
+    if (res.status >= 500) throw new DomainPurchasePendingError("The registrar is confirming your domain order.");
     if (res.status === 401 || res.status === 403) {
       throw new Error("Automatic domain registration is temporarily unavailable. Our team has been notified and the setup will retry automatically.");
     }
     throw new Error(detail);
   }
   const orderId = (json as { orderId?: string }).orderId;
-  if (!orderId) throw new Error("Vercel accepted the order but did not return an order ID");
+  if (!orderId) throw new DomainPurchasePendingError("Vercel accepted the order but did not return an order ID");
   return { domain: args.domain, orderId };
 }
 
-export async function getDomainOrder(orderId: string): Promise<{
+export async function getDomainOrder(orderId: string, domain: string): Promise<{
   status: "completed" | "failed" | "pending";
   message?: string;
 }> {
@@ -199,21 +300,22 @@ export async function getDomainOrder(orderId: string): Promise<{
   const json = (await res.json().catch(() => ({}))) as {
     status?: string;
     error?: { message?: string } | string;
-    domains?: Array<{ status?: string; error?: { message?: string } | string }>;
+    domains?: Array<{ domainName?: string; status?: string; error?: { message?: string } | string }>;
   };
   if (!res.ok) {
     const message = typeof json.error === "string" ? json.error : json.error?.message;
     throw new Error(message || `Domain order check failed (${res.status})`);
   }
-  const raw = String(json.status || json.domains?.[0]?.status || "").toLowerCase();
-  if (["completed", "complete", "succeeded", "success", "active"].includes(raw)) return { status: "completed" };
-  if (["failed", "failure", "cancelled", "canceled", "rejected"].includes(raw)) {
-    const error = json.domains?.[0]?.error ?? json.error;
+  const entry = json.domains?.find((item) => item.domainName?.toLowerCase() === domain.toLowerCase());
+  const failed = ["failed", "refunded", "refund-failed", "cancelled", "canceled", "rejected"];
+  if (failed.includes(String(json.status)) || failed.includes(String(entry?.status))) {
+    const error = entry?.error ?? json.error;
     return {
       status: "failed",
       message: typeof error === "string" ? error : error?.message || "Domain registration failed",
     };
   }
+  if (json.status === "completed" && entry?.status === "completed") return { status: "completed" };
   return { status: "pending" };
 }
 

@@ -147,7 +147,7 @@ export async function POST(req: NextRequest) {
     }
     // Explicit consent to a specific figure is required — we never pick a
     // price for the customer and charge it.
-    if (agreedPrice == null) {
+    if (agreedPrice == null || !Number.isFinite(agreedPrice) || agreedPrice <= 0) {
       return NextResponse.json({ success: false, error: "Confirm the price before purchase" }, { status: 400 });
     }
 
