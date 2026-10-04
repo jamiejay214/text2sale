@@ -4,6 +4,7 @@ import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -92,6 +93,13 @@ export async function POST(req: NextRequest) {
     }
 
     const supabase = createClient(supabaseUrl, supabaseKey);
+
+    if (!(await hasEINCertificate(supabase, userId))) {
+      return NextResponse.json(
+        { success: false, error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
+        { status: 412 }
+      );
+    }
 
     // Verify each fromNumber is owned by this user. Blocks a malicious caller
     // from blasting SMS from another tenant's 10DLC number (which would bill
