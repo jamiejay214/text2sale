@@ -43,3 +43,11 @@ export function certificateStorageName(name: string, type: string): string {
   const base = name.replace(/\.[^.]*$/, "").normalize("NFKD").replace(/[^a-zA-Z0-9 _.-]/g, "").trim().slice(0, 100) || "EIN certificate";
   return `${base}.${extension}`;
 }
+
+
+export async function hasEINCertificate(admin: SupabaseClient, userId: string): Promise<boolean> {
+  return !!(await getEINCertificate(admin, userId));
+}
+
+export const EIN_CERTIFICATE_REQUIRED_MESSAGE =
+  "Upload your EIN certificate in Messaging Setup before sending messages.";
