@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { countSegments } from "@/lib/sms-text";
+import { customerSmsRate } from "@/lib/sms-pricing";
+import { hasEINCertificate } from "@/lib/ein-certificate-storage";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -44,6 +46,7 @@ export async function GET(req: NextRequest) {
   }
 
   let sent = 0;
+  const certificateCache = new Map<string, boolean>();
 
   for (const apt of appointments) {
     try {
@@ -60,6 +63,13 @@ export async function GET(req: NextRequest) {
 
       if (!profile) continue;
 
+      let certificateReady = certificateCache.get(apt.user_id);
+      if (certificateReady === undefined) {
+        certificateReady = await hasEINCertificate(supabase, apt.user_id);
+        certificateCache.set(apt.user_id, certificateReady);
+      }
+      if (!certificateReady) continue;
+
       const reminders = profile.appointment_reminders || { enabled: true, hoursBefore: 24, message: "" };
       if (!reminders.enabled) continue;
 
@@ -68,7 +78,8 @@ export async function GET(req: NextRequest) {
 
       // Check wallet
       const balance = Number(profile.wallet_balance) || 0;
-      if (balance < 0.012) continue;
+      const messageCost = customerSmsRate((profile as { plan?: { messageCost?: number | null } }).plan);
+      if (balance < messageCost) continue;
 
       // Get from number
       const ownedNumbers = profile.owned_numbers || [];
@@ -113,7 +124,6 @@ export async function GET(req: NextRequest) {
         await supabase.from("appointments").update({ reminder_sent: true }).eq("id", apt.id);
 
         // Charge atomically at the user's real per-message rate × segment count.
-        const messageCost = Number((profile as { plan?: { messageCost?: number } })?.plan?.messageCost ?? 0.012);
         const segments = Math.max(1, countSegments(msg));
         const cost = Number((messageCost * segments).toFixed(4));
         await supabase.rpc("decrement_wallet", { p_user_id: apt.user_id, p_amount: cost });
