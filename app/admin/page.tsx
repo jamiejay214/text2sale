@@ -5,6 +5,8 @@ export const dynamic = "force-dynamic";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import EINCertificateUpload from "@/components/EINCertificateUpload";
+import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
 import {
@@ -293,7 +295,6 @@ export default function AdminPage() {
   const [newChatUserId, setNewChatUserId] = useState<string | null>(null);
   const [newChatMessage, setNewChatMessage] = useState("");
   const [newChatSending, setNewChatSending] = useState(false);
-  const [adminUserId, setAdminUserId] = useState<string | null>(null);
   const [callMinutes, setCallMinutes] = useState<{ outbound: number; inbound: number }>({ outbound: 0, inbound: 0 });
 
   useEffect(() => {
@@ -305,7 +306,6 @@ export default function AdminPage() {
       if (!verifiedUser?.email_confirmed_at || !isOwnerEmail(verifiedUser.email)) { router.replace("/dashboard"); return; }
       const myProfile = await fetchProfile(session.user.id);
       if (!myProfile || myProfile.role !== "admin") { router.replace("/dashboard"); return; }
-      setAdminUserId(session.user.id);
 
       const [profiles, dbCampaigns] = await Promise.all([
         fetchAllProfiles(),
@@ -2038,57 +2038,9 @@ export default function AdminPage() {
                         )}
                       </div>
 
-                      <div className="mt-4">
-                        <div className="mb-2 text-[10px] uppercase tracking-wide text-zinc-500">EIN Certificate</div>
-                        {selectedAccount.einCertificatePath ? (
-                          <div className="flex items-center justify-between gap-3 rounded-xl bg-zinc-900 px-3 py-2.5">
-                            <div className="min-w-0 flex items-center gap-2">
-                              <span className="text-emerald-400">📄</span>
-                              <div className="min-w-0">
-                                <div className="truncate text-sm font-medium">{selectedAccount.einCertificateName || "certificate"}</div>
-                                {selectedAccount.einCertificateUploadedAt && (
-                                  <div className="text-[11px] text-zinc-500">
-                                    Uploaded {new Date(selectedAccount.einCertificateUploadedAt).toLocaleString()}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                            <button
-                              onClick={async () => {
-                                if (!adminUserId) return;
-                                try {
-                                  const { data: { session } } = await supabase.auth.getSession();
-                                  const res = await fetch("/api/ein-certificate-url", {
-                                    method: "POST",
-                                    headers: {
-                                      "Content-Type": "application/json",
-                                      ...(session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}),
-                                    },
-                                    body: JSON.stringify({ userId: selectedAccount.id }),
-                                  });
-                                  const json = await res.json();
-                                  if (json.success && json.url) {
-                                    window.open(json.url, "_blank");
-                                  } else {
-                                    alert(json.error || "Could not generate download link");
-                                  }
-                                } catch (err) {
-                                  alert(err instanceof Error ? err.message : "Download failed");
-                                }
-                              }}
-                              className="shrink-0 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-medium hover:bg-emerald-700 flex items-center gap-1.5"
-                            >
-                              <span>⬇</span> Download
-                            </button>
-                          </div>
-                        ) : (
-                          <div className="rounded-xl border border-dashed border-zinc-700 px-3 py-3 text-xs text-zinc-500">
-                            User has not uploaded an EIN certificate yet.
-                          </div>
-                        )}
-                      </div>
                     </div>
                   )}
+                  <EINCertificateUpload key={selectedAccount.id} userId={selectedAccount.id} authFetch={authFetch} readOnly />
 
                   {/* Credit Management */}
                   <div className="grid gap-3 md:grid-cols-[1fr_auto_auto]">
