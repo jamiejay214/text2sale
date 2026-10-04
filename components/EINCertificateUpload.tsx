@@ -83,8 +83,8 @@ export default function EINCertificateUpload({ userId, authFetch, readOnly = fal
   };
 
   return <section className={`${styles.card} ${readOnly ? styles.dark : ""}`} aria-labelledby={`${inputId}-title`} aria-busy={loading || !!busy}>
-    <header className={styles.heading}><span className={styles.icon}><FileText size={19} aria-hidden="true" /></span><div><h2 id={`${inputId}-title`}>EIN certificate</h2><p>{readOnly ? "Private business document" : "IRS EIN confirmation letter · Optional"}</p></div></header>
-    {!readOnly && <p className={styles.description}>Keep your IRS letter (CP 575) on file in case business verification requests it. The legal name, EIN, and address should match your registration.</p>}
+    <header className={styles.heading}><span className={styles.icon}><FileText size={19} aria-hidden="true" /></span><div><h2 id={`${inputId}-title`}>EIN certificate</h2><p>{readOnly ? "Private business document" : "IRS EIN confirmation letter · Required before messaging"}</p></div></header>
+    {!readOnly && <p className={styles.description}>Upload your IRS letter (CP 575) before sending messages. The legal name, EIN, and address should match your registration.</p>}
     {loading ? <p className={styles.loading}><LoaderCircle size={16} className={styles.spinner} aria-hidden="true" /> Checking for a certificate…</p> : certificate ? <div className={styles.document}>
       <div className={styles.fileName}><FileText size={18} aria-hidden="true" /><strong>{certificate.name}</strong></div>
       <p>{certificate.uploadedAt ? `Uploaded ${new Date(certificate.uploadedAt).toLocaleDateString()}` : "Uploaded"}{certificate.size !== null ? ` · ${certificate.size < 1024 * 1024 ? `${Math.ceil(certificate.size / 1024)} KB` : `${(certificate.size / (1024 * 1024)).toFixed(1)} MB`}` : ""}</p>
@@ -94,7 +94,7 @@ export default function EINCertificateUpload({ userId, authFetch, readOnly = fal
     {!readOnly && <><input ref={input} id={inputId} type="file" accept={EIN_CERTIFICATE_ACCEPT} onChange={(event) => void upload(event)} disabled={loading || !!busy} className={styles.fileInput} aria-label={certificate ? "Replace EIN certificate" : "Upload EIN certificate"} aria-describedby={`${inputId}-formats`} /><button type="button" className={styles.upload} disabled={loading || !!busy} onClick={() => input.current?.click()}>{busy === "upload" ? <LoaderCircle size={16} className={styles.spinner} aria-hidden="true" /> : <Upload size={16} aria-hidden="true" />}{busy === "upload" ? "Saving certificate…" : certificate ? "Replace certificate" : "Upload EIN certificate"}</button><p id={`${inputId}-formats`} className={styles.formats}>PDF, PNG, JPG, or WebP · Up to 4 MB</p></>}
     {error && <div className={styles.error} role="alert"><p>{error}</p>{!busy && <button type="button" onClick={() => { setLoading(true); setReload((value) => value + 1); }}>Check again</button>}</div>}
     {notice && <p className={styles.notice} role="status">{notice}</p>}
-    <p className={styles.privacy}><LockKeyhole size={13} aria-hidden="true" /><span>Only the account holder and Text2Sale owner can open this file. It is never published on the business website.</span></p>
+    <p className={styles.privacy}><LockKeyhole size={13} aria-hidden="true" /><span>Only the account holder and Text2Sale can open this file. It is never published on the business website.</span></p>
     {!readOnly && <p className={styles.caption}>Saving a certificate does not submit it to Telnyx or restart your registration.</p>}
   </section>;
 }
