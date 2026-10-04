@@ -1,15 +1,15 @@
 // ── Paying for and registering a customer's website domain ────────────────
 //
 // Used by the activation driver (hands-off path) and by /api/domains (manual
-// path). The rule everywhere: the customer's wallet is charged BEFORE the
-// registrar is asked for anything, and refunded if registration fails.
+// path). Validate contact details + live extension requirements first, then
+// charge BEFORE placing an order and refund definitive registration failures.
 //
 // The driver can be interrupted between "charged" and "registered" (a function
 // timeout, a deploy). A marker is written to the registration right after the
 // charge so a later attempt resumes the purchase instead of charging a second
 // time.
 
-import { attachDomainToProject, buyDomain, getDomainOrder, isDomainAvailable, isDomainOwned } from "./vercel-domains";
+import { attachDomainToProject, buyDomain, DomainContactError, DomainPurchasePendingError, getDomainOrder, isDomainAvailable, isDomainOwned, prepareDomainPurchase, type BuyDomainArgs } from "./vercel-domains";
 import { getUniqueSlug, isValidDomain, normalizeDomain, toSlug, type Db } from "./business-site";
 
 /** What we add to the registrar price, covering renewal and handling. */
@@ -20,22 +20,6 @@ const PRICE_TOLERANCE = 0.01;
 
 export function priceToCharge(registrarPrice: number): number {
   return Math.round((registrarPrice + DOMAIN_MARKUP) * 100) / 100;
-}
-
-/** Registry-specific ownership declarations required by Vercel Registrar. */
-export function registrarAdditionalForDomain(
-  domain: string,
-  businessType: string | undefined
-): Record<string, string> | undefined {
-  if (!domain.toLowerCase().endsWith(".us")) return undefined;
-
-  // The registration form requires a US business address and EIN. C21 is the
-  // .us nexus category for a US entity/organization, while P1/P2 describe the
-  // business or non-profit purpose of the website.
-  return {
-    nexus_category: "C21",
-    app_purpose: businessType === "non_profit" ? "P2" : "P1",
-  };
 }
 
 export type DomainPurchaseFailure = {
@@ -117,6 +101,9 @@ export async function purchaseDomainForUser(
   if (!isValidDomain(domain)) {
     return { ok: false, code: "invalid", message: "That doesn't look like a valid domain" };
   }
+  if (!Number.isFinite(agreedPrice) || agreedPrice <= 0) {
+    return { ok: false, code: "invalid", message: "Confirm a valid price before purchase." };
+  }
 
   const { data: profile } = await db
     .from("profiles")
@@ -126,6 +113,9 @@ export async function purchaseDomainForUser(
   if (!profile) return { ok: false, code: "registrar", message: "Account not found" };
 
   const reg = ((profile.a2p_registration as Reg | null) || {}) as Reg & Record<string, string | undefined>;
+  if (reg.domainPurchase && reg.domainPurchase.domain !== domain && ["charged", "ordered"].includes(reg.domainPurchase.state)) {
+    return { ok: false, code: "pending", message: "Your existing domain order must finish before another can begin.", price: reg.domainPurchase.charged };
+  }
   const marker = reg.domainPurchase && reg.domainPurchase.domain === domain ? reg.domainPurchase : null;
   const resuming = marker?.state === "charged" || marker?.state === "ordered" || marker?.state === "bought";
 
@@ -134,28 +124,18 @@ export async function purchaseDomainForUser(
   // customer's own — the domain belongs to them, not to us. These come from
   // the business details they already gave us, so nothing extra to fill in.
   const registrant = {
-    firstName: profile.first_name || reg.contactFirstName || "",
-    lastName: profile.last_name || reg.contactLastName || "",
+    firstName: reg.contactFirstName || profile.first_name || "",
+    lastName: reg.contactLastName || profile.last_name || "",
     email: reg.contactEmail || profile.email || "",
-    phone: (reg.contactPhone || profile.phone || "").replace(/[^\d+]/g, ""),
+    phone: reg.contactPhone || profile.phone || "",
     address1: reg.businessAddress || "",
     city: reg.businessCity || "",
     state: reg.businessState || "",
     postalCode: reg.businessZip || "",
     orgName: reg.businessName || undefined,
+    country: reg.businessCountry || reg.country || "US",
+    businessType: reg.businessType,
   };
-  const missing = (["firstName", "lastName", "email", "phone", "address1", "city", "state", "postalCode"] as const).filter(
-    (k) => !registrant[k]
-  );
-  if (missing.length > 0) {
-    return {
-      ok: false,
-      code: "missing_details",
-      message: "We need your business address and contact details before registering a domain.",
-      missing,
-    };
-  }
-  const phone = registrant.phone.startsWith("+") ? registrant.phone : `+1${registrant.phone.replace(/^1/, "")}`;
 
   // ── Quote ───────────────────────────────────────────────────────────────
   let quote: Awaited<ReturnType<typeof isDomainAvailable>> | null = null;
@@ -166,7 +146,7 @@ export async function purchaseDomainForUser(
   if (marker?.state === "ordered" && marker.orderId) {
     let order: Awaited<ReturnType<typeof getDomainOrder>>;
     try {
-      order = await getDomainOrder(marker.orderId);
+      order = await getDomainOrder(marker.orderId, domain);
     } catch (error) {
       return {
         ok: false,
@@ -230,6 +210,22 @@ export async function purchaseDomainForUser(
     };
   }
 
+  // A schema lookup or incomplete registrant must NEVER start a new charge.
+  // Already-accepted orders skip this preflight and only poll their order ID.
+  let prepared: BuyDomainArgs | null = null;
+  if (!owned) {
+    try {
+      prepared = await prepareDomainPurchase({ domain, expectedPrice: quote!.price!, ...registrant });
+    } catch (error) {
+      return {
+        ok: false,
+        code: error instanceof DomainContactError ? "missing_details" : "registrar",
+        message: error instanceof Error ? error.message : "Could not validate domain registration details.",
+        ...(error instanceof DomainContactError ? { missing: error.missing } : {}),
+      };
+    }
+  }
+
   // ── Charge before buying ────────────────────────────────────────────────
   let balance: number | null = null;
   let chargedAmount = marker?.charged ?? charge;
@@ -268,16 +264,10 @@ export async function purchaseDomainForUser(
   if (!owned) {
     let order: Awaited<ReturnType<typeof buyDomain>>;
     try {
-      order = await buyDomain({
-        domain,
-        expectedPrice: quote!.price!,
-        ...registrant,
-        phone,
-        additional: registrarAdditionalForDomain(domain, reg.businessType),
-      });
+      order = await buyDomain(prepared!);
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Registration failed";
-      if (/fetch failed|network|timeout|timed out|abort/i.test(msg)) {
+      if (e instanceof DomainPurchasePendingError || /fetch failed|network|timeout|timed out|abort/i.test(msg)) {
         return {
           ok: false,
           code: "pending",
@@ -304,7 +294,7 @@ export async function purchaseDomainForUser(
     await patchRegistration(db, userId, { domainPurchase: orderedMarker });
     let status: Awaited<ReturnType<typeof getDomainOrder>>;
     try {
-      status = await getDomainOrder(order.orderId);
+      status = await getDomainOrder(order.orderId, domain);
     } catch {
       // The purchase request already returned an order ID, so a failed status
       // lookup is uncertain. Keep the charge/order and retry; never refund an
