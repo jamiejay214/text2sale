@@ -1,110 +1,44 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { certificateBytesMatch, certificateContentType, certificateFileProblem } from "@/lib/ein-certificate";
+import { certificateStorageName, EIN_CERTIFICATE_BUCKET, getEINCertificate } from "@/lib/ein-certificate-storage";
 
-// CLIENT UPDATE NEEDED: dashboard must send Authorization header
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const ALLOWED_MIME = new Set([
-  "application/pdf",
-  "image/png",
-  "image/jpeg",
-  "image/jpg",
-  "image/webp",
-]);
-const MAX_BYTES = 10 * 1024 * 1024; // 10MB
+const privateHeaders = { "Cache-Control": "private, no-store" };
 
 export async function POST(req: NextRequest) {
   try {
     const auth = await authenticate(req);
     if (!auth.ok) return auth.response;
-
     const form = await req.formData();
-    const bodyUserId = form.get("userId");
+    const userId = form.get("userId");
+    if (typeof userId !== "string" || !userId) return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
+    const forbidden = requireSameUser(auth.user.id, userId);
+    if (forbidden) return forbidden;
     const file = form.get("file");
-
-    if (typeof bodyUserId !== "string" || !bodyUserId) {
-      return NextResponse.json({ success: false, error: "Missing userId" }, { status: 400 });
-    }
-    const forbid = requireSameUser(auth.user.id, bodyUserId);
-    if (forbid) return forbid;
-    const userId = auth.user.id;
-    if (!(file instanceof File)) {
-      return NextResponse.json({ success: false, error: "Missing file" }, { status: 400 });
-    }
-    if (!ALLOWED_MIME.has(file.type)) {
-      return NextResponse.json(
-        { success: false, error: "Unsupported file type. Upload a PDF, PNG, JPG, or WebP." },
-        { status: 400 }
-      );
-    }
-    if (file.size > MAX_BYTES) {
-      return NextResponse.json({ success: false, error: "File exceeds 10MB limit." }, { status: 400 });
-    }
-
-    const admin = createClient(supabaseUrl, serviceKey);
-
-    const ext = (file.name.split(".").pop() || "").toLowerCase().replace(/[^a-z0-9]/g, "") || "bin";
-    const storagePath = `${userId}/ein-${Date.now()}.${ext}`;
-
+    if (!(file instanceof File)) return NextResponse.json({ success: false, error: "Choose your EIN confirmation letter." }, { status: 400 });
+    const problem = certificateFileProblem(file);
+    if (problem) return NextResponse.json({ success: false, error: problem }, { status: 400 });
+    const type = certificateContentType(file)!;
     const bytes = new Uint8Array(await file.arrayBuffer());
+    if (!certificateBytesMatch(bytes, type)) return NextResponse.json({ success: false, error: "The file contents do not match its format. Choose a PDF or supported image." }, { status: 400 });
 
-    const { error: uploadErr } = await admin.storage
-      .from("ein-certificates")
-      .upload(storagePath, bytes, {
-        contentType: file.type,
-        upsert: false,
-      });
+    const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!);
+    const previous = await getEINCertificate(admin, userId);
+    const name = certificateStorageName(file.name, type);
+    const path = `${userId}/ein-${Date.now()}-${randomUUID()}--${name}`;
+    const bucket = admin.storage.from(EIN_CERTIFICATE_BUCKET);
+    const { error } = await bucket.upload(path, bytes, { contentType: type, cacheControl: "0", upsert: false });
+    if (error) return NextResponse.json({ success: false, error: "Your certificate could not be saved. Please try again." }, { status: 500 });
 
-    if (uploadErr) {
-      return NextResponse.json({ success: false, error: uploadErr.message }, { status: 500 });
-    }
-
-    // Merge into existing a2p_registration JSON
-    const { data: profile } = await admin
-      .from("profiles")
-      .select("a2p_registration")
-      .eq("id", userId)
-      .single();
-
-    const existing = (profile?.a2p_registration as Record<string, unknown> | null) || {};
-    const prevPath = typeof existing.einCertificatePath === "string" ? existing.einCertificatePath : null;
-
-    const updated = {
-      ...existing,
-      einCertificatePath: storagePath,
-      einCertificateName: file.name,
-      einCertificateType: file.type,
-      einCertificateUploadedAt: new Date().toISOString(),
-    };
-
-    const { error: updateErr } = await admin
-      .from("profiles")
-      .update({ a2p_registration: updated })
-      .eq("id", userId);
-
-    if (updateErr) {
-      // Clean up the newly uploaded file if we couldn't record it
-      await admin.storage.from("ein-certificates").remove([storagePath]);
-      return NextResponse.json({ success: false, error: updateErr.message }, { status: 500 });
-    }
-
-    // Best-effort remove of the previous certificate
-    if (prevPath && prevPath !== storagePath) {
-      await admin.storage.from("ein-certificates").remove([prevPath]);
-    }
-
-    return NextResponse.json({
-      success: true,
-      path: storagePath,
-      name: file.name,
-      type: file.type,
-      uploadedAt: updated.einCertificateUploadedAt,
-    });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unexpected error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    // A failed replacement keeps the previous file. Remove only after a successful upload.
+    // The registration state is untouched, so background activation cannot erase the document.
+    if (previous) await bucket.remove([previous.path]).catch(() => undefined);
+    const uploadedAt = new Date().toISOString();
+    const certificate = { name, type, size: file.size, uploadedAt };
+    return NextResponse.json({ success: true, certificate, ...certificate }, { headers: privateHeaders });
+  } catch (error) {
+    return NextResponse.json({ success: false, error: error instanceof Error ? error.message : "Your certificate could not be saved. Please try again." }, { status: 500, headers: privateHeaders });
   }
 }
