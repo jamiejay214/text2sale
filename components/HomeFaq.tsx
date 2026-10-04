@@ -20,7 +20,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "How much does Text2Sale cost?",
     answer:
-      "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month. The AI plan includes access to AI texting and the AI calling receptionist. Texts cost $0.012 each, AI replies cost $0.025 each, and AI-assisted calls cost $0.18 per minute from your wallet. Standard calls cost $0.045 per minute outbound and $0.025 per minute inbound. You save 10% when you add $500 or more to your wallet, and there is no long-term contract.",
+      "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. Standard calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI-assisted calls are $0.18 per minute. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no free trial and no long-term contract.",
   },
   {
     question: "Is Text2Sale TCPA compliant?",
@@ -39,9 +39,9 @@ export const HOME_FAQ: HomeFaqItem[] = [
       "Texts go out from local business numbers you buy inside Text2Sale, not from your personal cell. Each number is linked to your registered 10DLC campaign, and replies land in your shared inbox so you can answer from the dashboard.",
   },
   {
-    question: "What does the AI plan add?",
+    question: "What does Text2Sale AI do?",
     answer:
-      "The Text2Sale + AI plan replies to inbound texts, handles common objections, and books appointments that sync to Google Calendar. It also includes an AI calling receptionist that can answer inbound calls, qualify a lead, book the next conversation, and transfer to a person when needed. You can control AI workspace-wide or one conversation at a time.",
+      "AI is included with every paid Text2Sale account. It can reply to inbound texts, handle common objections, qualify leads, book appointments that sync to Google Calendar, and power the AI calling receptionist. You can control AI workspace-wide or one conversation at a time.",
     link: { href: "/ai-texting-crm", label: "See the AI texting CRM" },
   },
 ];
