@@ -6,6 +6,7 @@ import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
 import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
 import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
+import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -137,6 +138,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "An active Text2Sale subscription is required for AI replies." },
         { status: 403 }
+      );
+    }
+
+    if (sendReply && !(await hasEINCertificate(supabase, userId))) {
+      return NextResponse.json(
+        { error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
+        { status: 412 }
       );
     }
 
