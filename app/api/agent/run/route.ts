@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
-import { cleanAiSms } from "@/lib/sms-text";
+import { cleanAiSms, countSegments } from "@/lib/sms-text";
+import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
+import { hasEINCertificate } from "@/lib/ein-certificate-storage";
 
 // Proactive follow-up agent. Runs every hour (Vercel Cron).
 // For accounts with agent_plan=true and conversations with agent_enabled=true,
@@ -19,8 +21,6 @@ import { cleanAiSms } from "@/lib/sms-text";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const AI_MESSAGE_COST = 0.025;
-const SMS_COST = 0.012;
 const MIN_HOURS_SINCE_LAST = 22;
 const MAX_FOLLOW_UPS = 3;
 
@@ -150,7 +150,7 @@ export async function GET(req: NextRequest) {
   // Find accounts with agent_plan enabled
   const { data: accounts } = await supabase
     .from("profiles")
-    .select("id, first_name, industry, owned_numbers, wallet_balance, usage_history, ai_instructions")
+    .select("id, first_name, industry, owned_numbers, wallet_balance, usage_history, ai_instructions, plan")
     .eq("agent_plan", true);
 
   if (!accounts || accounts.length === 0) {
@@ -162,8 +162,11 @@ export async function GET(req: NextRequest) {
   const errors: string[] = [];
 
   for (const account of accounts) {
+    if (!(await hasEINCertificate(supabase, account.id))) continue;
+
     const balance = Number(account.wallet_balance) || 0;
-    if (balance < AI_MESSAGE_COST + SMS_COST) continue;
+    const smsRate = customerSmsRate(account.plan as { messageCost?: number | null } | null);
+    if (balance < AI_REPLY_FEE + smsRate) continue;
 
     const ownedNumbers = account.owned_numbers || [];
     if (ownedNumbers.length === 0) continue;
@@ -310,7 +313,8 @@ export async function GET(req: NextRequest) {
         // to the same account in one run overwrote each other's debits (a
         // revenue leak) and raced other money paths — the exact bug migrations
         // 004/007 removed. Use the hardened RPC like every other path.
-        const cost = AI_MESSAGE_COST + SMS_COST;
+        const segments = Math.max(1, countSegments(followUp));
+        const cost = Number((AI_REPLY_FEE + smsRate * segments).toFixed(4));
         await supabase.rpc("decrement_wallet", { p_user_id: account.id, p_amount: cost });
         const history_entry = {
           type: "agent_follow_up",
