@@ -223,7 +223,7 @@ export default function HomeClient({
 
           <div className="mx-auto mt-6 max-w-2xl">
             <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-center text-sm text-emerald-200">
-              💰 <span className="font-semibold">Volume SMS:</span> a $500+ wallet purchase unlocks $0.0135/SMS. You pay $500 and receive the full $500 balance.
+              💰 <span className="font-semibold">Volume SMS:</span> a $500+ wallet purchase unlocks $0.0135/SMS.
             </div>
           </div>
 
