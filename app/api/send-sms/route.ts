@@ -4,6 +4,7 @@ import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
+import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -50,6 +51,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { success: false, error: "Unauthorized. Please sign in again." },
         { status: 401 }
+      );
+    }
+
+    if (!(await hasEINCertificate(adminSupabase, userId))) {
+      return NextResponse.json(
+        { success: false, error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
+        { status: 412 }
       );
     }
 
