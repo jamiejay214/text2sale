@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
 import { logoutUser } from "@/lib/auth";
+import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/lib/supabase-data";
@@ -71,13 +72,18 @@ export default function WorkspaceApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewerEmail, setViewerEmail] = useState("");
   const [impersonated, setImpersonated] = useState(false);
+  const [paymentBusy, setPaymentBusy] = useState(false);
+  const [paymentError, setPaymentError] = useState("");
   const profileId = profile?.id;
 
   const requestedTab = searchParams.get("tab") as WorkspaceTab | null;
   const impersonateId = searchParams.get("impersonate") || "";
   const activeTab = requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "overview";
   const settingsTab = searchParams.get("subtab") || "numbers";
-  const aiAccess = !!profile?.ai_plan || !!profile?.free_ai_plan;
+  const subscribed =
+    !!profile?.free_subscription ||
+    ["active", "canceling"].includes(String(profile?.subscription_status || ""));
+  const aiAccess = subscribed || !!profile?.free_ai_plan;
 
   const loadShell = useCallback(async () => {
     setLoading(true);
@@ -141,6 +147,22 @@ export default function WorkspaceApp() {
   useEffect(() => {
     loadShell();
   }, [loadShell]);
+
+  useEffect(() => {
+    if (!profileId || !subscribed || impersonated) return;
+    let cancelled = false;
+    authFetch("/api/normalize-subscription", { method: "POST" })
+      .then((response) => response.json().catch(() => ({})).then((data) => ({ response, data })))
+      .then(async ({ response, data }) => {
+        if (cancelled || !response.ok) return;
+        if (data.changed) {
+          const latest = await fetchProfile(profileId);
+          if (!cancelled && latest) setProfile(latest);
+        }
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [profileId, subscribed, impersonated]);
 
   useEffect(() => {
     if (!profileId) return;
@@ -247,6 +269,41 @@ export default function WorkspaceApp() {
           <strong>We couldn&apos;t open the workspace.</strong>
           <p>{error || "Your session is no longer available."}</p>
           <button onClick={loadShell}>Try again</button>
+        </div>
+      </main>
+    );
+  }
+
+  const startSubscription = async () => {
+    if (paymentBusy) return;
+    setPaymentBusy(true);
+    setPaymentError("");
+    try {
+      const response = await authFetch("/api/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: profile.id, userEmail: profile.email }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.url) throw new Error(data.error || "Secure checkout could not be opened.");
+      window.location.href = data.url;
+    } catch (reason) {
+      setPaymentError(reason instanceof Error ? reason.message : "Secure checkout could not be opened.");
+      setPaymentBusy(false);
+    }
+  };
+
+  if (!subscribed && !impersonated) {
+    return (
+      <main className="crm-theme workspace-v2 t2s-light v2-entry-loading">
+        <div className="v2-error-card">
+          <strong>Activate Text2Sale</strong>
+          <p>Your account is created, but the workspace stays locked until the $39.99 monthly subscription is paid. There is no free trial.</p>
+          {paymentError ? <p>{paymentError}</p> : null}
+          <button onClick={startSubscription} disabled={paymentBusy}>
+            {paymentBusy ? "Opening secure checkout…" : "Pay $39.99 & unlock workspace"}
+          </button>
+          <button onClick={logout}>Sign out</button>
         </div>
       </main>
     );

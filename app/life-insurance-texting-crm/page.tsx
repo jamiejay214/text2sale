@@ -65,7 +65,7 @@ export default function Page() {
         },
         {
           question: "Can AI book life insurance appointments?",
-          answer: "On the Text2Sale + AI plan, AI can reply to inbound texts, handle common scheduling questions, and book appointments that sync to Google Calendar. You can turn AI off for any conversation.",
+          answer: "With Text2Sale AI, AI can reply to inbound texts, handle common scheduling questions, and book appointments that sync to Google Calendar. You can turn AI off for any conversation.",
         },
         {
           question: "Does Text2Sale help with opt-outs?",

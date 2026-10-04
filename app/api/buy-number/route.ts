@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { NUMBER_PURCHASE_COST, assignNumberToCampaign } from "@/lib/telnyx-10dlc";
+import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -22,12 +22,7 @@ const voiceAppId =
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-// Per-number purchase fee deducted from the user's wallet. Matches the
-// $1.50 advertised in the dashboard "Buy" button + help text. Keep this in
-// sync with app/dashboard/page.tsx if it ever changes. The Telnyx side
-// charges ~$1/mo per local number on our billing account; the extra covers
-// our overhead.
-
+// Numbers are connected with no upfront activation fee; recurring billing is $1.50/month.
 
 // ─── Configure new number for voice + HD voice ───────────────────────────
 // Telnyx provisions numbers in a couple of seconds. Once the number is
@@ -113,41 +108,12 @@ export async function POST(req: NextRequest) {
     if (forbid) return forbid;
     const userId = auth.user.id;
 
-    // ── Charge the user's wallet BEFORE hitting Telnyx ─────────────────────
-    // Reserve the $1.50 fee up front so we can't ship them a number they
-    // didn't pay for. The RPC atomically decrements wallet_balance and
-    // returns NULL if they don't have enough — which we then surface as a
-    // 402 instead of silently ordering a number. If the Telnyx call fails
-    // later in this handler, we call credit_wallet to refund the hold.
+    // Phone numbers have no activation charge. The customer is billed
+    // $1.50/month by the recurring billing job after the number is connected.
     const walletClient = createClient(supabaseUrl, serviceKey);
-    const { data: newBalance, error: decErr } = await walletClient.rpc(
-      "decrement_wallet",
-      { p_user_id: userId, p_amount: NUMBER_PURCHASE_COST }
-    );
-    if (decErr || newBalance === null) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: `Insufficient wallet balance — need $${NUMBER_PURCHASE_COST.toFixed(2)} to buy a number.`,
-        },
-        { status: 402 }
-      );
-    }
 
-    // Helper so every early-exit below refunds the charge.
-    const refundAndFail = async (message: string, status = 500) => {
-      try {
-        await walletClient.rpc("credit_wallet", {
-          p_user_id: userId,
-          p_amount: NUMBER_PURCHASE_COST,
-          p_idempotency_key: null,
-          p_description: `Refund — buy-number failed: ${message.slice(0, 80)}`,
-        });
-      } catch (e) {
-        console.error("[buy-number] refund failed — manual reconciliation needed:", e);
-      }
-      return NextResponse.json({ success: false, error: message }, { status });
-    };
+    const fail = (message: string, status = 500) =>
+      NextResponse.json({ success: false, error: message }, { status });
 
     let numberToBuy: string;
 
@@ -187,7 +153,7 @@ export async function POST(req: NextRequest) {
       });
 
       if (candidates.length === 0) {
-        return refundAndFail(
+        return fail(
           "No SMS numbers available. Try a different area code.",
           404
         );
@@ -211,17 +177,15 @@ export async function POST(req: NextRequest) {
 
     const orderData = await orderRes.json().catch(() => ({}));
 
-    // Treat ANY of these as a failed order (and trigger a wallet refund):
+    // Treat ANY of these as a failed order:
     //   - HTTP non-2xx
     //   - explicit top-level `errors` array (standard Telnyx error shape)
     //   - top-level `error` field (occasional non-standard shape, seen on
     //     some billing errors like "Not enough credit for the order")
     //   - an order document whose status is not "pending" / "success"
     //
-    // The prior version only checked `orderData.errors`, so a 402-ish
-    // billing failure could slip past the guard — the user got charged
-    // $1.50, no number was issued, and no refund fired. That's how David
-    // lost $3 in this session to two failed attempts.
+    // The prior version only checked `orderData.errors`, so some provider
+    // billing failures could slip past the guard and appear successful.
     const orderErrors = Array.isArray(orderData?.errors) ? orderData.errors as Array<{ detail?: string; title?: string }> : [];
     const topLevelError = typeof orderData?.error === "string" ? orderData.error : null;
     const orderStatus = (orderData?.data as { status?: string } | undefined)?.status;
@@ -236,8 +200,8 @@ export async function POST(req: NextRequest) {
         orderErrors.map((e) => e.detail || e.title).filter(Boolean).join(", ") ||
         topLevelError ||
         `Telnyx order failed (HTTP ${orderRes.status}${orderStatus ? `, status: ${orderStatus}` : ""})`;
-      console.error("[buy-number] order failed, refunding:", errMsg, JSON.stringify(orderData).slice(0, 500));
-      return refundAndFail(errMsg);
+      console.error("[buy-number] order failed:", errMsg, JSON.stringify(orderData).slice(0, 500));
+      return fail(errMsg);
     }
 
     // Format for display
@@ -293,11 +257,10 @@ export async function POST(req: NextRequest) {
       try {
         const { data: current } = await walletClient
           .from("profiles")
-          .select("owned_numbers, usage_history")
+          .select("owned_numbers")
           .eq("id", userId)
           .single();
         const currentOwned = Array.isArray(current?.owned_numbers) ? (current!.owned_numbers as Array<Record<string, unknown>>) : [];
-        const currentUsage = Array.isArray(current?.usage_history) ? (current!.usage_history as Array<Record<string, unknown>>) : [];
         const alreadyListed = currentOwned.some((n) => {
           const num = typeof n.number === "string" ? n.number.replace(/\D/g, "") : "";
           return num === digits;
@@ -308,19 +271,10 @@ export async function POST(req: NextRequest) {
             number: display,
             alias: `Sales Line ${currentOwned.length + 1}`,
           };
-          const usageEntry = {
-            id: `number_${Date.now()}`,
-            type: "number_purchase",
-            amount: NUMBER_PURCHASE_COST,
-            description: `Purchased number ${display}`,
-            createdAt: new Date().toISOString(),
-            status: "succeeded",
-          };
           await walletClient
             .from("profiles")
-            .update({
+.update({
               owned_numbers: [...currentOwned, newEntry],
-              usage_history: [...currentUsage, usageEntry],
             })
             .eq("id", userId);
         }
@@ -366,10 +320,8 @@ export async function POST(req: NextRequest) {
       campaignId: assignment.campaignId || null,
       voiceConfigStatus,
       voiceConfigDetail,
-      // Post-charge wallet balance so the dashboard can update its display
-      // without a separate profile refetch.
-      walletBalance: Number(newBalance),
-      charged: NUMBER_PURCHASE_COST,
+      charged: 0,
+      monthlyFee: 1.5,
     });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";

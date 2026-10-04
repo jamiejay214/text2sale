@@ -21,6 +21,9 @@ export default function ThankYouPage() {
       const amount = parseFloat(params.get("amount") || "0");
       const w = window as unknown as { fbq?: (...args: unknown[]) => void };
       if (typeof w.fbq === "function") {
+        // Count registration only after the first required subscription payment
+        // succeeds so advertising never treats an unpaid signup as a customer.
+        w.fbq("track", "CompleteRegistration");
         if (amount > 0) {
           w.fbq("track", "Purchase", { value: amount, currency: "USD" });
         } else {

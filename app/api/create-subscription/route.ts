@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { PACKAGES, packageForPlan, planShape } from "@/lib/packages";
+import { PACKAGES, planShape } from "@/lib/packages";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -55,20 +55,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Which package this is, recorded on the subscription so the webhook can
-    // switch the AI features on only once the AI plan is actually paid for.
-    const pkg = packageForPlan(profile?.plan);
-
-    // Get the user's plan price (default to $39.99 if not set)
-    const planPrice = pkg === "ai" ? PACKAGES.ai.price : profile?.plan?.price || PACKAGES.standard.price;
+    // Unified paid plan. Never trust a stale legacy plan price from the
+    // profile: older accounts may still contain the retired $119.99 AI plan.
+    const pkg = "standard" as const;
+    const planPrice = PACKAGES.standard.price;
     const planPriceCents = Math.round(planPrice * 100);
-    const messageCost = profile?.plan?.messageCost || 0.012;
+    const messageCost = Number(profile?.plan?.messageCost) === 0.0135 ? 0.0135 : PACKAGES.standard.messageCost;
 
     let customerId = profile?.stripe_customer_id;
 
-    if (pkg === "ai" && Number(profile?.plan?.price) !== PACKAGES.ai.price) {
-      await supabase.from("profiles").update({ plan: planShape("ai") }).eq("id", userId);
-    }
+    await supabase
+      .from("profiles")
+      .update({
+        plan: { ...planShape("standard"), messageCost },
+      })
+      .eq("id", userId);
 
     // Create or reuse Stripe customer
     if (!customerId) {

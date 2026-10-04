@@ -67,7 +67,7 @@ export default function SmsCharacterCounterPage() {
           </Link>
           <div className="flex items-center gap-4 text-sm font-bold">
             <Link href="/blog" className="text-zinc-300 hover:text-emerald-200">Blog</Link>
-            <Link href="/#auth-form" className="rounded-xl bg-emerald-300 px-4 py-2 text-zinc-950 hover:bg-emerald-200">Start free</Link>
+            <Link href="/#auth-form" className="rounded-xl bg-emerald-300 px-4 py-2 text-zinc-950 hover:bg-emerald-200">Get started</Link>
           </div>
         </nav>
 
@@ -114,7 +114,7 @@ export default function SmsCharacterCounterPage() {
             Import leads, map fields, add multi-step follow-up, manage replies, call prospects, and book appointments from one workspace.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link href="/#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Start free</Link>
+            <Link href="/#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Get started</Link>
             <Link href="/bulk-sms-software" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-emerald-300">Explore bulk SMS</Link>
           </div>
         </section>

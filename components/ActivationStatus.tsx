@@ -23,7 +23,7 @@ type StatusPayload = {
   error: string | null;
   activeNumber: string | null;
   amountNeeded: number;
-  awaiting?: "domain" | "number" | null;
+  awaiting?: "domain" | "brand" | "campaign" | "number" | null;
   needsSubscription?: boolean;
   websiteNote?: string | null;
   website?: string | null;

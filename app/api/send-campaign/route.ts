@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
+import { customerSmsRate } from "@/lib/sms-pricing";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
@@ -266,7 +267,7 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
     const planObj = (profileRow?.plan as Record<string, unknown> | null) || null;
-    const messageCost = Number((planObj?.messageCost as number) ?? 0.012);
+    const messageCost = customerSmsRate(planObj as { messageCost?: number | null } | null);
     let walletBalance = Number(profileRow?.wallet_balance ?? 0);
 
     // Per-campaign quiet hours can override the profile default (null = inherit).

@@ -50,7 +50,7 @@ export default function MassTextingCrmPage() {
           heading: "Sending is the easy part",
           paragraphs: [
             "Basic bulk SMS tools can send messages, but they usually fall short once replies start coming in. A real texting CRM keeps contacts, campaigns, conversations, opt-outs, and performance data connected. That matters when your team is trying to reach thousands of leads and still give each reply a fast, personal answer.",
-            "In Text2Sale the workflow runs in one place: upload a list, send a campaign, let drip sequences follow up with people who have not answered, and work every reply from the two-way inbox. On the AI plan, AI can answer replies the moment they arrive and book appointments.",
+            "In Text2Sale the workflow runs in one place: upload a list, send a campaign, let drip sequences follow up with people who have not answered, and work every reply from the two-way inbox. On AI, AI can answer replies the moment they arrive and book appointments.",
           ],
         },
         {
@@ -62,7 +62,7 @@ export default function MassTextingCrmPage() {
             "Upload a CSV of contacts who opted in, and map names and phone numbers",
             "Choose a template or write a short message with the contact's first name and one question",
             "Send the campaign during daytime hours in your contacts' time zones",
-            "Work replies from the inbox, or let AI handle them on the AI plan",
+            "Work replies from the inbox, or let AI handle them with AI",
             "Let a drip sequence follow up with people who did not answer, stopping when they reply",
             "Review reply and opt-out rates to see which messages and lists performed",
           ],
@@ -71,7 +71,7 @@ export default function MassTextingCrmPage() {
           heading: "Built for compliance and deliverability",
           paragraphs: [
             "Mass texting only works if your messages get delivered. Text2Sale walks you through 10DLC registration, records STOP replies automatically, excludes opted-out contacts from every future campaign, and applies quiet-hours sending windows.",
-            "Pricing is straightforward: the Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month, with texts at $0.012 per segment and 10% off when you add $500 or more to your wallet.",
+            "Pricing is straightforward: Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and a $500+ wallet purchase unlocks the $0.0135 volume SMS rate.",
           ],
         },
       ]}
@@ -94,7 +94,7 @@ export default function MassTextingCrmPage() {
         },
         {
           question: "How much does Text2Sale cost?",
-          answer: "The Standard plan is $39.99 per month and the Text2Sale + AI plan is $119.99 per month. Texts cost $0.012 each and AI replies cost $0.025 each. There is no long-term contract.",
+          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS costs $0.015 per segment, inbound SMS is free, and AI replies cost $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract.",
         },
       ]}
       relatedPages={[

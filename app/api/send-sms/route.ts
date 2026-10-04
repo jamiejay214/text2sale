@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
+import { customerSmsRate } from "@/lib/sms-pricing";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
 
 const apiKey = process.env.TELNYX_API_KEY!;
@@ -204,8 +205,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Reserve funds before contacting the provider. A zero balance never sends.
-    const messageCost=Number(profileCfg.plan?.messageCost ?? 0.012);
-    if (!Number.isFinite(messageCost) || messageCost<0) throw new Error("Invalid messaging price");
+    const messageCost = customerSmsRate(profileCfg.plan);
     const totalCost=Number((messageCost*Math.max(1,countSegments(sanitizedBody))).toFixed(4));
     const {data:newBalance,error:debitError}=await adminSupabase.rpc("decrement_wallet",{p_user_id:userId,p_amount:totalCost});
     if (debitError) return NextResponse.json({success:false,error:"Could not reserve funds. Message not sent."},{status:503});

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
-import { countSegments } from "@/lib/sms-text";
-import { inboundSmsCost } from "@/lib/sms-pricing";
 import { MANDATORY_OPT_OUT_KEYWORDS, normalizeOptOutSettings } from "@/lib/opt-out";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -370,25 +368,8 @@ export async function POST(req: NextRequest) {
         status: "received",
       });
 
-      // Charge the account the CARRIER's pass-through cost for this inbound
-      // message — NOT the outbound price (which the admin sets per user).
-      // Prefer Telnyx's reported cost on the payload; otherwise fall back to
-      // the configured inbound per-segment rate × parts. Best-effort: a failed
-      // RPC (e.g. zero balance) is logged but we still record the inbound
-      // message — we don't drop a customer's reply just because their wallet
-      // is empty.
-      try {
-        const parts = Number(eventPayload?.parts) || Math.max(1, countSegments(body || ""));
-        const inboundCost = inboundSmsCost(eventPayload?.cost as { amount?: string | number | null } | null, parts);
-        if (inboundCost > 0) {
-          await supabase.rpc("decrement_wallet", {
-            p_user_id: contact.user_id,
-            p_amount: inboundCost,
-          });
-        }
-      } catch (e) {
-        console.error("[incoming-sms] inbound wallet decrement failed:", e);
-      }
+      // Inbound SMS is free to the customer. Telnyx/provider inbound charges
+      // are a Text2Sale cost and are never deducted from the customer wallet.
 
       // Stop any "ghost-chase" workflows this contact is in — they responded,
       // so the drip should halt. Only cancels steps that opted into

@@ -127,7 +127,7 @@ const COPY: Record<MessagingStatus, StatusCopy> = {
 };
 
 /** What an account is waiting on when it parks in AWAITING_PAYMENT. */
-export type Awaiting = "domain" | "number";
+export type Awaiting = "domain" | "brand" | "campaign" | "number";
 
 /**
  * Customer-facing copy for a status. AWAITING_PAYMENT covers two different
@@ -141,6 +141,22 @@ export function statusCopy(status: MessagingStatus, awaiting?: Awaiting | null):
       detail:
         "Carriers need a website for your business. Add funds to your balance and we'll register your address, build the site and keep going automatically.",
       progress: 10,
+      needsCustomerAction: true,
+    };
+  }
+  if (status === "AWAITING_PAYMENT" && awaiting === "brand") {
+    return {
+      headline: "Add funds for business registration",
+      detail: "The carrier charges $4.50 to register your business. Add funds and Text2Sale will continue automatically.",
+      progress: 30,
+      needsCustomerAction: true,
+    };
+  }
+  if (status === "AWAITING_PAYMENT" && awaiting === "campaign") {
+    return {
+      headline: "Add funds for messaging review",
+      detail: "The carrier charges $15.00 for campaign review. Add funds and Text2Sale will submit it automatically.",
+      progress: 60,
       needsCustomerAction: true,
     };
   }

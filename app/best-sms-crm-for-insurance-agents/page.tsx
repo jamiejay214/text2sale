@@ -45,7 +45,7 @@ export default function Page() {
         },
         {
           question: "How much does the best SMS CRM for insurance agents cost?",
-          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking, along with STOP handling and 10DLC registration tools. AI replies and appointment booking are on the Text2Sale + AI plan at $119.99/month plus $0.025 per AI reply. There is no long-term contract."
+          answer: "Text2Sale is $39.99/month with AI included, plus usage. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus SMS. The plan includes mass texting, 2-way conversations, CSV imports, drip campaigns, STOP handling, and 10DLC registration tools. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract."
         }
       ]}
       relatedPages={[

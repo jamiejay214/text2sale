@@ -58,7 +58,7 @@ export default function Page() {
       faq={[
         {
           question: "Why do teams switch from OnlySales to Text2Sale?",
-          answer: "Teams usually switch for a combination of AI reply assistance, team management, and simple pricing: $39.99 per month for Standard or $119.99 per month with AI, plus per-message costs. Compare both platforms against your own workflow before deciding.",
+          answer: "Teams usually switch for a combination of AI reply assistance, team management, and simple pricing: $39.99 per month with AI included, plus usage. Compare both platforms against your own workflow before deciding.",
         },
         {
           question: "Can I bring my contacts and opt-outs with me?",

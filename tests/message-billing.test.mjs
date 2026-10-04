@@ -79,6 +79,9 @@ function smsRoute({
       hasNonGsmChars: () => false,
       countSegments: () => 1,
     },
+    "@/lib/sms-pricing": {
+      customerSmsRate: () => 0.015,
+    },
     "@/lib/opt-out": {
       withFirstMessageOptOut: (body) => `${body}\nReply STOP to opt out.`,
     },
@@ -154,7 +157,7 @@ test("a definitive provider rejection refunds the exact reservation", async () =
     route.events.map((e) => e.type),
     ["decrement_wallet", "provider", "credit_wallet"],
   );
-  assert.equal(route.events[2].args.p_amount, 0.012);
+  assert.equal(route.events[2].args.p_amount, 0.015);
 });
 test("an uncertain timeout is not silently refunded as an unsent message", async () => {
   const route = smsRoute({ timeout: true });

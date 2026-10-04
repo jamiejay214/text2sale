@@ -3,7 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
-import { sanitizeForSms, cleanAiSms } from "@/lib/sms-text";
+import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
+import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
 import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
 import {
   type AvailableHours,
@@ -18,7 +19,6 @@ import {
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
-const AI_MESSAGE_COST = 0.025;
 
 // Humanize auto-replies: wait 5s after the customer's inbound before
 // sending so it doesn't feel bot-instant. Only applied for webhook-
@@ -129,20 +129,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    if (!profile.ai_plan && !profile.free_ai_plan) {
+    const entitled =
+      !!profile.free_subscription ||
+      !!profile.free_ai_plan ||
+      ["active", "canceling"].includes(String(profile.subscription_status || ""));
+    if (!entitled) {
       return NextResponse.json(
-        { error: "AI replies require the Text2Sale + AI plan ($119.99/mo). Upgrade in Settings." },
+        { error: "An active Text2Sale subscription is required for AI replies." },
         { status: 403 }
       );
     }
 
     const balance = Number(profile.wallet_balance) || 0;
-    if (sendReply && balance < AI_MESSAGE_COST) {
-      return NextResponse.json(
-        { error: `Insufficient funds. AI reply costs $${AI_MESSAGE_COST}. Balance: $${balance.toFixed(2)}` },
-        { status: 402 }
-      );
-    }
 
     const messages = messagesRes.data || [];
     const contact = contactRes.data;
@@ -482,6 +480,31 @@ BOOKING RULES — follow exactly:
       const toDigits = contact.phone.replace(/\D/g, "");
       const toE164 = `+${toDigits.startsWith("1") ? toDigits : `1${toDigits}`}`;
 
+      const smsRate = customerSmsRate(profile.plan);
+      const smsSegments = Math.max(1, countSegments(aiReply));
+      const smsCharge = Number((smsRate * smsSegments).toFixed(4));
+      const totalCharge = Number((AI_REPLY_FEE + smsCharge).toFixed(4));
+
+      // Reserve the complete customer charge BEFORE sending. This prevents an
+      // AI reply from leaving the platform when the wallet cannot cover both
+      // the AI generation fee and the outbound SMS segment(s).
+      const { data: reservedBalance, error: reserveError } = await supabase.rpc("decrement_wallet", {
+        p_user_id: userId,
+        p_amount: totalCharge,
+      });
+      if (reserveError) {
+        console.error("[ai-reply] wallet reservation failed:", reserveError.message);
+        return NextResponse.json({ error: "Could not reserve funds for this AI reply." }, { status: 503 });
+      }
+      if (reservedBalance === null || reservedBalance === undefined) {
+        return NextResponse.json(
+          {
+            error: `Insufficient funds. This AI reply costs ${totalCharge.toFixed(4)} (${AI_REPLY_FEE.toFixed(2)} AI + ${smsSegments} SMS segment${smsSegments === 1 ? "" : "s"}). Balance: ${balance.toFixed(2)}`,
+          },
+          { status: 402 }
+        );
+      }
+
       const smsRes = await fetch("https://api.telnyx.com/v2/messages", {
         method: "POST",
         headers: {
@@ -497,10 +520,19 @@ BOOKING RULES — follow exactly:
         }),
       });
 
-      const smsData = await smsRes.json();
-      if (smsData.errors) {
+      const smsData = await smsRes.json().catch(() => ({}));
+      if (!smsRes.ok || smsData.errors) {
+        // Definitive provider rejection: return the full reservation. If
+        // Telnyx accepted the request it returns 2xx, so this path is safe to
+        // refund without creating a free delivered message.
+        await supabase.rpc("credit_wallet", {
+          p_user_id: userId,
+          p_amount: totalCharge,
+          p_idempotency_key: `refund_ai_${crypto.randomUUID()}`,
+          p_description: "Refund — AI SMS rejected before delivery",
+        });
         return NextResponse.json(
-          { error: smsData.errors[0]?.detail || "Failed to send SMS" },
+          { error: smsData.errors?.[0]?.detail || "Failed to send SMS" },
           { status: 500 }
         );
       }
@@ -521,23 +553,7 @@ BOOKING RULES — follow exactly:
         })
         .eq("id", conversationId);
 
-      // Charge wallet atomically. The old code was read-modify-write:
-      // it re-used the `balance` we fetched before awaiting the Telnyx
-      // send, so two AI replies firing in parallel for the same user
-      // would both read the same balance and both write `balance - cost`
-      // — one send was free. `decrement_wallet` is SECURITY DEFINER
-      // and runs a single UPDATE with the amount check built in.
-      const { data: newBal, error: decErr } = await supabase.rpc("decrement_wallet", {
-        p_user_id: userId,
-        p_amount: AI_MESSAGE_COST,
-      });
-      const newBalance =
-        typeof newBal === "number" || typeof newBal === "string"
-          ? Number(newBal)
-          : Number((balance - AI_MESSAGE_COST).toFixed(2));
-      if (decErr) {
-        console.error("[ai-reply] decrement_wallet failed:", decErr.message);
-      }
+      const newBalance = Number(reservedBalance);
 
       // Append to usage history in a follow-up update. This is still
       // read-modify-write for the JSON array, but history is additive
@@ -546,8 +562,8 @@ BOOKING RULES — follow exactly:
       const entry = {
         id: `ai_msg_${Date.now()}`,
         type: "charge",
-        amount: AI_MESSAGE_COST,
-        description: `AI reply — ${contact?.first_name || "Unknown"} ${contact?.last_name || ""}`.trim(),
+        amount: totalCharge,
+        description: `AI reply + ${smsSegments} SMS segment${smsSegments === 1 ? "" : "s"} — ${contact?.first_name || "Unknown"} ${contact?.last_name || ""}`.trim(),
         createdAt: new Date().toISOString(),
         status: "succeeded",
       };
@@ -561,7 +577,10 @@ BOOKING RULES — follow exactly:
         success: true,
         reply: aiReply,
         sent: true,
-        cost: AI_MESSAGE_COST,
+        cost: totalCharge,
+        aiFee: AI_REPLY_FEE,
+        smsCharge,
+        smsSegments,
         newBalance,
         appointmentBooked,
         appointmentDetails,

@@ -43,7 +43,7 @@ export default function Page() {
         },
         {
           question: "How much does Text2Sale cost compared to Textdrip?",
-          answer: "Text2Sale's Standard plan is $39.99/month plus $0.012 per text, and includes mass texting, 2-way conversations, CSV imports, drip campaigns, and campaign tracking. AI replies and appointment booking are on the Text2Sale + AI plan at $119.99/month plus $0.025 per AI reply. There is no long-term contract."
+          answer: "Text2Sale is $39.99/month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract."
         }
       ]}
       relatedPages={[

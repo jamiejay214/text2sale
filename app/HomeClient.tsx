@@ -41,14 +41,12 @@ export default function HomeClient({
   const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
   const [error, setError] = useState("");
-  const [selectedPlan, setSelectedPlan] = useState<"standard" | "ai">("ai");
 
   const scrollToAuth = () => {
     document.getElementById("auth-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const handleSelectPlan = (plan: "standard" | "ai") => {
-    setSelectedPlan(plan);
+  const handleSelectPlan = () => {
     setMode("signup");
     setError("");
     setTimeout(scrollToAuth, 100);
@@ -118,10 +116,6 @@ export default function HomeClient({
 
     try { localStorage.setItem("textalot_signup_first_name", firstName); } catch {}
 
-    try {
-      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
-      if (typeof w.fbq === "function") w.fbq("track", "CompleteRegistration");
-    } catch {}
 
     fetch("/api/welcome-email", {
       method: "POST",
@@ -129,25 +123,35 @@ export default function HomeClient({
       body: JSON.stringify({ email: signupEmail.trim(), firstName }),
     }).catch(() => {});
 
-    // Carry the plan they picked on this page into their account. Without
-    // this every signup landed on Standard no matter which card was selected,
-    // and the checkout charged a different price from the one shown. Waits
-    // briefly so the dashboard loads with the right plan, but never blocks
-    // the signup if it's slow — they can still change plan from the dashboard.
-    try {
-      await Promise.race([
-        authFetch("/api/onboarding/plan", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ package: selectedPlan }),
-        }),
-        new Promise((resolve) => setTimeout(resolve, 4000)),
-      ]);
-    } catch {
-      /* the account exists either way */
+    // No free workspace access: new accounts go straight to paid checkout.
+    // If Supabase requires email confirmation first, verification is the only
+    // step allowed before payment.
+    if (result.requiresEmailConfirmation) {
+      router.push("/verify");
+      return;
     }
 
-    router.push("/dashboard");
+    try {
+      await authFetch("/api/onboarding/plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ package: "standard" }),
+      });
+      const checkoutResponse = await authFetch("/api/create-subscription", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: result.user?.id, userEmail: signupEmail.trim().toLowerCase() }),
+      });
+      const checkout = await checkoutResponse.json().catch(() => ({}));
+      if (!checkoutResponse.ok || !checkout.url) {
+        throw new Error(checkout.error || "Secure checkout could not be opened.");
+      }
+      window.location.href = checkout.url;
+      return;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Account created, but checkout could not be opened. Sign in to continue payment.");
+      setMode("login");
+    }
   };
 
   return (
@@ -168,77 +172,38 @@ export default function HomeClient({
             <p className="mx-auto mt-4 max-w-xl text-lg text-zinc-400">No long-term contracts. No hidden fees. Just results.</p>
           </div>
 
-          <div className="mx-auto mt-12 grid max-w-4xl gap-6 md:grid-cols-2">
-            {/* Standard */}
+          <div className="mx-auto mt-12 max-w-2xl">
             <div
-              onClick={() => handleSelectPlan("standard")}
-              className={`group relative cursor-pointer rounded-3xl border bg-zinc-900/60 p-7 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl ${selectedPlan === "standard" ? "border-emerald-500/70 shadow-emerald-500/20 shadow-2xl" : "border-zinc-800 hover:border-emerald-500/50"}`}
-            >
-              <div className="text-xs font-semibold uppercase tracking-widest text-zinc-400">Standard</div>
-              <div className="mt-3 flex items-baseline gap-2">
-                <span className="text-5xl font-black text-white">$39.99</span>
-                <span className="text-sm text-zinc-400">/month</span>
-              </div>
-              <div className="mt-1 text-sm text-zinc-400">+ $0.012 per text · $0.045/min outbound · $0.025/min inbound</div>
-
-              <ul className="mt-6 space-y-2.5 text-sm text-zinc-300">
-                {[
-                  "Unlimited contacts",
-                  "Campaign builder + drip sequences",
-                  "2-way conversations",
-                  "CSV import & blast",
-                  "Team management",
-                  "Real-time notifications",
-                  "Command palette (⌘K)",
-                ].map((x) => (
-                  <li key={x} className="flex items-center gap-2">
-                    <span className="text-emerald-400">✓</span> {x}
-                  </li>
-                ))}
-              </ul>
-
-              <button
-                onClick={(e) => { e.stopPropagation(); handleSelectPlan("standard"); }}
-                className="mt-6 w-full rounded-2xl bg-emerald-500 px-5 py-3 font-bold text-white shadow-lg shadow-emerald-500/30 transition hover:brightness-110"
-              >
-                Start with Standard
-              </button>
-            </div>
-
-            {/* AI */}
-            <div
-              onClick={() => handleSelectPlan("ai")}
-              className={`group relative cursor-pointer overflow-hidden rounded-3xl border-2 p-7 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl ${selectedPlan === "ai" ? "border-lime-300/80 shadow-2xl shadow-lime-300/20" : "border-emerald-400/70"} bg-gradient-to-br from-emerald-950/70 via-zinc-900/80 to-emerald-950/30`}
+              onClick={() => handleSelectPlan()}
+              className="group relative cursor-pointer overflow-hidden rounded-3xl border-2 border-lime-300/70 bg-gradient-to-br from-emerald-950/70 via-zinc-900/80 to-emerald-950/30 p-8 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-lime-300/20"
             >
               <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl" />
-              <div className="absolute -left-10 -bottom-10 h-40 w-40 rounded-full bg-emerald-500/20 blur-3xl" />
-
               <div className="relative">
                 <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-lime-200">Text2Sale + AI</div>
-                  <span className="inline-flex items-center rounded-full bg-lime-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-950 shadow">
-                    Most Popular
+                  <div className="text-xs font-semibold uppercase tracking-widest text-lime-200">Text2Sale</div>
+                  <span className="inline-flex items-center rounded-full bg-lime-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-950">
+                    AI included
                   </span>
                 </div>
                 <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-white">$119.99</span>
+                  <span className="text-5xl font-black text-white">$39.99</span>
                   <span className="text-sm text-zinc-400">/month</span>
                 </div>
-                <div className="mt-1 text-sm text-zinc-300">AI texting + calling included · usage billed from wallet</div>
-                <div className="mt-1 text-xs text-zinc-400">$0.012/SMS · $0.025/AI reply · $0.18/AI call minute</div>
+                <div className="mt-2 text-sm text-zinc-300">$0.015/SMS segment · inbound SMS free · $0.020/AI reply + SMS</div>
+                <div className="mt-1 text-xs text-zinc-400">$0.025/min outbound calls · $0.015/min inbound calls · $0.18/min AI calls</div>
 
-                <ul className="mt-6 space-y-2.5 text-sm text-zinc-200">
+                <ul className="mt-6 grid gap-2.5 text-sm text-zinc-200 sm:grid-cols-2">
                   {[
-                    "Everything in Standard",
-                    "AI auto-replies (sounds human)",
-                    "Full AI mode — handles every reply",
-                    "Per-conversation AI toggle",
+                    "Unlimited contacts",
+                    "Campaigns + drip workflows",
+                    "2-way conversations",
+                    "CSV import & blast",
+                    "AI auto-replies + qualification",
                     "AI appointment booking",
-                    "AI calling receptionist — answers, qualifies & books",
+                    "AI calling receptionist",
                     "Google Calendar sync",
-                    "Sentiment-scored bubbles + smart replies",
-                    "SPIN selling & objection handling",
-                    "Lead temperature + smart send windows",
+                    "Team management",
+                    "10DLC onboarding tools",
                   ].map((x) => (
                     <li key={x} className="flex items-center gap-2">
                       <span className="text-lime-300">✓</span> {x}
@@ -247,18 +212,18 @@ export default function HomeClient({
                 </ul>
 
                 <button
-                  onClick={(e) => { e.stopPropagation(); handleSelectPlan("ai"); }}
-                  className="relative mt-6 w-full overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-xl shadow-lime-300/20 transition hover:brightness-110"
+                  onClick={(e) => { e.stopPropagation(); handleSelectPlan(); }}
+                  className="mt-7 w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-xl shadow-lime-300/20 transition hover:brightness-110"
                 >
-                  Start with AI → Close more
+                  Create account & pay $39.99
                 </button>
               </div>
             </div>
           </div>
 
-          <div className="mx-auto mt-6 max-w-4xl">
+          <div className="mx-auto mt-6 max-w-2xl">
             <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-center text-sm text-emerald-200">
-              💰 <span className="font-semibold">Volume discount:</span> Save 10% on $500+ wallet adds
+              💰 <span className="font-semibold">Volume SMS:</span> a $500+ wallet purchase unlocks $0.0135/SMS. You pay $500 and receive the full $500 balance.
             </div>
           </div>
 
@@ -346,23 +311,9 @@ export default function HomeClient({
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between rounded-2xl border border-zinc-800 bg-zinc-950/60 px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <span className={`relative flex h-2.5 w-2.5`}>
-                          <span className={`absolute inset-0 animate-ping rounded-full opacity-60 ${selectedPlan === "ai" ? "bg-lime-300" : "bg-emerald-400"}`} />
-                          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${selectedPlan === "ai" ? "bg-lime-300" : "bg-emerald-400"}`} />
-                        </span>
-                        <span className="text-sm font-semibold text-white">
-                          {selectedPlan === "ai" ? "Text2Sale + AI" : "Standard"} — <span className="text-zinc-400">${selectedPlan === "ai" ? "119.99" : "39.99"}/mo</span>
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedPlan(selectedPlan === "ai" ? "standard" : "ai")}
-                        className="text-xs font-semibold text-lime-300 hover:text-lime-200"
-                      >
-                        Switch
-                      </button>
+                    <div className="rounded-2xl border border-emerald-800/60 bg-emerald-950/30 px-4 py-3">
+                      <span className="text-sm font-semibold text-white">Text2Sale — <span className="text-zinc-300">$39.99/month</span></span>
+                      <p className="mt-1 text-xs text-zinc-400">AI included. Payment is required immediately after account creation; there is no free trial.</p>
                     </div>
 
                     <div className="grid gap-4 sm:grid-cols-2">
@@ -458,7 +409,7 @@ export default function HomeClient({
                       disabled={loading}
                       className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-400 px-5 py-4 font-bold text-emerald-950 shadow-xl shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-60"
                     >
-                      {loading ? "Creating account..." : "Create account → Go to Dashboard"}
+                      {loading ? "Creating account..." : "Create account → Secure checkout"}
                     </button>
                     <div className="text-center text-[11px] text-zinc-500">
                       By creating an account you agree to all terms above. Cancel anytime.

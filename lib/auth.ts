@@ -5,9 +5,9 @@ import type { Profile } from "./types";
 export type { Profile };
 
 export const DEFAULT_PLAN = {
-  name: "Text2Sale Package",
+  name: "Text2Sale",
   price: 39.99,
-  messageCost: 0.012,
+  messageCost: 0.015,
 };
 
 export function formatPhoneNumber(value: string) {
