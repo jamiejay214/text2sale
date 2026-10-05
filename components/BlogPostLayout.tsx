@@ -47,6 +47,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
     },
     mainEntityOfPage: { "@type": "WebPage", "@id": url },
     keywords: post.tags.join(", "),
+    ...(post.sources?.length ? { citation: post.sources.map((source) => source.href) } : {}),
   };
 
   const faqSchema =
@@ -162,10 +163,10 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
         <section className="mt-12 rounded-3xl border border-zinc-800 bg-zinc-900/60 p-8 text-center">
           <h2 className="text-2xl font-black">Put this into practice with Text2Sale</h2>
           <p className="mx-auto mt-3 max-w-xl text-zinc-300">
-            Upload your leads, automate fast first-touch texts and follow-ups, stay 10DLC and TCPA compliant, and manage every conversation in one inbox.
+            Import leads, create follow-up campaigns, organize replies, and connect texting, calling, and appointments in one workspace.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Start free trial</Link>
+            <Link href="/#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Choose your plan</Link>
             <Link href={landing.href} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">{landing.label}</Link>
           </div>
         </section>
@@ -181,6 +182,21 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
                 </details>
               ))}
             </div>
+          </section>
+        )}
+
+        {post.sources && post.sources.length > 0 && (
+          <section className="mt-12 border-t border-zinc-800 pt-8" aria-label="Article references">
+            <h2 className="text-xl font-bold text-zinc-200">References and further reading</h2>
+            <ul className="mt-4 space-y-3">
+              {post.sources.map((source) => (
+                <li key={source.href}>
+                  <a href={source.href} className="text-sm font-semibold text-emerald-300 underline decoration-emerald-300/30 underline-offset-4 hover:text-emerald-200">
+                    {source.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
           </section>
         )}
 
