@@ -1,3 +1,4 @@
+import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
@@ -20,20 +21,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // SMS on their behalf (and drain the wallet). We now require a Bearer
 // token and verify the caller actually owns the `from` number before
 // forwarding to Telnyx.
-async function getAuthedUserId(req: NextRequest): Promise<string | null> {
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice("Bearer ".length)
-    : "";
-  if (!token) return null;
 
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data?.user) return null;
-  return data.user.id;
-}
 
 export async function POST(req: NextRequest) {
   const adminSupabase = createClient(supabaseUrl, supabaseServiceKey);

@@ -16,6 +16,7 @@ import type { Overview, BusinessMetrics, Series, FeedItem } from "@/lib/command-
 import { Panel, StatTile, AreaChart, BarList, Donut, Funnel } from "@/components/command/CommandKit";
 import CommandVoice from "@/components/command/CommandVoice";
 import Intelligence from "@/components/command/Intelligence";
+import SupportChat from "@/components/SupportChat";
 import Notifications from "@/components/command/Notifications";
 import USMapChart from "@/components/USMapChart";
 
@@ -490,6 +491,7 @@ export default function CommandCenterPage() {
 
         <>
         <Notifications token={token} demo={demo} />
+        {!demo && <SupportChat admin token={token} initialUserId={params.get("chat") || ""} />}
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <StatTile label="Revenue collected" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
@@ -782,6 +784,7 @@ function SignInScreen({ onSignedIn }: { onSignedIn: () => void }) {
           >
             {busy ? "Signing in…" : "Sign in"}
           </button>
+          <a href="/forgot-password" className="mt-4 block text-center text-sm text-emerald-300 hover:underline">Forgot your password?</a>
         </form>
         <p className="mt-4 text-center text-[11px] text-white/35">Admin only · text2sale.com / aibusinessgrowth / trustedquotes</p>
       </div>

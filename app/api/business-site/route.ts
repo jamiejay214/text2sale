@@ -1,5 +1,6 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authenticate } from "@/lib/auth-guard";
+
 import { createServiceClient } from "@/lib/messaging-driver";
 import { siteBase, siteUrls } from "@/lib/business-site";
 import {

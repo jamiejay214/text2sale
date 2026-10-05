@@ -5,7 +5,7 @@ import { Bell, CheckCheck, ChevronDown, Globe, UserPlus } from "lucide-react";
 
 type Notice = {
   id: string;
-  kind: "visit" | "signup" | "test";
+  kind: "visit" | "signup" | "support" | "test";
   title: string;
   body: string;
   url: string;
@@ -18,7 +18,7 @@ export default function Notifications({ token, demo }: { token: string | null; d
   const [items, setItems] = useState<Notice[]>([]);
   const [unread, setUnread] = useState(0);
   const [open, setOpen] = useState(false);
-  const [filter, setFilter] = useState<"all" | "visit" | "signup">("all");
+  const [filter, setFilter] = useState<"all" | "visit" | "signup" | "support">("all");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -79,7 +79,7 @@ export default function Notifications({ token, demo }: { token: string | null; d
         <span className="rounded-xl bg-emerald-400/10 p-2 text-emerald-300"><Bell className="h-4 w-4" /></span>
         <span className="flex-1">
           <span className="text-sm font-semibold text-white">Notifications</span>
-          <span className="mt-0.5 block text-xs text-slate-300">Text2Sale visits and CRM signups</span>
+          <span className="mt-0.5 block text-xs text-slate-300">Visits, CRM signups and support replies</span>
         </span>
         <span aria-live="polite" className="rounded-full bg-emerald-400/15 px-2.5 py-1 text-xs font-semibold text-emerald-200">
           {error ? "Check connection" : unread ? `${unread} unread` : loaded || demo ? "All caught up" : "Loading…"}
@@ -89,14 +89,14 @@ export default function Notifications({ token, demo }: { token: string | null; d
       {open && (
         <div id="command-notification-list" className="border-t border-white/10 p-4">
           <p className="mb-4 text-xs leading-5 text-slate-300">
-            One alert per tracked website session, plus every new CRM account. Known bots and internal pages are excluded.
+            One alert per tracked website session, plus every new CRM account and customer support message. Known bots and internal pages are excluded.
             Phone alerts use your registered Command Center device, even while the app is closed.
           </p>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            {(["all", "visit", "signup"] as const).map((kind) => (
+            {(["all", "visit", "signup", "support"] as const).map((kind) => (
               <button key={kind} onClick={() => setFilter(kind)} aria-pressed={filter === kind}
                 className={`rounded-lg px-3 py-1.5 text-xs ${filter === kind ? "bg-emerald-400 text-slate-950" : "bg-white/5 text-slate-200"}`}>
-                {kind === "all" ? "All" : kind === "visit" ? "Visits" : "Signups"}
+                {kind === "all" ? "All" : kind === "visit" ? "Visits" : kind === "support" ? "Support" : "Signups"}
               </button>
             ))}
             <button disabled={busy || !unread || !items.length} onClick={() => void markRead({ before: items[0].created_at })}
@@ -113,6 +113,7 @@ export default function Notifications({ token, demo }: { token: string | null; d
                   <span className="mt-0.5 text-emerald-300">{item.kind === "signup" ? <UserPlus className="h-4 w-4" /> : <Globe className="h-4 w-4" />}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-white">{item.title}</p>
+                    {item.kind === "support" && <a className="mt-1 block text-xs text-emerald-200 underline" href={item.url}>Open chat & reply</a>}
                     <p className="mt-1 break-words text-xs leading-5 text-slate-300">{item.body}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
                       <time dateTime={item.created_at}>{new Date(item.created_at).toLocaleString()}</time>

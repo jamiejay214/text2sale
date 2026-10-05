@@ -105,6 +105,8 @@ export default function WorkspaceApp() {
       let account = viewer;
       let viewingAnotherAccount = false;
       if (viewer && impersonateId && impersonateId !== viewer.id) {
+        const check = await authFetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "open", targetId: impersonateId }) });
+        if (!check.ok) throw new Error((await check.json()).error || "Workspace access denied.");
         const target = await fetchProfile(impersonateId);
         const mayView =
           isOwnerEmail(session.user.email || viewer.email) ||
@@ -331,8 +333,8 @@ export default function WorkspaceApp() {
         {impersonated && (
           <div className="v2-impersonation">
             <span>Viewing {displayName}&apos;s workspace</span>
-            <small>Owner preview · actions still follow account permissions</small>
-            <button onClick={() => router.push("/admin")}>Return to owner console</button>
+            <small>Managing as yourself · workspace actions are recorded. Billing and credentials stay with the account holder.</small>
+            <button onClick={() => router.push(isOwnerEmail(viewerEmail) ? "/admin" : "/dashboard?tab=settings&subtab=team")}>Exit account</button>
           </div>
         )}
         {view}

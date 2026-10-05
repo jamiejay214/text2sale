@@ -1,3 +1,4 @@
+import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createCalendarEvent } from "@/lib/google-calendar";
@@ -12,20 +13,7 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 // appointments-table row, just an event on the rep's primary calendar with
 // the contact baked into the title and description.
 
-async function getAuthedUserId(req: NextRequest): Promise<string | null> {
-  const authHeader = req.headers.get("authorization") || "";
-  const token = authHeader.startsWith("Bearer ")
-    ? authHeader.slice("Bearer ".length)
-    : "";
-  if (!token) return null;
 
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
-  const { data, error } = await client.auth.getUser(token);
-  if (error || !data?.user) return null;
-  return data.user.id;
-}
 
 export async function POST(req: NextRequest) {
   try {

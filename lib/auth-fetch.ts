@@ -12,5 +12,10 @@ export async function authFetch(input: string, init?: RequestInit): Promise<Resp
   if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
+  // Read the current tab URL per request; never share impersonation across tabs.
+  if (typeof window !== "undefined" && input.startsWith("/api/") && !input.startsWith("/api/team")) {
+    const target = new URLSearchParams(window.location.search).get("impersonate");
+    if (target) headers.set("x-workspace-id", target);
+  }
   return fetch(input, { ...init, headers });
 }

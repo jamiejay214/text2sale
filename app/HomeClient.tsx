@@ -117,11 +117,7 @@ export default function HomeClient({
     try { localStorage.setItem("textalot_signup_first_name", firstName); } catch {}
 
 
-    fetch("/api/welcome-email", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: signupEmail.trim(), firstName }),
-    }).catch(() => {});
+    // A database-triggered welcome email is queued for this new account.
 
     // No free workspace access: new accounts go straight to paid checkout.
     // If Supabase requires email confirmation first, verification is the only

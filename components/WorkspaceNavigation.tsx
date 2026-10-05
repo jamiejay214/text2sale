@@ -107,9 +107,10 @@ const groups = [
       {
         tab: "settings",
         sub: "team",
-        label: "Workspace settings",
+        label: "Workspace & team",
         icon: Settings,
       },
+      { tab: "settings", sub: "support", label: "Support chat", icon: MessageSquare },
       { tab: "learn", label: "Tutorials", icon: BookOpen },
     ],
   },

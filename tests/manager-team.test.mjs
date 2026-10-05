@@ -1,0 +1,31 @@
+import {before,after,test} from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import {PGlite} from '@electric-sql/pglite';
+let db;const id=n=>`00000000-0000-0000-0000-${String(n).padStart(12,'0')}`;
+before(async()=>{db=new PGlite();await db.exec(`create role anon;create role authenticated;create role service_role bypassrls;create schema auth;create schema private;
+create function auth.uid() returns uuid language sql as 'select nullif(current_setting(''request.jwt.claim.sub'',true),'''')::uuid';
+grant usage on schema auth,public to authenticated,service_role;grant execute on function auth.uid() to authenticated,service_role;
+create table profiles(id uuid primary key,role text,manager_id uuid,paused boolean default false,email text,first_name text,last_name text,referral_code text,team_code text,wallet_balance numeric default 0,usage_history jsonb default '[]',total_deposited numeric default 0,free_ai_plan boolean default false,phone text);
+alter table profiles enable row level security;grant select,update on profiles to authenticated;grant all on profiles to service_role;
+create table conversations(id uuid primary key default gen_random_uuid(),user_id uuid);
+create table messages(id uuid primary key default gen_random_uuid(),conversation_id uuid,message text);
+`);
+for(const name of ['contacts','campaigns','calls','message_templates','scheduled_messages','appointments','csv_uploads','integrations','owned_phone_numbers','ai_call_sessions'])await db.exec(`create table ${name}(id uuid primary key default gen_random_uuid(),user_id uuid);`);
+for(const name of ['conversations','messages','contacts','campaigns','calls','message_templates','scheduled_messages','appointments','csv_uploads','integrations','owned_phone_numbers','ai_call_sessions'])await db.exec(`alter table ${name} enable row level security; grant all on ${name} to authenticated,service_role;`);
+await db.exec(readFileSync(new URL('../supabase/migrations/20261005193108_manager_workspaces_and_transfers.sql',import.meta.url),'utf8'));
+await db.exec(`insert into profiles(id,role,email,first_name,referral_code,wallet_balance,total_deposited) values('${id(1)}','manager','manager@example.test','Manager','TEAM1',100,100),('${id(2)}','user','member@example.test','Member','MEMBER',5,5),('${id(3)}','user','outside@example.test','Outside','OTHER',5,5),('${id(4)}','admin','johnsonhealthquotes@gmail.com','Owner','OWNER',0,0);update profiles set manager_id='${id(1)}' where id='${id(2)}';insert into conversations(id,user_id)values('${id(20)}','${id(2)}');`);
+});after(async()=>await db?.close());
+async function tx(fn){await db.exec('begin');try{await fn();}finally{await db.exec('rollback');}}
+async function role(n){await db.exec(`set local role authenticated;select set_config('request.jwt.claim.sub','${id(n)}',true);`);}
+async function transfer(cents=2500,request=99,recipient=2){return (await db.query('select transfer_team_funds($1,$2,$3,$4) as receipt',[id(1),id(recipient),cents,id(request)])).rows[0].receipt;}
+test('transfer conserves balances, leaves deposits unchanged and replays once',()=>tx(async()=>{await db.exec('set local role service_role');const a=await transfer();const b=await transfer();assert.equal(a.id,b.id);const r=(await db.query('select wallet_balance,total_deposited from profiles where id in($1,$2) order by id',[id(1),id(2)])).rows;assert.deepEqual(r.map(v=>Number(v.wallet_balance)),[75,30]);assert.deepEqual(r.map(v=>Number(v.total_deposited)),[100,5]);assert.equal((await db.query('select count(*)::int n from team_fund_transfers')).rows[0].n,1);}));
+for(const [name,args] of [['overdraft',[10001]],['zero',[0]],['negative',[-1]],['unrelated recipient',[100,99,3]]])test(`rejects ${name}`,()=>tx(async()=>{await db.exec('set local role service_role');await assert.rejects(transfer(...args));}));
+test('request id cannot be reused with different amount',()=>tx(async()=>{await db.exec('set local role service_role');await transfer();await assert.rejects(transfer(1000));}));
+test('clients cannot call money or membership RPCs or alter receipts',()=>tx(async()=>{await role(1);await assert.rejects(transfer(),/permission denied/);}));
+test('manager can create and update team data and read messages, not outsiders',()=>tx(async()=>{await role(1);await db.query('insert into contacts(user_id)values($1)',[id(2)]);await db.query('insert into messages(conversation_id,message)values($1,$2)',[id(20),'help']);assert.equal((await db.query('select count(*)::int n from messages')).rows[0].n,1);assert.equal((await db.query('select count(*)::int n from profiles')).rows[0].n,2);await assert.rejects(db.query('insert into contacts(user_id)values($1)',[id(3)]));}));
+test('demotion revokes existing team assignment access',()=>tx(async()=>{await db.query('update profiles set role=$1 where id=$2',['user',id(1)]);await role(1);assert.equal((await db.query('select count(*)::int n from conversations')).rows[0].n,0);await assert.rejects(db.query('insert into contacts(user_id)values($1)',[id(2)]));}));
+test('manager cannot move rows between workspaces',()=>tx(async()=>{await role(1);await db.query('insert into contacts(id,user_id)values($1,$2)',[id(21),id(2)]);await assert.rejects(db.query('update contacts set user_id=$1 where id=$2',[id(1),id(21)]),/ownership/);}));
+test('manager can edit operational profile but not wallet or role',()=>tx(async()=>{await role(1);await db.query('update profiles set first_name=$1 where id=$2',['Updated',id(2)]);await assert.rejects(db.query('update profiles set wallet_balance=1000 where id=$1',[id(2)]),/operational/);}));
+test('join and leave use trusted membership function',()=>tx(async()=>{await db.exec('set local role service_role');await db.query('select change_team_membership($1,$2)',[id(3),'TEAM1']);assert.equal((await db.query('select manager_id from profiles where id=$1',[id(3)])).rows[0].manager_id,id(1));await db.query('select change_team_membership($1,null)',[id(3)]);assert.equal((await db.query('select manager_id from profiles where id=$1',[id(3)])).rows[0].manager_id,null);}));
+test('paused manager cannot transfer or delegate',()=>tx(async()=>{await db.query('update profiles set paused=true where id=$1',[id(1)]);await db.exec('set local role service_role');await assert.rejects(transfer(),/access denied/);}));

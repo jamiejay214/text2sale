@@ -1,6 +1,7 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate } from "@/lib/auth-guard";
+
 import {
   MessagingStatus,
   PENDING_STATUSES,

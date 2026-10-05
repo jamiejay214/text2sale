@@ -37,6 +37,12 @@ export default function AccountRecovery({
       }
     });
     if (mode === "reset") {
+      const linkError = new URLSearchParams(window.location.hash.slice(1)).get("error_description") || new URLSearchParams(window.location.search).get("error_description");
+      if (linkError) {
+        setError("This reset link has expired or was already used. Request a new one.");
+        setReady(false); setChecking(false);
+        return () => { active = false; subscription.unsubscribe(); };
+      }
       supabase.auth
         .getSession()
         .then(({ data, error }) => {
@@ -109,7 +115,7 @@ export default function AccountRecovery({
     }
     setBusy(true);
     try {
-      const origin = window.location.origin;
+      const origin = process.env.NEXT_PUBLIC_APP_URL || "https://text2sale.com";
       if (mode === "reset") {
         const { error } = await supabase.auth.updateUser({ password });
         if (error) {
