@@ -423,41 +423,16 @@ export async function fetchTeamMemberConversations(memberId: string): Promise<Co
 }
 
 export async function joinTeamByCode(userId: string, code: string): Promise<{ success: boolean; managerName?: string; error?: string }> {
-  // Find the manager/admin with this referral code
-  const { data: manager, error: managerErr } = await supabase
-    .from("profiles")
-    .select("id, first_name, last_name, referral_code, role")
-    .eq("referral_code", code)
-    .in("role", ["manager", "admin"])
-    .single();
-
-  if (managerErr || !manager) {
-    return { success: false, error: "Invalid team code. Make sure the code belongs to a manager." };
-  }
-
-  if (manager.id === userId) {
-    return { success: false, error: "You can't join your own team." };
-  }
-
-  // Set the user's manager_id
-  const { error: updateErr } = await supabase
-    .from("profiles")
-    .update({ manager_id: manager.id })
-    .eq("id", userId);
-
-  if (updateErr) {
-    return { success: false, error: "Failed to join team." };
-  }
-
-  return { success: true, managerName: `${manager.first_name} ${manager.last_name}` };
+  const { authFetch } = await import("./auth-fetch");
+  const response = await authFetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "join", code }) });
+  const result = await response.json();
+  return response.ok ? result : { success: false, error: result.error || "Could not join team." };
 }
 
-export async function leaveTeam(userId: string): Promise<boolean> {
-  const { error } = await supabase
-    .from("profiles")
-    .update({ manager_id: null })
-    .eq("id", userId);
-  return !error;
+export async function leaveTeam(_userId: string): Promise<boolean> {
+  const { authFetch } = await import("./auth-fetch");
+  const response = await authFetch("/api/team", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "leave" }) });
+  return response.ok;
 }
 
 // ============================================================

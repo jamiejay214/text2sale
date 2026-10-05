@@ -1,6 +1,7 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate, requireAdmin } from "@/lib/auth-guard";
+import { requireAdmin } from "@/lib/auth-guard";
 import { certificateMetadata, EIN_CERTIFICATE_BUCKET, getEINCertificate } from "@/lib/ein-certificate-storage";
 
 const privateHeaders = { "Cache-Control": "private, no-store" };

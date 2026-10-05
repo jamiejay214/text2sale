@@ -1,5 +1,6 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse, after } from "next/server";
-import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { requireSameUser } from "@/lib/auth-guard";
 import { advanceUser, createServiceClient, PROFILE_COLUMNS, type ProfileRow, type Registration } from "@/lib/messaging-driver";
 import { validateBusinessDetails } from "@/lib/business-details";
 import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";

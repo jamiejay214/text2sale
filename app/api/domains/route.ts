@@ -1,5 +1,6 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { authenticate } from "@/lib/auth-guard";
+
 import { isDomainAvailable, suggestDomains } from "@/lib/vercel-domains";
 import { priceToCharge, purchaseDomainForUser, type DomainPurchaseFailure } from "@/lib/domain-purchase";
 import { isValidDomain, normalizeDomain } from "@/lib/business-site";

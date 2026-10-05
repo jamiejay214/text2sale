@@ -1,8 +1,9 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, countSegments } from "@/lib/sms-text";
-import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { requireSameUser } from "@/lib/auth-guard";
 import { renderCampaignMessage } from "@/lib/campaign-sequence";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";

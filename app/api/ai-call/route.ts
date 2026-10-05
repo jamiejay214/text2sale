@@ -1,6 +1,7 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate } from "@/lib/auth-guard";
+
 import { DEFAULT_VOICE, settingsFromProfile } from "@/lib/ai-call";
 import {
   AI_CALL_MIN_RESERVE,

@@ -1014,3 +1014,17 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-domain-contact-note p { margin:0 0 12px; color:var(--v2-muted); font-size:.8125rem; line-height:1.65; }
 .v2-domain-contact-note strong { color:var(--v2-ink); font-size:.8125rem; overflow-wrap:anywhere; }
 .v2-registration-side .v2-registration-help li,.v2-registration-side .v2-registration-help p { font-size:.8125rem; }
+
+.v2-manager-summary { display:flex; flex-wrap:wrap; gap:24px; padding:18px 0; }
+.v2-manager-summary>div { flex:1; min-width:130px; }
+.v2-manager-summary small,.v2-manager-summary span,.v2-team-row small { display:block; color:var(--ws-muted,#64748b); font-size:12px; margin:5px 0; }
+.v2-manager-summary strong { display:block; font-size:22px; }
+.v2-team-search { width:100%; padding:12px; border:1px solid #94a3b8; border-radius:10px; background:transparent; color:inherit; }
+.v2-team-row { display:flex; align-items:center; flex-wrap:wrap; gap:12px; padding:16px 0; border-bottom:1px solid #94a3b833; }
+.v2-team-row>div:first-child,.v2-team-row>span:first-child { flex:1; min-width:180px; }
+.v2-transfer-overlay { position:fixed; inset:0; z-index:100; display:grid; place-items:center; padding:20px; background:#020617b3; }
+.v2-transfer-dialog { max-width:480px; width:100%; padding:28px; border-radius:20px; background:#fff; color:#0f172a; box-shadow:0 20px 80px #0005; }
+.v2-transfer-dialog p { font-size:14px; line-height:1.6; margin:14px 0; }
+.v2-transfer-dialog input { display:block; padding:12px; width:100%; margin:8px 0 20px; border:1px solid #94a3b8; border-radius:8px; color:#0f172a; background:#fff; }
+.v2-transfer-dialog>div { display:flex; justify-content:flex-end; gap:12px; }
+.v2-team-grid>.v2-panel:has(.v2-manager-summary) { grid-column:1/-1; }

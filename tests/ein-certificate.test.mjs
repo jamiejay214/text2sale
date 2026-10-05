@@ -62,6 +62,7 @@ function harness({ authenticated = true, caller = ownerId, adminAllowed = false,
   const shared = load("lib/ein-certificate.ts");
   modules["./ein-certificate"] = modules["@/lib/ein-certificate"] = shared;
   modules["@/lib/ein-certificate-storage"] = load("lib/ein-certificate-storage.ts");
+  modules["@/lib/workspace-auth"] = { authenticateWorkspace: modules["@/lib/auth-guard"].authenticate };
   const uploadRoute = load("app/api/upload-ein-certificate/route.ts");
   const readRoute = load("app/api/ein-certificate-url/route.ts");
   return {

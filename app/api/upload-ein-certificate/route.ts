@@ -1,7 +1,8 @@
+import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { requireSameUser } from "@/lib/auth-guard";
 import { certificateBytesMatch, certificateContentType, certificateFileProblem } from "@/lib/ein-certificate";
 import { certificateStorageName, EIN_CERTIFICATE_BUCKET, getEINCertificate } from "@/lib/ein-certificate-storage";
 

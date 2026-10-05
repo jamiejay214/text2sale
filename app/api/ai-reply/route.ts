@@ -1,3 +1,4 @@
+import { authenticateWorkspaceOrInternal as authenticateOrInternal } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
@@ -5,7 +6,7 @@ import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calenda
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
 import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
-import { authenticateOrInternal, requireSameUser } from "@/lib/auth-guard";
+import { requireSameUser } from "@/lib/auth-guard";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 import {
   type AvailableHours,

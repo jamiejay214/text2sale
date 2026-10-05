@@ -28,7 +28,7 @@ export type AuthResult =
  *   if (!auth.ok) return auth.response;
  *   const user = auth.user;
  */
-export async function authenticate(req: NextRequest): Promise<AuthResult> {
+export async function authenticate(req: NextRequest, allowWorkspace = false): Promise<AuthResult> {
   const header = req.headers.get("authorization") || "";
   const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
 
@@ -51,6 +51,10 @@ export async function authenticate(req: NextRequest): Promise<AuthResult> {
     };
   }
 
+  const workspace = req.headers.get("x-workspace-id");
+  if (!allowWorkspace && workspace && workspace !== data.user.id) {
+    return { ok: false, response: NextResponse.json({ error: "Return to your own account for billing, credentials or team administration." }, { status: 403 }) };
+  }
   return { ok: true, user: data.user, token };
 }
 
