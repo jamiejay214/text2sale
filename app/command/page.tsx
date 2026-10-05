@@ -16,6 +16,7 @@ import type { Overview, BusinessMetrics, Series, FeedItem } from "@/lib/command-
 import { Panel, StatTile, AreaChart, BarList, Donut, Funnel } from "@/components/command/CommandKit";
 import CommandVoice from "@/components/command/CommandVoice";
 import Intelligence from "@/components/command/Intelligence";
+import Notifications from "@/components/command/Notifications";
 import USMapChart from "@/components/USMapChart";
 
 type Scope = "all" | BusinessMetrics["id"];
@@ -110,7 +111,8 @@ function makeDemo(): Overview {
 
 // ── Web Push (iPhone home-screen notifications) ─────────────────────────────
 // Subscriptions live in the TrustedQuotes Supabase project, which is also where
-// the leads land — a DB trigger there pushes to this device on every new lead.
+// the leads land. Text2Sale visitor and signup triggers also use this delivery
+// service, so existing registered devices receive the new alerts automatically.
 const PUSH_SUBSCRIBE_URL =
   "https://owdfzratwvneslwhiqvb.supabase.co/functions/v1/push-subscribe";
 const VAPID_PUBLIC_KEY =
@@ -136,7 +138,10 @@ export default function CommandCenterPage() {
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-  const [scope, setScope] = useState<Scope>("all");
+  const [scope, setScope] = useState<Scope>(() => {
+    const requested = params.get("biz");
+    return requested === "text2sale" || requested === "trustedquotes" || requested === "aibusinessgrowth" ? requested : "all";
+  });
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [clock, setClock] = useState(new Date());
   const [installPrompt, setInstallPrompt] = useState<{ prompt: () => Promise<void> } | null>(null);
@@ -177,7 +182,7 @@ export default function CommandCenterPage() {
       .catch(() => setPushState("off"));
   }, []);
 
-  // Subscribe this device (the installed iPhone app) to lead push alerts.
+  // Subscribe this device to visits, CRM signups and existing lead alerts.
   const enablePush = async () => {
     if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
       alert(
@@ -421,7 +426,7 @@ export default function CommandCenterPage() {
             <button
               onClick={enablePush}
               disabled={pushState === "working"}
-              title={pushState === "on" ? "Lead alerts are on — tap to re-send a test" : "Get a notification on your phone for every new lead"}
+              title={pushState === "on" ? "Visits, CRM signups and lead alerts are on — tap to send a test" : "Get phone notifications for website visits, CRM signups and new leads"}
               className="flex h-9 items-center gap-1.5 rounded-lg border px-3 text-xs font-medium transition disabled:opacity-60"
               style={
                 pushState === "on"
@@ -484,6 +489,7 @@ export default function CommandCenterPage() {
         </div>
 
         <>
+        <Notifications token={token} demo={demo} />
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           <StatTile label="Revenue collected" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
