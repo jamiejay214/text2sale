@@ -3,9 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import Logo from "@/components/Logo";
+import { supabase } from "@/lib/supabase";
+import { trackCheckout, type VerifiedCheckout } from "@/lib/track-checkout";
 
 export default function ThankYouPage() {
   const [firstName, setFirstName] = useState("");
+  const [paymentState, setPaymentState] = useState<"checking" | "verified" | "unverified">("checking");
 
   useEffect(() => {
     const firstNameTimer = window.setTimeout(() => {
@@ -15,24 +18,44 @@ export default function ThankYouPage() {
       } catch {}
     }, 0);
 
-    // Fire Meta Pixel Purchase event (user has subscribed via Stripe)
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const amount = parseFloat(params.get("amount") || "0");
-      const w = window as unknown as { fbq?: (...args: unknown[]) => void };
-      if (typeof w.fbq === "function") {
-        // Count registration only after the first required subscription payment
-        // succeeds so advertising never treats an unpaid signup as a customer.
-        w.fbq("track", "CompleteRegistration");
-        if (amount > 0) {
-          w.fbq("track", "Purchase", { value: amount, currency: "USD" });
-        } else {
-          w.fbq("track", "Purchase", { value: 39.99, currency: "USD" });
+    const controller = new AbortController();
+    let retryTimer: number | undefined;
+    async function verifyPayment() {
+      try {
+        const sessionId = new URLSearchParams(window.location.search).get("session_id");
+        if (!sessionId) { setPaymentState("unverified"); return; }
+        const { data: { session } } = await supabase.auth.getSession();
+        if (controller.signal.aborted) return;
+        if (!session) { setPaymentState("unverified"); return; }
+        const response = await fetch("/api/checkout-conversion", {
+          method: "POST", signal: controller.signal,
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+          body: JSON.stringify({ sessionId }),
+        });
+        if (!response.ok) throw new Error("Payment verification failed");
+        const checkout: VerifiedCheckout = await response.json();
+        if (controller.signal.aborted) return;
+        setPaymentState(checkout.verified ? "verified" : "unverified");
+        if (!checkout.verified || !checkout.trackable || !/^(www\.)?text2sale\.com$/.test(window.location.hostname)) return;
+        let attempts = 0;
+        function reportWhenReady() {
+          if (controller.signal.aborted) return;
+          const pixel = (window as unknown as { fbq?: (...args: unknown[]) => void }).fbq;
+          // Wait for the layout's afterInteractive pixel bootstrap instead of
+          // silently losing the conversion when the effect runs first.
+          let storage: Storage;
+          try { storage = window.localStorage; } catch { return; }
+          if (!trackCheckout(checkout, pixel, storage) && ++attempts < 60) {
+            retryTimer = window.setTimeout(reportWhenReady, 500);
+          }
         }
+        reportWhenReady();
+      } catch {
+        if (!controller.signal.aborted) setPaymentState("unverified");
       }
-    } catch {}
-
-    return () => window.clearTimeout(firstNameTimer);
+    }
+    void verifyPayment();
+    return () => { controller.abort(); window.clearTimeout(firstNameTimer); window.clearTimeout(retryTimer); };
   }, []);
 
   return (
@@ -69,11 +92,12 @@ export default function ThankYouPage() {
         </div>
 
         <h1 className="text-center text-4xl font-bold tracking-tight sm:text-5xl">
-          Welcome to Text2Sale{firstName ? `, ${firstName}` : ""} 🎉
+          {paymentState === "verified" ? `Welcome to Text2Sale${firstName ? `, ${firstName}` : ""} 🎉` : "Your Text2Sale account"}
         </h1>
         <p className="mt-4 max-w-xl text-center text-lg text-zinc-400">
-          Your account is all set. You&apos;re one step away from sending your
-          first campaign.
+          {paymentState === "checking" ? "Checking your payment confirmation…" : paymentState === "verified"
+            ? "Your payment is confirmed. Complete messaging setup to prepare your first campaign."
+            : "We could not verify a completed payment from this link. Open your dashboard to check your subscription before trying another payment."}
         </p>
 
         {/* next steps */}
