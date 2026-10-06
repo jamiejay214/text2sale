@@ -27,7 +27,9 @@ import { SITE_PAGES } from "@/lib/site-pages";
 // still work.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// This lookup is server-only. Anonymous profile access is blocked by RLS;
+// using it here made newly connected business domains redirect to the CRM.
+const supabaseLookupKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Lowercased compliance paths we're willing to rewrite. Anything else is
 // passed through so the app's normal routes still work on the apex domain
@@ -78,7 +80,7 @@ async function lookupSlugForHost(host: string): Promise<string | null> {
   if (cached && Date.now() - cached.at < (cached.slug ? HIT_TTL_MS : MISS_TTL_MS)) return cached.slug;
 
   try {
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+    const supabase = createClient(supabaseUrl, supabaseLookupKey, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
     // Match either the exact host or its www-stripped form so both

@@ -6,6 +6,7 @@
 // and under text2sale.com/biz/<slug> — how to link to each other and what the
 // canonical address is. This is the one place that works those out.
 
+import { smsConsentText } from "./sms-consent";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { fetchBusiness, getBusinessContact, getBusinessName, type BusinessProfile } from "./biz-fetch";
@@ -19,7 +20,7 @@ import { normalizeSiteConfig, type BusinessSiteConfig } from "./site-config";
  * comparing what they saw last week, and to anyone relying on the date as a
  * record of when the terms took effect. Bump this when the wording changes.
  */
-export const BIZ_LEGAL_UPDATED = "October 2, 2026";
+export const BIZ_LEGAL_UPDATED = "October 6, 2026";
 
 export type SiteContext = {
   slug: string;
@@ -74,5 +75,5 @@ export async function loadSite(slug: string, opts: { required?: boolean } = {}):
 
 /** The wording shown beside the unchecked consent box, and recorded with each opt-in. */
 export function consentText(name: string, industry: Industry): string {
-  return `By checking this box and entering my mobile number, I agree to receive recurring text messages from ${name} (${industry.messageTypes}) at the number provided. Message frequency varies. Message and data rates may apply. Reply STOP to cancel at any time or HELP for help. Consent is not a condition of any purchase. Mobile information will not be shared with third parties or affiliates for marketing or promotional purposes.`;
+  return smsConsentText(name, industry.messageTypes);
 }

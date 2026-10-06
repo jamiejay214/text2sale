@@ -123,7 +123,27 @@ async function probeRequiredText(
     if (res.status !== 200) {
       return { live: false, status: res.status, page, reason: `${page} returned HTTP ${res.status}` };
     }
-    const html = (await res.text())
+    const source = (await res.text()).replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+    if (res.url && new URL(res.url).hostname !== new URL(url).hostname) {
+      return { live: false, status: 200, page, reason: `${page} redirects away from the submitted business domain` };
+    }
+    if (page === "opt-in") {
+      const checkbox = source.match(/<input\b[^>]*type=["']checkbox["'][^>]*>/i)?.[0];
+      if (!/<form\b/i.test(source) || !checkbox || /\s(?:checked|required)(?:[\s=>]|$)/i.test(checkbox)) {
+        return { live: false, status: 200, page, reason: "SMS form must include an optional checkbox that is unchecked by default" };
+      }
+      for (const path of ["privacy-policy", "terms"]) {
+        const expected = new URL(url.replace(/\/opt-in\/?$/, `/${path}`));
+        const links = [...source.matchAll(/<a\b[^>]*href=["']([^"']+)["']/gi)];
+        if (!links.some((match) => {
+          try { const link = new URL(match[1], url); return link.origin === expected.origin && link.pathname === expected.pathname; }
+          catch { return false; }
+        })) {
+          return { live: false, status: 200, page, reason: `SMS form is missing a link to the business ${path} page` };
+        }
+      }
+    }
+    const html = source
       .toLowerCase()
       .replace(/&amp;/g, "&")
       .replace(/<[^>]+>/g, " ")
@@ -165,6 +185,9 @@ export async function probeComplianceSite(base: string, businessName: string): P
       "message frequency varies",
       "message and data rates may apply",
       "reply stop",
+      "reply help",
+      "marketing and customer care",
+      "optional",
       "privacy policy",
       "terms of service",
     ]),

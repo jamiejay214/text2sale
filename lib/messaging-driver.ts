@@ -341,13 +341,13 @@ type WebsiteOutcome =
  */
 async function ensureWebsite(db: Db, profile: ProfileRow): Promise<WebsiteOutcome> {
   const reg = profile.a2p_registration || {};
-  if (reg.siteLiveAt && reg.website && Number(reg.siteVerifiedVersion || 0) >= 2) return { ok: true };
+  if (reg.siteLiveAt && reg.website && Number(reg.siteVerifiedVersion || 0) >= 3) return { ok: true };
 
   const inStage = hoursSince(profile.messaging_status_at);
   const patchLive = async (website: string) => {
     reg.website = website;
     reg.siteLiveAt = new Date().toISOString();
-    reg.siteVerifiedVersion = 2;
+    reg.siteVerifiedVersion = 3;
     profile.a2p_registration = { ...reg };
   };
 

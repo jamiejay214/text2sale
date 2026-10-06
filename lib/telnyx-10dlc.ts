@@ -6,6 +6,7 @@
 // paths drifted, a customer's registration would describe something different
 // depending on which code path happened to submit it.
 
+import { smsConsentText } from "./sms-consent";
 import { getIndustry, industryToVertical } from "./industries";
 import { classifyTelnyxError, flattenTelnyxErrors, type ErrorKind } from "./messaging-status";
 
@@ -205,8 +206,8 @@ export function buildCampaignPayload(args: CampaignPayloadArgs) {
     brandId,
     usecase: "MIXED",
     subUsecases: ["MARKETING", "CUSTOMER_CARE"],
-    description: `${businessName} is a ${industry.businessNoun}. ${businessName} uses Text2Sale to send ${industry.messageTypes} by SMS to customers and prospects who have voluntarily opted in to receive text messages from ${businessName}. Message frequency varies.`,
-    messageFlow: `Consumers opt in by completing the SMS sign-up form on the business website at ${optInUrl}. The form collects first name, last name and mobile number and includes an unchecked consent checkbox with this disclosure: the consumer agrees to receive recurring text messages from ${businessName} (${industry.messageTypes}); message frequency varies; message and data rates may apply; reply STOP to opt out and HELP for help; consent is not a condition of any purchase. Links to the Privacy Policy (${privacyUrl}) and Terms (${termsUrl}) appear on the form. Mobile numbers and consent are never shared with third parties or affiliates for marketing purposes. Consent is recorded with a timestamp before any message is sent, and opt-outs are honored immediately. Consumers may also opt in on a written sign-up form at the business with the same disclosures.`,
+    description: `${businessName} is a ${industry.businessNoun}. ${businessName} uses Text2Sale to send marketing and customer care messages, including ${industry.messageTypes}, by SMS to customers and prospects who have voluntarily opted in to receive text messages from ${businessName}. Message frequency varies.`,
+    messageFlow: `Consumers visit ${site} and select the SMS Opt-In link in the footer to open the publicly accessible form at ${optInUrl}; no account or login is required. They enter their name and mobile phone number and may separately select an optional SMS consent checkbox, which is unchecked by default. The exact disclosure beside the checkbox is: "${smsConsentText(businessName, industry.messageTypes)}". The form includes functional Privacy Policy (${privacyUrl}) and Terms of Service (${termsUrl}) links. Submitting without selecting SMS consent records an inquiry only and does not subscribe the visitor or send any SMS. When the checkbox is selected, the system records the disclosure, source URL, timestamp and consent before sending messages. A confirmation identifies ${businessName}, frequency, rates and STOP/HELP instructions when the registered sending number is active. STOP requests are honored immediately.`,
     helpMessage: `${businessName}: For help, contact us at ${contactEmail} or call ${contactPhone}. Msg frequency varies. Msg&data rates may apply. Reply STOP to opt out.`,
     helpKeywords: "HELP,INFO",
     optinMessage: `${businessName}: You are now subscribed to text messages from ${businessName}. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: ${privacyUrl}`,

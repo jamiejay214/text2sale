@@ -62,7 +62,7 @@ export default async function PrivacyPolicyPage({
         <ul className="mt-2 list-disc pl-6 text-gray-700 space-y-1">
           <li>Provide you with the services you request</li>
           <li>
-            Send you text messages ({industry.messageTypes}) if you have opted in to receive them
+            Send you marketing and customer care text messages ({industry.messageTypes}) if you have opted in to receive them
           </li>
           <li>Respond to your inquiries and provide customer support</li>
           <li>Improve our services and website experience</li>

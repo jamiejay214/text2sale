@@ -48,10 +48,6 @@ export default function OptInForm({
     if (state === "sending") return;
     setError("");
 
-    if (!consent) {
-      setError("Please check the box to agree to receive text messages.");
-      return;
-    }
     setState("sending");
 
     try {
@@ -92,12 +88,16 @@ export default function OptInForm({
           <div className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-3xl">
             ✓
           </div>
-          <h1 className="text-2xl font-bold text-gray-900">You&apos;re signed up</h1>
+          <h1 className="text-2xl font-bold text-gray-900">{consent ? "You're signed up" : "Your request is saved"}</h1>
           <p className="mt-4 text-gray-600">
-            Thank you for opting in to receive text messages from {businessName}.{" "}
-            {confirmationSent
+            {consent ? `Thank you for opting in to receive text messages from ${businessName}. ` : "You have not subscribed to text messages. Contact us using the email or phone listed below for assistance. "}
+            {consent && (confirmationSent
               ? "We just sent a confirmation text to your phone."
-              : `You'll hear from ${businessName} soon.`}
+              : "Your SMS consent has been recorded.")}
+          </p>
+          <p className="mt-4 text-sm text-gray-500">
+            {supportEmail && <a href={`mailto:${supportEmail}`}>{supportEmail}</a>}{" "}
+            {supportPhone && <a href={`tel:${supportPhone.replace(/[^+0-9]/g, "")}`}>{supportPhone}</a>}
           </p>
           <p className="mt-4 text-sm text-gray-500">
             Reply STOP at any time to unsubscribe, or HELP for help. Message and data rates may apply.
@@ -110,9 +110,9 @@ export default function OptInForm({
   return (
     <section className="py-16 px-6">
       <div className="mx-auto max-w-lg">
-        <h1 className="text-3xl font-bold text-gray-900 text-center">Get Text Updates</h1>
+        <h1 className="text-3xl font-bold text-gray-900 text-center">Contact {businessName}</h1>
         <p className="mt-4 text-center text-gray-600">
-          Sign up to receive text messages from {businessName}: {messageTypes}.
+          Request information and optionally subscribe to marketing and customer care text messages: {messageTypes}.
         </p>
 
         <dl className="mt-8 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 rounded-xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
@@ -132,7 +132,7 @@ export default function OptInForm({
           </dd>
         </dl>
 
-        <form onSubmit={handleSubmit} className="mt-8 space-y-5" noValidate>
+        <form onSubmit={handleSubmit} className="mt-8 space-y-5">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
@@ -196,6 +196,7 @@ export default function OptInForm({
             />
           </div>
 
+          <p className="text-sm text-gray-600">SMS consent is optional. Leave the box unchecked to submit without subscribing to text messages.</p>
           {/* SMS consent — unchecked by default, disclosure beside the box */}
           <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
             <label className="flex items-start gap-3 cursor-pointer">
@@ -230,7 +231,7 @@ export default function OptInForm({
             disabled={state === "sending"}
             className="w-full rounded-xl bg-emerald-700 py-4 text-sm font-semibold text-white shadow hover:bg-emerald-800 transition disabled:opacity-60"
           >
-            {state === "sending" ? "Signing you up…" : "Sign Up for Text Updates"}
+            {state === "sending" ? "Submitting…" : "Submit Request"}
           </button>
         </form>
       </div>

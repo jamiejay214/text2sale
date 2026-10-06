@@ -4,6 +4,8 @@
 // text2sale.com marketing site. Keep in sync when onboarding a new user.
 
 export const CUSTOM_DOMAINS: { domain: string; slug: string }[] = [
+  { domain: "jjjohnsonhealth.us", slug: "jj-johnson-health" },
+  { domain: "www.jjjohnsonhealth.us", slug: "jj-johnson-health" },
   { domain: "jjjohnsonhealth.org",       slug: "jjjohnsonhealth" },
   { domain: "www.jjjohnsonhealth.org",   slug: "jjjohnsonhealth" },
   { domain: "northernlegacyia.info",     slug: "northernlegacy"  },

@@ -53,13 +53,12 @@ export default async function TermsPage({
         </p>
         <ul className="mt-2 list-disc pl-6 text-gray-700 space-y-2">
           <li>
-            <strong>Program description:</strong> You will receive {industry.messageTypes}.
+            <strong>Program description:</strong> You will receive marketing and customer care text messages, including {industry.messageTypes}.
           </li>
           <li>
             <strong>How to join:</strong> You join by submitting your mobile number and checking the
             consent box on our{" "}
-            <a href={href("/opt-in")} className="text-emerald-700 underline">opt-in page</a>, or by
-            giving written consent to {businessName}. You must be 18 or older and the account holder
+            <a href={href("/opt-in")} className="text-emerald-700 underline">opt-in page</a>, only when you choose SMS consent. Submitting the form without checking the box does not enroll you in the Program. You must be 18 or older and the account holder
             or authorized user of the mobile number.
           </li>
           <li>
@@ -71,8 +70,7 @@ export default async function TermsPage({
           <li>
             <strong>How to opt out:</strong> Reply <strong>STOP</strong> to any message at any time.
             You will receive one final message confirming you have been unsubscribed, and no
-            further messages will be sent. To rejoin, reply <strong>START</strong> or sign up
-            again.
+            further messages will be sent. To rejoin, reply <strong>START</strong> from your mobile number.
           </li>
           <li>
             <strong>Help:</strong> Reply <strong>HELP</strong> to any message

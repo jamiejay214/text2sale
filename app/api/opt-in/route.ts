@@ -1,3 +1,5 @@
+import { smsConsentText } from "@/lib/sms-consent";
+import { getIndustry } from "@/lib/industries";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { usPhoneDigits } from "@/lib/business-details";
@@ -155,9 +157,7 @@ export async function POST(req: NextRequest) {
     if (!digits) {
       return NextResponse.json({ success: false, error: "Please enter a valid 10-digit US mobile number." }, { status: 400 });
     }
-    if (body.consent !== true) {
-      return NextResponse.json({ success: false, error: "Please check the box to agree to receive text messages." }, { status: 400 });
-    }
+    const optedIn = body.consent === true;
     if (typeof body.elapsedMs === "number" && body.elapsedMs < 800) {
       return NextResponse.json({ success: false, error: "Please try again." }, { status: 400 });
     }
@@ -174,7 +174,7 @@ export async function POST(req: NextRequest) {
 
     const { data: ownerRow } = await admin
       .from("profiles")
-      .select("id, messaging_status, owned_numbers, a2p_registration, plan, first_name, last_name, compliance_log")
+      .select("id, industry, messaging_status, owned_numbers, a2p_registration, plan, first_name, last_name, compliance_log")
       .eq("business_slug", slug)
       .maybeSingle();
     if (!ownerRow?.id) {
@@ -184,7 +184,8 @@ export async function POST(req: NextRequest) {
 
     const shown = display(digits);
     const now = new Date().toISOString();
-    const consentText = typeof body.consentText === "string" ? body.consentText.slice(0, 2000) : "";
+    const businessName = owner.a2p_registration?.businessName || `${owner.first_name || ""} ${owner.last_name || ""}`.trim();
+    const consentText = optedIn ? smsConsentText(businessName, getIndustry(ownerRow.industry).messageTypes) : "";
     const page = typeof body.page === "string" ? body.page.slice(0, 300) : "";
     const userAgent = (req.headers.get("user-agent") || "").slice(0, 300);
 
@@ -204,10 +205,10 @@ export async function POST(req: NextRequest) {
         last_name: lastName,
         phone: shown,
         email: "",
-        lead_source: "opt_in_form",
-        tags: ["opt-in"],
-        notes: `Consent captured via opt-in page at ${now} (IP ${ip})`,
-        dnc: false,
+        lead_source: optedIn ? "opt_in_form" : "web_inquiry",
+        tags: optedIn ? ["opt-in"] : ["no-sms-consent"],
+        notes: optedIn ? `Consent captured via opt-in page at ${now} (IP ${ip})` : `Web inquiry at ${now}; no SMS consent provided.`,
+        dnc: true, // Release a new subscriber only after durable consent is recorded.
       });
       if (insertErr) {
         console.error("[opt-in] contact insert failed:", insertErr.message);
@@ -225,13 +226,12 @@ export async function POST(req: NextRequest) {
         e.confirmationSent === true &&
         Date.now() - new Date(String(e.timestamp)).getTime() < 24 * 3_600_000
     );
-    const confirmationSent =
-      !existing?.dnc && !recentlyConfirmed ? await sendConfirmation(admin, owner, digits) : false;
+    let confirmationSent = false;
 
     // The consent record: what they agreed to, when, from where.
     const event = {
       id: `compliance_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type: "opt_in",
+      type: optedIn ? "opt_in" : "web_inquiry",
       contactPhone: shown,
       contactName: `${firstName} ${lastName}`.trim(),
       method: "web_form",
@@ -245,12 +245,29 @@ export async function POST(req: NextRequest) {
       existingContact: !!existing,
       doNotContactUnchanged: !!existing?.dnc,
     };
-    await admin
+    const { error: logError } = await admin
       .from("profiles")
       .update({ compliance_log: [event, ...log].slice(0, 500) })
       .eq("id", owner.id);
+    if (logError) {
+      return NextResponse.json({ success: false, error: "We couldn't record your request. Please try again." }, { status: 500 });
+    }
+    if (optedIn && !existing) {
+      const { error: releaseError } = await admin.from("contacts")
+        .update({ dnc: false }).eq("user_id", owner.id).eq("phone", shown);
+      if (releaseError) {
+        return NextResponse.json({ success: false, error: "We couldn't complete your SMS signup. Please try again." }, { status: 500 });
+      }
+    }
+    // Consent must be persisted before any confirmation is sent.
+    confirmationSent = optedIn && !existing?.dnc && !recentlyConfirmed
+      ? await sendConfirmation(admin, owner, digits) : false;
 
-    return NextResponse.json({ success: true, confirmationSent });
+    if (confirmationSent) {
+      event.confirmationSent = true;
+      await admin.from("profiles").update({ compliance_log: [event, ...log].slice(0, 500) }).eq("id", owner.id);
+    }
+    return NextResponse.json({ success: true, confirmationSent, subscribed: optedIn });
   } catch (err) {
     console.error("[opt-in] unexpected error:", err instanceof Error ? err.message : err);
     return NextResponse.json({ success: false, error: "Something went wrong. Please try again." }, { status: 500 });
