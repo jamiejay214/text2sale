@@ -777,6 +777,18 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         await setStatus(db, profile, "CAMPAIGN_PENDING");
         continue;
       }
+      // Recheck immediately before the paid campaign review, even if the
+      // site passed earlier during brand verification.
+      const inputs = campaignInputs(profile, reg);
+      const compliance = await probeComplianceSite(inputs.optInUrl.replace(/\/opt-in$/, ""), String(reg.businessName || ""));
+      if (!compliance.live) {
+        await setStatus(db, profile, "BRAND_APPROVED", {
+          mode: "hold", holdMinutes: 3,
+          error: compliance.reason,
+          alert: { code: "site_compliance", message: compliance.reason },
+        });
+        return done(profile, from, "website compliance checks failed before campaign review");
+      }
       const attempt = (reg.campaignAttempt ?? 0) + 1;
       const campaignFeeReady = await ensureCarrierFee(db, profile, {
         attempt,
@@ -795,7 +807,7 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         contactPhone: String(reg.contactPhone || profile.phone || ""),
         industry: profile.industry || (reg.industry as string | undefined),
         referenceId: `t2s-${profile.id}-${attempt}`,
-        ...campaignInputs(profile, reg),
+        ...inputs,
       });
 
       if (!submitted.ok) {

@@ -62,3 +62,11 @@ test('new website preflight accepts functional form structure and blocks forced 
   assert.equal((await probe(formHtml(),true)).live,false);
   assert.equal((await probe(formHtml().replace('href="/terms"','href="/wrong"'))).live,false);
 });
+
+test('keyword confirmations use the customer brand and support details, and contain the promised disclosures',()=>{
+  const replies=consent.smsProgramResponses('JJ JOHNSON HEALTH','help@example.com','9545550100');
+  for(const message of Object.values(replies)) assert.match(message,/^JJ JOHNSON HEALTH:/);
+  assert.match(replies.help,/help@example.com/); assert.match(replies.help,/9545550100/);
+  for(const phrase of ['Message frequency varies','Message and data rates may apply','Reply HELP','Reply STOP']) assert.ok(replies.optIn.includes(phrase));
+  assert.match(replies.optOut,/no further text messages/);
+});

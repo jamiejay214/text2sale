@@ -6,7 +6,7 @@
 // paths drifted, a customer's registration would describe something different
 // depending on which code path happened to submit it.
 
-import { smsConsentText } from "./sms-consent";
+import { smsConsentText, smsProgramResponses } from "./sms-consent";
 import { getIndustry, industryToVertical } from "./industries";
 import { classifyTelnyxError, flattenTelnyxErrors, type ErrorKind } from "./messaging-status";
 
@@ -202,17 +202,18 @@ export function buildCampaignPayload(args: CampaignPayloadArgs) {
   const industry = getIndustry(args.industry);
   const [sample1, sample2] = industry.samples({ business: businessName, phone: contactPhone, site });
 
+  const responses = smsProgramResponses(businessName, contactEmail, contactPhone);
   const payload: Record<string, unknown> = {
     brandId,
     usecase: "MIXED",
     subUsecases: ["MARKETING", "CUSTOMER_CARE"],
     description: `${businessName} is a ${industry.businessNoun}. ${businessName} uses Text2Sale to send marketing and customer care messages, including ${industry.messageTypes}, by SMS to customers and prospects who have voluntarily opted in to receive text messages from ${businessName}. Message frequency varies.`,
     messageFlow: `Consumers visit ${site} and select the SMS Opt-In link in the footer to open the publicly accessible form at ${optInUrl}; no account or login is required. They enter their name and mobile phone number and may separately select an optional SMS consent checkbox, which is unchecked by default. The exact disclosure beside the checkbox is: "${smsConsentText(businessName, industry.messageTypes)}". The form includes functional Privacy Policy (${privacyUrl}) and Terms of Service (${termsUrl}) links. Submitting without selecting SMS consent records an inquiry only and does not subscribe the visitor or send any SMS. When the checkbox is selected, the system records the disclosure, source URL, timestamp and consent before sending messages. A confirmation identifies ${businessName}, frequency, rates and STOP/HELP instructions when the registered sending number is active. STOP requests are honored immediately.`,
-    helpMessage: `${businessName}: For help, contact us at ${contactEmail} or call ${contactPhone}. Msg frequency varies. Msg&data rates may apply. Reply STOP to opt out.`,
+    helpMessage: responses.help,
     helpKeywords: "HELP,INFO",
-    optinMessage: `${businessName}: You are now subscribed to text messages from ${businessName}. Msg frequency varies. Msg&data rates may apply. Reply HELP for help. Reply STOP to unsubscribe. Privacy policy: ${privacyUrl}`,
+    optinMessage: responses.optIn,
     optinKeywords: "START,SUBSCRIBE,YES",
-    optoutMessage: `${businessName}: You have been unsubscribed and will no longer receive text messages. Reply START to re-subscribe. Contact ${contactEmail} for questions.`,
+    optoutMessage: responses.optOut,
     optoutKeywords: "STOP,UNSUBSCRIBE,CANCEL,END,QUIT",
     sample1,
     sample2,

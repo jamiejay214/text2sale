@@ -1,3 +1,4 @@
+import { smsProgramResponses } from "@/lib/sms-consent";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
@@ -197,11 +198,15 @@ export async function POST(req: NextRequest) {
     // Fetch user's opt-out settings
     const { data: profile } = await supabase
       .from("profiles")
-      .select("opt_out_settings")
+      .select("opt_out_settings, a2p_registration, first_name, last_name, email, phone")
       .eq("id", contact.user_id)
       .single();
 
     const optSettings = normalizeOptOutSettings(profile?.opt_out_settings);
+    const registration = profile?.a2p_registration || {};
+    const companyName = registration.businessName || optSettings.companyName ||
+      `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim() || "Text2Sale";
+    const responses = smsProgramResponses(companyName, registration.contactEmail || profile?.email || "", registration.contactPhone || profile?.phone || "");
 
     // CTIA / carrier-mandated opt-out keywords. These MUST be honored regardless
     // of what the user has configured — failing to honor STOP/END/QUIT/CANCEL/
@@ -278,10 +283,9 @@ export async function POST(req: NextRequest) {
     // HELP is also carrier-mandated. Auto-reply with company + support info.
     // We do NOT mark DNC or change subscription state.
     if (isHelp) {
-      const companyName = optSettings.companyName || "Text2Sale";
-      const helpMsg = `${companyName}: Reply STOP to unsubscribe. For support, contact us at support@text2sale.com. Msg&data rates may apply.`;
-      await sendTelnyxReply(to, from, helpMsg);
-      // still record the inbound message below
+      await sendTelnyxReply(to, from, responses.help);
+      await recordInbound();
+      return NextResponse.json({ status: "ok" });
     }
 
     if (isOptOut) {
@@ -290,24 +294,14 @@ export async function POST(req: NextRequest) {
       await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
       await recordInbound();
       // Always send a confirmation reply so the carrier sees compliance.
-      let replyMsg = optSettings.autoReplyMessage || "You have been unsubscribed and will no longer receive messages from us. Reply START to re-subscribe.";
-      if (optSettings.includeCompanyName && optSettings.companyName) {
-        replyMsg += ` — ${optSettings.companyName}`;
-      }
-      await sendTelnyxReply(to, from, replyMsg);
+      await sendTelnyxReply(to, from, responses.optOut);
       return NextResponse.json({ status: "ok" });
     }
 
     if (isOptIn) {
       await supabase.from("contacts").update({ dnc: false }).eq("id", contact.id);
       await recordInbound();
-      if (optSettings.confirmOptOut) {
-        let replyMsg = optSettings.optInReplyMessage || "You have been re-subscribed. Reply STOP to unsubscribe.";
-        if (optSettings.includeCompanyName && optSettings.companyName) {
-          replyMsg += ` — ${optSettings.companyName}`;
-        }
-        await sendTelnyxReply(to, from, replyMsg);
-      }
+      await sendTelnyxReply(to, from, responses.optIn);
       return NextResponse.json({ status: "ok" });
     }
 
