@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       line_items: [{ price: price.id, quantity: 1 }],
       mode: "subscription",
-      success_url: `${appUrl}/thank-you?subscription=success&amount=${(planPriceCents / 100).toFixed(2)}`,
+      success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: `${appUrl}/dashboard?subscription=cancelled`,
       metadata: {
         userId,
