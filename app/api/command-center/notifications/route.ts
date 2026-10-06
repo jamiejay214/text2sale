@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireAdmin } from "@/lib/auth-guard";
+import { TRAFFIC_START } from "@/lib/traffic-metrics";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +24,10 @@ export async function GET(req: NextRequest) {
   const [items, unread] = await Promise.all([
     db.from("command_notifications")
       .select("id,kind,title,body,url,created_at,read_at,push_status")
+      .or(`kind.neq.visit,created_at.gte.${TRAFFIC_START}`)
       .order("created_at", { ascending: false }).limit(100),
-    db.from("command_notifications").select("id", { count: "exact", head: true }).is("read_at", null),
+    db.from("command_notifications").select("id", { count: "exact", head: true }).is("read_at", null)
+      .or(`kind.neq.visit,created_at.gte.${TRAFFIC_START}`),
   ]);
   if (items.error || unread.error) {
     console.error("[command-notifications] Read failed", items.error?.code || unread.error?.code);

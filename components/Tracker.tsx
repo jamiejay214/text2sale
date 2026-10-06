@@ -12,7 +12,8 @@
 // hashed server-side in /api/track-view (existing behavior).
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 
 const VISITOR_COOKIE = "t2s_vid";
 const SESSION_COOKIE = "t2s_sid";
@@ -104,6 +105,8 @@ function beacon(url: string, body: object) {
 const BOT_RE = /bot|crawl|spider|slurp|bing|google|yahoo|duckduck|baidu|yandex|facebookexternalhit|whatsapp|telegram|discord|preview|lighthouse|pagespeed|headless/i;
 
 export default function Tracker() {
+  const pathname = usePathname();
+  const lastTrackedPath = useRef<string | null>(null);
   useEffect(() => {
     // The middleware serves customer compliance sites from this same app.
     // Never track those hosts; besides protecting their consent pages, this
@@ -111,19 +114,22 @@ export default function Tracker() {
     const host = window.location.hostname.toLowerCase();
     const isMainHost =
       host === "text2sale.com" ||
-      host === "www.text2sale.com" ||
-      host === "localhost" ||
-      host === "127.0.0.1" ||
-      host.endsWith(".vercel.app");
+      host === "www.text2sale.com";
     if (!isMainHost) return;
 
     // Skip on admin/internal routes to keep the dashboard out of the data
-    const path = window.location.pathname;
-    if (path.startsWith("/admin") || path.startsWith("/command") || path.startsWith("/dashboard") || path.startsWith("/api/")) return;
+    const path = pathname || window.location.pathname;
+    if (/^\/(api|admin|command|dashboard|biz)(\/|$)/.test(path)) {
+      lastTrackedPath.current = null;
+      return;
+    }
 
     const ua = navigator.userAgent || "";
     if (BOT_RE.test(ua)) return; // bots: no tracking writes at all
 
+    // React Strict Mode re-runs effects; do not insert a second page view.
+    const shouldTrack = lastTrackedPath.current !== path;
+    lastTrackedPath.current = path;
     const visitor = getOrCreateVisitorId();
     const session = getOrCreateSessionId();
     const { device, browser, os } = parseUA(ua);
@@ -156,7 +162,7 @@ export default function Tracker() {
       tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "",
     };
 
-    fetch("/api/track-view", {
+    if (shouldTrack) fetch("/api/track-view", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -270,15 +276,17 @@ export default function Tracker() {
       });
     };
     window.addEventListener("pagehide", flush);
-    document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") flush(); });
+    const onVisibility = () => { if (document.visibilityState === "hidden") flush(); };
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       document.removeEventListener("click", onClick, true);
       document.removeEventListener("focus", onFocus, true);
       window.removeEventListener("scroll", onScroll);
       window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

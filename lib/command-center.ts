@@ -12,6 +12,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getStripeRevenue } from "./stripe-revenue";
+import { TRAFFIC_START, easternMidnight, REPORTING_TZ, publicTraffic, uniqueVisitors, visitorKey } from "./traffic-metrics";
 
 export type Series = { label: string; value: number }[];
 export type DayPoint = { date: string; value: number };
@@ -97,11 +98,7 @@ function abgClient(): SupabaseClient | null {
 
 // ── time helpers ─────────────────────────────────────────────────────────────
 const DAY = 86400000;
-const startOfToday = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d.toISOString();
-};
+const startOfToday = () => easternMidnight();
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
 // ── small aggregators ────────────────────────────────────────────────────────
@@ -138,11 +135,11 @@ function byDay(dates: string[], days = 14): DayPoint[] {
   const buckets = new Map<string, number>();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(Date.now() - i * DAY);
-    buckets.set(d.toLocaleDateString("en-US", { month: "short", day: "numeric" }), 0);
+    buckets.set(d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ }), 0);
   }
   for (const raw of dates) {
     if (!raw) continue;
-    const label = new Date(raw).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    const label = new Date(raw).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ });
     if (buckets.has(label)) buckets.set(label, (buckets.get(label) || 0) + 1);
   }
   return [...buckets.entries()].map(([date, value]) => ({ date, value }));
@@ -211,25 +208,36 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
   const sb = mainClient();
   const biz = emptyBiz("text2sale", "Text2Sale", "text2sale.com", "#a855f7", true);
   try {
-    const [
-      visToday, visWeek, visTotal,
-      messages, callsCount,
-    ] = await Promise.all([
-      countSince(sb, "page_views", "created_at", startOfToday()),
-      countSince(sb, "page_views", "created_at", daysAgo(7)),
-      countSince(sb, "page_views", "created_at"),
+    const [messages, callsCount] = await Promise.all([
       countSince(sb, "messages", "created_at"),
       countSince(sb, "calls", "created_at"),
     ]);
 
-    // 30-day traffic rows for charts/geo/top-pages
-    const { data: views } = await sb
-      .from("page_views")
-      .select("created_at, path, referrer, user_agent, region, country")
-      .gte("created_at", daysAgo(30))
-      .limit(10000);
-    const v = views || [];
-    biz.trafficByDay = byDay(v.map((r) => r.created_at as string));
+    // Fetch every row in the reporting period; Supabase caps individual pages.
+    // Visitors are distinct browser IDs, not a count of page-view rows.
+    const views = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await sb.from("page_views")
+        .select("id,created_at,path,referrer,user_agent,region,country,visitor_id,session_id,ip_hash")
+        .gte("created_at", TRAFFIC_START).order("created_at").order("id")
+        .range(offset, offset + 999);
+      if (error) throw new Error("Website traffic is temporarily unavailable");
+      views.push(...(data || []));
+      if (!data || data.length < 1000) break;
+    }
+    const allViews = publicTraffic(views);
+    const visTotal = uniqueVisitors(allViews);
+    const visToday = uniqueVisitors(allViews.filter(r => r.created_at >= startOfToday()));
+    const visWeek = uniqueVisitors(allViews.filter(r => r.created_at >= daysAgo(7)));
+    const v = allViews.filter(r => r.created_at >= daysAgo(30));
+    // A visitor counts once per day in the trend, even across repeat sessions.
+    const daily = new Map<string, typeof v[number]>();
+    for (const r of v) {
+      const day = new Date(r.created_at).toLocaleDateString("en-CA", { timeZone: REPORTING_TZ });
+      const key = `${day}:${visitorKey(r)}`;
+      if (!daily.has(key)) daily.set(key, r);
+    }
+    biz.trafficByDay = byDay([...daily.values()].map(r => r.created_at));
     biz.topPages = tally(v.map((r) => cleanPath(r.path as string)));
     biz.sources = tally(v.map((r) => (r.referrer ? hostOf(r.referrer as string) : "Direct")));
     biz.devices = tally(v.map((r) => classifyDevice(r.user_agent as string)));
@@ -299,9 +307,12 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       leads: signups, // signups (excl. owner) are this business's "leads"
       leadsWeek: signupsWeek,
       customers: payingSubs.length, // PAYING customers only
-      conversionRate: visTotal ? (payingSubs.length / visTotal) * 100 : 0,
+      conversionRate: visTotal ? (payingSubs.filter(x => String(x.created_at) >= TRAFFIC_START).length / visTotal) * 100 : 0,
     };
     biz.extra = {
+      trafficStartedAt: TRAFFIC_START,
+      pageViews: allViews.length,
+      sessions: new Set(allViews.map(r => r.session_id).filter(Boolean)).size,
       mrr: Math.round(mrr * 100) / 100,
       collectedThisMonth: useStripe ? stripeRev.collectedThisMonth : walletLifetime,
       walletTopupsLifetime: Math.round(walletLifetime * 100) / 100,
@@ -319,8 +330,8 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
     };
     biz.funnel = [
       { label: "Visitors", value: visTotal },
-      { label: "Signups", value: signups },
-      { label: "Paying", value: payingSubs.length },
+      { label: "Signups", value: nonAdmin.filter(x => String(x.created_at) >= TRAFFIC_START).length },
+      { label: "Paying", value: payingSubs.filter(x => String(x.created_at) >= TRAFFIC_START).length },
     ];
 
     // live feed: recent signups + recent payments

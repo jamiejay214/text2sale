@@ -200,7 +200,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: true }, { headers: CORS_HEADERS });
     }
 
-    await supabase.from("page_views").insert({
+    if (/bot|crawl|spider|headless|lighthouse|uptime|monitor|curl|wget/i.test(userAgent) || /^\/(api|admin|command|dashboard|biz)(\/|$)/.test(path || "/")) {
+      return NextResponse.json({ success: true, ignored: true });
+    }
+
+    const { error: viewError } = await supabase.from("page_views").insert({
       path: (path || "/").slice(0, 500),
       referrer: (referrer || "").slice(0, 500),
       user_agent: userAgent.slice(0, 500),
@@ -231,6 +235,11 @@ export async function POST(req: NextRequest) {
       tz: tz ? String(tz).slice(0, 60) : null,
       is_entry: !!is_entry,
     });
+
+    if (viewError) {
+      console.error("track-view insert failed:", viewError.code);
+      return NextResponse.json({ success: false }, { status: 503 });
+    }
 
     // Send email alert to admin (rate limited)
     sendVisitorAlert(decodedCity, region, country, path || "/", referrer || "");

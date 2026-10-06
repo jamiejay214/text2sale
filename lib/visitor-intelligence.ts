@@ -6,6 +6,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { TRAFFIC_START, reportingSince } from "./traffic-metrics";
 
 function client(): SupabaseClient {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -14,7 +15,7 @@ function client(): SupabaseClient {
 }
 
 function sinceISO(days: number) {
-  return new Date(Date.now() - days * 86400_000).toISOString();
+  return reportingSince(new Date(Date.now() - days * 86400_000).toISOString());
 }
 
 export type ChannelRow = { channel: string; sessions: number; visitors: number; pct: number };
@@ -171,6 +172,7 @@ export async function getRecentVisitors(limit = 30): Promise<RecentVisitor[]> {
   const { data: recent } = await sb
     .from("page_views")
     .select("visitor_id,created_at")
+    .gte("created_at", TRAFFIC_START)
     .not("visitor_id", "is", null)
     .order("created_at", { ascending: false })
     .limit(500);
@@ -191,6 +193,7 @@ export async function getRecentVisitors(limit = 30): Promise<RecentVisitor[]> {
   const { data: pv } = await sb
     .from("page_views")
     .select("visitor_id,session_id,path,city,region,country,device,browser,os,channel,referrer_domain,utm_source,landing_page,created_at")
+    .gte("created_at", TRAFFIC_START)
     .in("visitor_id", ids)
     .order("created_at", { ascending: true });
 
@@ -198,11 +201,13 @@ export async function getRecentVisitors(limit = 30): Promise<RecentVisitor[]> {
   const { data: exits } = await sb
     .from("exit_clicks")
     .select("visitor_id,to_domain,created_at")
+    .gte("created_at", TRAFFIC_START)
     .in("visitor_id", ids)
     .order("created_at", { ascending: false });
   const { data: intents } = await sb
     .from("lead_intents")
     .select("visitor_id,kind,created_at")
+    .gte("created_at", TRAFFIC_START)
     .in("visitor_id", ids)
     .order("created_at", { ascending: false });
 
@@ -280,9 +285,9 @@ export async function getRecentVisitors(limit = 30): Promise<RecentVisitor[]> {
 export async function getVisitorTimeline(visitor_id: string, limit = 200): Promise<VisitorTimelineEvent[]> {
   const sb = client();
   const [{ data: pv }, { data: exits }, { data: intents }] = await Promise.all([
-    sb.from("page_views").select("path,page_title,channel,referrer_domain,created_at").eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
-    sb.from("exit_clicks").select("to_domain,to_url,from_path,created_at").eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
-    sb.from("lead_intents").select("kind,detail,path,created_at").eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
+    sb.from("page_views").select("path,page_title,channel,referrer_domain,created_at").gte("created_at", TRAFFIC_START).eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
+    sb.from("exit_clicks").select("to_domain,to_url,from_path,created_at").gte("created_at", TRAFFIC_START).eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
+    sb.from("lead_intents").select("kind,detail,path,created_at").gte("created_at", TRAFFIC_START).eq("visitor_id", visitor_id).order("created_at", { ascending: false }).limit(limit),
   ]);
 
   const events: VisitorTimelineEvent[] = [];
