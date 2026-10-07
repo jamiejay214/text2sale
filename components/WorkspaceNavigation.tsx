@@ -23,7 +23,6 @@ import {
   LogOut,
   Menu,
   X,
-  ArrowUpRight,
   LockKeyhole,
   Globe2,
 } from "lucide-react";
@@ -54,9 +53,7 @@ type Props = {
   onTheme: () => void;
   onSearch: () => void;
   onLogout: () => void;
-  owner: boolean;
   aiAccess: boolean;
-  onAdmin: () => void;
 };
 
 const groups = [
@@ -193,13 +190,6 @@ export default function WorkspaceNavigation(props: Props) {
           ))}
         </nav>
         <div className="workspace-sidebar-footer">
-          {props.owner && (
-            <button onClick={props.onAdmin}>
-              <ShieldCheck size={16} />
-              Owner console
-              <ArrowUpRight size={14} />
-            </button>
-          )}
           <button onClick={props.onLogout}>
             <LogOut size={16} />
             Sign out

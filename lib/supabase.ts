@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { boundedFetch } from './request-timeout'
 
 // Keep static builds and design previews renderable when deployment secrets are
 // not mounted. Real environments always override these public client values.
@@ -8,6 +9,7 @@ const supabaseAnonKey =
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "build-placeholder-anon-key"
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: { fetch: boundedFetch },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
