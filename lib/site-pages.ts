@@ -25,6 +25,15 @@ export type SitePage = {
 const REFRESH_2026_09 = "2026-09-28";
 
 export const SITE_PAGES: SitePage[] = [
+  { path: "/insurance-agents", label: "Insurance agent appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/medicare", label: "Medicare appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/recruiters", label: "Recruiter appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/solar", label: "Solar appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/real-estate", label: "Real estate appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/roofing", label: "Roofing appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+
   { path: "/sms-character-counter", label: "Free SMS character counter", group: "guide", priority: 0.85, updated: "2026-10-04" },
   { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
   { path: "/ai-texting-crm", label: "AI texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
@@ -68,4 +77,4 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
 };
 
 /** Date the homepage copy last changed (FAQ and footer links added). */
-export const HOME_UPDATED = REFRESH_2026_09;
+export const HOME_UPDATED = "2026-10-07";

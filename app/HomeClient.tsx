@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
@@ -23,6 +23,10 @@ export default function HomeClient({
 
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("signup") === "1") setMode("signup");
+  }, []);
 
   const [loginEmail, setLoginEmail] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -211,7 +215,7 @@ export default function HomeClient({
                   onClick={(e) => { e.stopPropagation(); handleSelectPlan(); }}
                   className="mt-7 w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-xl shadow-lime-300/20 transition hover:brightness-110"
                 >
-                  Create account & pay $39.99
+                  Start Texting Leads · $39.99/month
                 </button>
               </div>
             </div>

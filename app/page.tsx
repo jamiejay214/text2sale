@@ -21,7 +21,7 @@ const organizationSchema = {
   name: "Text2Sale",
   url: SITE_URL,
   logo: `${SITE_URL}/logo.png`,
-  description: "Mass texting CRM platform for sales teams and insurance agents.",
+  description: "AI follow-up and appointment booking for insurance agents and sales teams.",
   contactPoint: {
     "@type": "ContactPoint",
     email: "support@text2sale.com",

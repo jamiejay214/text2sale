@@ -17,6 +17,7 @@ import {
   Workflow,
 } from "lucide-react";
 import Logo from "@/components/Logo";
+import AppointmentDemo from "@/components/AppointmentDemo";
 
 export default function MarketingHome({
   onLogin,
@@ -40,7 +41,7 @@ export default function MarketingHome({
           <div className="marketing-nav-actions">
             <button onClick={onLogin}>Log in</button>
             <button className="marketing-button lime" onClick={onSignup}>
-              Get started <ArrowUpRight size={17} />
+              Start Texting Leads
             </button>
           </div>
         </nav>
@@ -48,29 +49,29 @@ export default function MarketingHome({
           <div className="marketing-hero-copy">
             <div className="marketing-eyebrow">
               <span />
-              THE AI CONVERSATION CRM FOR SALES TEAMS
+              TEXT2SALE AI · LEAD FOLLOW-UP & APPOINTMENTS
             </div>
             <h1>
-              Every lead.
+              Turn old leads into
               <br />
-              Every channel.
+              <em>booked appointments.</em>
               <br />
-              <em>One next move.</em>
+              Automatically.
             </h1>
             <p>
-              Text, call, automate follow-up, train an AI assistant, and move
-              every opportunity forward—from one fast, focused command center.
+              Upload your leads. Turn on AI. Text2Sale texts, qualifies, follows up,
+              and books appointments for you.
             </p>
             <div className="marketing-hero-actions">
               <button className="marketing-button lime" onClick={onSignup}>
-                Build your workspace <ArrowUpRight size={19} />
+                Put My Leads on Autopilot
               </button>
-              <a href="#product" className="marketing-text-link">
-                See what&apos;s inside <ArrowRight size={17} />
+              <a href="#ai-booking-demo" className="marketing-text-link">
+                Watch AI Book an Appointment
               </a>
             </div>
             <div className="marketing-hero-note">
-              <Check size={15} /> Guided 10DLC setup · No long-term contract · Secure Stripe billing
+              <Check size={15} /> Use opted-in leads · Guided 10DLC setup · Paid plans, no free trial
             </div>
             <div className="marketing-proof-grid">
               <div><Upload size={15} /><span><strong>Import</strong><small>Map any CSV</small></span></div>
@@ -102,7 +103,7 @@ export default function MarketingHome({
                   <strong>
                     <MessageSquare size={15} /> Inbox
                   </strong>
-                  {["Amanda Ferreira", "Michael Davis", "Sarah Mitchell"].map(
+                  {["Alex Morgan", "Michael Davis", "Sarah Mitchell"].map(
                     (name, i) => (
                       <div className={i === 0 ? "selected" : ""} key={name}>
                         <span>
@@ -129,13 +130,13 @@ export default function MarketingHome({
                 </div>
                 <div className="marketing-preview-conversation">
                   <div>
-                    <b>Amanda Ferreira</b>
+                    <b>Alex Morgan</b>
                     <span>
                       <Sparkles size={12} /> AI assisted
                     </span>
                   </div>
                   <p className="preview-bubble outgoing">
-                    Hi Amanda! Would tomorrow morning work for a quick
+                    Hi Alex! Would tomorrow morning work for a quick
                     consultation?
                   </p>
                   <p className="preview-bubble incoming">
@@ -181,6 +182,7 @@ export default function MarketingHome({
           <b>Your entire pipeline</b>
         </div>
       </section>
+      <AppointmentDemo />
       <section className="marketing-command-section" aria-label="Text2Sale platform overview">
         <div className="marketing-command-heading">
           <small>FROM RAW LEAD TO REAL CONVERSATION</small>
