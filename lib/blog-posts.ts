@@ -9,6 +9,7 @@ import { BLOG_POSTS_3 } from "./blog-posts-3";
 import { BLOG_POSTS_4 } from "./blog-posts-4";
 import { BLOG_POSTS_5 } from "./blog-posts-5";
 import { BLOG_POSTS_6 } from "./blog-posts-6";
+import { BLOG_POSTS_7 } from "./blog-posts-7";
 
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
@@ -8206,6 +8207,7 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_2,
   ...BLOG_POSTS_3,
   ...BLOG_POSTS_4,
+  ...BLOG_POSTS_7,
   ...BLOG_POSTS_6,
   ...BLOG_POSTS_5,
 ];
