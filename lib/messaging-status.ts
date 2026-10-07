@@ -184,7 +184,8 @@ export function mapBrandStatus(telnyxStatus: string | undefined | null): BrandOu
 
 export type CampaignOutcome = "approved" | "pending" | "failed";
 
-const CAMPAIGN_APPROVED = new Set(["TCR_ACCEPTED", "MNO_ACCEPTED", "MNO_PROVISIONED", "ACTIVE"]);
+// TCR_ACCEPTED still awaits carrier review (including appealed campaigns).
+const CAMPAIGN_APPROVED = new Set(["MNO_ACCEPTED", "MNO_PROVISIONED", "ACTIVE"]);
 const CAMPAIGN_FAILED = new Set([
   "TCR_FAILED",
   "TCR_SUSPENDED",
