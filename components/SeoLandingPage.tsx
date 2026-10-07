@@ -42,7 +42,7 @@ export default function SeoLandingPage({
   eyebrow,
   title,
   description,
-  primaryCta = "Start free trial",
+  primaryCta = "Sign Up",
   secondaryCta = "See mass texting CRM",
   secondaryHref = "/mass-texting-crm",
   sections,
