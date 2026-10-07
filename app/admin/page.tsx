@@ -5,13 +5,14 @@ export const dynamic = "force-dynamic";
 import React, { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
+import AdminAccess from "@/components/AdminAccess";
+import { isOwnerEmail } from "@/lib/owner";
 import EINCertificateUpload from "@/components/EINCertificateUpload";
 import { authFetch } from "@/lib/auth-fetch";
-import { isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
 import {
   fetchAllProfiles, fetchAllCampaigns, updateProfile,
-  addUsageEntry, fetchProfile, fetchContacts,
+  addUsageEntry, fetchProfile,
 } from "@/lib/supabase-data";
 import type { Profile, Campaign, UsageHistoryItem, OwnedNumber } from "@/lib/types";
 import USMapChart from "@/components/USMapChart";
@@ -233,9 +234,15 @@ function a2pStatusBadge(status?: string) {
 }
 
 export default function AdminPage() {
+  return <AdminAccess><AdminConsole /></AdminAccess>;
+}
+
+function AdminConsole() {
   const router = useRouter();
 
   const [mounted, setMounted] = useState(false);
+  const [loadError, setLoadError] = useState("");
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [accounts, setAccounts] = useState<AccountRecord[]>([]);
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([]);
   // Customers whose activation has something a human should look at.
@@ -298,29 +305,26 @@ export default function AdminPage() {
   const [callMinutes, setCallMinutes] = useState<{ outbound: number; inbound: number }>({ outbound: 0, inbound: 0 });
 
   useEffect(() => {
+    let active = true;
     const loadData = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.user) { router.replace("/"); return; }
-
-      const { data: { user: verifiedUser } } = await supabase.auth.getUser();
-      if (!verifiedUser?.email_confirmed_at || !isOwnerEmail(verifiedUser.email)) { router.replace("/dashboard"); return; }
-      const myProfile = await fetchProfile(session.user.id);
-      if (!myProfile || myProfile.role !== "admin") { router.replace("/dashboard"); return; }
-
       const [profiles, dbCampaigns] = await Promise.all([
-        fetchAllProfiles(),
-        fetchAllCampaigns(),
+        fetchAllProfiles({ throwOnError: true }),
+        fetchAllCampaigns({ throwOnError: true }),
       ]);
+      if (!active) return;
+      const myProfile = profiles.find((profile) => isOwnerEmail(profile.email));
 
       const accts = profiles.map(profileToAccount);
       setAccounts(accts);
       setCampaigns(dbCampaigns.map(campaignToRecord));
+      setMounted(true);
 
       // Load contact counts per user
       const counts: Record<string, number> = {};
       await Promise.all(accts.map(async (a) => {
-        const contacts = await fetchContacts(a.id);
-        counts[a.id] = contacts.length;
+        const { count, error } = await supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", a.id);
+        if (error) throw new Error("Some admin data could not be loaded. Please try again.");
+        counts[a.id] = count || 0;
       }));
       setContactCounts(counts);
 
@@ -345,7 +349,7 @@ export default function AdminPage() {
       }
 
       // Load visitor alerts preference
-      if (myProfile.visitor_alerts !== undefined) {
+      if (myProfile?.visitor_alerts !== undefined) {
         setVisitorAlerts(myProfile.visitor_alerts !== false);
       }
 
@@ -459,8 +463,11 @@ export default function AdminPage() {
 
       setMounted(true);
     };
-    loadData();
-  }, [router]);
+    loadData().catch(() => {
+      if (active) setLoadError("Some admin data could not be loaded. Please try again.");
+    });
+    return () => { active = false; };
+  }, [loadAttempt]);
 
   // ─── Live refresh for Profit & Loss panel ─────────────────────────────
   // Every 30s while the admin tab is visible, re-pull the three things that
@@ -1105,8 +1112,11 @@ export default function AdminPage() {
   };
 
   if (!mounted) {
-    // Show nothing until auth + role check completes — prevents non-admins from seeing any admin UI
-    return <main className="min-h-screen bg-zinc-950" />;
+    return <main className="crm-theme recovery-page"><section className="recovery-card">
+      <Logo /><h1>Opening admin</h1>
+      <p role={loadError ? "alert" : "status"}>{loadError || "Loading your accounts…"}</p>
+      {loadError && <button className="marketing-button lime" onClick={() => { setLoadError(""); setLoadAttempt((value) => value + 1); }}>Try again</button>}
+    </section></main>;
   }
 
   const campaignOwner = (userId: string) => {
@@ -1126,6 +1136,9 @@ export default function AdminPage() {
       </div>
 
       <div className="relative mx-auto max-w-screen-2xl px-8 py-10">
+        {loadError && <div role="alert" className="mb-6 rounded-xl border border-amber-400/30 bg-amber-950 p-4 text-amber-100">
+          {loadError} <button className="ml-3 underline" onClick={() => { setLoadError(""); setLoadAttempt((value) => value + 1); }}>Retry</button>
+        </div>}
         {/* Premium Header — live clock, system status, quick counts */}
         <div className="mb-10 flex flex-col gap-6 xl:flex-row xl:items-center xl:justify-between">
           <div className="min-w-0">

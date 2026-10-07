@@ -1,6 +1,7 @@
 import { supabase } from "./supabase";
 import { fetchProfile } from "./supabase-data";
 import type { Profile } from "./types";
+import { waitForSession } from "./request-timeout";
 
 export type { Profile };
 
@@ -18,7 +19,8 @@ export function formatPhoneNumber(value: string) {
 }
 
 export async function getSession() {
-  const { data } = await supabase.auth.getSession();
+  const { data, error } = await waitForSession(supabase.auth.getSession());
+  if (error) throw error;
   return data.session;
 }
 
@@ -29,24 +31,7 @@ export async function getCurrentProfile(): Promise<Profile | null> {
 }
 
 export async function loginUser(email: string, password: string) {
-  // Guard against a hung sign-in. supabase-js serializes auth calls behind a
-  // browser lock; a stale/corrupted session or another tab holding that lock
-  // can make signInWithPassword never resolve, leaving the UI stuck on
-  // "Signing in…" forever. Race the whole flow against a timeout so the user
-  // gets an actionable error and the button resets instead of spinning.
-  const timeout = new Promise<{ success: false; message: string }>((resolve) =>
-    setTimeout(
-      () =>
-        resolve({
-          success: false as const,
-          message:
-            "Login is taking too long — please refresh the page and try again. If it keeps happening, clear this site's data and reload.",
-        }),
-      20000
-    )
-  );
-
-  const attempt = (async () => {
+  try {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
@@ -56,17 +41,14 @@ export async function loginUser(email: string, password: string) {
       return { success: false as const, message: error.message };
     }
 
-    const profile = await fetchProfile(data.user.id);
-
-    if (profile?.paused) {
-      await supabase.auth.signOut();
-      return { success: false as const, message: "This account is paused. Contact support." };
-    }
-
-    return { success: true as const, user: profile };
-  })();
-
-  return Promise.race([attempt, timeout]);
+    // Authentication succeeded. Profile/paused/role checks belong to the
+    // destination's loading state, where database failures can be retried
+    // without asking for a password again. Do not turn a slow profile query
+    // into a misleading failed login.
+    return { success: true as const, user: data.user };
+  } catch {
+    return { success: false as const, message: "Could not reach sign-in. Check your connection and try again." };
+  }
 }
 
 export async function checkDuplicatePhone(phone: string): Promise<boolean> {

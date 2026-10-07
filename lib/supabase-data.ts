@@ -15,12 +15,15 @@ import type {
 // PROFILE
 // ============================================================
 
-export async function fetchProfile(userId: string): Promise<Profile | null> {
+export async function fetchProfile(userId: string, options?: { throwOnError?: boolean }): Promise<Profile | null> {
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .eq("id", userId)
     .single();
+  if (error && options?.throwOnError) {
+    throw new Error("Your account could not be loaded. Please try again.");
+  }
   if (error || !data) return null;
   return data as Profile;
 }
@@ -372,20 +375,22 @@ export async function updateConversation(
 // ADMIN
 // ============================================================
 
-export async function fetchAllProfiles(): Promise<Profile[]> {
+export async function fetchAllProfiles(options?: { throwOnError?: boolean }): Promise<Profile[]> {
   const { data, error } = await supabase
     .from("profiles")
     .select("*")
     .order("created_at", { ascending: false });
+  if (error && options?.throwOnError) throw new Error("Accounts could not be loaded. Please try again.");
   if (error || !data) return [];
   return data as Profile[];
 }
 
-export async function fetchAllCampaigns(): Promise<Campaign[]> {
+export async function fetchAllCampaigns(options?: { throwOnError?: boolean }): Promise<Campaign[]> {
   const { data, error } = await supabase
     .from("campaigns")
     .select("*")
     .order("created_at", { ascending: false });
+  if (error && options?.throwOnError) throw new Error("Campaigns could not be loaded. Please try again.");
   if (error || !data) return [];
   return data as Campaign[];
 }

@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
-import { logoutUser } from "@/lib/auth";
+import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
@@ -89,9 +89,7 @@ export default function WorkspaceApp() {
     setLoading(true);
     setError("");
     try {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+      const session = await getSession();
       if (!session?.user) {
         router.replace("/");
         return;
@@ -100,7 +98,7 @@ export default function WorkspaceApp() {
         router.replace("/verify");
         return;
       }
-      const viewer = await fetchProfile(session.user.id);
+      const viewer = await fetchProfile(session.user.id, { throwOnError: true });
       setViewerEmail(session.user.email || viewer?.email || "");
       let account = viewer;
       let viewingAnotherAccount = false;
@@ -116,11 +114,8 @@ export default function WorkspaceApp() {
         account = target;
         viewingAnotherAccount = true;
       }
-      if (!account || account.paused) {
-        await logoutUser();
-        router.replace("/");
-        return;
-      }
+      if (!account) throw new Error("Your account could not be loaded. Please try again.");
+      if (account.paused) throw new Error("This account is paused. Contact support.");
       setProfile(account);
       setImpersonated(viewingAnotherAccount);
 
@@ -271,6 +266,7 @@ export default function WorkspaceApp() {
           <strong>We couldn&apos;t open the workspace.</strong>
           <p>{error || "Your session is no longer available."}</p>
           <button onClick={loadShell}>Try again</button>
+          <button onClick={logout}>Sign out</button>
         </div>
       </main>
     );
@@ -325,9 +321,7 @@ export default function WorkspaceApp() {
         onTheme={toggleTheme}
         onSearch={() => setSearchOpen(true)}
         onLogout={logout}
-        owner={isOwnerEmail(viewerEmail)}
         aiAccess={aiAccess}
-        onAdmin={() => router.push("/admin")}
       />
       <section className="workspace-content v2-workspace-content">
         {impersonated && (
