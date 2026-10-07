@@ -98,4 +98,4 @@ const content = {
   ]
 };
 
-export default function Page() { return <SeoLandingPage {...content} />; }
+export default function Page() { return <SeoLandingPage {...content} foundingAgentOffer />; }

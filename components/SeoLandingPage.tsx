@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPostsByTags } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
+import FoundingAgentOffer from "@/components/FoundingAgentOffer";
 
 type FaqItem = { question: string; answer: string };
 type GuideSection = { heading: string; paragraphs: string[]; bullets?: string[] };
@@ -11,6 +12,7 @@ type SeoLandingPageProps = {
   title: string;
   description: string;
   primaryCta?: string;
+  foundingAgentOffer?: boolean;
   secondaryCta?: string;
   secondaryHref?: string;
   sections: {
@@ -43,6 +45,7 @@ export default function SeoLandingPage({
   title,
   description,
   primaryCta = "Start Texting Leads",
+  foundingAgentOffer = false,
   secondaryCta = "See mass texting CRM",
   secondaryHref = "/mass-texting-crm",
   sections,
@@ -119,6 +122,8 @@ export default function SeoLandingPage({
           </Link>
         </div>
       </section>
+
+      {foundingAgentOffer && <FoundingAgentOffer />}
 
       <section className="border-y border-zinc-800 bg-zinc-900/40">
         <div className="mx-auto grid max-w-5xl gap-5 px-6 py-16 md:grid-cols-2">

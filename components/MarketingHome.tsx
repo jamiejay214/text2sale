@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Logo from "@/components/Logo";
 import AppointmentDemo from "@/components/AppointmentDemo";
+import FoundingAgentOffer from "@/components/FoundingAgentOffer";
 
 export default function MarketingHome({
   onLogin,
@@ -183,6 +184,7 @@ export default function MarketingHome({
         </div>
       </section>
       <AppointmentDemo />
+      <FoundingAgentOffer />
       <section className="marketing-command-section" aria-label="Text2Sale platform overview">
         <div className="marketing-command-heading">
           <small>FROM RAW LEAD TO REAL CONVERSATION</small>

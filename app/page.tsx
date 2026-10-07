@@ -11,6 +11,8 @@ import { SITE_URL } from "@/lib/site-pages";
 // homepage's FAQ and product markup onto every URL on the site.
 
 export const metadata: Metadata = {
+  title: "Text2Sale AI — Turn Old Leads into Booked Appointments",
+  description: "Upload your leads. Turn on AI. Text2Sale texts, qualifies, follows up, and books appointments for insurance agents and sales teams.",
   alternates: { canonical: "/" },
 };
 
