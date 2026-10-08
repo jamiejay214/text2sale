@@ -11,6 +11,8 @@ import { SITE_URL } from "@/lib/site-pages";
 // homepage's FAQ and product markup onto every URL on the site.
 
 export const metadata: Metadata = {
+  title: "Text2Sale AI — Turn Old Leads into Booked Appointments",
+  description: "Upload your leads. Turn on AI. Text2Sale texts, qualifies, follows up, and books appointments for insurance agents and sales teams.",
   alternates: { canonical: "/" },
 };
 
@@ -21,7 +23,7 @@ const organizationSchema = {
   name: "Text2Sale",
   url: SITE_URL,
   logo: `${SITE_URL}/logo.png`,
-  description: "Mass texting CRM platform for sales teams and insurance agents.",
+  description: "AI follow-up and appointment booking for insurance agents and sales teams.",
   contactPoint: {
     "@type": "ContactPoint",
     email: "support@text2sale.com",

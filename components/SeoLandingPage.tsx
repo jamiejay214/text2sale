@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getPostsByTags } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
+import FoundingAgentOffer from "@/components/FoundingAgentOffer";
 
 type FaqItem = { question: string; answer: string };
 type GuideSection = { heading: string; paragraphs: string[]; bullets?: string[] };
@@ -11,6 +12,7 @@ type SeoLandingPageProps = {
   title: string;
   description: string;
   primaryCta?: string;
+  foundingAgentOffer?: boolean;
   secondaryCta?: string;
   secondaryHref?: string;
   sections: {
@@ -43,6 +45,7 @@ export default function SeoLandingPage({
   title,
   description,
   primaryCta = "Sign Up",
+  foundingAgentOffer = false,
   secondaryCta = "See mass texting CRM",
   secondaryHref = "/mass-texting-crm",
   sections,
@@ -111,7 +114,7 @@ export default function SeoLandingPage({
         <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">{title}</h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">{description}</p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">
+          <Link href="/?signup=1#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">
             {primaryCta}
           </Link>
           <Link href={secondaryHref} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">
@@ -119,6 +122,8 @@ export default function SeoLandingPage({
           </Link>
         </div>
       </section>
+
+      {foundingAgentOffer && <FoundingAgentOffer />}
 
       <section className="border-y border-zinc-800 bg-zinc-900/40">
         <div className="mx-auto grid max-w-5xl gap-5 px-6 py-16 md:grid-cols-2">
