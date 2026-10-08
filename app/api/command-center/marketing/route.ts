@@ -73,7 +73,7 @@ const OFFLINE_IDEAS: MarketingResult["businesses"] = {
         steps: [
           "Buy a 5k list of licensed health agents (NPN.gov directory is free for licensed-agent lookups).",
           "Hand-pick 100/week who follow you on LinkedIn or whose websites look DIY.",
-          "Use your own platform: '{first_name}, saw your site — built a tool that does mass texting for health agents with 10DLC compliance baked in. 14-day free trial: text2sale.com/{ref}'",
+          "Use your own platform: '{first_name}, saw your site — built a tool that does mass texting for health agents with 10DLC compliance baked in. Sign up: text2sale.com/{ref}'",
         ],
         effort: "low",
         impact: "high",
@@ -109,7 +109,7 @@ const OFFLINE_IDEAS: MarketingResult["businesses"] = {
         steps: [
           "Pick your top 3 paying customers; ask each for one screenshot win.",
           "Post: '{Agent} sent 2,400 texts to her renewal list in 12 minutes and booked 31 calls. Here's exactly how:'",
-          "End every post with: 'Free 14-day trial → text2sale.com'. Comment the link in first reply (LinkedIn algorithm).",
+          "End every post with: 'Sign up → text2sale.com'. Comment the link in first reply (LinkedIn algorithm).",
         ],
         effort: "low",
         impact: "medium",
