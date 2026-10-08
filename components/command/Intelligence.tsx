@@ -837,7 +837,7 @@ function demoMarketing(): Marketing {
     mode: "offline",
     businesses: {
       text2sale: { ideas: [
-        { channel: "outbound", title: "Cold-text 100 health agents/week from your own platform", rationale: "Eat your own dogfood. Free lead lists from NPN.gov.", steps: ["Pull 5k licensed health agents.", "Hand-pick 100/week.", "Text from Text2Sale itself with 14-day trial link."], effort: "low", impact: "high" },
+        { channel: "outbound", title: "Cold-text 100 health agents/week from your own platform", rationale: "Eat your own dogfood. Free lead lists from NPN.gov.", steps: ["Pull 5k licensed health agents.", "Hand-pick 100/week.", "Text from Text2Sale itself with a sign-up link."], effort: "low", impact: "high" },
         { channel: "content", title: "Finish the comparison-page network", rationale: "Bottom-funnel '/vs-X' pages convert 5-10x homepages.", steps: ["Add screenshots + feature table to each.", "Single 'Switch free in 10 min' CTA.", "Earn 3 backlinks/page from G2 & Capterra."], effort: "medium", impact: "high" },
       ] },
       abg: { ideas: [
