@@ -294,6 +294,10 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
 
     // Real signups (exclude the owner/admin account) + signups this week
     const nonAdmin = p.filter((x) => (x.role as string) !== "admin");
+    const { data: prospects, error: prospectsError } = await sb.from("text2sale_prospects").select("email,kind,created_at").limit(10000);
+    if (prospectsError) throw new Error("Prospect metrics are temporarily unavailable");
+    const signupEmails = new Set(nonAdmin.map(x => String(x.email).toLowerCase()));
+    const unregistered = (prospects || []).filter(x => !signupEmails.has(String(x.email).toLowerCase()));
     const signups = nonAdmin.length;
     const weekIso = daysAgo(7);
     const signupsWeek = nonAdmin.filter((x) => (x.created_at as string) >= weekIso).length;
@@ -304,12 +308,14 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       visitors: visTotal,
       visitorsToday: visToday,
       visitorsWeek: visWeek,
-      leads: signups, // signups (excl. owner) are this business's "leads"
-      leadsWeek: signupsWeek,
+      leads: signups + unregistered.length,
+      leadsWeek: signupsWeek + unregistered.filter(x => String(x.created_at) >= weekIso).length,
       customers: payingSubs.length, // PAYING customers only
       conversionRate: visTotal ? (payingSubs.filter(x => String(x.created_at) >= TRAFFIC_START).length / visTotal) * 100 : 0,
     };
     biz.extra = {
+      inquiries: unregistered.filter(x => x.kind === "inquiry").length,
+      partialLeads: unregistered.filter(x => x.kind === "signup").length,
       trafficStartedAt: TRAFFIC_START,
       pageViews: allViews.length,
       sessions: new Set(allViews.map(r => r.session_id).filter(Boolean)).size,
@@ -330,6 +336,7 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
     };
     biz.funnel = [
       { label: "Visitors", value: visTotal },
+      { label: "Contacts", value: nonAdmin.filter(x => String(x.created_at) >= TRAFFIC_START).length + unregistered.filter(x => String(x.created_at) >= TRAFFIC_START).length },
       { label: "Signups", value: nonAdmin.filter(x => String(x.created_at) >= TRAFFIC_START).length },
       { label: "Paying", value: payingSubs.filter(x => String(x.created_at) >= TRAFFIC_START).length },
     ];
