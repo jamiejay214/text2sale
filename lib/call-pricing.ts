@@ -8,6 +8,9 @@
 
 export const CALL_RATE_OUTBOUND_PER_MIN = 0.025;
 export const CALL_RATE_INBOUND_PER_MIN = 0.015;
+// A forwarded call is two legs: the caller's inbound minute plus the
+// outbound minute to the owner's cell, and both are carried.
+export const CALL_RATE_FORWARD_PER_MIN = +(CALL_RATE_INBOUND_PER_MIN + CALL_RATE_OUTBOUND_PER_MIN).toFixed(4);
 
 /** Round seconds up to the next minute (per-minute billing). */
 export function minutesBilled(seconds: number): number {
