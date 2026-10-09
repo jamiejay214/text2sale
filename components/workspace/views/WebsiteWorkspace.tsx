@@ -191,7 +191,7 @@ export default function WebsiteWorkspace({ profile, onProfile, onNavigate }: Wor
       <div className="v2-site-status-strip">
         <div><span className={data.status.pagesVerified ? "is-live" : ""}><Globe2 size={16} /></span><div><small>WEBSITE</small><strong>{selectedAddress || "Choose in Messaging Setup"}</strong></div></div>
         <div><StatusPill tone={data.status.pagesVerified ? "success" : selectedAddress ? "warning" : "neutral"}>{setupLabel}</StatusPill></div>
-        <div><small>10DLC HANDOFF</small><strong>{data.status.carrierSubmitted ? "Submitted to Telnyx" : data.status.awaitingDomainFunds ? "Resumes after funds are added" : selectedAddress ? "Continues automatically after verification" : "Starts after one-time setup"}</strong></div>
+        {data.status.carrierSubmitted ? <div aria-hidden="true" /> : <div><small>10DLC HANDOFF</small><strong>{data.status.awaitingDomainFunds ? "Resumes after funds are added" : selectedAddress ? "Continues automatically after verification" : "Starts after one-time setup"}</strong></div>}
         {data.urls && <div className="v2-site-page-links"><a href={data.urls.optIn} target="_blank" rel="noreferrer">Opt-in <ArrowUpRight size={12} /></a><a href={data.urls.privacy} target="_blank" rel="noreferrer">Privacy <ArrowUpRight size={12} /></a><a href={data.urls.terms} target="_blank" rel="noreferrer">Terms <ArrowUpRight size={12} /></a></div>}
       </div>
 

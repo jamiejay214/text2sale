@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
-import { calcCallCharge, CALL_RATE_INBOUND_PER_MIN } from "@/lib/call-pricing";
+import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
 import { bindBrowserCall } from "@/lib/browser-calls";
+import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
+import { hangupLeg, routeInboundCall } from "@/lib/call-routing";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -73,7 +75,13 @@ type ClientState = {
   inboundContactId?: string | null;
   // Present when the AI assistant is handling this leg. See lib/ai-call.ts.
   aiSessionId?: string;
+  // Set on forwarded / browser-routed inbound calls (lib/call-routing.ts);
+  // leg:"target" marks the leg ringing the owner's cell or browser.
+  route?: string;
+  leg?: string;
 };
+
+const FINAL_STATUSES = ["completed", "failed", "no-answer", "busy", "canceled"];
 
 function decodeClientState(raw?: string): ClientState | null {
   if (!raw) return null;
@@ -241,6 +249,14 @@ export async function POST(req: NextRequest) {
           aiSessionId,
         });
         await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
+      } else if (ccid && row?.id) {
+        await routeInboundCall(supabase, {
+          ccid,
+          rowId: row.id,
+          userId: ownership.user_id,
+          callerNumber: fromE164,
+          businessNumber: toE164,
+        });
       }
 
       return NextResponse.json({ status: "ok" });
@@ -259,12 +275,54 @@ export async function POST(req: NextRequest) {
     }
 
     if (type === "call.answered" && !state?.callRowId && !state?.aiSessionId && ccid) {
-      await supabase
+      const { data: answered } = await supabase
         .from("calls")
         .update({ status: "answered", answered_at: new Date().toISOString() })
         .eq("call_control_id", ccid)
         .eq("direction", "outbound")
-        .in("status", ["initiating", "ringing"]);
+        .in("status", ["initiating", "ringing"])
+        .select("id, user_id, answered_at, cost_per_min, cost_charged")
+        .maybeSingle();
+      // Pay for the first minute as it starts; no funds, no call.
+      if (answered && (await chargeStartedMinutes(supabase, answered)) === "insufficient") {
+        await hangupLeg(ccid);
+      }
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // ───────── FORWARDED / BROWSER INBOUND: connected ─────────
+    // The cell or browser picked up. Start the clock and pay the first
+    // minute. (An AI leg transferring to a human keeps its own billing.)
+    if (type === "call.bridged" && state?.callRowId && !state.aiSessionId) {
+      const { data: connected } = await supabase
+        .from("calls")
+        .update({ status: "answered", answered_at: new Date().toISOString() })
+        .eq("id", state.callRowId)
+        .is("answered_at", null)
+        .not("status", "in", `(${FINAL_STATUSES.map((v) => `"${v}"`).join(",")})`)
+        .select("id, user_id, answered_at, cost_per_min, cost_charged, call_control_id")
+        .maybeSingle();
+      if (connected && (await chargeStartedMinutes(supabase, connected)) === "insufficient" && connected.call_control_id) {
+        await hangupLeg(connected.call_control_id);
+      }
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // The leg ringing the owner's cell or browser ended. Whether it never
+    // connected (no answer, browser closed) or the conversation is over,
+    // end the caller's leg too so they aren't left in silence; that leg's
+    // own hangup closes and bills the row.
+    if (type === "call.hangup" && state?.leg === "target") {
+      if (state.callRowId) {
+        const { data: callRow } = await supabase
+          .from("calls")
+          .select("call_control_id, status")
+          .eq("id", state.callRowId)
+          .maybeSingle();
+        if (callRow?.call_control_id && !FINAL_STATUSES.includes(callRow.status)) {
+          await hangupLeg(callRow.call_control_id);
+        }
+      }
       return NextResponse.json({ status: "ok" });
     }
 
@@ -379,7 +437,7 @@ export async function POST(req: NextRequest) {
         .eq("id", rowId)
         .maybeSingle();
 
-      if (!existing || ["completed", "failed", "no-answer", "busy", "canceled"].includes(existing.status)) {
+      if (!existing || FINAL_STATUSES.includes(existing.status)) {
         return NextResponse.json({ status: "ok" });
       }
       // Only the leg recorded on the row may close (and bill) it.
@@ -404,6 +462,23 @@ export async function POST(req: NextRequest) {
 
       const direction = (existing.direction as "inbound" | "outbound") || "outbound";
 
+      // Close the row first, conditional on it still being open: a duplicate
+      // hangup event finds nothing to close, and the minute meter (which
+      // only charges live "answered" rows) stops touching it.
+      const { data: closed } = await supabase
+        .from("calls")
+        .update({
+          status: finalStatus,
+          ended_at: endedAt.toISOString(),
+          duration_seconds: durationSec,
+          hangup_cause: hangupCause,
+        })
+        .eq("id", rowId)
+        .not("status", "in", `(${FINAL_STATUSES.map((v) => `"${v}"`).join(",")})`)
+        .select("cost_charged, cost_per_min, outcome")
+        .maybeSingle();
+      if (!closed) return NextResponse.json({ status: "ok" });
+
       // An AI-handled leg bills at the AI rate instead of the plain
       // inbound rate, and settles against the reserve that was taken up
       // front. finalizeAiSession is idempotent and returns null if another
@@ -411,38 +486,17 @@ export async function POST(req: NextRequest) {
       // finalizeAiSession also runs when the hangup arrived without
       // client_state, so a reserve taken for a caller who hung up before the
       // answer landed is still credited back.
-      let charge: number;
-      let aiSettled = false;
       const settled = ccid ? await finalizeAiSession(supabase, ccid, durationSec) : null;
       if (settled) {
-        charge = settled.charged;
-        aiSettled = true;
-      } else if (state?.aiSessionId) {
-        charge = 0;
-      } else {
-        charge = calcCallCharge(direction, durationSec);
-      }
-
-      // Don't bill calls answered by voicemail.
-      if (existing.outcome === "voicemail") charge = 0;
-
-      await supabase
-        .from("calls")
-        .update({
-          status: finalStatus,
-          ended_at: endedAt.toISOString(),
-          duration_seconds: durationSec,
-          hangup_cause: hangupCause,
-          cost_charged: charge,
-        })
-        .eq("id", rowId);
-
-      // Debit the wallet atomically via RPC to avoid lost updates from
-      // concurrent charges racing on a read-then-write. An AI leg has
-      // already settled against its reserve inside finalizeAiSession, so
-      // debiting again here would charge the call twice.
-      if (charge > 0 && !aiSettled) {
-        await supabase.rpc("decrement_wallet", { p_user_id: existing.user_id, p_amount: charge });
+        // Settled against the AI reserve inside finalizeAiSession.
+        await supabase.from("calls").update({ cost_charged: settled.charged }).eq("id", rowId);
+      } else if (!state?.aiSessionId) {
+        // Per started minute at the row's rate (outbound, inbound, or
+        // forwarded), reconciled against what the meter already took.
+        // Calls answered by voicemail aren't billed.
+        const rate = Number(closed.cost_per_min) || (direction === "outbound" ? CALL_RATE_OUTBOUND_PER_MIN : CALL_RATE_INBOUND_PER_MIN);
+        const finalCharge = closed.outcome === "voicemail" ? 0 : +(minutesBilled(durationSec) * rate).toFixed(4);
+        await settleCallCharge(supabase, { id: rowId, user_id: existing.user_id }, finalCharge, Number(closed.cost_charged) || 0);
       }
 
       return NextResponse.json({ status: "ok" });
