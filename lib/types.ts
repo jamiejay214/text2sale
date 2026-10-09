@@ -193,6 +193,9 @@ export type OwnedNumber = {
   id: string;
   number: string;
   alias: string;
+  /** Call forwarding: ring this cell for calls the AI receptionist isn't taking. */
+  forwardEnabled?: boolean;
+  forwardTo?: string | null;
 };
 
 export type Contact = {

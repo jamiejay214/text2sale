@@ -24,18 +24,21 @@ const decode = (s) => JSON.parse(Buffer.from(s, 'base64').toString());
 const base = { wallet_balance: 5, subscription_status: 'active', telnyx_credential_id: 'cred1' };
 const call = { ccid: 'cc1', rowId: 'row1', userId: 'u1', callerNumber: '+13055550199', businessNumber: '+19545550100' };
 
-test('forwarding target: off, missing, or the business number itself means no forwarding', () => {
+const owned = (forward) => [{ number: '(954) 555-0100', ...forward }];
+test('forwarding target: off, missing, or one of the account\'s own numbers means no forwarding', () => {
   const { forwardingTarget } = load(async () => ok());
-  assert.equal(forwardingTarget({ call_forward_enabled: false, call_forward_number: '5551234567' }, '+19545550100'), null);
-  assert.equal(forwardingTarget({ call_forward_enabled: true, call_forward_number: '' }, '+19545550100'), null);
-  assert.equal(forwardingTarget({ call_forward_enabled: true, call_forward_number: '(954) 555-0100' }, '+19545550100'), null);
-  assert.equal(forwardingTarget({ call_forward_enabled: true, call_forward_number: '(305) 555-1234' }, '+19545550100'), '+13055551234');
+  assert.equal(forwardingTarget(owned({ forwardEnabled: false, forwardTo: '3055551234' }), '+19545550100'), null);
+  assert.equal(forwardingTarget(owned({ forwardEnabled: true, forwardTo: '' }), '+19545550100'), null);
+  assert.equal(forwardingTarget(owned({ forwardEnabled: true, forwardTo: '(954) 555-0100' }), '+19545550100'), null);
+  assert.equal(forwardingTarget(owned({ forwardEnabled: true, forwardTo: '(305) 555-1234' }), '+19545550100'), '+13055551234');
+  assert.equal(forwardingTarget(owned({ forwardEnabled: true, forwardTo: '3055551234' }), '+17865550000'), null);
+  assert.equal(forwardingTarget(null, '+19545550100'), null);
 });
 
 test('forwarding on: transfers the call to the cell showing the caller, billed at the forward rate', async () => {
   const calls = [];
   const { routeInboundCall } = load(async (url, init) => (calls.push([url, init && init.body && JSON.parse(init.body)]), ok()));
-  const d = db({ ...base, call_forward_enabled: true, call_forward_number: '3055551234' });
+  const d = db({ ...base, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) });
   assert.equal(await routeInboundCall(d, call), 'forward');
   const [url, body] = calls[0];
   assert.ok(url.endsWith('/calls/cc1/actions/transfer'));
@@ -66,7 +69,7 @@ test('caller ID refused: retries the transfer with the default caller ID', async
     bodies.push(body);
     return body && body.from ? { ok: false, status: 422, json: async () => ({}) } : ok();
   });
-  assert.equal(await routeInboundCall(db({ ...base, call_forward_enabled: true, call_forward_number: '3055551234' }), call), 'forward');
+  assert.equal(await routeInboundCall(db({ ...base, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) }), call), 'forward');
   assert.equal(bodies.length, 2);
   assert.equal(bodies[1].from, undefined);
 });
@@ -75,6 +78,6 @@ test('no subscription or no money for the first minute: the call rings out', asy
   let fetched = 0;
   const { routeInboundCall } = load(async () => (fetched++, ok()));
   assert.equal(await routeInboundCall(db({ ...base, subscription_status: 'canceled' }), call), null);
-  assert.equal(await routeInboundCall(db({ ...base, wallet_balance: 0.01, call_forward_enabled: true, call_forward_number: '3055551234' }), call), null);
+  assert.equal(await routeInboundCall(db({ ...base, wallet_balance: 0.01, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) }), call), null);
   assert.equal(fetched, 0);
 });

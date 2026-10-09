@@ -32,26 +32,31 @@ async function telnyx(path: string, method: "GET" | "POST", body?: Record<string
   return { ok: res.ok, status: res.status, json };
 }
 
-/** The forwarding number to use, or null when forwarding is off or unusable. */
-export function forwardingTarget(
-  settings: { call_forward_enabled?: boolean | null; call_forward_number?: string | null },
-  businessNumber: string
-): string | null {
-  if (!settings.call_forward_enabled) return null;
-  const target = toE164(settings.call_forward_number);
-  // Forwarding a number to itself would loop the call straight back here.
-  if (!target || target === toE164(businessNumber)) return null;
+type ForwardingEntry = { number?: string | null; forwardEnabled?: boolean | null; forwardTo?: string | null };
+
+/**
+ * The forwarding number for a call to `businessNumber`, or null when
+ * forwarding is off or unusable. Forwarding lives on the number's entry in
+ * profiles.owned_numbers (no extra columns needed).
+ */
+export function forwardingTarget(ownedNumbers: unknown, businessNumber: string): string | null {
+  const business = toE164(businessNumber);
+  const entries = Array.isArray(ownedNumbers) ? (ownedNumbers as ForwardingEntry[]) : [];
+  const entry = entries.find((n) => n && toE164(n.number) === business);
+  if (!entry?.forwardEnabled) return null;
+  const target = toE164(entry.forwardTo);
+  // Forwarding to any of the account's own numbers would loop the call back.
+  if (!target || entries.some((n) => n && toE164(n.number) === target)) return null;
   return target;
 }
 
 async function loadRoutingProfile(db: Db, userId: string) {
-  const base = "telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription";
-  const full = await db.from("profiles").select(`${base}, call_forward_enabled, call_forward_number`).eq("id", userId).maybeSingle();
-  if (!full.error) return full.data;
-  // Before the forwarding migration is applied the columns don't exist;
-  // route to the browser rather than dropping the call.
-  const fallback = await db.from("profiles").select(base).eq("id", userId).maybeSingle();
-  return fallback.data;
+  const { data } = await db
+    .from("profiles")
+    .select("telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription, owned_numbers")
+    .eq("id", userId)
+    .maybeSingle();
+  return data;
 }
 
 /**
@@ -68,7 +73,7 @@ export async function routeInboundCall(
 
   let route: InboundRoute | null = null;
   let to = "";
-  const forward = forwardingTarget(profile, call.businessNumber);
+  const forward = forwardingTarget(profile.owned_numbers, call.businessNumber);
   if (forward && balance >= CALL_RATE_FORWARD_PER_MIN) {
     route = "forward";
     to = forward;
