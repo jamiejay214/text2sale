@@ -275,7 +275,7 @@ function AdminConsole() {
   });
 
   const [bulkCreditAmount, setBulkCreditAmount] = useState("50");
-  const [globalMessageCost, setGlobalMessageCost] = useState(0.012);
+  const [globalMessageCost, setGlobalMessageCost] = useState(0.015);
   const [globalNumberCost, setGlobalNumberCost] = useState(1.0);
   const [globalSubscriptionPrice, setGlobalSubscriptionPrice] = useState(39.99);
   const [visitorAlerts, setVisitorAlerts] = useState(true);
@@ -850,7 +850,7 @@ function AdminConsole() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  // Swap a user between the Standard ($39.99) and AI ($119.99) packages.
+  // Swap a user between the legacy Standard and AI package keys (both $39.99 now).
   // Updates plan shape + ai_plan flag in Supabase AND swaps their Stripe
   // subscription line item to the matching recurring price (Stripe prorates
   // the partial period automatically on the next invoice). No-op on
@@ -865,7 +865,7 @@ function AdminConsole() {
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-    const label = targetIsAi ? "AI ($119.99/mo)" : "Standard ($39.99/mo)";
+    const label = targetIsAi ? "AI ($39.99/mo)" : "Standard ($39.99/mo)";
     if (!window.confirm(`Move ${acct.firstName} ${acct.lastName} to ${label}?\n\nStripe will prorate the partial period on their next invoice.`)) return;
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -1900,7 +1900,7 @@ function AdminConsole() {
                               ? "bg-cyan-900 text-cyan-300"
                               : "bg-violet-900 text-violet-300"
                           }`}>
-                            {acct.aiPlan ? "AI · $119.99" : "STANDARD · $39.99"}
+                            {acct.aiPlan ? "AI · $39.99" : "STANDARD · $39.99"}
                           </span>
                           {acct.freeAiPlan && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE AI</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
@@ -2111,7 +2111,7 @@ function AdminConsole() {
                               ? "bg-cyan-900 text-cyan-300"
                               : "bg-violet-900 text-violet-300"
                           }`}>
-                            {selectedAccount.aiPlan ? "AI — $119.99/mo" : "STANDARD — $39.99/mo"}
+                            {selectedAccount.aiPlan ? "AI — $39.99/mo" : "STANDARD — $39.99/mo"}
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-zinc-400">
@@ -2142,7 +2142,7 @@ function AdminConsole() {
                             : "bg-zinc-900 text-zinc-300 hover:bg-cyan-600/20 hover:text-cyan-300 ring-1 ring-zinc-700 hover:ring-cyan-500/50"
                         }`}
                       >
-                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $119.99
+                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $39.99
                       </button>
                     </div>
                   </div>
@@ -2231,7 +2231,7 @@ function AdminConsole() {
                       <div className="text-xs text-zinc-400">
                         {selectedAccount.aiPlan
                           ? "AI auto-reply and appointment booking are enabled."
-                          : "Enable AI features ($119.99/mo plan) for this user."}
+                          : "Enable AI features for this user."}
                       </div>
                     </div>
                     <button
@@ -2256,7 +2256,7 @@ function AdminConsole() {
                       <div className="text-sm font-medium text-white">Free AI Plan</div>
                       <div className="text-xs text-zinc-400">
                         {selectedAccount.freeAiPlan
-                          ? "User has free AI access — no $119.99/mo charge."
+                          ? "User has free AI access."
                           : "Grant this user AI features at no cost."}
                       </div>
                     </div>
@@ -2415,21 +2415,21 @@ function AdminConsole() {
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-800 p-5">
                     <div>
                       <div className="text-sm text-zinc-400">Number Revenue (MRR)</div>
-                      <div className="mt-1 text-xs text-zinc-500">{totalNumbers} numbers × $1.00/mo</div>
+                      <div className="mt-1 text-xs text-zinc-500">{totalNumbers} numbers × $1.50/mo</div>
                     </div>
-                    <div className="text-2xl font-bold text-sky-400">{formatCurrency(totalNumbers * 1)}</div>
+                    <div className="text-2xl font-bold text-sky-400">{formatCurrency(totalNumbers * 1.5)}</div>
                   </div>
                   <div className="flex items-center justify-between rounded-2xl bg-zinc-800 p-5">
                     <div>
                       <div className="text-sm text-zinc-400">Message Revenue (est.)</div>
-                      <div className="mt-1 text-xs text-zinc-500">{totalMessagesSent.toLocaleString()} msgs × $0.012 avg</div>
+                      <div className="mt-1 text-xs text-zinc-500">{totalMessagesSent.toLocaleString()} msgs × $0.015 avg</div>
                     </div>
-                    <div className="text-2xl font-bold text-violet-400">{formatCurrency(totalMessagesSent * 0.012)}</div>
+                    <div className="text-2xl font-bold text-violet-400">{formatCurrency(totalMessagesSent * 0.015)}</div>
                   </div>
                   <hr className="border-zinc-700" />
                   <div className="flex items-center justify-between px-2">
                     <div className="text-sm font-medium text-zinc-300">Total MRR (est.)</div>
-                    <div className="text-2xl font-bold text-white">{formatCurrency(mrr + totalNumbers)}</div>
+                    <div className="text-2xl font-bold text-white">{formatCurrency(mrr + totalNumbers * 1.5)}</div>
                   </div>
                 </div>
               </div>
@@ -2603,7 +2603,7 @@ function AdminConsole() {
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900 p-8">
             <div className="mb-6 flex items-center justify-between">
               <h2 className="text-2xl font-bold">All Phone Numbers ({totalNumbers})</h2>
-              <div className="text-sm text-zinc-400">{totalNumbers} numbers × $1.00/mo = {formatCurrency(totalNumbers)}/mo revenue</div>
+              <div className="text-sm text-zinc-400">{totalNumbers} numbers × $1.50/mo = {formatCurrency(totalNumbers)}/mo revenue</div>
             </div>
 
             <div className="overflow-hidden rounded-2xl border border-zinc-800">

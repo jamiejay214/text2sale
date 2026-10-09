@@ -42,7 +42,7 @@ export default function AiTextingCrmPage() {
           heading: "AI texting built for real sales conversations",
           paragraphs: [
             "Most leads do not wait around. If they text back and your team takes too long to respond, the opportunity can disappear. Text2Sale helps keep the conversation alive by giving your team AI replies, smart suggestions, sentiment cues, and a centralized inbox.",
-            "On the Text2Sale + AI plan, AI reads each inbound reply in context and responds the way you have instructed it to: answering a question, asking the next qualifying question, handling a common objection, or offering appointment times. Booked appointments sync to Google Calendar so they show up where you already work.",
+            "With Text2Sale, AI reads each inbound reply in context and responds the way you have instructed it to: answering a question, asking the next qualifying question, handling a common objection, or offering appointment times. Booked appointments sync to Google Calendar so they show up where you already work.",
           ],
         },
         {
@@ -71,14 +71,14 @@ export default function AiTextingCrmPage() {
       faq={[
         {
           question: "What does the AI actually do?",
-          answer: "On the Text2Sale + AI plan, AI replies to inbound texts, asks qualifying questions, handles common objections, and books appointments that sync to Google Calendar, following the instructions you give it.",
+          answer: "With Text2Sale, AI replies to inbound texts, asks qualifying questions, handles common objections, and books appointments that sync to Google Calendar, following the instructions you give it.",
         },
         {
           question: "Can I turn AI off for a conversation?",
           answer: "Yes. AI can be switched on or off for each conversation, so you can take over whenever a lead needs a person.",
         },
         {
-          question: "How much does the AI plan cost?",
+          question: "How much does AI cost?",
           answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge.",
         },
         {

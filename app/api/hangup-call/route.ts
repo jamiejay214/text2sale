@@ -42,14 +42,17 @@ export async function POST(req: NextRequest) {
     );
   }
   if (!row.call_control_id) {
-    // No Telnyx handle yet — just mark the row canceled locally.
+    // Telnyx never reported this call's leg, so it never connected (or
+    // calling webhooks aren't reaching us). Close it unbilled — only while it
+    // is still "initiating", so a leg bound in the meantime keeps its record.
     await adminSupabase
       .from("calls")
       .update({
         status: "canceled",
         ended_at: new Date().toISOString(),
       })
-      .eq("id", callId);
+      .eq("id", callId)
+      .eq("status", "initiating");
     return NextResponse.json({ success: true, note: "Call canceled locally" });
   }
 
@@ -65,6 +68,11 @@ export async function POST(req: NextRequest) {
     }
   );
 
+  // The browser usually ends the call itself first, so Telnyx answering
+  // "call not found / already ended" means the line is already down.
+  if (!res.ok && (res.status === 404 || res.status === 422)) {
+    return NextResponse.json({ success: true, note: "Call already ended" });
+  }
   if (!res.ok) {
     const text = await res.text();
     console.error("[hangup-call] Telnyx error:", text);

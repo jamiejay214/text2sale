@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
+import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -149,6 +150,18 @@ export async function POST(req: NextRequest) {
         },
         { status: 500 }
       );
+    }
+
+    // A single $500+ deposit unlocks the volume SMS rate — the same rule as a
+    // manual Stripe deposit (see stripe-webhook), so an auto-recharge of $500
+    // or more counts too.
+    if (amount >= VOLUME_SMS_UNLOCK_AMOUNT) {
+      const { data: planRow } = await supabase.from("profiles").select("plan").eq("id", userId).single();
+      const currentPlan = (planRow?.plan || {}) as Record<string, unknown>;
+      await supabase
+        .from("profiles")
+        .update({ plan: { ...currentPlan, name: "Text2Sale", price: 39.99, messageCost: VOLUME_SMS_RATE_PER_SEGMENT } })
+        .eq("id", userId);
     }
 
     // Best-effort usage_history append for UI history. Not atomic with the

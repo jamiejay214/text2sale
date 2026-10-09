@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { calcCallCharge, CALL_RATE_INBOUND_PER_MIN } from "@/lib/call-pricing";
+import { bindBrowserCall } from "@/lib/browser-calls";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -225,13 +226,13 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      // Answer the call. When the assistant has the leg, call.answered
-      // starts transcription and speaks the greeting (see openConversation).
-      // Otherwise the dashboard's browser WebRTC session handles the audio —
-      // we no longer forward inbound calls to the agent's cell phone. The
-      // calls row with status="ringing" is enough to notify the UI via
-      // Supabase realtime so the agent can pick up in the browser.
-      if (ccid) {
+      // Answer only when the assistant has the leg; call.answered then starts
+      // transcription and speaks the greeting (see openConversation).
+      // Answering any other call connected the caller to dead air (and billed
+      // the minutes) because nothing picks inbound calls up in the browser.
+      // Leaving it unanswered lets it ring out as a normal missed call; the
+      // hangup is matched back to this row by call_control_id.
+      if (ccid && aiSessionId) {
         const newState = encodeClientState({
           v: 1,
           inboundUserId: ownership.user_id,
@@ -242,6 +243,28 @@ export async function POST(req: NextRequest) {
         await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
       }
 
+      return NextResponse.json({ status: "ok" });
+    }
+
+    // ───────── BROWSER OUTBOUND: bind the leg to the logged call ─────────
+    if (type === "call.initiated" && p.direction === "outgoing" && !state?.callRowId && !state?.aiSessionId && ccid) {
+      await bindBrowserCall(supabase, {
+        ccid,
+        from: p.from,
+        to: p.to,
+        sessionId: p.call_session_id,
+        legId: p.call_leg_id,
+      });
+      return NextResponse.json({ status: "ok" });
+    }
+
+    if (type === "call.answered" && !state?.callRowId && !state?.aiSessionId && ccid) {
+      await supabase
+        .from("calls")
+        .update({ status: "answered", answered_at: new Date().toISOString() })
+        .eq("call_control_id", ccid)
+        .eq("direction", "outbound")
+        .in("status", ["initiating", "ringing"]);
       return NextResponse.json({ status: "ok" });
     }
 
@@ -336,17 +359,31 @@ export async function POST(req: NextRequest) {
 
     // ───────── HANGUP — finalize row, compute duration, charge wallet ─────────
     if (type === "call.hangup") {
-      const rowId = state?.callRowId;
+      // Browser calls and unanswered inbound calls carry no client_state, so
+      // find their row by the call_control_id recorded for the leg.
+      let rowId = state?.callRowId;
+      if (!rowId && ccid) {
+        const { data: byLeg } = await supabase
+          .from("calls")
+          .select("id")
+          .eq("call_control_id", ccid)
+          .maybeSingle();
+        rowId = byLeg?.id;
+      }
       if (!rowId) return NextResponse.json({ status: "ok" });
 
       // Avoid double-charging: only the FIRST hangup event closes the row.
       const { data: existing } = await supabase
         .from("calls")
-        .select("id, status, started_at, answered_at, direction, user_id, cost_per_min, outcome")
+        .select("id, status, started_at, answered_at, direction, user_id, cost_per_min, outcome, call_control_id")
         .eq("id", rowId)
         .maybeSingle();
 
       if (!existing || ["completed", "failed", "no-answer", "busy", "canceled"].includes(existing.status)) {
+        return NextResponse.json({ status: "ok" });
+      }
+      // Only the leg recorded on the row may close (and bill) it.
+      if (existing.call_control_id && ccid && existing.call_control_id !== ccid) {
         return NextResponse.json({ status: "ok" });
       }
 
@@ -371,16 +408,17 @@ export async function POST(req: NextRequest) {
       // inbound rate, and settles against the reserve that was taken up
       // front. finalizeAiSession is idempotent and returns null if another
       // hangup event already settled this leg.
+      // finalizeAiSession also runs when the hangup arrived without
+      // client_state, so a reserve taken for a caller who hung up before the
+      // answer landed is still credited back.
       let charge: number;
       let aiSettled = false;
-      if (state?.aiSessionId && ccid) {
-        const settled = await finalizeAiSession(supabase, ccid, durationSec);
-        if (settled) {
-          charge = settled.charged;
-          aiSettled = true;
-        } else {
-          charge = 0;
-        }
+      const settled = ccid ? await finalizeAiSession(supabase, ccid, durationSec) : null;
+      if (settled) {
+        charge = settled.charged;
+        aiSettled = true;
+      } else if (state?.aiSessionId) {
+        charge = 0;
       } else {
         charge = calcCallCharge(direction, durationSec);
       }

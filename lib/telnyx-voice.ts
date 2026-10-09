@@ -18,11 +18,20 @@ export async function ensureVoiceRouting(e164: string) {
     : { ok: false, error: "Could not connect business number for calling. Please retry." };
 }
 
+/** Where Telnyx must send call events for billing and the AI receptionist. */
+export const CALL_WEBHOOK_URL = "https://text2sale.com/api/call-webhook";
+
 /**
- * Browser calls are WebRTC, which Telnyx already encrypts end to end. If the
- * credential connection also has "encrypted media" (SRTP) switched on, Telnyx
- * rejects every browser call with "488 Media Encryption Required" — Telnyx's
- * docs say WebRTC clients must not use that setting. Switch it off when found.
+ * Keep the browser-calling connection set up the way the app needs it.
+ *
+ * - Encrypted media (SRTP) off. Browser calls are WebRTC, which Telnyx already
+ *   encrypts; with SRTP also required, Telnyx rejects every browser call with
+ *   "488 Media Encryption Required" (Telnyx: WebRTC clients must not use it).
+ * - Call events on. Without a webhook URL Telnyx never reports when a call
+ *   connects or ends, so browser calls can't be billed and the AI receptionist
+ *   never hears about inbound calls. Production only fills in an EMPTY URL —
+ *   it never overwrites one somebody set — and preview deployments never
+ *   touch it, so a preview can't redirect production's call events.
  */
 export async function ensureWebrtcMedia() {
   const connectionId = process.env.TELNYX_CREDENTIAL_CONNECTION_ID || "";
@@ -30,12 +39,30 @@ export async function ensureWebrtcMedia() {
   const id = encodeURIComponent(connectionId);
   const current = await telnyxRequest(`/v2/credential_connections/${id}`);
   if (!current.ok) return { ok: false, error: "Could not check the calling connection. Please retry." };
-  if (!current.json?.data?.encrypted_media) return { ok: true };
+  const connection = current.json?.data || {};
+
+  const patch: Record<string, unknown> = {};
+  if (connection.encrypted_media) patch.encrypted_media = null;
+  if (process.env.VERCEL_ENV === "production") {
+    const url = String(connection.webhook_event_url || "");
+    if (!url) {
+      patch.webhook_event_url = CALL_WEBHOOK_URL;
+      patch.webhook_api_version = "2";
+    } else if (url === CALL_WEBHOOK_URL && String(connection.webhook_api_version) !== "2") {
+      patch.webhook_api_version = "2";
+    } else if (url !== CALL_WEBHOOK_URL) {
+      console.warn(`[telnyx-voice] calling connection sends call events to ${url}, not ${CALL_WEBHOOK_URL}; browser calls won't be billed`);
+    }
+  }
+  if (!Object.keys(patch).length) return { ok: true };
+
   const result = await telnyxRequest(`/v2/credential_connections/${id}`, {
     method: "PATCH",
-    body: JSON.stringify({ encrypted_media: null }),
+    body: JSON.stringify(patch),
   });
-  return result.ok && !result.json?.data?.encrypted_media
-    ? { ok: true }
-    : { ok: false, error: "Calling connection requires encrypted media, which browser calls can't use. Turn off SRTP on the Telnyx SIP connection." };
+  if ("encrypted_media" in patch && !(result.ok && !result.json?.data?.encrypted_media)) {
+    return { ok: false, error: "Calling connection requires encrypted media, which browser calls can't use. Turn off SRTP on the Telnyx SIP connection." };
+  }
+  if (!result.ok) console.error("[telnyx-voice] could not update the calling connection's webhook settings");
+  return { ok: true };
 }

@@ -1,5 +1,5 @@
 import { smsProgramResponses } from "@/lib/sms-consent";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
@@ -9,6 +9,10 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
+
+// The AI auto-reply runs in after() and waits on /api/ai-reply (a 5 s
+// human-feel delay plus the model round trip), so give it the same budget.
+export const maxDuration = 60;
 
 // Telnyx sends inbound SMS as POST webhook
 export async function POST(req: NextRequest) {
@@ -133,7 +137,7 @@ export async function POST(req: NextRequest) {
     const lookupContactByPhone = async () => {
       let q = supabase
         .from("contacts")
-        .select("id, user_id, first_name, last_name, phone, created_at")
+        .select("id, user_id, first_name, last_name, phone, created_at, dnc")
         .in("phone", phoneVariants);
       if (ownerIds.length > 0) q = q.in("user_id", ownerIds);
       return q.order("created_at", { ascending: false }).limit(1);
@@ -152,7 +156,7 @@ export async function POST(req: NextRequest) {
     const contactRows = contactRes.data;
     const contactLookupFailed = !!contactRes.error;
 
-    let contact: { id: string; user_id: string; first_name?: string; last_name?: string; phone?: string } | null =
+    let contact: { id: string; user_id: string; first_name?: string; last_name?: string; phone?: string; dnc?: boolean } | null =
       contactRows && contactRows.length > 0 ? contactRows[0] : null;
 
     // If the lookup is STILL erroring after a retry, don't guess. Ask Telnyx to
@@ -182,7 +186,7 @@ export async function POST(req: NextRequest) {
           notes: `Auto-created from inbound SMS to ${toFormattedIn} on ${new Date().toISOString()}`,
           dnc: false,
         })
-        .select("id, user_id, first_name, last_name, phone")
+        .select("id, user_id, first_name, last_name, phone, dnc")
         .single();
       if (newContact) contact = newContact;
     }
@@ -238,8 +242,12 @@ export async function POST(req: NextRequest) {
       stopKeywords.includes(bodyUpper) ||
       stopKeywords.includes(firstToken) ||
       MANDATORY_STOP.some((k) => wordSet.has(k));
+    // Opt-in keywords only mean "subscribe me again" from someone who has
+    // opted out. A subscribed lead answering "Yes" to "still looking for
+    // coverage?" was getting a "you're subscribed" auto-text and the reply
+    // never reached the inbox flow or the AI.
     const isOptIn =
-      !isOptOut &&
+      !isOptOut && !!contact.dnc &&
       (startKeywords.includes(bodyUpper) || startKeywords.includes(firstToken));
     const isHelp =
       !isOptOut && !isOptIn &&
@@ -288,10 +296,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ status: "ok" });
     }
 
+    // The same person can sit in a workspace more than once (imported twice,
+    // or saved in another format). STOP and START apply to the person, so
+    // update every copy of their number in this workspace — otherwise a
+    // campaign could still text a duplicate of someone who said STOP.
+    const sameNumberContacts = () =>
+      supabase.from("contacts").select("id").eq("user_id", contact.user_id).in("phone", phoneVariants);
+
     if (isOptOut) {
       // Always mark DNC on mandatory-opt-out keywords, regardless of the user's
       // autoMarkDnc toggle — that toggle can't override carrier rules.
-      await supabase.from("contacts").update({ dnc: true }).eq("id", contact.id);
+      const { data: copies } = await sameNumberContacts();
+      const ids = Array.from(new Set([contact.id, ...(copies || []).map((c) => c.id as string)]));
+      await supabase.from("contacts").update({ dnc: true }).in("id", ids);
+      await supabase
+        .from("scheduled_messages")
+        .update({ status: "cancelled" })
+        .in("contact_id", ids)
+        .eq("status", "pending");
       await recordInbound();
       // Always send a confirmation reply so the carrier sees compliance.
       await sendTelnyxReply(to, from, responses.optOut);
@@ -299,7 +321,9 @@ export async function POST(req: NextRequest) {
     }
 
     if (isOptIn) {
-      await supabase.from("contacts").update({ dnc: false }).eq("id", contact.id);
+      const { data: copies } = await sameNumberContacts();
+      const ids = Array.from(new Set([contact.id, ...(copies || []).map((c) => c.id as string)]));
+      await supabase.from("contacts").update({ dnc: false }).in("id", ids);
       await recordInbound();
       await sendTelnyxReply(to, from, responses.optIn);
       return NextResponse.json({ status: "ok" });
@@ -462,7 +486,9 @@ export async function POST(req: NextRequest) {
         if (aiProfile?.ai_plan && (globalAi || perConvAi)) {
           const balance = Number(aiProfile.wallet_balance) || 0;
           if (balance >= 0.025) {
-            // Fire-and-forget — don't block the webhook response
+            // Runs after the webhook response via after(): a bare promise could
+            // be cut off when the serverless function froze, which looked like
+            // "the AI just didn't respond".
             const origin = req.headers.get("x-forwarded-proto") === "https"
               ? `https://${req.headers.get("host")}`
               : `http://${req.headers.get("host")}`;
@@ -473,7 +499,7 @@ export async function POST(req: NextRequest) {
             // want anonymous access to ai-reply).
             const internalSecret = process.env.INTERNAL_WEBHOOK_SECRET;
             if (internalSecret) {
-              fetch(`${origin}/api/ai-reply`, {
+              after(() => fetch(`${origin}/api/ai-reply`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -496,7 +522,7 @@ export async function POST(req: NextRequest) {
                     console.error(`[incoming-sms] AI auto-reply call failed (${res.status}): ${t.slice(0, 200)}`);
                   }
                 })
-                .catch((err) => console.error("AI auto-reply fire-and-forget error:", err));
+                .catch((err) => console.error("AI auto-reply fire-and-forget error:", err)));
             } else {
               console.warn(
                 "[incoming-sms] AI auto-reply skipped — set INTERNAL_WEBHOOK_SECRET env var to enable."

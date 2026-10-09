@@ -44,7 +44,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
         ],
         bullets: [
           "Outbound and inbound text segments",
-          "AI replies, on the Text2Sale + AI plan",
+          "AI replies (AI access is included in the Text2Sale plan; each reply is billed as usage)",
           "Outbound and inbound call minutes",
           "Phone numbers you buy",
         ],
@@ -124,7 +124,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
       {
         heading: "The basic formula",
         paragraphs: [
-          "Outbound cost is the number of contacts, times the segments per message, times the number of messages you plan to send each of them, times the per-segment price. At $0.012 per segment, a one-segment message to 2,000 contacts costs about $24 per send.",
+          "Outbound cost is the number of contacts, times the segments per message, times the number of messages you plan to send each of them, times the per-segment price. At $0.015 per segment, a one-segment message to 2,000 contacts costs about $30 per send.",
         ],
         bullets: [
           "Contacts you will text this month",
@@ -165,7 +165,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
       {
         question: "How much does a text cost in Text2Sale?",
         answer:
-          "Texts are $0.012 per segment. AI replies are $0.025 each, and calls are $0.045 per minute outbound and $0.025 per minute inbound.",
+          "Outbound texts are $0.015 per segment ($0.0135 after a single wallet deposit of $500 or more), and incoming texts are free. AI replies are $0.02 each plus the text segments, calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI receptionist calls are $0.18 per minute.",
       },
       {
         question: "Why did my message cost more than I expected?",
@@ -475,7 +475,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
       {
         heading: "What changes for the manager",
         paragraphs: [
-          "Because calls start inside the system, they are recorded in it. Managers can see call volume, duration, and outcomes without asking reps to self-report. Call minutes are billed per minute from the wallet, at $0.045 per minute outbound and $0.025 per minute inbound, so cost is visible as well.",
+          "Because calls start inside the system, they are recorded in it. Managers can see call volume, duration, and outcomes without asking reps to self-report. Call minutes are billed per minute from the wallet, at $0.025 per minute outbound and $0.015 per minute inbound, so cost is visible as well.",
         ],
       },
       {
@@ -521,7 +521,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
       {
         question: "How much do calls cost in Text2Sale?",
         answer:
-          "Calls are $0.045 per minute outbound and $0.025 per minute inbound, billed in whole minutes from your wallet.",
+          "Calls are $0.025 per minute outbound and $0.015 per minute inbound, billed in whole minutes from your wallet.",
       },
       {
         question: "Do I need special equipment to call from the browser?",
@@ -844,7 +844,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
       {
         heading: "Away messages vs an AI assistant",
         paragraphs: [
-          "An away message acknowledges and sets expectations. An AI assistant, available on the Text2Sale + AI plan, continues the conversation: it answers questions, qualifies the lead, and can book an appointment for a time you are available. If a human reply the next morning is acceptable, an away message is simple and cheap. If leads lose interest overnight, AI is worth considering.",
+          "An away message acknowledges and sets expectations. An AI assistant, included with Text2Sale, continues the conversation: it answers questions, qualifies the lead, and can book an appointment for a time you are available. If a human reply the next morning is acceptable, an away message is simple and cheap. If leads lose interest overnight, AI is worth considering.",
         ],
       },
       {
@@ -1481,7 +1481,7 @@ export const BLOG_POSTS_4: BlogPost[] = [
         heading: "A worked example",
         paragraphs: [
           "Suppose you buy a list of 5,000 contacts. After removing duplicate numbers you are down to 4,600. Deleting invalid and junk rows brings it to 4,450, and removing people on your opt-out list leaves 4,380. You have cut 620 rows, about 12 percent of the file.",
-          "At $0.012 per segment, that saves roughly $7 on every one-segment message you send to the list. The money matters less than the other effects: fewer duplicate texts, fewer complaints, and delivery numbers that reflect real people.",
+          "At $0.015 per segment, that saves roughly $9 on every one-segment message you send to the list. The money matters less than the other effects: fewer duplicate texts, fewer complaints, and delivery numbers that reflect real people.",
         ],
       },
     ],

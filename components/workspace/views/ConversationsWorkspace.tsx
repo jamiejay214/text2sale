@@ -504,7 +504,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Message failed.");
     const sentBody = typeof result.body === "string" ? result.body : body;
-    const inserted = await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from });
+    const inserted = await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from, telnyx_message_id: typeof result.sid === "string" && result.sid ? result.sid : null });
     const now = new Date().toISOString();
     if (inserted) setMessages((current) => current.some((item) => item.id === inserted.id) ? current : [...current, inserted]);
     await updateConversation(selected.id, { preview: sentBody, last_message_at: now, unread: 0 });

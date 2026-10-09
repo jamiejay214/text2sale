@@ -55,8 +55,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Unified paid plan. Never trust a stale legacy plan price from the
-    // profile: older accounts may still contain the retired $119.99 AI plan.
+    // The single $39.99 plan. Never trust a stale plan price stored on the
+    // profile: older accounts may still carry a retired price.
     const pkg = "standard" as const;
     const planPrice = PACKAGES.standard.price;
     const planPriceCents = Math.round(planPrice * 100);

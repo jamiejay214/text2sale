@@ -7,6 +7,7 @@ import { requireSameUser } from "@/lib/auth-guard";
 import { renderCampaignMessage } from "@/lib/campaign-sequence";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
+import { isEntitled } from "@/lib/messaging-status";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -151,6 +152,22 @@ export async function GET(req: NextRequest) {
       return allowed;
     };
 
+    // Drips wait (stay pending) while an account is paused or its
+    // subscription has lapsed, the same rule one-off sends follow.
+    const ACCOUNT_INACTIVE_MESSAGE = "Waiting for an active account and subscription.";
+    const accountCache = new Map<string, boolean>();
+    const accountActive = async (userId: string): Promise<boolean> => {
+      if (accountCache.has(userId)) return accountCache.get(userId)!;
+      const { data } = await supabase
+        .from("profiles")
+        .select("paused, subscription_status, free_subscription")
+        .eq("id", userId)
+        .maybeSingle();
+      const active = !!data && !data.paused && isEntitled(data);
+      accountCache.set(userId, active);
+      return active;
+    };
+
     let sent = 0;
     let failed = 0;
     let skippedNoFunds = 0;
@@ -202,6 +219,20 @@ export async function GET(req: NextRequest) {
           await supabase
             .from("scheduled_messages")
             .update({ processing_at: null, last_error: EIN_CERTIFICATE_REQUIRED_MESSAGE })
+            .eq("id", msg.id);
+          return;
+        }
+
+        if (!(await accountActive(msg.user_id))) {
+          // Push the row out an hour so a stalled account's backlog can't
+          // fill every claim batch and starve active accounts' drips.
+          await supabase
+            .from("scheduled_messages")
+            .update({
+              processing_at: null,
+              last_error: ACCOUNT_INACTIVE_MESSAGE,
+              scheduled_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+            })
             .eq("id", msg.id);
           return;
         }

@@ -19,9 +19,9 @@ export function GET(req: NextRequest) {
   const lines: string[] = [
     "# Text2Sale",
     "",
-    "> Text2Sale is a mass texting CRM for insurance agents, sales teams, and small businesses. Upload lead lists, send SMS campaigns and drip sequences, manage two-way conversations, and keep opt-out and consent records for TCPA and 10DLC compliance. The Text2Sale + AI plan adds AI replies, appointment booking that syncs to Google Calendar, and an AI calling receptionist that can answer, qualify, book, and transfer inbound calls.",
+    "> Text2Sale is a mass texting CRM for insurance agents, sales teams, and small businesses. Upload lead lists, send SMS campaigns and drip sequences, manage two-way conversations, and keep opt-out and consent records for TCPA and 10DLC compliance. The plan includes AI replies, appointment booking that syncs to Google Calendar, and an AI calling receptionist that can answer, qualify, book, and transfer inbound calls.",
     "",
-    "Pricing: Standard plan $39.99/month; Text2Sale + AI plan $119.99/month. AI texting and AI calling access are included with the AI plan. Texts are $0.012 per segment, AI replies $0.025 each, and AI-assisted calls $0.18 per minute. 10% off wallet deposits of $500 or more. No long-term contract.",
+    "Pricing: one plan at $39.99/month with AI texting and AI calling access included; usage is paid from a prepaid wallet. Outbound texts are $0.015 per segment ($0.0135 after a single wallet deposit of $500 or more), incoming texts are free, AI replies are $0.02 plus the text segments, calls are $0.025/minute outbound and $0.015/minute inbound, AI receptionist calls are $0.18/minute, and phone numbers are $1.50/month. No long-term contract.",
     "",
     `- [Home](${SITE_URL}/): Product overview, pricing, and FAQ`,
   ];

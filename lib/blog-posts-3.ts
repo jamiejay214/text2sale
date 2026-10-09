@@ -105,7 +105,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "Where do I add instructions in Text2Sale?",
         answer:
-          "On the Text2Sale + AI plan, AI instructions are set in your dashboard settings. The same instructions guide AI replies across your conversations, and you can switch AI off for any individual conversation.",
+          "In Text2Sale, AI instructions are set in your dashboard settings. The same instructions guide AI replies across your conversations, and you can switch AI off for any individual conversation.",
       },
     ],
     relatedSlugs: ["ai-appointment-booking-by-text", "ai-sms-replies-for-sales", "ai-texting-compliance", "how-to-book-appointments-by-text"],
@@ -273,7 +273,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "Does Text2Sale's AI work on weekends?",
         answer:
-          "On the Text2Sale + AI plan, AI replies whenever an inbound text arrives, including nights and weekends, and appointments sync to Google Calendar.",
+          "With AI replies turned on in Text2Sale, AI replies whenever an inbound text arrives, including nights and weekends, and appointments sync to Google Calendar.",
       },
     ],
     relatedSlugs: ["quiet-hours-and-texting-time-rules", "ai-appointment-booking-by-text", "missed-call-text-back", "appointment-reminder-text-templates"],
@@ -412,7 +412,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         heading: "Count the cost honestly",
         paragraphs: [
-          "Compare what AI replies cost with what the appointments are worth. On the Text2Sale + AI plan, AI replies are $0.025 each on top of the $0.012 per text segment. A conversation of ten AI replies costs well under a dollar, which is easy to justify if even a small share of those conversations becomes a sale, but it is still worth knowing the number.",
+          "Compare what AI replies cost with what the appointments are worth. In Text2Sale, AI replies are $0.02 each on top of the $0.015 per text segment, so a one-segment reply costs $0.035. A conversation of ten AI replies costs well under a dollar, which is easy to justify if even a small share of those conversations becomes a sale, but it is still worth knowing the number.",
         ],
       },
       {
@@ -444,7 +444,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "How much do AI replies cost in Text2Sale?",
         answer:
-          "On the Text2Sale + AI plan ($119.99 per month), AI replies cost $0.025 each, plus $0.012 per text segment sent.",
+          "AI access is included in the $39.99 per month Text2Sale plan. Each AI reply costs $0.02, plus $0.015 per text segment sent.",
       },
     ],
     relatedSlugs: ["sales-rep-texting-kpis", "sms-marketing-roi-metrics", "writing-instructions-for-an-ai-appointment-setter", "appointment-reminder-text-templates"],
@@ -663,7 +663,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         heading: "Running it from one place",
         paragraphs: [
-          "The sequence works best when calls and texts live in the same system, so each rep sees the whole history before dialing. Text2Sale includes a power dialer and a browser phone alongside texting, with outbound calls at $0.045 per minute and inbound at $0.025 per minute, so the text thread and the call happen in one workflow.",
+          "The sequence works best when calls and texts live in the same system, so each rep sees the whole history before dialing. Text2Sale includes a power dialer and a browser phone alongside texting, with outbound calls at $0.025 per minute and inbound at $0.015 per minute, so the text thread and the call happen in one workflow.",
         ],
       },
       {
@@ -694,7 +694,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "Does Text2Sale include a dialer?",
         answer:
-          "Yes. Text2Sale includes a power dialer and browser calling alongside texting. Outbound calls are $0.045 per minute and inbound calls are $0.025 per minute.",
+          "Yes. Text2Sale includes a power dialer and browser calling alongside texting. Outbound calls are $0.025 per minute and inbound calls are $0.015 per minute.",
       },
     ],
     relatedSlugs: ["sms-vs-cold-calling-leads", "how-fast-to-text-insurance-leads", "best-time-to-text-sales-leads", "tcpa-compliance-texting-leads"],
@@ -733,7 +733,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         heading: "Write a first text that sounds like you",
         paragraphs: [
-          "The automatic first message should read like a person, not a system notification. Name yourself and your business, reference what they asked for, and ask one easy question. On the Text2Sale + AI plan, the first message can be written by AI following your instructions; otherwise a friendly default introduction is used.",
+          "The automatic first message should read like a person, not a system notification. Name yourself and your business, reference what they asked for, and ask one easy question. In Text2Sale, the first message can be written by AI following your instructions; otherwise a friendly default introduction is used.",
         ],
         bullets: [
           "Use their first name if the form collects it",
@@ -783,7 +783,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "Can AI write the first text?",
         answer:
-          "On the Text2Sale + AI plan, the automatic first message can be written by AI following your instructions and industry. Without AI, a friendly default introduction is sent.",
+          "In Text2Sale, the automatic first message can be written by AI following your instructions and industry. Without AI, a friendly default introduction is sent.",
       },
     ],
     relatedSlugs: ["how-fast-to-text-insurance-leads", "sms-crm-integration", "how-to-build-an-sms-opt-in-list", "sms-consent-records"],
@@ -914,7 +914,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         heading: "Week 4: automation and routine",
         paragraphs: [
-          "Now add automation where it clearly helps: a drip sequence for people who did not reply, reminders for booked appointments, and, if you are on the AI plan, AI replies with instructions you have tested. Connect your web forms so new leads get an automatic first text.",
+          "Now add automation where it clearly helps: a drip sequence for people who did not reply, reminders for booked appointments, and AI replies with instructions you have tested. Connect your web forms so new leads get an automatic first text.",
           "Finally, set a routine: when you check the inbox each day, when campaigns go out, and a weekly look at reply rates and opt-outs. Routine is what keeps results improving after the first month.",
         ],
       },

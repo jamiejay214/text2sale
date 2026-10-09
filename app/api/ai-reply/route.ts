@@ -1,5 +1,5 @@
 import { authenticateWorkspaceOrInternal as authenticateOrInternal } from "@/lib/workspace-auth";
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calendar";
@@ -115,14 +115,19 @@ export async function POST(req: NextRequest) {
 
     const [profileRes, messagesRes, contactRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", userId).single(),
+      // The newest 30 messages. Ordering ascending with a limit returned the
+      // FIRST 30, so on a long thread the model never saw what the customer
+      // had just said and answered something from weeks ago.
       supabase
         .from("messages")
         .select("direction, body, created_at")
         .eq("conversation_id", conversationId)
-        .order("created_at", { ascending: true })
+        .order("created_at", { ascending: false })
         .limit(30),
+      // Scoped to the caller: a contact id from another workspace must not
+      // pull that tenant's lead into this prompt or receive this reply.
       contactId
-        ? supabase.from("contacts").select("*").eq("id", contactId).single()
+        ? supabase.from("contacts").select("*").eq("id", contactId).eq("user_id", userId).maybeSingle()
         : Promise.resolve({ data: null }),
     ]);
 
@@ -142,6 +147,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (sendReply && contactRes.data?.dnc) {
+      return NextResponse.json(
+        { error: "This contact has opted out (DNC). AI reply not sent." },
+        { status: 400 }
+      );
+    }
+
     if (sendReply && !(await hasEINCertificate(supabase, userId))) {
       return NextResponse.json(
         { error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
@@ -151,7 +163,7 @@ export async function POST(req: NextRequest) {
 
     const balance = Number(profile.wallet_balance) || 0;
 
-    const messages = messagesRes.data || [];
+    const messages = (messagesRes.data || []).slice().reverse();
     const contact = contactRes.data;
 
     const contactInfo = contact
@@ -324,7 +336,10 @@ BOOKING RULES — follow exactly:
 
       // Double-check against Google Calendar to catch conflicts with
       // manually-added events that aren't in the local appointments table.
-      const tz = inferTimezone(contact?.state) || "America/New_York";
+      // Slots were generated in the operator's business-hours zone, so the
+      // calendar check and event must use that zone too — using the
+      // contact's state put a 10 AM Eastern booking at 10 AM Pacific.
+      const tz = hours.timezone || inferTimezone(contact?.state) || "America/New_York";
       const calendarConflict = slotValid
         ? await checkCalendarConflict(userId, input.date, input.time, hours.slotDuration, tz)
         : false;
@@ -351,19 +366,17 @@ BOOKING RULES — follow exactly:
             title: input.title || "Appointment",
           };
 
-          // Fire-and-forget: push to Google Calendar. The appointment
-          // time is whatever the customer agreed to in conversation —
-          // which is implicitly in their local zone. Use the contact's
-          // state to resolve an IANA zone; fall back to Eastern so we
-          // never accidentally send a UTC-interpreted time.
-          createCalendarEvent(userId, {
+          // Push to Google Calendar after the response is sent. after()
+          // keeps the function alive for it; a bare promise could be cut
+          // off when the serverless function froze.
+          after(() => createCalendarEvent(userId, {
             date: input.date,
             time: input.time,
             title: input.title || "Appointment",
             contactName: `${contact?.first_name || "Unknown"} ${contact?.last_name || ""}`.trim(),
             contactPhone: contact?.phone || "",
             duration: hours.slotDuration || 30,
-            timeZone: inferTimezone(contact?.state) || "America/New_York",
+            timeZone: tz,
           })
             .then((googleEventId) => {
               if (googleEventId) {
@@ -381,7 +394,7 @@ BOOKING RULES — follow exactly:
             })
             .catch((err) => {
               console.error("Google Calendar sync failed (non-blocking):", err);
-            });
+            }));
         }
       }
 
@@ -391,7 +404,10 @@ BOOKING RULES — follow exactly:
       // appointment first:") instead of writing the confirmation text; if
       // the tool-call sibling text block is empty or pure reasoning we fall
       // through to a follow-up call with the tool result.
-      const cleanedSibling = textBlock?.text ? cleanAiSms(textBlock.text) : "";
+      // Text written alongside the tool call was written before the model
+      // knew whether the slot was free, so it usually reads "you're all
+      // set". Only use it when the booking actually went through.
+      const cleanedSibling = appointmentBooked && textBlock?.text ? cleanAiSms(textBlock.text) : "";
       if (cleanedSibling) {
         aiReply = cleanedSibling;
       } else {
@@ -434,7 +450,15 @@ BOOKING RULES — follow exactly:
         const followUpData = await followUp.json();
         const followUpText = followUpData.content?.find((c: { type: string }) => c.type === "text");
         const cleanedFollowUp = cleanAiSms(followUpText?.text || "");
-        aiReply = cleanedFollowUp || sanitizeForSms(`You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`);
+        aiReply = cleanedFollowUp || (appointmentBooked
+          ? sanitizeForSms(`You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`)
+          : "");
+        if (!aiReply) {
+          return NextResponse.json(
+            { error: "AI failed to generate a reply. Please try again." },
+            { status: 502 }
+          );
+        }
       }
     } else if (textBlock?.text) {
       const cleaned = cleanAiSms(textBlock.text);
