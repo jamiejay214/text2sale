@@ -2,102 +2,15 @@ import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireSameUser } from "@/lib/auth-guard";
+import { ensureVoiceRouting } from "@/lib/telnyx-voice";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID!;
-// Assign newly-purchased numbers to our WebRTC *credential connection*, not
-// the Voice API app. Browser calls register against the credential
-// connection (see /api/telnyx/webrtc-token), and Telnyx only routes
-// outbound calls when the caller-ID number shares a connection with the
-// registered SIP user. TELNYX_VOICE_APP_ID points at a separate Call
-// Control app and is the WRONG thing to stamp on new numbers — using it
-// silently breaks outbound calling from the browser.
-const voiceAppId =
-  process.env.TELNYX_CREDENTIAL_CONNECTION_ID ||
-  process.env.TELNYX_VOICE_APP_ID ||
-  process.env.TELNYX_CALL_CONTROL_APP_ID ||
-  "";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-// Numbers are connected with no upfront activation fee; recurring billing is $1.50/month.
-
-// ─── Configure new number for voice + HD voice ───────────────────────────
-// Telnyx provisions numbers in a couple of seconds. Once the number is
-// live, we PATCH its voice settings to:
-//   (a) assign it to our Voice API app (so outbound browser calls can use
-//       it as the caller-ID), and
-//   (b) enable HD voice so G.722 codec kicks in for browser WebRTC.
-// This is idempotent and best-effort — any failure here just means the
-// user can still text from the number; they'd need to manually assign it
-// later to call.
-async function configureVoiceOnNumber(e164: string) {
-  if (!voiceAppId) return { ok: false, reason: "no-voice-app-id" as const };
-
-  // Find the phone number id (Telnyx needs the UUID, not the E.164).
-  // Retry briefly — Telnyx may not have indexed the order yet.
-  let phoneNumberId: string | null = null;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (attempt > 0) await new Promise((r) => setTimeout(r, 1500));
-    const listRes = await fetch(
-      `https://api.telnyx.com/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } }
-    );
-    const listData = await listRes.json().catch(() => ({}));
-    const id = listData?.data?.[0]?.id as string | undefined;
-    if (id) {
-      phoneNumberId = id;
-      break;
-    }
-  }
-  if (!phoneNumberId) return { ok: false, reason: "number-not-found" as const };
-
-  // Assign connection + enable HD voice via the voice-settings endpoint.
-  // Telnyx allows both fields on the same PATCH.
-  const voiceRes = await fetch(
-    `https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}/voice`,
-    {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        connection_id: voiceAppId,
-        tech_prefix_enabled: false,
-      }),
-    }
-  );
-  const voiceBody = await voiceRes.json().catch(() => ({}));
-  if (!voiceRes.ok || voiceBody?.errors) {
-    return {
-      ok: false,
-      reason: "voice-patch-failed" as const,
-      detail: Array.isArray(voiceBody?.errors)
-        ? voiceBody.errors.map((e: { detail?: string; title?: string }) => e.detail || e.title).join(", ")
-        : `HTTP ${voiceRes.status}`,
-    };
-  }
-
-  // HD voice lives on the number resource (not /voice) — best-effort.
-  try {
-    await fetch(`https://api.telnyx.com/v2/phone_numbers/${phoneNumberId}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ hd_voice_enabled: true }),
-    });
-  } catch {
-    // non-fatal — HD voice will still work via the connection's G.722 codec
-  }
-
-  return { ok: true as const };
-}
 
 export async function POST(req: NextRequest) {
   try {
@@ -122,14 +35,10 @@ export async function POST(req: NextRequest) {
       // User selected a specific number
       numberToBuy = phoneNumber.startsWith("+") ? phoneNumber : `+1${phoneNumber.replace(/\D/g, "")}`;
     } else {
-      // Search for first available — SMS-only. We used to require sms+voice
-      // + HD voice so browser calling worked, but voice-capable locals cost
-      // nearly 2x on Telnyx and nobody's using the click-to-call feature
-      // yet. SMS-only local numbers are cheaper and available in more area
-      // codes, which is what this app actually sells.
+      // Require both SMS and voice for the texting and browser-calling workspace.
       const params = new URLSearchParams({
         "filter[country_code]": "US",
-        "filter[features]": "sms",
+        "filter[features]": "sms,voice",
         "filter[phone_number_type]": "local",
         "filter[limit]": "40",
       });
@@ -142,15 +51,14 @@ export async function POST(req: NextRequest) {
       });
       const searchData = await searchRes.json();
 
-      // SMS-only filter — voice capability is no longer required since the
-      // click-to-call feature is gated off.
+      // Check returned capabilities as well as the supplier search filter.
       type ApiFeature = string | { name?: string };
       type ApiNumber = { phone_number: string; features?: ApiFeature[] };
       const candidates = ((searchData?.data as ApiNumber[] | undefined) || []).filter((n) => {
         const feats = (n.features || []).map((f: ApiFeature) =>
           (typeof f === "string" ? f : f?.name || "").toLowerCase()
         );
-        return feats.includes("sms");
+        return feats.includes("sms") && feats.includes("voice");
       });
 
       if (candidates.length === 0) {
@@ -209,12 +117,9 @@ export async function POST(req: NextRequest) {
     const digits = numberToBuy.replace(/\D/g, "").slice(1); // remove + and country code
     const display = `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
 
-    // Voice / HD voice provisioning intentionally skipped — this app
-    // sells SMS-only numbers. configureVoiceOnNumber() is still in the
-    // file in case we reintroduce click-to-call later, but the call site
-    // is removed so we don't pay for voice features nobody uses.
-    const voiceConfigStatus: "ok" | "failed" | "skipped" = "skipped";
-    const voiceConfigDetail: string | null = null;
+    const voice = await ensureVoiceRouting(numberToBuy);
+    const voiceConfigStatus = voice.ok ? "ok" : "failed";
+    const voiceConfigDetail = voice.ok ? null : voice.error;
 
     // Register the number in owned_phone_numbers so inbound SMS routing
     // (and anything else that needs a fast "who owns this?" lookup) finds it

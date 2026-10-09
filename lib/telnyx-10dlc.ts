@@ -353,9 +353,7 @@ export async function assignNumberToCampaign(e164: string, campaignId: string) {
 }
 
 // ── Number provisioning ────────────────────────────────────────────────────
-// Mirrors the search/order behaviour of /api/buy-number: SMS-only local
-// numbers, because voice-capable locals cost roughly double and the
-// click-to-call feature is gated off.
+// Both activation and interactive purchases require SMS + voice capabilities.
 
 type ApiFeature = string | { name?: string };
 type ApiNumber = { phone_number: string; features?: ApiFeature[] };
@@ -363,7 +361,7 @@ type ApiNumber = { phone_number: string; features?: ApiFeature[] };
 export async function findAvailableNumber(areaCode?: string): Promise<string | null> {
   const params = new URLSearchParams({
     "filter[country_code]": "US",
-    "filter[features]": "sms",
+    "filter[features]": "sms,voice",
     "filter[phone_number_type]": "local",
     "filter[limit]": "40",
   });
@@ -378,7 +376,7 @@ export async function findAvailableNumber(areaCode?: string): Promise<string | n
     const feats = (n.features || []).map((f: ApiFeature) =>
       (typeof f === "string" ? f : f?.name || "").toLowerCase()
     );
-    return feats.includes("sms");
+    return feats.includes("sms") && feats.includes("voice");
   });
 
   return candidates[0]?.phone_number || null;

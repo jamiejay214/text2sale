@@ -29,6 +29,7 @@
 //      reference id so Telnyx refuses a duplicate, and a crashed run simply
 //      lets the lease expire.
 
+import { ensureVoiceRouting } from "./telnyx-voice";
 import { createClient } from "@supabase/supabase-js";
 import type { A2PRegistration, OwnedNumber } from "./types";
 import {
@@ -511,7 +512,11 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
       const { digits, display } = displayNumber(n.number);
       await ensureOwnedRow(db, profile.id, digits, display);
       const res = await assignNumberToCampaign(`+1${digits}`, campaignId);
-      if (res.assigned) attached++;
+      if (res.assigned) {
+        const voice = await ensureVoiceRouting(`+1${digits}`);
+        if (voice.ok) attached++;
+        else lastError = voice.error || "Voice routing is not ready";
+      }
       else lastError = res.error || "attach failed";
     }
     if (attached === Math.min(owned.length, 10)) return { status: "NUMBER_ASSIGNED", note: `Attached ${attached} number(s)` };
@@ -581,6 +586,8 @@ async function provisionNumber(db: Db, profile: ProfileRow): Promise<NumberOutco
     // Number is owned but not yet attached — retry attachment later.
     return { status: "CAMPAIGN_APPROVED", note: `Bought ${order.number}, attach pending: ${assigned.error}` };
   }
+  const voice = await ensureVoiceRouting(order.number);
+  if (!voice.ok) return { status: "CAMPAIGN_APPROVED", note: voice.error || "Voice routing is not ready" };
   return { status: "NUMBER_ASSIGNED", note: `Provisioned ${order.number}` };
 }
 

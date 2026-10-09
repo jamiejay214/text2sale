@@ -1,3 +1,4 @@
+import { ensureVoiceRouting } from "@/lib/telnyx-voice";
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -59,9 +60,17 @@ export async function GET(req: NextRequest) {
     // Load existing credential id from profile
     const { data: profile } = await adminSupabase
       .from("profiles")
-      .select("telnyx_credential_id")
+      .select("telnyx_credential_id, owned_numbers")
       .eq("id", userId)
       .single();
+
+    const numbers = Array.isArray(profile?.owned_numbers) ? profile.owned_numbers : [];
+    if (!numbers.length) return NextResponse.json({ error: "Connect a business number before calling." }, { status: 409 });
+    for (const number of numbers) {
+      const digits = String(number.number || "").replace(/\D/g, "");
+      const routing = await ensureVoiceRouting(`+${digits.length === 10 ? "1" : ""}${digits}`);
+      if (!routing.ok) return NextResponse.json({ error: routing.error }, { status: 503 });
+    }
 
     let credentialId = profile?.telnyx_credential_id as string | null;
 
