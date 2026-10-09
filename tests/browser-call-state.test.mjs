@@ -16,3 +16,7 @@ test('failed calls expose provider reasons; normal hangups do not become errors'
  assert.match(exports.callFailure({sipCode:404}),/Check the number/);
  assert.equal(exports.callFailure({sipCode:200,cause:'NORMAL_CLEARING'}),undefined);
 });
+test('488 media encryption failures explain the SRTP setting',()=>{
+ assert.match(exports.callFailure({sipCode:488,sipReason:'Media Encryption Required'}),/SRTP/);
+ assert.match(exports.callFailure({sipCode:488,sipReason:'Not Acceptable Here'}),/488.*Not Acceptable Here/);
+});

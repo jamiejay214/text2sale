@@ -14,6 +14,7 @@ export function callFailure(call: { cause?: string; causeCode?: number; sipCode?
     return undefined;
   }
   if (call.sipCode === 486 || call.cause === "USER_BUSY") return "The person you called is busy. Try again later.";
+  if (call.sipCode === 488 && /encrypt/i.test(call.sipReason || "")) return "Call could not connect: the calling line requires encrypted media, which browser calls can't use. Refresh the page and call again. If it repeats, turn off SRTP on the Telnyx SIP connection.";
   if (call.sipCode === 404) return "The destination number could not be reached. Check the number.";
   return `Call could not connect (${call.sipCode}): ${call.sipReason || call.cause || "The provider rejected the call"}.`;
 }

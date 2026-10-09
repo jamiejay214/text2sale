@@ -28,3 +28,25 @@ test('missing config, invalid numbers, lookup failures and routing failures fail
  }
  const s=setup([]);assert.equal((await s.run('bad')).ok,false);assert.equal(s.calls.length,0);
 });
+function setupMedia(responses, connection='connection') {
+ const calls=[]; const exports={};
+ vm.runInNewContext(ts.transpileModule(readFileSync('lib/telnyx-voice.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{
+ exports, process:{env:{TELNYX_CREDENTIAL_CONNECTION_ID:connection}},encodeURIComponent,
+ require:()=>({telnyxRequest:async(...args)=>{calls.push(args);return responses.shift();}})
+ });
+ return {calls,run:exports.ensureWebrtcMedia};
+}
+test('turns off SRTP on the WebRTC connection so browser calls are not rejected with 488',async()=>{
+ const s=setupMedia([{ok:true,json:{data:{encrypted_media:'SRTP'}}},{ok:true,json:{data:{encrypted_media:null}}}]);
+ assert.equal((await s.run()).ok,true);
+ assert.equal(s.calls[1][0],'/v2/credential_connections/connection');
+ assert.equal(s.calls[1][1].method,'PATCH');
+ assert.equal(JSON.parse(s.calls[1][1].body).encrypted_media,null);
+});
+test('leaves an unencrypted connection alone and reports failures',async()=>{
+ const ok=setupMedia([{ok:true,json:{data:{encrypted_media:null}}}]);
+ assert.equal((await ok.run()).ok,true);assert.equal(ok.calls.length,1);
+ for(const s of [setupMedia([],''),setupMedia([{ok:false,json:{}}]),setupMedia([{ok:true,json:{data:{encrypted_media:'SRTP'}}},{ok:false,json:{}}])]){
+ const r=await s.run();assert.equal(r.ok,false);assert.ok(r.error);
+ }
+});

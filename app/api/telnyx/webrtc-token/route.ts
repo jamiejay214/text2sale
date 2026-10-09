@@ -1,4 +1,4 @@
-import { ensureVoiceRouting } from "@/lib/telnyx-voice";
+import { ensureVoiceRouting, ensureWebrtcMedia } from "@/lib/telnyx-voice";
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -66,6 +66,8 @@ export async function GET(req: NextRequest) {
 
     const numbers = Array.isArray(profile?.owned_numbers) ? profile.owned_numbers : [];
     if (!numbers.length) return NextResponse.json({ error: "Connect a business number before calling." }, { status: 409 });
+    const media = await ensureWebrtcMedia();
+    if (!media.ok) return NextResponse.json({ error: media.error }, { status: 503 });
     for (const number of numbers) {
       const digits = String(number.number || "").replace(/\D/g, "");
       const routing = await ensureVoiceRouting(`+${digits.length === 10 ? "1" : ""}${digits}`);
