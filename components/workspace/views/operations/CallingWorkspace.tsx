@@ -192,18 +192,24 @@ function Dialer({ profile, onNavigate }: Props) {
   const dial = useCallback(async (to: string, contact?: Contact) => {
     if (!CALLING_ENABLED) { setNotice("Calling is temporarily paused while the provider connection is being finalized."); return; }
     if (!fromNumber) { setNotice("Add a business number before placing calls."); return; }
-    if (!token || !phoneRef.current) { setNotice("The browser phone is still connecting. Try again in a moment."); return; }
+    if (!token || !phoneRef.current || !phoneStatus.ready) { setNotice("The browser phone is still connecting. Try again in a moment."); return; }
     const digits = to.replace(/\D/g, "");
     if (digits.length < 10) { setNotice("Enter a complete phone number."); return; }
     const destination = `+${digits.startsWith("1") ? digits : `1${digits}`}`;
     const fromDigits = fromNumber.replace(/\D/g, "");
     const from = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
     setActiveContact(contact || null);
-    phoneRef.current.makeCall(destination, from);
+    try {
+      phoneRef.current.makeCall(destination, from);
+      setNotice("");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Could not start the call. Please retry.");
+      return;
+    }
     const response = await authFetch("/api/calls/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: destination, from, contactId: contact?.id || null }) });
     const data = await response.json().catch(() => ({}));
     if (data.callId) setCallId(data.callId);
-  }, [fromNumber, token]);
+  }, [fromNumber, token, phoneStatus.ready]);
 
   const hangup = useCallback(async () => {
     phoneRef.current?.hangup();
@@ -246,14 +252,14 @@ function Dialer({ profile, onNavigate }: Props) {
     <>
       <BrowserPhone ref={phoneRef} token={token} onStateChange={setPhoneStatus} />
       <PageHeader eyebrow="Calling workspace" title="Call one lead—or fifty—without losing your rhythm." description="A cleaner browser dialer, keyboard input, organized call history, and a back-to-back queue with lead context." actions={<><button className="v2-btn" onClick={() => onNavigate("contacts")}><Users size={16} /> Choose leads</button><button className="v2-btn v2-btn-primary" onClick={startQueue}><Play size={16} /> Start power queue</button></>} />
-      {notice && <div className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}>×</button></div>}
+      {(notice || phoneStatus.error) && <div role="alert" className="v2-notice is-error">{notice || phoneStatus.error}<button onClick={() => setNotice("")}>×</button></div>}
       {!CALLING_ENABLED && <div className="v2-provider-banner"><Clock3 size={18} /><div><strong>Calling provider connection is temporarily paused</strong><span>The workspace and queue are ready; placing live calls will unlock once routing is confirmed.</span></div><button onClick={() => onNavigate("settings", "numbers")}>Manage numbers</button></div>}
       <div className="v2-calling-layout">
         <Panel className="v2-dialer-card">
           <div className="v2-panel-head"><div><h2>Browser dialer</h2><p>From {fromNumber || "No number selected"}</p></div><StatusPill tone={phoneStatus.ready ? "success" : "warning"}>{phoneStatus.ready ? "Phone ready" : "Connecting"}</StatusPill></div>
           <div className="v2-dial-display"><small>{activeContact ? nameOf(activeContact) : "Enter a phone number"}</small><input aria-label="Phone number" value={number} onChange={(event) => setNumber(event.target.value.replace(/[^0-9+*#() -]/g, ""))} placeholder="(000) 000-0000" /><span>{inCall ? phoneStatus.callState : "Use your keyboard or keypad"}</span></div>
           <div className="v2-keypad">{KEYS.map(([key, letters]) => <button key={key} onClick={() => append(key)}><strong>{key}</strong><small>{letters}</small></button>)}</div>
-          <div className="v2-dial-actions">{inCall ? <><button className={`v2-call-control ${phoneStatus.muted ? "is-on" : ""}`} onClick={() => phoneStatus.muted ? phoneRef.current?.unmute() : phoneRef.current?.mute()}>{phoneStatus.muted ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="v2-hangup" onClick={hangup}><PhoneOff size={21} /></button><button className="v2-call-control"><Volume2 size={18} /></button></> : <><button className="v2-dial-clear" onClick={() => setNumber((current) => current.slice(0, -1))}>Delete</button><button className="v2-call-start" onClick={() => dial(number)} disabled={!number}><PhoneCall size={21} /></button><button className="v2-dial-clear" onClick={() => setNumber("")}>Clear</button></>}</div>
+          <div className="v2-dial-actions">{inCall ? <><button className={`v2-call-control ${phoneStatus.muted ? "is-on" : ""}`} onClick={() => phoneStatus.muted ? phoneRef.current?.unmute() : phoneRef.current?.mute()}>{phoneStatus.muted ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="v2-hangup" onClick={hangup}><PhoneOff size={21} /></button><button className="v2-call-control"><Volume2 size={18} /></button></> : <><button className="v2-dial-clear" onClick={() => setNumber((current) => current.slice(0, -1))}>Delete</button><button className="v2-call-start" onClick={() => dial(number)} disabled={!number || !phoneStatus.ready}><PhoneCall size={21} /></button><button className="v2-dial-clear" onClick={() => setNumber("")}>Clear</button></>}</div>
           <p className="v2-keyboard-hint"><kbd>0–9</kbd> type · <kbd>Enter</kbd> call · <kbd>Esc</kbd> clear</p>
         </Panel>
 
