@@ -16,6 +16,8 @@ import {
   Phone, MessageSquare, Download, Flame, Inbox, BellRing, Check,
 } from "lucide-react";
 import { Panel, BarList, Donut, type Bar } from "./CommandKit";
+import type { LeadRow, LeadsResult } from "@/lib/leads-intel";
+import ProspectActions from "./ProspectActions";
 
 type ChannelRow = { channel: string; sessions: number; visitors: number; pct: number };
 type ReferrerRow = { domain: string; sessions: number };
@@ -94,23 +96,6 @@ const BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", abg: "#22d3ee"
 const LEAD_BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", aibusinessgrowth: "#22d3ee", trustedquotes: "#34d399" };
 const LEAD_BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", aibusinessgrowth: "AI Biz Growth", trustedquotes: "Trusted Quotes" };
 
-type LeadRow = {
-  business: "text2sale" | "aibusinessgrowth" | "trustedquotes";
-  kind: "signup" | "lead" | "partial";
-  name: string;
-  email: string | null;
-  phone: string | null;
-  detail: string;
-  location: string | null;
-  source: string | null;
-  status: string | null;
-  hot: boolean;
-  at: string;
-};
-type LeadsResult = {
-  counts: { text2sale: number; aibusinessgrowth: number; trustedquotes: number; recoverable: number };
-  leads: LeadRow[];
-};
 
 function timeAgo(s: string) {
   if (!s) return "—";
@@ -157,6 +142,9 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
 
   const [leadsData, setLeadsData] = useState<LeadsResult | null>(null);
   const [leadsLoading, setLeadsLoading] = useState(true);
+  const [leadsError, setLeadsError] = useState("");
+  const [leadSearch, setLeadSearch] = useState("");
+  const [leadStage, setLeadStage] = useState("all");
   const [leadFilter, setLeadFilter] = useState<"all" | "recoverable" | LeadRow["business"]>("all");
   const [digestState, setDigestState] = useState<"idle" | "sending" | "sent">("idle");
 
@@ -220,9 +208,13 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
     }
     if (!token) return;
     setLeadsLoading(true);
+    setLeadsError("");
     try {
       const res = await fetch("/api/command-center/leads", { headers });
-      if (res.ok) setLeadsData(await res.json());
+      if (!res.ok) throw new Error("Could not load leads. Please refresh.");
+      setLeadsData(await res.json());
+    } catch (reason) {
+      setLeadsError(reason instanceof Error ? reason.message : "Could not load leads.");
     } finally {
       setLeadsLoading(false);
     }
@@ -250,10 +242,19 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
     loadLeads();
   }, [loadIntel, loadLeads]);
 
+  useEffect(() => {
+    if (demo || !token) return;
+    const interval = setInterval(() => { if (document.visibilityState === "visible") void loadLeads(); }, 60_000);
+    return () => clearInterval(interval);
+  }, [demo, token, loadLeads]);
+
   const exportCsv = async (business?: string, kind?: string) => {
+    business = business || (!isAll ? scope : undefined);
+    kind = kind || (leadStage !== "all" ? leadStage : undefined);
     const qs = new URLSearchParams();
     if (business) qs.set("business", business);
     if (kind) qs.set("kind", kind);
+    if (leadSearch.trim()) qs.set("q", leadSearch.trim());
     if (demo) {
       const rows = (leadsData?.leads || []).filter((l) => (!business || l.business === business) && (!kind || l.kind === kind));
       const header = ["business", "kind", "name", "email", "phone", "detail", "location", "source", "status", "created_at"];
@@ -271,7 +272,9 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
   const effectiveLeadFilter: "all" | "recoverable" | LeadRow["business"] = isAll ? leadFilter : (scope as LeadRow["business"]);
   const filteredLeads = (leadsData?.leads || []).filter((l) =>
     effectiveLeadFilter === "all" ? true : effectiveLeadFilter === "recoverable" ? l.kind === "partial" && l.hot : l.business === effectiveLeadFilter
-  );
+  ).filter(l => (leadStage === "all" || l.kind === leadStage) &&
+    [l.name,l.email,l.phone,l.detail,l.source,l.campaign,l.notes].join(" ").toLowerCase().includes(leadSearch.toLowerCase().trim()));
+  const recoverable = (leadsData?.leads || []).filter(l => (isAll || l.business === scope) && l.kind === "partial" && l.hot).length;
 
   return (
     <div className="mt-8 space-y-6">
@@ -299,15 +302,15 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
           </div>
         }
       />
-      {(isAll || scope === "trustedquotes") && leadsData && leadsData.counts.recoverable > 0 && (
+      {leadsData && recoverable > 0 && (
         <button
-          onClick={() => setLeadFilter("recoverable")}
+          onClick={() => { setLeadFilter("recoverable"); setLeadStage("partial"); }}
           className="flex w-full items-center gap-3 rounded-2xl border border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-rose-500/10 p-4 text-left transition hover:from-amber-500/20"
         >
           <Flame className="h-6 w-6 shrink-0 text-amber-400" />
           <div className="flex-1">
-            <div className="text-sm font-semibold text-white">{leadsData.counts.recoverable} abandoned quotes you can recover right now</div>
-            <div className="text-[11px] text-white/55">Trusted Quotes visitors who started a quote and left contact info but didn&apos;t finish. Text or call them — this is the cheapest revenue you&apos;ll make today.</div>
+            <div className="text-sm font-semibold text-white">{recoverable} unfinished requests with contact details</div>
+            <div className="text-[11px] text-white/55">People who saved contact details but have not finished. Review the request and contact permission before following up.</div>
           </div>
           <ArrowUpRight className="h-4 w-4 text-amber-400" />
         </button>
@@ -338,7 +341,13 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
             ))}
           </div>
         )}
-        {leadsLoading && !leadsData ? <SkeletonRows n={8} /> : <LeadInbox leads={filteredLeads} />}
+        <div className="mb-4 flex flex-wrap gap-3">
+          <input aria-label="Search leads" placeholder="Search name, email, phone or campaign" value={leadSearch} onChange={e => setLeadSearch(e.target.value)} className="min-w-56 flex-1 rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-white" />
+          <select aria-label="Lead stage" value={leadStage} onChange={e => setLeadStage(e.target.value)} className="rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-white"><option value="all">All stages</option><option value="lead">Inquiries</option><option value="partial">Unfinished</option><option value="signup">Signed up</option></select>
+        </div>
+        {leadsError && <p role="alert" className="mb-4 text-sm text-rose-200">{leadsError}</p>}
+        <p className="mb-3 text-xs text-slate-300">Latest leads · Refreshes every minute · {filteredLeads.length} shown</p>
+        {leadsLoading && !leadsData ? <SkeletonRows n={8} /> : <LeadInbox leads={filteredLeads} token={token} demo={demo} onSaved={loadLeads} />}
       </Panel>
 
       {/* ─── WEBSITE TRAFFIC INTELLIGENCE (Text2Sale tracker) — All / Text2Sale only ─── */}
@@ -664,22 +673,22 @@ function triggerDownload(content: string, filename: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-function LeadInbox({ leads }: { leads: LeadRow[] }) {
+function LeadInbox({ leads, token, demo, onSaved }: { leads: LeadRow[]; token?: string | null; demo: boolean; onSaved: () => void }) {
   if (!leads.length) return <p className="text-xs text-white/40">No leads in this view yet. As your sites capture leads, they appear here instantly.</p>;
   const kindBadge: Record<LeadRow["kind"], { label: string; color: string }> = {
     signup: { label: "SIGNUP", color: "#a78bfa" },
     lead: { label: "LEAD", color: "#34d399" },
-    partial: { label: "ABANDONED", color: "#fbbf24" },
+    partial: { label: "UNFINISHED", color: "#fbbf24" },
   };
   return (
     <div className="space-y-1.5 max-h-[560px] overflow-y-auto pr-1">
-      {leads.map((l, i) => {
+      {leads.map((l) => {
         const b = kindBadge[l.kind];
-        const sms = l.phone ? `sms:${l.phone.replace(/[^\d+]/g, "")}` : null;
-        const tel = l.phone ? `tel:${l.phone.replace(/[^\d+]/g, "")}` : null;
+        const sms = l.phone && !l.id ? `sms:${l.phone.replace(/[^\d+]/g, "")}` : null;
+        const tel = l.phone && !l.id ? `tel:${l.phone.replace(/[^\d+]/g, "")}` : null;
         const mail = l.email ? `mailto:${l.email}` : null;
         return (
-          <div key={i} className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 transition hover:border-white/10">
+          <div key={`${l.business}:${l.id || l.email || l.phone}:${l.at}`} className="rounded-xl border border-white/5 bg-white/[0.02] px-3 py-2.5 transition hover:border-white/10">
             <div className="flex flex-wrap items-center gap-2 text-xs">
               {l.hot && <Flame className="h-3.5 w-3.5 shrink-0 text-amber-400" />}
               <span className="font-semibold text-white/95">{l.name}</span>
@@ -688,11 +697,13 @@ function LeadInbox({ leads }: { leads: LeadRow[] }) {
               <span className="ml-auto text-[10px] text-white/35">{timeAgo(l.at)}</span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/50">
-              <span>{l.detail}</span>
+              <span className="break-words">{l.detail}</span>
               {l.location && <span>📍 {l.location}</span>}
-              {l.source && <span>🔗 {l.source}</span>}
+              {l.source && <span>Source: {l.source}</span>}
+              {l.campaign && <span>Campaign: {l.campaign}</span>}
             </div>
-            {(sms || tel || mail) && (
+            {l.id && <p className="mt-2 text-xs text-slate-300">{l.email} · {l.phone || "No phone provided"} · Email follow-up requested; no SMS opt-in</p>}
+            {l.followup !== "do_not_contact" && (sms || tel || mail) && (
               <div className="mt-2 flex flex-wrap gap-1.5">
                 {sms && <a href={sms} className="flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[11px] font-medium text-emerald-300 hover:bg-emerald-500/20"><MessageSquare className="h-3 w-3" /> Text</a>}
                 {tel && <a href={tel} className="flex items-center gap-1 rounded-md border border-cyan-500/30 bg-cyan-500/10 px-2 py-1 text-[11px] font-medium text-cyan-300 hover:bg-cyan-500/20"><Phone className="h-3 w-3" /> Call</a>}
@@ -700,6 +711,7 @@ function LeadInbox({ leads }: { leads: LeadRow[] }) {
                 <span className="flex items-center text-[10px] text-white/30">{l.phone || l.email}</span>
               </div>
             )}
+            {l.id && <ProspectActions lead={l} token={token} demo={demo} onSaved={onSaved} />}
           </div>
         );
       })}
@@ -763,6 +775,7 @@ function IdeaCard({ idea }: { idea: Idea }) {
 function demoLeads(): LeadsResult {
   const now = Date.now();
   return {
+    generatedAt: new Date().toISOString(),
     counts: { text2sale: 2, aibusinessgrowth: 1, trustedquotes: 4, recoverable: 3 },
     leads: [
       { business: "trustedquotes", kind: "partial", name: "Maria Gomez", email: "maria.g@gmail.com", phone: "+18135550142", detail: "ACA / Marketplace · stopped at step 4", location: "Tampa, FL", source: "facebook", status: "abandoned", hot: true, at: new Date(now - 9 * 60_000).toISOString() },

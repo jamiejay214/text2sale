@@ -33,6 +33,10 @@ function abgClient(): SupabaseClient {
 }
 
 export type LeadRow = {
+  id?: string;
+  notes?: string;
+  followup?: string;
+  campaign?: string | null;
   business: "text2sale" | "aibusinessgrowth" | "trustedquotes";
   kind: "signup" | "lead" | "partial";
   name: string;
@@ -87,6 +91,38 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
       });
     }
   } catch { /* skip */ }
+
+  // Contact-first signup attempts and website inquiries. Match account
+  // creation server-side so callers cannot mark someone else as converted.
+  const { data: prospects, error: prospectError } = await main.from("text2sale_prospects")
+    .select("id,name,email,phone,kind,industry,message,source,campaign,path,status,notes,created_at,consent_at")
+    .order("created_at", { ascending: false }).limit(limitPer);
+  if (prospectError) throw new Error("Text2Sale prospects are temporarily unavailable. Please retry.");
+  const emails = (prospects || []).map(r => r.email);
+  const { data: matched, error: matchError } = emails.length ? await main.from("profiles")
+    .select("first_name,last_name,email,phone,subscription_status,role,free_subscription,created_at").in("email", emails) : { data: [], error: null };
+  if (matchError) throw new Error("Signup status could not be loaded. Please retry.");
+  for (const r of prospects || []) {
+    const profile = (matched || []).find(p => s(p.email).toLowerCase() === s(r.email).toLowerCase());
+    if (profile?.role === "admin") continue;
+    const existing = leads.find(l => l.business === "text2sale" && l.email?.toLowerCase() === s(r.email).toLowerCase());
+    const closed = ["won", "not_interested", "do_not_contact"].includes(r.status);
+    const attributes = { id: s(r.id), notes: s(r.notes), followup: s(r.status), campaign: nz(r.campaign), source: nz(r.source) };
+    if (existing) { Object.assign(existing, attributes); continue; }
+    leads.push({
+      ...attributes,
+      business: "text2sale",
+      kind: profile ? "signup" : r.kind === "signup" ? "partial" : "lead",
+      name: profile ? `${s(profile.first_name)} ${s(profile.last_name)}`.trim() || s(r.name) : s(r.name),
+      email: nz(r.email), phone: nz(profile?.phone) || nz(r.phone),
+      detail: profile ? (profile.free_subscription ? "Comped account" : ["active", "canceling"].includes(s(profile.subscription_status)) ? "Paying subscriber" : "Account created · payment/setup pending")
+        : r.kind === "signup" ? "Contact details saved · account not created" : [nz(r.industry), nz(r.message)].filter(Boolean).join(" · ") || "Website inquiry",
+      location: null,
+      status: profile ? nz(profile.subscription_status) : nz(r.status),
+      hot: !profile && !closed,
+      at: s(r.created_at),
+    });
+  }
 
   // ── aibusinessgrowth website_leads (own project, or legacy fallback) ──────
   try {

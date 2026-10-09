@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
 import MarketingHome from "@/components/MarketingHome";
+import { captureProspect, FOLLOWUP_NOTICE } from "@/lib/prospect-capture";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
 
 export default function HomeClient({
@@ -38,6 +39,25 @@ export default function HomeClient({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  const [signupStep, setSignupStep] = useState<1 | 2>(1);
+  const [followup, setFollowup] = useState(false);
+  const savedContact = useRef("");
+
+  // Capture the contact step even when the visitor never presses Continue.
+  // The visible permission control is required; passwords never leave this form.
+  useEffect(() => {
+    if (mode !== "signup" || !followup || !firstName.trim() || !lastName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signupEmail.trim())) return;
+    const normalizedPhone = phone.replace(/[^\d+]/g, "");
+    if (!/^\+?\d{10,15}$/.test(normalizedPhone)) return;
+    const signature = signupEmail.trim().toLowerCase();
+    if (savedContact.current === signature) return;
+    const timer = setTimeout(() => {
+      captureProspect({ name: `${firstName.trim()} ${lastName.trim()}`, email: signupEmail, phone, kind: "signup", followup: true })
+        .then(() => { savedContact.current = signature; })
+        .catch(() => { /* Continue retries and reports errors without blocking typing. */ });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mode, followup, firstName, lastName, signupEmail, phone]);
 
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
@@ -59,6 +79,7 @@ export default function HomeClient({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter") {
       if (mode === "login") handleLogin();
+      else if (signupStep === 1) handleContactStep();
       else handleSignup();
     }
   };
@@ -87,6 +108,18 @@ export default function HomeClient({
     }
   };
 
+  const handleContactStep = async () => {
+    if (loading) return;
+    setError("");
+    if (!firstName.trim() || !lastName.trim() || !phone.trim()) { setError("Enter your first name, last name and phone number."); return; }
+    setLoading(true);
+    try {
+      await captureProspect({ name: `${firstName.trim()} ${lastName.trim()}`, email: signupEmail, phone, kind: "signup", followup });
+      setSignupStep(2);
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Could not save your details. Please try again."); }
+    finally { setLoading(false); }
+  };
+
   const handleSignup = async () => {
     if (loading) return;
     setError("");
@@ -103,14 +136,19 @@ export default function HomeClient({
     if (!agreedToLiability) return setError("You must acknowledge sole responsibility for all messaging activity.");
 
     setLoading(true);
-    const result = await signupUser({
+    let result;
+    try { result = await signupUser({
       firstName,
       lastName,
       email: signupEmail,
       phone,
       password,
       referralCode,
-    });
+    }); } catch {
+      setError("Could not create your account. Please try again.");
+      setLoading(false);
+      return;
+    }
     setLoading(false);
 
     if (!result.success) {
@@ -316,6 +354,9 @@ export default function HomeClient({
                       <p className="mt-1 text-xs text-zinc-400">AI included. Payment is required immediately after account creation; there is no free trial.</p>
                     </div>
 
+                    <p className="text-sm text-lime-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>
+                    {error && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-rose-200">{error}</p>}
+                    {signupStep === 1 ? <>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">First name</label>
@@ -337,6 +378,11 @@ export default function HomeClient({
                       <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="(555) 123-4567" />
                     </div>
 
+                    <label className="flex gap-3 text-sm leading-6 text-zinc-200"><input type="checkbox" checked={followup} onChange={e => setFollowup(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-lime-300" />{FOLLOWUP_NOTICE}</label>
+                    <p className="text-xs text-zinc-300">This does not subscribe you to marketing texts or automated calls. <Link href="/privacy-policy" className="text-lime-200 underline">Privacy policy</Link></p>
+                    <button onClick={handleContactStep} disabled={loading} className="w-full rounded-2xl bg-lime-300 px-5 py-4 font-bold text-emerald-950 disabled:opacity-60">{loading ? "Saving…" : "Continue → Account security"}</button>
+                    </> : <>
+                    <p className="text-sm text-zinc-200">Contact details saved for {signupEmail}. <button type="button" onClick={() => { setSignupStep(1); setError(""); }} className="text-lime-200 underline">Edit</button></p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">Password</label>
@@ -414,6 +460,7 @@ export default function HomeClient({
                     <div className="text-center text-[11px] text-zinc-500">
                       By creating an account you agree to all terms above. Cancel anytime.
                     </div>
+                    </>}
                   </div>
                 )}
               </div>
