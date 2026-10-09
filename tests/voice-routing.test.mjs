@@ -50,3 +50,24 @@ test('leaves an unencrypted connection alone and reports failures',async()=>{
  const r=await s.run();assert.equal(r.ok,false);assert.ok(r.error);
  }
 });
+function setupProd(responses, env) {
+ const calls=[]; const exports={};
+ vm.runInNewContext(ts.transpileModule(readFileSync('lib/telnyx-voice.ts','utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS}}).outputText,{
+ exports, process:{env:{TELNYX_CREDENTIAL_CONNECTION_ID:'connection',...env}},encodeURIComponent,console:{warn(){},error(){}},
+ require:()=>({telnyxRequest:async(...args)=>{calls.push(args);return responses.shift();}})
+ });
+ return {calls,run:exports.ensureWebrtcMedia};
+}
+test('production fills an empty call-event webhook so browser calls can be billed',async()=>{
+ const s=setupProd([{ok:true,json:{data:{encrypted_media:null,webhook_event_url:''}}},{ok:true,json:{data:{}}}],{VERCEL_ENV:'production'});
+ assert.equal((await s.run()).ok,true);
+ const body=JSON.parse(s.calls[1][1].body);
+ assert.equal(body.webhook_event_url,'https://text2sale.com/api/call-webhook');
+ assert.equal(body.webhook_api_version,'2');
+});
+test('never overwrites a webhook someone else set, and previews never touch it',async()=>{
+ const other=setupProd([{ok:true,json:{data:{encrypted_media:null,webhook_event_url:'https://elsewhere.example/hook'}}}],{VERCEL_ENV:'production'});
+ assert.equal((await other.run()).ok,true);assert.equal(other.calls.length,1);
+ const preview=setupProd([{ok:true,json:{data:{encrypted_media:null,webhook_event_url:''}}}],{VERCEL_ENV:'preview'});
+ assert.equal((await preview.run()).ok,true);assert.equal(preview.calls.length,1);
+});

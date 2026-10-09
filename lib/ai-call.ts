@@ -449,9 +449,13 @@ export function settingsFromProfile(profile: any): AiCallSettings {
 }
 
 export function businessNameFor(profile: any): string {
+  // Registration stores the business as `businessName`; `companyName` is
+  // the older key some accounts still carry.
   const a2p = profile?.a2p_registration;
-  const company = typeof a2p?.companyName === "string" ? a2p.companyName.trim() : "";
-  if (company) return company;
+  for (const key of ["businessName", "companyName"]) {
+    const value = typeof a2p?.[key] === "string" ? a2p[key].trim() : "";
+    if (value) return value;
+  }
   const person = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
   return person || "our office";
 }

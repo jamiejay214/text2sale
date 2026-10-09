@@ -6,16 +6,13 @@ import { isIndustryId } from "@/lib/industries";
 
 // ── Record the plan chosen at signup ───────────────────────────────────────
 //
-// The homepage lets a visitor pick Standard ($39.99) or AI ($119.99) — AI is
-// preselected — but signup only sent name, email, phone and password, so every
-// account got the default Standard plan and was billed $39.99 at checkout
-// whatever they had been shown. This route stores the choice so Stripe
-// charges the price on the page.
+// Text2Sale has ONE plan: $39.99/month with everything, AI included. The
+// "standard" and "ai" keys both resolve to it (see lib/packages.ts); they
+// survive only so old signup links and Stripe metadata keep working.
 //
-// It only ever sets the *price the checkout will use* (profiles.plan). The
-// AI features themselves (ai_plan) are switched on by the Stripe webhook once
-// an AI subscription actually becomes active — choosing a plan isn't paying
-// for it.
+// This route only stores profiles.plan for checkout. AI features (ai_plan)
+// are switched on by the Stripe webhook once the subscription is active —
+// choosing a plan isn't paying for it.
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;

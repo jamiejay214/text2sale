@@ -199,16 +199,20 @@ function Dialer({ profile, onNavigate }: Props) {
     const fromDigits = fromNumber.replace(/\D/g, "");
     const from = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
     setActiveContact(contact || null);
+    // Log the call first: the server checks the number, subscription and
+    // wallet, and the row it creates is what Telnyx's webhooks bill against.
+    const response = await authFetch("/api/calls/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: destination, from, contactId: contact?.id || null }) });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.callId) { setNotice(data.error || "Could not start the call. Please retry."); return; }
+    setCallId(data.callId);
     try {
       phoneRef.current.makeCall(destination, from);
       setNotice("");
     } catch (error) {
+      void authFetch("/api/hangup-call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callId: data.callId }) }).catch(() => undefined);
+      setCallId(null);
       setNotice(error instanceof Error ? error.message : "Could not start the call. Please retry.");
-      return;
     }
-    const response = await authFetch("/api/calls/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: destination, from, contactId: contact?.id || null }) });
-    const data = await response.json().catch(() => ({}));
-    if (data.callId) setCallId(data.callId);
   }, [fromNumber, token, phoneStatus.ready]);
 
   const hangup = useCallback(async () => {

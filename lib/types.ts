@@ -280,6 +280,8 @@ export type Message = {
   status: "sent" | "delivered" | "failed" | "received";
   created_at: string;
   from_number?: string;
+  /** Telnyx message id, so delivery receipts update this exact message. */
+  telnyx_message_id?: string | null;
 };
 
 // Conversation with messages and contact joined in

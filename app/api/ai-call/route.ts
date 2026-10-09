@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       available: false,
       reason: "plan_required",
-      message: "AI calling is included with the Text2Sale + AI plan ($119.99/month). Upgrade to train and activate your receptionist.",
+      message: "AI calling is included with an active Text2Sale subscription ($39.99/month). Subscribe to train and activate your receptionist.",
     });
   }
   if (!process.env.TELNYX_API_KEY || !process.env.ANTHROPIC_API_KEY) {
@@ -117,7 +117,7 @@ export async function PATCH(req: NextRequest) {
   }
   if (!entitlement.ai_plan && !entitlement.free_ai_plan) {
     return NextResponse.json(
-      { error: "AI calling requires the Text2Sale + AI plan ($119.99/month)." },
+      { error: "AI calling requires an active Text2Sale subscription ($39.99/month)." },
       { status: 403 },
     );
   }

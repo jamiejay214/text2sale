@@ -6,6 +6,7 @@ import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { requireSameUser } from "@/lib/auth-guard";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
+import { isEntitled } from "@/lib/messaging-status";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -100,6 +101,22 @@ export async function POST(req: NextRequest) {
         { success: false, error: EIN_CERTIFICATE_REQUIRED_MESSAGE, einCertificateRequired: true },
         { status: 412 }
       );
+    }
+
+    // Same rule as one-off sends: a paused account or a lapsed subscription
+    // can't launch a campaign, whatever is left in the wallet.
+    {
+      const { data: account } = await supabase
+        .from("profiles")
+        .select("paused, subscription_status, free_subscription")
+        .eq("id", userId)
+        .maybeSingle();
+      if (!account || account.paused || !isEntitled(account)) {
+        return NextResponse.json(
+          { success: false, error: "An active account and subscription are required." },
+          { status: 403 }
+        );
+      }
     }
 
     // Verify each fromNumber is owned by this user. Blocks a malicious caller

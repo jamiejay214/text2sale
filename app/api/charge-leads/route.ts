@@ -2,6 +2,7 @@ import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireSameUser } from "@/lib/auth-guard";
+import { customerSmsRate } from "@/lib/sms-pricing";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -32,9 +33,10 @@ export async function POST(req: NextRequest) {
     .select("plan")
     .eq("id", userId)
     .single();
-  const messageCost = Number(
-    (profile?.plan as { messageCost?: number } | null)?.messageCost ?? 0.012
-  );
+  // Imports bill at the outbound text rate: $0.015 per lead, or $0.0135
+  // after a qualifying $500 deposit. Reading the raw stored plan billed old
+  // accounts (and accounts with no plan) the retired $0.012.
+  const messageCost = customerSmsRate(profile?.plan as { messageCost?: number } | null);
   const amount = Number((n * messageCost).toFixed(4));
 
   const { data: newBalance, error } = await supabase.rpc("decrement_wallet", {

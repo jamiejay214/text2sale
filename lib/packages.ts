@@ -23,9 +23,8 @@ export function planShape(_key: PackageKey = "standard") {
 }
 
 /**
- * Legacy plans all map to the unified paid package. This keeps existing
- * accounts and old Stripe subscription metadata compatible without preserving
- * the old $119.99 AI tier.
+ * Legacy plans all map to the single $39.99 package (AI included). This keeps
+ * existing accounts and old Stripe subscription metadata compatible.
  */
 export function packageForPlan(_plan: { name?: string | null; price?: number | null } | null | undefined): PackageKey {
   return "standard";

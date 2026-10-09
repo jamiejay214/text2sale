@@ -85,7 +85,9 @@ export async function POST(req: NextRequest) {
       const userId = session.metadata?.userId;
       const sessionType = session.metadata?.type;
 
-      if (sessionType === "subscription") {
+      // A subscription payment never becomes wallet credit, even for a
+      // checkout created without our metadata (e.g. from the Stripe dashboard).
+      if (sessionType === "subscription" || session.mode === "subscription") {
         // Subscription checkout completed — handled by customer.subscription.created
         // Just log it
         console.log("Subscription checkout completed for user:", userId);
