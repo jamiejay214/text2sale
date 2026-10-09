@@ -1,4 +1,4 @@
-export const FOLLOWUP_NOTICE = "By continuing, you ask Text2Sale to save these contact details and follow up by email about your request or unfinished signup. You can opt out at any time.";
+export const FOLLOWUP_NOTICE = "Save my contact details as I fill out this form so Text2Sale can email me if I do not finish signing up. You can opt out at any time.";
 export const PROSPECT_STATUSES = ["new", "contacted", "follow_up", "won", "not_interested", "do_not_contact"] as const;
 
 export function parseProspect(input: Record<string, unknown>) {

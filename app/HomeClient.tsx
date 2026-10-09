@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
@@ -41,6 +41,23 @@ export default function HomeClient({
   const [referralCode, setReferralCode] = useState("");
   const [signupStep, setSignupStep] = useState<1 | 2>(1);
   const [followup, setFollowup] = useState(false);
+  const savedContact = useRef("");
+
+  // Capture the contact step even when the visitor never presses Continue.
+  // The visible permission control is required; passwords never leave this form.
+  useEffect(() => {
+    if (mode !== "signup" || !followup || !firstName.trim() || !lastName.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(signupEmail.trim())) return;
+    const normalizedPhone = phone.replace(/[^\d+]/g, "");
+    if (!/^\+?\d{10,15}$/.test(normalizedPhone)) return;
+    const signature = signupEmail.trim().toLowerCase();
+    if (savedContact.current === signature) return;
+    const timer = setTimeout(() => {
+      captureProspect({ name: `${firstName.trim()} ${lastName.trim()}`, email: signupEmail, phone, kind: "signup", followup: true })
+        .then(() => { savedContact.current = signature; })
+        .catch(() => { /* Continue retries and reports errors without blocking typing. */ });
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [mode, followup, firstName, lastName, signupEmail, phone]);
 
   const [agreedToPrivacy, setAgreedToPrivacy] = useState(false);
   const [agreedToTerms, setAgreedToTerms] = useState(false);
