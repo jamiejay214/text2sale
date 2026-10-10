@@ -67,7 +67,7 @@ const refundPending = (price: number): DomainPurchaseFailure => ({
   price,
 });
 
-async function patchRegistration(db: Db, userId: string, patch: Record<string, unknown>) {
+export async function patchRegistration(db: Db, userId: string, patch: Record<string, unknown>) {
   const { data } = await db.from("profiles").select("a2p_registration").eq("id", userId).single();
   const reg = ((data?.a2p_registration as Reg | null) || {}) as Reg;
   await db

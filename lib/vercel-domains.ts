@@ -319,6 +319,77 @@ export async function getDomainOrder(orderId: string, domain: string): Promise<{
   return { status: "pending" };
 }
 
+// ── Renewals ────────────────────────────────────────────────────────────
+// Customer domains don't auto-renew on the platform's card: the app turns
+// auto-renew off and renews each one itself after charging the customer's
+// wallet (lib/domain-renewal.ts).
+
+/** Expiry (ms) and auto-renew flag for a domain bought through Vercel. */
+export async function getDomainRenewalInfo(domain: string): Promise<{ expiresAt: number | null; renew: boolean | null }> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v5/domains/${encodeURIComponent(domain)}`, teamId), {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`Domain lookup failed (${res.status})`);
+  const json = (await res.json().catch(() => ({}))) as { domain?: { expiresAt?: number | null; renew?: boolean | null } };
+  const expiresAt = Number(json.domain?.expiresAt);
+  return {
+    expiresAt: Number.isFinite(expiresAt) && expiresAt > 0 ? expiresAt : null,
+    renew: typeof json.domain?.renew === "boolean" ? json.domain.renew : null,
+  };
+}
+
+/** Registrar price to renew `domain` for one year. */
+export async function getDomainRenewalPrice(domain: string): Promise<number> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/price?years=1`, teamId), {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: "no-store",
+  });
+  const json = (await res.json().catch(() => ({}))) as { renewalPrice?: number | string };
+  const price = Number(json.renewalPrice);
+  if (!res.ok || !Number.isFinite(price) || price <= 0) throw new Error(`Renewal price unavailable (${res.status})`);
+  return price;
+}
+
+/**
+ * Turn Vercel auto-renew on or off. "renewing" means Vercel's own renewal
+ * for this cycle has already started (inside 30 days of expiry) and the
+ * setting is locked until it finishes.
+ */
+export async function setDomainAutoRenew(domain: string, autoRenew: boolean): Promise<"ok" | "renewing" | "error"> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/auto-renew`, teamId), {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ autoRenew }),
+  });
+  if (res.ok) return "ok";
+  const json = (await res.json().catch(() => ({}))) as { code?: string; error?: { code?: string } };
+  return (json.code || json.error?.code) === "domain_already_renewing" ? "renewing" : "error";
+}
+
+/** Order a one-year renewal at the quoted price. */
+export async function renewDomain(
+  domain: string,
+  expectedPrice: number
+): Promise<{ ok: true; orderId: string } | { ok: false; code: string; message: string }> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v1/registrar/domains/${encodeURIComponent(domain)}/renew`, teamId), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ years: 1, expectedPrice }),
+  });
+  const json = (await res.json().catch(() => ({}))) as { orderId?: string; code?: string; message?: string; error?: { code?: string; message?: string } };
+  if (res.ok && json.orderId) return { ok: true, orderId: json.orderId };
+  return {
+    ok: false,
+    code: json.code || json.error?.code || `http_${res.status}`,
+    message: json.message || json.error?.message || `Domain renewal failed (${res.status})`,
+  };
+}
+
 // ── Attach the purchased domain to the text2sale project ────────────────
 // Buying a domain through Vercel registers it but doesn't link it to a
 // project — that's a separate call. This is idempotent; calling it on an
