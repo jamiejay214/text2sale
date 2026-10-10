@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
@@ -20,10 +20,11 @@ import {
   reserveForAiCall,
 } from "@/lib/ai-call-turn";
 
-// A model turn plus the transcript debounce plus the Telnyx round trip
-// fits comfortably in 30s. Without this the platform can cut a turn off
-// mid-thought and the caller hears silence.
-export const maxDuration = 30;
+// The event is handled after the response (see POST), and that work counts
+// against this limit: a model turn plus the transcript debounce plus the
+// Telnyx round trips. Cutting a turn off mid-thought leaves the caller in
+// silence, so leave generous headroom.
+export const maxDuration = 60;
 
 // Everything the assistant needs off the profile row. Kept as one literal
 // (not a concatenation) so supabase-js can still infer the row type.
@@ -96,17 +97,39 @@ function encodeClientState(state: ClientState): string {
 }
 
 export async function POST(req: NextRequest) {
-  const supabase = createClient(supabaseUrl, supabaseKey);
+  const rawBody = await req.text();
+  const sig = req.headers.get("telnyx-signature-ed25519") || "";
+  const sigTs = req.headers.get("telnyx-timestamp") || "";
+  const verified = await verifyTelnyxSignature(rawBody, sig, sigTs);
+  if (!verified && !allowUnverifiedInDev("call-webhook")) {
+    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  }
+  let payload: unknown;
   try {
-    const rawBody = await req.text();
-    const sig = req.headers.get("telnyx-signature-ed25519") || "";
-    const sigTs = req.headers.get("telnyx-timestamp") || "";
-    const verified = await verifyTelnyxSignature(rawBody, sig, sigTs);
-    if (!verified && !allowUnverifiedInDev("call-webhook")) {
-      return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-    }
+    payload = JSON.parse(rawBody);
+  } catch {
+    return NextResponse.json({ status: "ignored" });
+  }
 
-    const payload = JSON.parse(rawBody);
+  // Acknowledge first, work after. Telnyx waits about 2 seconds for a reply
+  // and then re-sends the event, while answering, transcribing and a model
+  // turn take longer than that. Every event was being handled twice: the
+  // caller's words answered twice, a second greeting attempt, a second
+  // transcription start that failed and hung up on the caller.
+  after(async () => {
+    try {
+      await handleEvent(payload, req.nextUrl.origin);
+    } catch (error: unknown) {
+      console.error("[call-webhook] error:", error instanceof Error ? error.message : "Unknown error");
+    }
+  });
+  return NextResponse.json({ status: "ok" });
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function handleEvent(payload: any, origin: string) {
+  const supabase = createClient(supabaseUrl, supabaseKey);
+  {
     const event = payload?.data;
     if (!event) return NextResponse.json({ status: "ok" });
 
@@ -414,7 +437,6 @@ export async function POST(req: NextRequest) {
         contactE164: state.contactE164,
       });
 
-      const origin = req.nextUrl.origin;
       const bLegPayload: Record<string, unknown> = {
         to: state.contactE164,
         from: state.fromE164,
@@ -550,9 +572,5 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({ status: "ok" });
-  } catch (error: unknown) {
-    const msg = error instanceof Error ? error.message : "Unknown error";
-    console.error("[call-webhook] error:", msg);
-    return NextResponse.json({ status: "error" }, { status: 200 }); // swallow so Telnyx doesn't retry-storm
   }
 }

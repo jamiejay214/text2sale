@@ -44,6 +44,9 @@ const apiKey = process.env.TELNYX_API_KEY!;
 // snapshot. Thinking is deliberately left off for the same reason.
 export const AI_CALL_MODEL = "claude-haiku-4-5";
 
+/** Longest we wait for one model reply before telling the caller something. */
+export const MODEL_TIMEOUT_MS = 12_000;
+
 /** How long we hold the turn lease. Longer than a worst-case model turn. */
 export const TURN_LEASE_SECONDS = 25;
 
@@ -423,7 +426,11 @@ export async function runModelTurn(opts: {
     return null;
   }
 
+  // A caller hears every second of this as dead air, and a call cut off by
+  // the function's time limit would never answer again. Give up in time to
+  // say something instead.
   const res = await fetch("https://api.anthropic.com/v1/messages", {
+    signal: AbortSignal.timeout(MODEL_TIMEOUT_MS),
     method: "POST",
     headers: {
       "Content-Type": "application/json",
