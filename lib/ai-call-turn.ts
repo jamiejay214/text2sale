@@ -45,6 +45,7 @@ import {
   stopTranscription,
   transferCall,
 } from "@/lib/ai-call";
+import type { CallQuality } from "@/lib/call-quality";
 import { checkCalendarConflict, createCalendarEvent } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 
@@ -876,6 +877,23 @@ export async function finalizeAiSession(
   }
 
   return { charged };
+}
+
+/**
+ * Keep Telnyx's audio quality numbers with the AI call (in `collected`, so
+ * no extra column is needed). Runs at hangup, after the turn loop is done.
+ */
+export async function recordCallQuality(db: Db, ccid: string, quality: CallQuality): Promise<void> {
+  const { data: session } = await db
+    .from("ai_call_sessions")
+    .select("id, collected")
+    .eq("call_control_id", ccid)
+    .maybeSingle();
+  if (!session) return;
+  await db
+    .from("ai_call_sessions")
+    .update({ collected: { ...(session.collected || {}), call_quality: quality } })
+    .eq("id", session.id);
 }
 
 export { formatDateNice, formatTime12 };

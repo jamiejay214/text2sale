@@ -41,3 +41,13 @@ test('speak sends one request when the voice works, and reports a total failure'
   const down = load(async () => ({ ok: false, status: 500, text: async () => '' }));
   assert.equal(await down.speak('cc1', 'Hello', 'AWS.Polly.Matthew-Neural', 's'), false);
 });
+
+test('the assistant answers with steady silence so speech does not cut in and out', async () => {
+  const bodies = [];
+  const { aiAnswerBody, answerCall } = load(async (url, init) => (bodies.push([url, JSON.parse(init.body)]), { ok: true, text: async () => '' }));
+  assert.equal(aiAnswerBody('state').send_silence_when_idle, true);
+  assert.equal(aiAnswerBody('state').client_state, 'state');
+  await answerCall('cc1', 'state');
+  assert.match(bodies[0][0], /\/calls\/cc1\/actions\/answer$/);
+  assert.equal(bodies[0][1].send_silence_when_idle, true);
+});
