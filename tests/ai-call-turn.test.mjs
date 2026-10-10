@@ -20,7 +20,7 @@ function fakeDb(rows) {
         async maybeSingle() {
           const hit = (tables[table] || []).filter((r) => match(r, filters));
           if (patch) hit.forEach((r) => Object.assign(r, patch));
-          return { data: hit[0] || null };
+          return { data: hit[0] ? { ...hit[0] } : null };
         },
         then(resolve) { return q.maybeSingle().then(resolve); },
       };
@@ -114,4 +114,27 @@ test('a live turn is not interrupted: speech is banked for after it', async () =
   await t.onTranscript(fakeDb([row]), 'cc1', 'one more thing');
   assert.equal(t.calls.speak.length, 0);
   assert.equal(row.pending_transcript, 'one more thing');
+});
+
+test('words that land just as the greeting ends are still answered', async () => {
+  const t = load();
+  const row = session({ state: 'speaking' });
+  const db = fakeDb([row]);
+  // speak.ended reads the session, then the caller's transcript is banked
+  // before the handler switches to listening.
+  const realFrom = db.from.bind(db);
+  let reads = 0;
+  db.from = (table) => {
+    const q = realFrom(table);
+    const maybeSingle = q.maybeSingle;
+    q.maybeSingle = async () => {
+      const result = await maybeSingle();
+      if (table === 'ai_call_sessions' && ++reads === 1) row.pending_transcript = 'I am looking for a family plan';
+      return result;
+    };
+    return q;
+  };
+  await t.onSpeakEnded(db, 'cc1', 'completed');
+  assert.deepEqual(t.calls.speak, ['Sure thing.']);
+  assert.equal(row.pending_transcript, '');
 });
