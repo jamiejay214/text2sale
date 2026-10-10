@@ -479,6 +479,9 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-master-switch { min-height:44px; padding:7px 8px 7px 11px; border:1px solid var(--v2-line); border-radius:11px; background:var(--v2-panel); }
 .v2-master-switch > span { color:var(--v2-ink); display:flex; align-items:center; gap:6px; }
 .v2-ai-readiness { margin-bottom:17px; }
+.v2-ai-transcript { margin-top:6px; font-size:12px; }
+.v2-ai-transcript summary { cursor:pointer; color:var(--v2-muted); font-weight:600; }
+.v2-ai-transcript p { margin:4px 0 0; line-height:1.4; }
 .v2-ai-readiness ul { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
 .v2-ai-readiness li { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--v2-line); border-radius:12px; }
 .v2-ai-readiness li > span { flex:none; display:grid; place-items:center; width:22px; height:22px; border-radius:50%; font-weight:800; font-size:13px; }

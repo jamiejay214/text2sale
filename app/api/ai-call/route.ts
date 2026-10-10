@@ -89,7 +89,7 @@ export async function GET(req: NextRequest) {
     supabase
       .from("ai_call_sessions")
       .select(
-        "id, from_number, to_number, state, outcome, summary, collected, " +
+        "id, from_number, to_number, state, outcome, summary, collected, turns, " +
           "turn_count, charged_amount, appointment_id, started_at, ended_at"
       )
       .eq("user_id", userId)

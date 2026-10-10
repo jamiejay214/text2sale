@@ -219,6 +219,18 @@ export async function openConversation(
   const ccid = session.call_control_id;
   const clientState = encodeState({ v: 1, aiSessionId: session.id, callRowId: session.call_id });
 
+  // Once per call: a repeated call.answered must not start transcription a
+  // second time (Telnyx refuses, which used to read as "can't hear you" and
+  // hang up) or queue a second greeting.
+  const { data: opened } = await db
+    .from("ai_call_sessions")
+    .update({ state: "speaking" })
+    .eq("id", session.id)
+    .eq("state", "greeting")
+    .select("id")
+    .maybeSingle();
+  if (!opened) return;
+
   // If Telnyx won't start transcribing, the assistant is deaf: it would
   // greet the caller and then sit in silence, because nothing would ever
   // arrive to advance the turn loop. Say so honestly and take a message
@@ -305,10 +317,11 @@ export async function onTranscript(
     .maybeSingle();
   if (!session || session.state === "done") return;
 
-  // Only listen while we are listening. If the assistant is mid-sentence
-  // or mid-thought the fragment stays banked and the speak.ended handler
-  // picks it up.
-  if (session.state !== "listening") return;
+  // While the assistant is mid-sentence the fragment stays banked and the
+  // speak.ended handler picks it up. "thinking" still tries the claim: the
+  // lease only lets it through once a turn has been stuck past the lease (a
+  // run cut off mid-turn), which used to leave the call silent for good.
+  if (session.state !== "listening" && session.state !== "thinking") return;
 
   const { data: claimed } = await db.rpc("ai_call_claim_turn", {
     p_ccid: ccid,
@@ -319,7 +332,32 @@ export async function onTranscript(
   // Hold the lease briefly so the rest of the caller's sentence lands.
   await new Promise((r) => setTimeout(r, TURN_DEBOUNCE_MS));
 
-  await runTurn(db, ccid);
+  await runTurnSafely(db, ccid);
+}
+
+const MISSED_LINE = "Sorry, I missed that. Could you say it one more time?";
+
+/**
+ * Run a turn; if anything in it fails, ask the caller to repeat instead of
+ * going silent with the lease held.
+ */
+async function runTurnSafely(db: Db, ccid: string): Promise<void> {
+  try {
+    await runTurn(db, ccid);
+  } catch (error) {
+    console.error("[ai-call] turn failed:", error instanceof Error ? error.message : error);
+    const { data: session } = await db
+      .from("ai_call_sessions")
+      .update({ state: "speaking", turn_lock_at: null })
+      .eq("call_control_id", ccid)
+      .neq("state", "done")
+      .select("id, user_id, call_id, turns")
+      .maybeSingle();
+    if (!session) return;
+    const { data: profile } = await db.from("profiles").select("ai_call_voice").eq("id", session.user_id).maybeSingle();
+    const clientState = encodeState({ v: 1, aiSessionId: session.id, callRowId: session.call_id });
+    await speakOrListen(db, session.id, ccid, MISSED_LINE, settingsFromProfile(profile).voice, clientState);
+  }
 }
 
 /**
@@ -385,7 +423,7 @@ export async function onSpeakEnded(
     });
     if (claimed) {
       await new Promise((r) => setTimeout(r, TURN_DEBOUNCE_MS));
-      await runTurn(db, ccid);
+      await runTurnSafely(db, ccid);
       return;
     }
   }
