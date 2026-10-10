@@ -81,7 +81,7 @@ export function businessFormProblem(v: BusinessFormValues): string | null {
   return null;
 }
 
-type Suggestion = { domain: string; price: number };
+type Suggestion = { domain: string; price: number; renewalPrice?: number | null };
 
 const INPUT =
   "w-full rounded-xl border border-zinc-700 bg-zinc-800 px-4 py-2.5 text-sm outline-none focus:border-violet-500";
@@ -178,7 +178,7 @@ function DomainPicker({
                   }`}
                 >
                   <span className="font-medium">{s.domain}</span>
-                  <span className="text-xs text-zinc-400">${s.price.toFixed(2)} first year</span>
+                  <span className="text-xs text-zinc-400">${s.price.toFixed(2)} first year{s.renewalPrice ? ` · then $${s.renewalPrice.toFixed(2)}/yr` : ""}</span>
                 </button>
               );
             })}
@@ -189,7 +189,8 @@ function DomainPicker({
           {values.domainRequest && (
             <p className="text-[11px] text-zinc-500">
               ${values.domainRequest.price.toFixed(2)} is charged from your balance when we register {values.domainRequest.domain}. If your balance is short, we&apos;ll
-              ask you to add funds and finish by ourselves.
+              ask you to add funds and finish by ourselves. It renews each year from your balance about 45 days before it expires
+              {(() => { const renewal = suggestions.find((s) => s.domain === values.domainRequest?.domain)?.renewalPrice; return renewal ? ` ($${renewal.toFixed(2)}/yr)` : ""; })()}; we&apos;ll email you if your balance is short.
             </p>
           )}
         </>
