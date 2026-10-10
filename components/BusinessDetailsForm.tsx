@@ -29,12 +29,10 @@ export type BusinessFormValues = {
   contactEmail: string;
   industry: string;
   businessDescription: string;
-  hasWebsite: "yes" | "no";
-  website: string;
-  /** A domain they already own and will point at us. */
-  customDomain: string;
   /** A domain we register for them (charged from their balance). */
   domainRequest: { domain: string; price: number } | null;
+  /** A domain Text2Sale already registered for them, kept on re-submit. */
+  existingDomain: string;
   areaCode: string;
 };
 
@@ -50,10 +48,8 @@ export const EMPTY_BUSINESS_FORM: BusinessFormValues = {
   contactEmail: "",
   industry: "",
   businessDescription: "",
-  hasWebsite: "no",
-  website: "",
-  customDomain: "",
   domainRequest: null,
+  existingDomain: "",
   areaCode: "",
 };
 
@@ -76,8 +72,7 @@ export function businessFormProblem(v: BusinessFormValues): string | null {
   if (digitsOnly(v.contactPhone).replace(/^1(?=\d{10}$)/, "").length !== 10) return "Enter a 10-digit business phone number.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactEmail.trim())) return "Enter a valid business email.";
   if (!v.industry) return "Choose your industry.";
-  if (v.hasWebsite === "yes" && !v.website.trim()) return "Enter your website address.";
-  if (v.hasWebsite === "no" && !v.domainRequest && !v.customDomain.trim()) return "Choose an address for your website.";
+  if (!v.domainRequest && !v.existingDomain) return "Choose an address for your website.";
   return null;
 }
 
@@ -101,7 +96,6 @@ function DomainPicker({
   const [registrarAvailable, setRegistrarAvailable] = useState(true);
   const [registrarProblem, setRegistrarProblem] = useState("");
   const [error, setError] = useState("");
-  const [useOwned, setUseOwned] = useState(!!values.customDomain);
   const searchedFor = useRef("");
 
   const name = values.businessName.trim();
@@ -142,11 +136,11 @@ function DomainPicker({
   // Look up addresses once the business name settles, without hammering the
   // registrar on every keystroke.
   useEffect(() => {
-    if (useOwned || name.length < 3) return;
+    if (values.existingDomain || name.length < 3) return;
     const t = window.setTimeout(() => void search(false), 900);
     return () => window.clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [name, values.industry, useOwned]);
+  }, [name, values.industry, values.existingDomain]);
 
   return (
     <div className="space-y-3">
@@ -155,7 +149,12 @@ function DomainPicker({
         terms, filled in with your details — and put it on its own web address.
       </div>
 
-      {!useOwned && (
+      {values.existingDomain ? (
+        <p className="rounded-xl border border-zinc-700 px-4 py-2.5 text-sm text-zinc-300">
+          Your website address: <span className="font-medium text-white">{values.existingDomain}</span>
+          <span className="mt-0.5 block text-[11px] text-zinc-500">Already registered for you by Text2Sale. We&apos;ll keep using it.</span>
+        </p>
+      ) : (
         <>
           <div className="flex items-center justify-between">
             <span className={LABEL + " mb-0"}>Choose your website address *</span>
@@ -172,7 +171,7 @@ function DomainPicker({
                 <button
                   key={s.domain}
                   type="button"
-                  onClick={() => onChange({ domainRequest: { domain: s.domain, price: s.price }, customDomain: "" })}
+                  onClick={() => onChange({ domainRequest: { domain: s.domain, price: s.price } })}
                   className={`flex w-full items-center justify-between rounded-xl border px-4 py-2.5 text-left text-sm transition ${
                     selected ? "border-violet-500 bg-violet-500/10 text-white" : "border-zinc-700 text-zinc-300 hover:border-zinc-500"
                   }`}
@@ -183,7 +182,7 @@ function DomainPicker({
               );
             })}
             {!loading && suggestions.length === 0 && name.length >= 3 && !error && (
-              <p className="text-xs text-zinc-500">No suggestions yet — try &ldquo;Search again&rdquo;, or use a domain you already own.</p>
+              <p className="text-xs text-zinc-500">No suggestions yet — try &ldquo;Search again&rdquo;.</p>
             )}
           </div>
           {values.domainRequest && (
@@ -196,38 +195,7 @@ function DomainPicker({
         </>
       )}
 
-      {useOwned && (
-        <div>
-          <label className={LABEL}>Domain you own *</label>
-          <input
-            className={INPUT}
-            placeholder="yourbusiness.com"
-            value={values.customDomain}
-            onChange={(e) =>
-              onChange({
-                customDomain: e.target.value.toLowerCase().trim().replace(/^https?:\/\//, "").replace(/\/.*$/, ""),
-                domainRequest: null,
-              })
-            }
-          />
-          <p className="mt-1 text-[11px] text-zinc-500">
-            You&apos;ll need to point it at us: an A record for @ with the value 76.76.21.21 and a CNAME for www to cname.vercel-dns.com. We continue automatically as soon as it
-            works.
-          </p>
-        </div>
-      )}
-
-      <button
-        type="button"
-        onClick={() => {
-          setUseOwned(!useOwned);
-          onChange({ domainRequest: null, customDomain: "" });
-        }}
-        className="text-[11px] text-zinc-400 underline hover:text-zinc-200"
-      >
-        {useOwned ? "← Let Text2Sale find and buy my address" : "I already own a domain"}
-      </button>
-      {!registrarAvailable && !useOwned && (
+      {!registrarAvailable && !values.existingDomain && (
         <div className="rounded-xl border border-amber-700/50 bg-amber-950/30 p-3 text-[11px] leading-relaxed text-amber-200">
           <strong className="block text-amber-100">We couldn&apos;t reach the domain registrar.</strong>
           Your choice has not changed and nothing was purchased. {registrarProblem || "Try Search again in a moment."}
@@ -345,33 +313,8 @@ export default function BusinessDetailsForm({
 
       <div>
         <label className="mb-1.5 block text-xs font-medium text-zinc-400">Your website *</label>
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => onChange({ hasWebsite: "no", website: "" })}
-            className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition ${values.hasWebsite === "no" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
-          >
-            Build one for me <span className="opacity-70">(recommended)</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onChange({ hasWebsite: "yes", domainRequest: null, customDomain: "" })}
-            className={`flex-1 rounded-xl border px-3 py-2 text-xs font-medium transition ${values.hasWebsite === "yes" ? "border-violet-500 bg-violet-500/10 text-violet-300" : "border-zinc-700 text-zinc-400 hover:border-zinc-500"}`}
-          >
-            I have a website
-          </button>
-        </div>
-      </div>
-
-      {values.hasWebsite === "yes" ? (
-        <div>
-          <label className={LABEL}>Website address *</label>
-          <input type="url" className={INPUT} placeholder="https://yourbusiness.com" value={values.website} onChange={(e) => onChange({ website: e.target.value })} />
-          <p className="mt-1 text-[10px] text-zinc-600">We still host your text sign-up form, privacy policy and terms for the carrier review.</p>
-        </div>
-      ) : (
         <DomainPicker values={values} onChange={onChange} authFetch={authFetch} />
-      )}
+      </div>
 
       <div>
         <label className={LABEL}>Preferred area code for your number (optional)</label>

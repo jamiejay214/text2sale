@@ -10,13 +10,13 @@
 
 import { isIndustryId, type IndustryId } from "./industries";
 
+// Every customer website is built and hosted by Text2Sale on a domain
+// Text2Sale registers for them. Customers can't bring their own website or
+// domain: a site we build is one we know passes carrier review.
 export type WebsiteChoice =
-  | { mode: "own"; url: string }
-  /** A domain they already own and will point at us. */
-  | { mode: "hosted"; customDomain: string }
   /** A domain we register for them, paid from their balance. */
   | { mode: "hosted"; domainRequest: { domain: string; price: number } }
-  /** Keep the website address they already have (re-submitting after a rejection). */
+  /** Keep the domain we already registered for them (re-submitting after a rejection). */
   | { mode: "hosted"; keepExisting: true };
 
 export type BusinessDetails = {
@@ -98,36 +98,26 @@ export function validateBusinessDetails(body: Record<string, unknown>): Validate
   const areaCode = area.length === 3 ? area : null;
 
   // ── Website ────────────────────────────────────────────────────────────
+  // Only a domain bought through Text2Sale. An older dashboard tab can still
+  // send "I have a website" or a domain the customer owns; refuse those with
+  // a message that says what to do instead.
+  if (body.hasWebsite === "yes" || str(body.customDomain, 120)) {
+    return { ok: false, error: "Text2Sale builds and hosts your website. Choose a website address to purchase — your own website or domain can't be used." };
+  }
   let website: WebsiteChoice;
-  if (body.hasWebsite === "yes") {
-    const url = normalizeWebsiteUrl(str(body.website, 200));
-    if (!url) return { ok: false, error: "Enter your website address, like https://yourbusiness.com." };
-    if (isOurDomain(domainOf(url))) {
-      return { ok: false, error: "Use your own website address — Text2Sale addresses can't be used as your business website." };
+  const req = body.domainRequest as { domain?: unknown; price?: unknown } | null | undefined;
+  const requested = typeof req?.domain === "string" ? domainOf(req.domain.toLowerCase()) : "";
+  if (requested) {
+    const price = Number(req?.price);
+    if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}$/.test(requested) || isOurDomain(requested)) {
+      return { ok: false, error: "That doesn't look like a valid website address." };
     }
-    if (url.length > 100) return { ok: false, error: "That website address is too long." };
-    website = { mode: "own", url };
+    if (!Number.isFinite(price) || price <= 0 || price > 500) {
+      return { ok: false, error: "Confirm the price of your website address and try again." };
+    }
+    website = { mode: "hosted", domainRequest: { domain: requested, price: Math.round(price * 100) / 100 } };
   } else {
-    const req = body.domainRequest as { domain?: unknown; price?: unknown } | null | undefined;
-    const requested = typeof req?.domain === "string" ? domainOf(req.domain.toLowerCase()) : "";
-    const owned = domainOf(str(body.customDomain, 120).toLowerCase());
-    if (requested) {
-      const price = Number(req?.price);
-      if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}$/.test(requested) || isOurDomain(requested)) {
-        return { ok: false, error: "That doesn't look like a valid website address." };
-      }
-      if (!Number.isFinite(price) || price <= 0 || price > 500) {
-        return { ok: false, error: "Confirm the price of your website address and try again." };
-      }
-      website = { mode: "hosted", domainRequest: { domain: requested, price: Math.round(price * 100) / 100 } };
-    } else if (owned) {
-      if (!/^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,24}$/.test(owned) || isOurDomain(owned)) {
-        return { ok: false, error: "That doesn't look like a valid domain. Use the format yourbusiness.com." };
-      }
-      website = { mode: "hosted", customDomain: owned };
-    } else {
-      website = { mode: "hosted", keepExisting: true };
-    }
+    website = { mode: "hosted", keepExisting: true };
   }
 
   return {

@@ -2168,7 +2168,7 @@ function AdminConsole() {
                         </div>
                         <div className="mt-1 text-xs text-zinc-400">
                           {selectedAccount.customDomain
-                            ? `Compliance pages live at ${selectedAccount.customDomain}. Auto-renews yearly.`
+                            ? `Compliance pages live at ${selectedAccount.customDomain}. Renews yearly, paid from the customer's wallet.`
                             : selectedAccount.a2pBusinessName
                               ? `We'll buy a domain like "${selectedAccount.a2pBusinessName.toLowerCase().replace(/\s+/g, "").slice(0, 15)}.com" on Vercel (~$12/yr) and wire it to their /biz page.`
                               : "User needs to complete 10DLC registration first — we generate the domain from their business name."}

@@ -117,33 +117,31 @@ export async function POST(req: NextRequest) {
       }
 
       // ── Website ──
+      // Websites are always built by Text2Sale on a domain Text2Sale
+      // registered for the customer (see lib/business-details.ts).
       let customDomain = profile.custom_domain;
       let domainRequest: Registration["domainRequest"] = null;
-      let website = "";
-      let websiteMode: "hosted" | "own" = "hosted";
+      const website = "";
+      const websiteMode = "hosted" as const;
       let siteLiveAt = reg.siteLiveAt ?? null;
       const w = d.website;
+      const purchase = (reg as { domainPurchase?: { domain?: string; state?: string } }).domainPurchase;
+      const boughtFromUs = !!customDomain && purchase?.domain === customDomain && purchase?.state === "bought";
 
-      if (w.mode === "own") {
-        websiteMode = "own";
-        website = w.url;
-        if (reg.websiteMode !== "own" || reg.website !== w.url) siteLiveAt = null;
-      } else if ("domainRequest" in w) {
+      if ("domainRequest" in w) {
         domainRequest = { ...w.domainRequest, requestedAt: new Date().toISOString() };
         if (customDomain !== w.domainRequest.domain) {
           customDomain = null; // the driver registers it (after payment) and sets it
           siteLiveAt = null;
         }
-      } else if ("customDomain" in w) {
-        customDomain = w.customDomain;
-        if (profile.custom_domain !== w.customDomain) siteLiveAt = null;
-      } else if (!customDomain && !reg.domainRequest) {
+      } else if (boughtFromUs || reg.domainRequest) {
+        // Re-submitting: keep the domain we registered (or the one on order).
+        domainRequest = reg.domainRequest ?? null;
+      } else {
         return NextResponse.json(
-          { success: false, error: "Choose your website address — carriers need a real website for your business." },
+          { success: false, error: "Choose a website address to purchase — Text2Sale builds and hosts your website on it." },
           { status: 400 }
         );
-      } else {
-        domainRequest = reg.domainRequest ?? null;
       }
 
       if (customDomain && customDomain !== profile.custom_domain) {

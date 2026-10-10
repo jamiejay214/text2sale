@@ -177,7 +177,7 @@ function Registration({ profile, onProfile, onNavigate }: Props) {
     businessName: registration?.businessName || "", businessType: registration?.businessType || "llc", ein: registration?.ein || "",
     businessAddress: registration?.businessAddress || "", businessCity: registration?.businessCity || "", businessState: registration?.businessState || "", businessZip: registration?.businessZip || "",
     contactPhone: registration?.contactPhone || profile.phone || "", contactEmail: registration?.contactEmail || profile.email || "", industry: profile.industry || registration?.industry || "",
-    businessDescription: profile.business_description || "", areaCode: registration?.desiredAreaCode || "", hasWebsite: registration?.websiteMode === "own" ? "yes" : "no", website: registration?.websiteMode === "own" ? registration.website || "" : "", customDomain: registration?.websiteMode === "hosted" ? profile.custom_domain || "" : "",
+    businessDescription: profile.business_description || "", areaCode: registration?.desiredAreaCode || "", existingDomain: (() => { const purchase = (registration as { domainPurchase?: { domain?: string; state?: string } } | null)?.domainPurchase; return profile.custom_domain && purchase?.domain === profile.custom_domain && purchase?.state === "bought" ? profile.custom_domain : ""; })(),
   }));
   const submit = async () => {
     const problem = businessFormProblem(form); if (problem) { setNotice(problem); return; }
