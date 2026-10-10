@@ -429,6 +429,26 @@ export async function onSpeakEnded(
   }
 
   await db.from("ai_call_sessions").update({ state: "listening" }).eq("id", session.id);
+
+  // The caller may have finished a sentence between the read above and the
+  // switch to listening. Their transcript landed while we were "speaking",
+  // so it was banked and nothing else will pick it up: the assistant sat
+  // silent after the caller answered the greeting. Look once more.
+  const { data: after } = await db
+    .from("ai_call_sessions")
+    .select("pending_transcript, state")
+    .eq("id", session.id)
+    .maybeSingle();
+  if (after?.state === "listening" && (after.pending_transcript || "").trim()) {
+    const { data: claimed } = await db.rpc("ai_call_claim_turn", {
+      p_ccid: ccid,
+      p_lease_seconds: TURN_LEASE_SECONDS,
+    });
+    if (claimed) {
+      await new Promise((r) => setTimeout(r, TURN_DEBOUNCE_MS));
+      await runTurnSafely(db, ccid);
+    }
+  }
 }
 
 /**
