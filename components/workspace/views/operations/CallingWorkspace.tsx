@@ -97,6 +97,16 @@ function AiReceptionist({ profile }: Pick<Props, "profile">) {
   const [draft, setDraft] = useState<AiSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState("");
+  const [callLogs, setCallLogs] = useState<Record<string, string>>({});
+
+  // Full troubleshooting report for one call (session record + Telnyx's
+  // event log), to copy and send to support.
+  const openCallLog = async (sessionId: string) => {
+    setCallLogs((current) => ({ ...current, [sessionId]: "Loading call log…" }));
+    const response = await authFetch(`/api/ai-call/log?session=${encodeURIComponent(sessionId)}`);
+    const data = await response.json().catch(() => ({}));
+    setCallLogs((current) => ({ ...current, [sessionId]: response.ok ? data.text || "" : data.error || "Could not load the call log." }));
+  };
 
   const load = useCallback(async () => {
     const response = await authFetch("/api/ai-call");
@@ -156,7 +166,7 @@ function AiReceptionist({ profile }: Pick<Props, "profile">) {
         </Panel>
         <Panel className="v2-ai-sessions">
           <div className="v2-panel-head"><div><h2>Recent AI calls</h2><p>Outcomes and summaries</p></div><button className="v2-icon-btn" onClick={load}><RotateCcw size={15} /></button></div>
-          {sessions.length ? <div>{sessions.slice(0, 8).map((session) => <article key={session.id}><span className="v2-ai-session-icon"><Headphones size={15} /></span><div><strong>{prettyPhone(session.from_number || "Unknown")}</strong><small>{session.summary || "Call completed"}</small><time>{new Date(session.started_at).toLocaleString()}</time>{session.collected?.call_quality && <small className={`v2-ai-quality is-${session.collected.call_quality.rating}`}>{callQualityText(session.collected.call_quality)}</small>}{(session.turns || []).some((turn) => typeof turn.content === "string") && <details className="v2-ai-transcript"><summary>Transcript</summary>{(session.turns || []).filter((turn) => typeof turn.content === "string").map((turn, index) => <p key={index}><b>{turn.role === "assistant" ? "Assistant" : "Caller"}:</b> {String(turn.content)}</p>)}{session.pending_transcript?.trim() ? <p className="is-unanswered"><b>Heard but not answered:</b> {session.pending_transcript}</p> : !(session.turns || []).some((turn) => turn.role === "user") && <p className="is-unanswered">The assistant didn&apos;t hear anything from the caller.</p>}</details>}</div><StatusPill tone={session.outcome === "booked" ? "success" : "neutral"}>{session.outcome || "handled"}</StatusPill></article>)}</div> : <EmptyState title="No AI calls yet" description="Once Alex handles a call, its summary and outcome will appear here." />}
+          {sessions.length ? <div>{sessions.slice(0, 8).map((session) => <article key={session.id}><span className="v2-ai-session-icon"><Headphones size={15} /></span><div><strong>{prettyPhone(session.from_number || "Unknown")}</strong><small>{session.summary || "Call completed"}</small><time>{new Date(session.started_at).toLocaleString()}</time>{session.collected?.call_quality && <small className={`v2-ai-quality is-${session.collected.call_quality.rating}`}>{callQualityText(session.collected.call_quality)}</small>}{(session.turns || []).some((turn) => typeof turn.content === "string") && <details className="v2-ai-transcript"><summary>Transcript</summary>{(session.turns || []).filter((turn) => typeof turn.content === "string").map((turn, index) => <p key={index}><b>{turn.role === "assistant" ? "Assistant" : "Caller"}:</b> {String(turn.content)}</p>)}{session.pending_transcript?.trim() ? <p className="is-unanswered"><b>Heard but not answered:</b> {session.pending_transcript}</p> : !(session.turns || []).some((turn) => turn.role === "user") && <p className="is-unanswered">The assistant didn&apos;t hear anything from the caller.</p>}</details>}<button type="button" className="v2-ai-log-btn" onClick={() => void openCallLog(session.id)}>Call log</button>{callLogs[session.id] && <div className="v2-ai-log"><button type="button" className="v2-ai-log-btn" onClick={() => { void navigator.clipboard?.writeText(callLogs[session.id]).then(() => setNotice("Call log copied.")).catch(() => setNotice("Select the text and copy it.")); }}>Copy</button><pre>{callLogs[session.id]}</pre></div>}</div><StatusPill tone={session.outcome === "booked" ? "success" : "neutral"}>{session.outcome || "handled"}</StatusPill></article>)}</div> : <EmptyState title="No AI calls yet" description="Once Alex handles a call, its summary and outcome will appear here." />}
         </Panel>
       </div>
     </>
