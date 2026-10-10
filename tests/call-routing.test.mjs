@@ -81,3 +81,35 @@ test('no subscription or no money for the first minute: the call rings out', asy
   assert.equal(await routeInboundCall(db({ ...base, wallet_balance: 0.01, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) }), call), null);
   assert.equal(fetched, 0);
 });
+
+const plain = (v) => JSON.parse(JSON.stringify(v));
+function ownerDb(tables) {
+  return { from: (table) => {
+    const filters = [];
+    const c = {
+      select: () => c, not: () => c, order: () => c, limit: () => c,
+      eq: (k, v) => (filters.push((r) => r[k] === v), c),
+      in: (k, vs) => (filters.push((r) => vs.includes(r[k])), c),
+      maybeSingle: async () => ({ data: (tables[table] || []).filter((r) => filters.every((f) => f(r)))[0] || null }),
+      then: (resolve) => resolve({ data: (tables[table] || []).filter((r) => filters.every((f) => f(r))) }),
+    };
+    return c;
+  } };
+}
+
+test('call owner: a number shared by two accounts no longer rejects the call', async () => {
+  const { findCallOwner } = load(async () => ok());
+  const shared = { owned_phone_numbers: [{ user_id: 'a', digits: '9545550100' }, { user_id: 'b', digits: '9545550100' }] };
+  assert.deepEqual(plain(await findCallOwner(ownerDb({ ...shared, profiles: [{ id: 'b', ai_call_enabled: true }] }), '+19545550100', '+13055550199')), { userId: 'b', contactId: null });
+  assert.deepEqual(plain(await findCallOwner(ownerDb({ ...shared, profiles: [] }), '+19545550100', '+13055550199')), { userId: 'a', contactId: null });
+  const withContact = { ...shared, contacts: [{ id: 'c1', user_id: 'a', phone: '(305) 555-0199' }], profiles: [{ id: 'b', ai_call_enabled: true }] };
+  assert.deepEqual(plain(await findCallOwner(ownerDb(withContact), '+19545550100', '+13055550199')), { userId: 'a', contactId: 'c1' });
+});
+
+test('call owner: legacy numbers on the profile are found; unknown numbers are not', async () => {
+  const { findCallOwner } = load(async () => ok());
+  const legacy = { owned_phone_numbers: [], profiles: [{ id: 'u9', owned_numbers: [{ number: '(954) 555-0100' }] }] };
+  assert.deepEqual(plain(await findCallOwner(ownerDb(legacy), '+19545550100', '+13055550199')), { userId: 'u9', contactId: null });
+  assert.equal(await findCallOwner(ownerDb(legacy), '+17865550000', '+13055550199'), null);
+  assert.equal(await findCallOwner(ownerDb(legacy), 'garbage', '+13055550199'), null);
+});

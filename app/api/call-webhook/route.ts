@@ -4,7 +4,8 @@ import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify
 import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
 import { bindBrowserCall } from "@/lib/browser-calls";
 import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
-import { hangupLeg, routeInboundCall } from "@/lib/call-routing";
+import { findCallOwner, hangupLeg, routeInboundCall } from "@/lib/call-routing";
+import { hasAiAccess } from "@/lib/messaging-status";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -27,7 +28,7 @@ export const maxDuration = 30;
 // Everything the assistant needs off the profile row. Kept as one literal
 // (not a concatenation) so supabase-js can still infer the row type.
 const AI_PROFILE_COLUMNS =
-  "first_name, last_name, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
+  "first_name, last_name, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, subscription_status, free_subscription, paused, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 // The old B-leg dial path used TELNYX_VOICE_APP_ID to stamp newly-created
@@ -120,29 +121,17 @@ export async function POST(req: NextRequest) {
     if (type === "call.initiated" && p.direction === "incoming" && !state?.callRowId) {
       const toE164 = p.to as string;
       const fromE164 = p.from as string;
-      const toDigits = (toE164 || "").replace(/\D/g, "");
-      const toNormalized = toDigits.startsWith("1") ? toDigits.slice(1) : toDigits;
-
-      // Find the user who owns this number.
-      const { data: ownership } = await supabase
-        .from("owned_phone_numbers")
-        .select("user_id")
-        .eq("digits", toNormalized)
-        .maybeSingle();
-
-      if (!ownership?.user_id) {
+      // Find the account that owns this number (shared and legacy numbers
+      // included — see findCallOwner).
+      const owner = await findCallOwner(supabase, toE164, fromE164);
+      if (!owner) {
         // Unknown destination — reject.
+        console.warn(`[call-webhook] inbound call to ${toE164} rejected: no account owns this number`);
         if (ccid) await telnyx(`/calls/${ccid}/actions/reject`, { cause: "REJECTED" });
         return NextResponse.json({ status: "ignored" });
       }
-
-      // Match inbound to a contact by phone if possible.
-      const { data: contactMatch } = await supabase
-        .from("contacts")
-        .select("id")
-        .eq("user_id", ownership.user_id)
-        .eq("phone", fromE164)
-        .maybeSingle();
+      const ownership = { user_id: owner.userId };
+      const contactMatch = owner.contactId ? { id: owner.contactId } : null;
 
       const { data: row } = await supabase
         .from("calls")
@@ -179,9 +168,17 @@ export async function POST(req: NextRequest) {
         const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
         const inHours = isWithinBusinessHours(hours);
         const shouldAnswer =
-          !!(profile?.ai_plan || profile?.free_ai_plan) &&
+          !!profile &&
+          hasAiAccess(profile) &&
+          !profile.paused &&
           settings.enabled &&
           !(settings.afterHoursOnly && inHours);
+        if (profile && settings.enabled && !shouldAnswer) {
+          console.warn(
+            `[call-webhook] AI assistant not answering for ${ownership.user_id}: ` +
+              (!hasAiAccess(profile) ? "no active subscription" : profile.paused ? "account paused" : "within business hours (after-hours only)")
+          );
+        }
 
         if (shouldAnswer) {
           // Session first, reserve second. The session row is unique per
@@ -248,7 +245,21 @@ export async function POST(req: NextRequest) {
           callRowId: row?.id,
           aiSessionId,
         });
-        await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
+        const answered = await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
+        if (!answered.ok) {
+          // The assistant couldn't pick up; ring the team instead of letting
+          // the call fail. The unused reserve is returned at hangup.
+          console.error(`[call-webhook] AI answer failed ${answered.status}: ${(await answered.text().catch(() => "")).slice(0, 300)}`);
+          if (row?.id) {
+            await routeInboundCall(supabase, {
+              ccid,
+              rowId: row.id,
+              userId: ownership.user_id,
+              callerNumber: fromE164,
+              businessNumber: toE164,
+            });
+          }
+        }
       } else if (ccid && row?.id) {
         await routeInboundCall(supabase, {
           ccid,

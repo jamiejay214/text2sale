@@ -50,6 +50,70 @@ export function forwardingTarget(ownedNumbers: unknown, businessNumber: string):
   return target;
 }
 
+/** Every way a caller's number may have been saved on a contact. */
+export function phoneVariants(raw: unknown): string[] {
+  const e164 = toE164(raw);
+  if (!e164) return raw ? [String(raw)] : [];
+  const d = e164.slice(2);
+  return Array.from(new Set([
+    e164, d, `1${d}`, `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`,
+    `${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`, `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`, String(raw),
+  ]));
+}
+
+/**
+ * Which account an inbound call belongs to.
+ *
+ * A number can be shared by several accounts (owned_phone_numbers is unique
+ * per (user_id, digits), not per number), and older numbers only exist on
+ * profiles.owned_numbers. The previous single-row lookup errored on a shared
+ * number and found nothing for a legacy one, and either way the call was
+ * REJECTED before it rang. Like inbound SMS: the account that has the caller
+ * as a contact wins, then one with the AI receptionist on, then the first.
+ */
+export async function findCallOwner(
+  db: Db,
+  businessNumber: unknown,
+  callerNumber: unknown
+): Promise<{ userId: string; contactId: string | null } | null> {
+  const business = toE164(businessNumber);
+  if (!business) return null;
+  const digits = business.slice(2);
+
+  const { data: rows } = await db.from("owned_phone_numbers").select("user_id").eq("digits", digits);
+  let owners: string[] = Array.from(new Set(((rows || []) as Array<{ user_id: string }>).map((r) => r.user_id).filter(Boolean)));
+  if (!owners.length) {
+    const { data: profiles } = await db.from("profiles").select("id, owned_numbers").not("owned_numbers", "is", null);
+    owners = ((profiles || []) as Array<{ id: string; owned_numbers: unknown }>)
+      .filter((p) => Array.isArray(p.owned_numbers) && (p.owned_numbers as Array<{ number?: string }>).some((n) => toE164(n?.number) === business))
+      .map((p) => p.id);
+  }
+  if (!owners.length) return null;
+
+  const variants = phoneVariants(callerNumber);
+  const { data: contacts } = variants.length
+    ? await db
+        .from("contacts")
+        .select("id, user_id")
+        .in("user_id", owners)
+        .in("phone", variants)
+        .order("created_at", { ascending: false })
+        .limit(owners.length * 2)
+    : { data: [] };
+  const contact = ((contacts || []) as Array<{ id: string; user_id: string }>)[0];
+  if (contact) return { userId: contact.user_id, contactId: contact.id };
+  if (owners.length === 1) return { userId: owners[0], contactId: null };
+
+  const { data: aiOwner } = await db
+    .from("profiles")
+    .select("id")
+    .in("id", owners)
+    .eq("ai_call_enabled", true)
+    .limit(1)
+    .maybeSingle();
+  return { userId: aiOwner?.id || owners[0], contactId: null };
+}
+
 async function loadRoutingProfile(db: Db, userId: string) {
   const { data } = await db
     .from("profiles")
