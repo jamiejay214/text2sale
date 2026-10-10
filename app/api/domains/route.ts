@@ -105,8 +105,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       suggestions,
-      // True when the registrar isn't configured or rejected us: the screen
-      // then falls back to "I already own a domain".
+      // False when the registrar isn't configured or rejected us: the screen
+      // says so and asks the customer to try again shortly.
       registrarAvailable: !(registrarProblem && suggestions.length === 0),
       registrarProblem:
         suggestions.length === 0 && registrarProblem
