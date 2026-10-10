@@ -2,7 +2,7 @@ import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-import { DEFAULT_VOICE, settingsFromProfile } from "@/lib/ai-call";
+import { DEFAULT_VOICE, VOICES, settingsFromProfile } from "@/lib/ai-call";
 import { hasAiAccess } from "@/lib/messaging-status";
 import { ensureInboundVoice, type VoiceSetupCheck } from "@/lib/telnyx-voice";
 import {
@@ -24,14 +24,7 @@ const PROFILE_COLUMNS =
   "ai_plan, free_ai_plan, subscription_status, free_subscription, paused, wallet_balance, owned_numbers, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, " +
   "ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
-// Telnyx voices we expose in the UI. Kept short on purpose — a long list
-// invites people to pick something that reads numbers badly over a phone.
-export const VOICES = [
-  { id: "Telnyx.KokoroTTS.af", label: "Ava — warm, neutral American" },
-  { id: "Telnyx.KokoroTTS.af_heart", label: "Ava (warmer) — softer delivery" },
-  { id: "AWS.Polly.Joanna-Neural", label: "Joanna — polished American" },
-  { id: "AWS.Polly.Matthew-Neural", label: "Matthew — polished American" },
-];
+
 
 /** Normalize a US number to E.164, or null if it isn't one. */
 function toE164(input: string): string | null {
