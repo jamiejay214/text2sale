@@ -74,11 +74,12 @@ test('production creates the inbound calling app and moves the number onto it', 
   assert.equal(app.webhook_event_url, HOOK);
   assert.equal(app.webhook_api_version, '2');
   assert.equal(app.outbound.outbound_voice_profile_id, 'ovp1', 'forwarding to a cell needs an outbound voice profile');
+  assert.equal(app.anchorsite_override, 'Ashburn, VA', 'audio must not be routed by a ping to Vercel\'s worldwide edge');
   assert.equal(t.state.numbers[0].connection_id, app.id);
 });
 
 test('an existing app and a number already on it need no changes', async () => {
-  const app = { id: 'app9', application_name: 'Text2Sale inbound calls', webhook_event_url: HOOK, webhook_api_version: '2', outbound: { outbound_voice_profile_id: 'ovp1' } };
+  const app = { id: 'app9', application_name: 'Text2Sale inbound calls', webhook_event_url: HOOK, webhook_api_version: '2', anchorsite_override: 'Ashburn, VA', outbound: { outbound_voice_profile_id: 'ovp1' } };
   const t = load({ connection: connection(), apps: [app], numbers: [number('app9')] }, PROD);
   assert.deepEqual(clone(await t.ensureVoiceRouting('+19545550101')), { ok: true, inbound: true });
   assert.equal(t.calls.filter((c) => c.method !== 'GET').length, 0);
@@ -91,7 +92,15 @@ test('production repairs the app: webhook, API version, outbound profile, active
   assert.equal(app.webhook_event_url, HOOK);
   assert.equal(app.webhook_api_version, '2');
   assert.equal(app.active, true);
+  assert.equal(app.anchorsite_override, 'Ashburn, VA');
   assert.equal(app.outbound.outbound_voice_profile_id, 'ovp1');
+});
+
+test('the audio site can be chosen per deployment', async () => {
+  const app = { id: 'app9', application_name: 'Text2Sale inbound calls', webhook_event_url: HOOK, webhook_api_version: '2', anchorsite_override: 'Latency' };
+  const t = load({ connection: connection(), apps: [app], numbers: [number('app9')] }, { ...PROD, TELNYX_ANCHORSITE: 'Chicago, IL' });
+  await t.ensureVoiceRouting('+19545550101');
+  assert.equal(app.anchorsite_override, 'Chicago, IL');
 });
 
 test('TELNYX_VOICE_APP_ID is used when it reports here, skipped when it belongs to something else', async () => {
