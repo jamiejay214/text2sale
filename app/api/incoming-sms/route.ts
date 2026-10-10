@@ -3,6 +3,7 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
+import { hasAiAccess } from "@/lib/messaging-status";
 import { MANDATORY_OPT_OUT_KEYWORDS, normalizeOptOutSettings } from "@/lib/opt-out";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -430,7 +431,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: aiProfile } = await supabase
           .from("profiles")
-          .select("ai_plan, ai_auto_reply, wallet_balance")
+          .select("ai_plan, free_ai_plan, subscription_status, free_subscription, ai_auto_reply, wallet_balance")
           .eq("id", contact.user_id)
           .single();
 
@@ -441,8 +442,9 @@ export async function POST(req: NextRequest) {
           .eq("id", conversation.id)
           .single();
 
-        const globalAi = aiProfile?.ai_plan && aiProfile?.ai_auto_reply;
-        const perConvAi = aiProfile?.ai_plan && convData?.ai_enabled;
+        const aiAccess = !!aiProfile && hasAiAccess(aiProfile);
+        const globalAi = aiAccess && aiProfile?.ai_auto_reply;
+        const perConvAi = aiAccess && convData?.ai_enabled;
 
         // Context-aware decline filter.
         //
@@ -483,7 +485,7 @@ export async function POST(req: NextRequest) {
           .update({ ai_skipped_reason: null })
           .eq("id", conversation.id);
 
-        if (aiProfile?.ai_plan && (globalAi || perConvAi)) {
+        if (aiAccess && (globalAi || perConvAi)) {
           const balance = Number(aiProfile.wallet_balance) || 0;
           if (balance >= 0.025) {
             // Runs after the webhook response via after(): a bare promise could

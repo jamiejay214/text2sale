@@ -63,6 +63,7 @@ type AiPayload = {
   settings?: AiSettings;
   voices?: { id: string; label: string }[];
   pricing?: { perMinute: number };
+  readiness?: Array<{ id: string; ok: boolean; label: string; detail?: string }>;
   sessions?: Array<{ id: string; from_number: string | null; outcome: string | null; summary: string | null; started_at: string; charged_amount: number | string }>;
 };
 
@@ -104,17 +105,25 @@ function AiReceptionist({ profile }: Pick<Props, "profile">) {
     setSaving(false);
     if (!response.ok) { setNotice(data.error || "Could not save the assistant."); return; }
     setDraft(data.settings);
-    setPayload((current) => current ? { ...current, settings: data.settings } : current);
+    setPayload((current) => current ? { ...current, settings: data.settings, readiness: data.readiness || current.readiness?.map((item) => item.id === "enabled" ? { ...item, ok: !!data.settings?.enabled } : item) } : current);
     setNotice("Assistant training saved.");
   };
 
   if (!payload || !draft) return <div className="v2-loading"><span /><strong>Loading your call assistant</strong></div>;
   if (!payload.available) return <Panel><EmptyState title="AI receptionist is being connected" description={payload.message || "Contact support to finish connecting AI calling to your business number."} /></Panel>;
   const sessions = payload.sessions || [];
+  const readiness = payload.readiness || [];
+  const blockers = readiness.filter((item) => !item.ok);
   return (
     <>
       <PageHeader eyebrow="AI receptionist" title="Train an assistant that sounds like your business." description="Set its goal, voice, guardrails, booking rules, and handoff behavior. It answers, qualifies, and books around the clock." actions={<label className="v2-master-switch"><span><Bot size={17} /><b>{draft.enabled ? "Assistant live" : "Assistant off"}</b></span><input type="checkbox" checked={draft.enabled} onChange={() => save({ enabled: !draft.enabled })} /><i /></label>} />
       {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}
+      {readiness.length > 0 && (
+        <Panel className="v2-ai-readiness">
+          <div className="v2-panel-head"><div><h2>{blockers.length ? "Why calls aren't being answered yet" : "Ready to answer calls"}</h2><p>{blockers.length ? "Fix the items marked below and the assistant picks up calls to your business number." : "Call your business number from another phone and the assistant answers."}</p></div><button className="v2-icon-btn" onClick={load} aria-label="Re-check"><RotateCcw size={15} /></button></div>
+          <ul>{readiness.map((item) => <li key={item.id} className={item.ok ? "is-ok" : "is-blocked"}><span>{item.ok ? <Check size={14} /> : "!"}</span><div><b>{item.label}</b>{!item.ok && item.detail && <small>{item.detail}</small>}</div></li>)}</ul>
+        </Panel>
+      )}
       <div className="v2-ai-call-grid">
         <Panel className="v2-ai-profile-card">
           <div className="v2-ai-orb"><span><Sparkles size={25} /></span><i className={draft.enabled ? "is-live" : ""} /></div>

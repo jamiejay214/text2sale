@@ -40,6 +40,10 @@
     {
       "path": "/api/billing/domains",
       "schedule": "37 15 * * *"
+    },
+    {
+      "path": "/api/calls/voice-setup",
+      "schedule": "23 * * * *"
     }
   ]
 }

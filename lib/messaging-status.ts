@@ -323,6 +323,20 @@ export function isEntitled(profile: {
   return s === "active" || s === "canceling";
 }
 
+/**
+ * AI features (auto-reply, AI receptionist) are included in the one plan, so
+ * an active subscription is enough. ai_plan / free_ai_plan are kept for
+ * accounts the admin granted AI to directly.
+ */
+export function hasAiAccess(profile: {
+  ai_plan?: boolean | null;
+  free_ai_plan?: boolean | null;
+  subscription_status?: string | null;
+  free_subscription?: boolean | null;
+}): boolean {
+  return !!profile.ai_plan || !!profile.free_ai_plan || isEntitled(profile);
+}
+
 // ── Retry backoff ──────────────────────────────────────────────────────────
 // Brand checks resolve in minutes; campaign review can take hours. Backing
 // off avoids hammering Telnyx for an account that is going to sit in review
