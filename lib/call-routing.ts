@@ -151,15 +151,18 @@ export async function routeInboundCall(
   }
   if (!route) return null;
 
-  const callerId = toE164(call.callerNumber);
+  // The browser shows who is calling. A cell gets the business number (the
+  // transfer default): Telnyx can refuse to present a caller's number it
+  // doesn't own, and that refusal only shows up after the cell leg fails.
+  const callerId = route === "browser" ? toE164(call.callerNumber) : null;
   const transfer = {
     to,
     timeout_secs: route === "forward" ? 30 : 25,
     client_state: encode({ v: 1, callRowId: call.rowId, route }),
     target_leg_client_state: encode({ v: 1, callRowId: call.rowId, route, leg: "target" }),
   };
-  // Show the caller's number on the cell / browser. If Telnyx won't present
-  // it, retry with the default caller ID (the business number).
+  // If Telnyx won't present the caller's number, retry with the default
+  // caller ID (the business number).
   let result = await telnyx(`/calls/${call.ccid}/actions/transfer`, "POST", callerId ? { ...transfer, from: callerId } : transfer);
   if (!result.ok && callerId) result = await telnyx(`/calls/${call.ccid}/actions/transfer`, "POST", transfer);
   if (!result.ok) {

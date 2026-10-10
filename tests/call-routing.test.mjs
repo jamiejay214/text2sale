@@ -43,7 +43,7 @@ test('forwarding on: transfers the call to the cell showing the caller, billed a
   const [url, body] = calls[0];
   assert.ok(url.endsWith('/calls/cc1/actions/transfer'));
   assert.equal(body.to, '+13055551234');
-  assert.equal(body.from, '+13055550199');
+  assert.equal(body.from, undefined, 'the cell sees the business number, which Telnyx always accepts');
   assert.deepEqual(decode(body.client_state), { v: 1, callRowId: 'row1', route: 'forward' });
   assert.equal(decode(body.target_leg_client_state).leg, 'target');
   assert.equal(d.updates[0].cost_per_min, 0.04);
@@ -62,15 +62,17 @@ test('forwarding off: rings the browser SIP user at the inbound rate', async () 
   assert.equal(d.updates[0].cost_per_min, 0.015);
 });
 
-test('caller ID refused: retries the transfer with the default caller ID', async () => {
+test('browser shows the caller; if Telnyx refuses that caller ID, retries with the default', async () => {
   const bodies = [];
   const { routeInboundCall } = load(async (url, init) => {
+    if (url.includes('/telephony_credentials/')) return ok({ data: { sip_username: 'gencredABC' } });
     const body = init && init.body && JSON.parse(init.body);
     bodies.push(body);
     return body && body.from ? { ok: false, status: 422, json: async () => ({}) } : ok();
   });
-  assert.equal(await routeInboundCall(db({ ...base, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) }), call), 'forward');
+  assert.equal(await routeInboundCall(db(base), call), 'browser');
   assert.equal(bodies.length, 2);
+  assert.equal(bodies[0].from, '+13055550199');
   assert.equal(bodies[1].from, undefined);
 });
 

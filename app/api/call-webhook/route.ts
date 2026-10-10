@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
-import { bindBrowserCall } from "@/lib/browser-calls";
+import { bindBrowserCall, toE164 as toE164Number } from "@/lib/browser-calls";
 import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
 import { findCallOwner, hangupLeg, routeInboundCall } from "@/lib/call-routing";
 import { hasAiAccess } from "@/lib/messaging-status";
@@ -31,12 +31,10 @@ const AI_PROFILE_COLUMNS =
   "first_name, last_name, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, subscription_status, free_subscription, paused, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 const apiKey = process.env.TELNYX_API_KEY!;
-// The old B-leg dial path used TELNYX_VOICE_APP_ID to stamp newly-created
-// legs with a Call Control app. That whole bridged-outbound path is dead
-// (see /api/initiate-call) and phone numbers now live on our credential
-// connection (see /api/buy-number), so we no longer have a Voice API app
-// to reference here. If a future feature needs to originate Call Control
-// legs, read TELNYX_CREDENTIAL_CONNECTION_ID instead.
+// Business numbers live on the "Text2Sale inbound calls" Voice API app
+// (lib/telnyx-voice.ts ensureCallControlApp): Telnyx only accepts answer and
+// transfer commands for numbers on a Voice API app. Outbound browser calls
+// go through the browser-calling SIP connection, whose events also land here.
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -121,6 +119,16 @@ export async function POST(req: NextRequest) {
     if (type === "call.initiated" && p.direction === "incoming" && !state?.callRowId) {
       const toE164 = p.to as string;
       const fromE164 = p.from as string;
+      // Only phone calls to a business number start here. The browser leg of
+      // a call we transferred to the browser phone also arrives as
+      // "incoming" — on the browser-calling connection, addressed to a SIP
+      // user — and must be left to ring, not rejected.
+      if (
+        (p.connection_id && p.connection_id === process.env.TELNYX_CREDENTIAL_CONNECTION_ID) ||
+        !toE164Number(toE164)
+      ) {
+        return NextResponse.json({ status: "ignored" });
+      }
       // Find the account that owns this number (shared and legacy numbers
       // included — see findCallOwner).
       const owner = await findCallOwner(supabase, toE164, fromE164);
@@ -231,12 +239,26 @@ export async function POST(req: NextRequest) {
         }
       }
 
+      // Forward to the owner's cell or ring the browser phone. When nobody can
+      // take the call, end it with a busy signal: a Voice API call nobody
+      // answers would otherwise keep ringing until the caller gives up.
+      const ringTeam = async () => {
+        const route = row?.id
+          ? await routeInboundCall(supabase, {
+              ccid: ccid!,
+              rowId: row.id,
+              userId: ownership.user_id,
+              callerNumber: fromE164,
+              businessNumber: toE164,
+            })
+          : null;
+        if (!route) await telnyx(`/calls/${ccid}/actions/reject`, { cause: "USER_BUSY" });
+      };
+
       // Answer only when the assistant has the leg; call.answered then starts
-      // transcription and speaks the greeting (see openConversation).
-      // Answering any other call connected the caller to dead air (and billed
-      // the minutes) because nothing picks inbound calls up in the browser.
-      // Leaving it unanswered lets it ring out as a normal missed call; the
-      // hangup is matched back to this row by call_control_id.
+      // transcription and speaks the greeting (see openConversation). Every
+      // other call is transferred unanswered (or rejected busy); its hangup is
+      // matched back to this row by call_control_id.
       if (ccid && aiSessionId) {
         const newState = encodeClientState({
           v: 1,
@@ -250,24 +272,10 @@ export async function POST(req: NextRequest) {
           // The assistant couldn't pick up; ring the team instead of letting
           // the call fail. The unused reserve is returned at hangup.
           console.error(`[call-webhook] AI answer failed ${answered.status}: ${(await answered.text().catch(() => "")).slice(0, 300)}`);
-          if (row?.id) {
-            await routeInboundCall(supabase, {
-              ccid,
-              rowId: row.id,
-              userId: ownership.user_id,
-              callerNumber: fromE164,
-              businessNumber: toE164,
-            });
-          }
+          await ringTeam();
         }
-      } else if (ccid && row?.id) {
-        await routeInboundCall(supabase, {
-          ccid,
-          rowId: row.id,
-          userId: ownership.user_id,
-          callerNumber: fromE164,
-          businessNumber: toE164,
-        });
+      } else if (ccid) {
+        await ringTeam();
       }
 
       return NextResponse.json({ status: "ok" });
