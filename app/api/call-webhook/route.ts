@@ -399,8 +399,13 @@ async function handleEvent(payload: any, origin: string) {
     }
 
     // Caller finished saying something.
-    if (type === "call.transcription" && state?.aiSessionId && ccid) {
+    // Found by call id, not client_state: an event that arrives without it
+    // was being dropped, so the assistant never heard the caller.
+    if (type === "call.transcription" && ccid) {
       const td = p.transcription_data || {};
+      console.log(
+        `[call-webhook] heard on ${ccid.slice(-8)}: final=${td.is_final !== false} chars=${String(td.transcript || "").length} state=${state?.aiSessionId ? "yes" : "no"}`
+      );
       // Interim results are off, but Telnyx will still send partials on
       // some engines. Acting on a partial means answering half a sentence.
       if (td.is_final === false) return NextResponse.json({ status: "ok" });
@@ -410,7 +415,7 @@ async function handleEvent(payload: any, origin: string) {
 
     // The assistant finished a sentence — hand the line back to the caller
     // (or carry out the hangup/transfer it queued).
-    if (type === "call.speak.ended" && state?.aiSessionId && ccid) {
+    if (type === "call.speak.ended" && ccid) {
       // p.status is "completed", or "call_hangup" / "cancelled_amd" when
       // the line dropped mid-sentence.
       await onSpeakEnded(supabase, ccid, p.status as string | undefined);

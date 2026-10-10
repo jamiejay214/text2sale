@@ -16,6 +16,7 @@ function fakeDb(rows) {
       let patch = null;
       const q = {
         select: () => q, eq: (k, v) => (filters.push(['eq', k, v]), q), neq: (k, v) => (filters.push(['neq', k, v]), q),
+        or: () => q,
         update: (u) => ((patch = u), q),
         async maybeSingle() {
           const hit = (tables[table] || []).filter((r) => match(r, filters));
@@ -43,21 +44,25 @@ function fakeDb(rows) {
 }
 
 function load(overrides = {}) {
-  const calls = { speak: [], transcription: 0 };
+  const calls = { speak: [], transcription: 0, engines: [], stopped: 0 };
   const aiCall = {
     MAX_TURNS: 40, TURN_DEBOUNCE_MS: 0, TURN_LEASE_SECONDS: 25,
     settingsFromProfile: () => ({ voice: 'v', maxMinutes: 10, greeting: null }),
     businessNameFor: () => 'Acme', defaultGreeting: () => 'Hi there',
-    startTranscription: async () => (calls.transcription++, true),
+    startTranscription: async (ccid, state, engine = 'Deepgram') => (calls.transcription++, calls.engines.push(engine), engine),
+    primarySttEngine: () => 'Deepgram',
+    fallbackSttEngine: (engine) => (engine === 'Telnyx' ? 'Deepgram' : 'Telnyx'),
     speak: async (ccid, line) => (calls.speak.push(line), true),
-    stopTranscription: async () => true, hangupCall: async () => true, transferCall: async () => true,
+    stopTranscription: async () => (calls.stopped++, true), hangupCall: async () => true, transferCall: async () => true,
     buildVoicePrompt: () => 'prompt', buildVoiceTools: () => [], speakableTime: (t) => t,
     runModelTurn: async () => ({ say: 'Sure thing.', toolName: null, toolInput: {} }),
     ...overrides,
   };
   const exports = {};
   vm.runInNewContext(source, {
-    exports, console: { error() {}, warn() {} }, Date, JSON, Math, Buffer, setTimeout, Promise,
+    exports, console: { error() {}, warn() {} }, Date, JSON, Math, Buffer, Promise,
+    // Waits (debounce, first-reply watch) run instantly in tests.
+    setTimeout: (fn) => setImmediate(fn),
     require: (name) => name.includes('ai-call') ? aiCall
       : name.includes('availability') ? { DEFAULT_AVAILABLE_HOURS: { enabled: false }, getAvailableSlots: async () => [], formatDateNice: (d) => d, formatTime12: (t) => t }
       : name.includes('call-pricing') ? { AI_CALL_MIN_RESERVE: 0.36, AI_CALL_RATE_PER_MIN: 0.18, AI_CALL_RESERVE_MINUTES: 2, calcAiCallCharge: () => 0 }
@@ -147,4 +152,43 @@ test('call quality is kept with the AI call without dropping what the caller tol
   assert.equal(row.collected.call_quality.rating, 'good');
   await t.recordCallQuality(fakeDb([row]), 'missing', { rating: 'poor' });
   assert.equal(row.collected.call_quality.rating, 'good');
+});
+
+test('the engine that is listening is recorded with the call', async () => {
+  const t = load();
+  const row = session({ state: 'greeting' });
+  await t.openConversation(fakeDb([row]), row, { voice: 'v' }, {});
+  assert.equal(row.collected.stt_engine, 'Deepgram');
+});
+
+test('nothing heard after the greeting: listening restarts once on the other engine', async () => {
+  const t = load();
+  const row = session({ state: 'speaking', turn_count: 0, collected: { stt_engine: 'Deepgram' } });
+  await t.onSpeakEnded(fakeDb([row]), 'cc1', 'completed');
+  assert.equal(t.calls.stopped, 1);
+  assert.deepEqual(t.calls.engines, ['Telnyx']);
+  assert.equal(row.collected.stt_fallback, 'Telnyx');
+  assert.equal(row.collected.stt_engine, 'Telnyx');
+  // Once only.
+  row.state = 'speaking';
+  await t.onSpeakEnded(fakeDb([row]), 'cc1', 'completed');
+  assert.equal(t.calls.stopped, 1);
+});
+
+test('no engine switch once the caller has been heard, or after the first exchange', async () => {
+  const heard = load();
+  const answered = session({ state: 'speaking', turn_count: 1, collected: { stt_engine: 'Deepgram' } });
+  await heard.onSpeakEnded(fakeDb([answered]), 'cc1', 'completed');
+  assert.equal(heard.calls.stopped, 0);
+});
+
+test('the caller is still answered when the turn functions are missing from the database', async () => {
+  const t = load();
+  const row = session();
+  const db = fakeDb([row]);
+  db.rpc = async () => ({ data: null, error: { message: 'function public.ai_call_append_transcript does not exist' } });
+  await t.onTranscript(db, 'cc1', "I'm looking for a family plan");
+  assert.deepEqual(t.calls.speak, ['Sure thing.']);
+  assert.equal(row.pending_transcript, '');
+  assert.equal(row.turns.at(-2).content, "I'm looking for a family plan");
 });

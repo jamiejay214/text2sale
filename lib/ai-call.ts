@@ -81,11 +81,54 @@ export function voiceOrDefault(voice: unknown): string {
   return VOICES.some((v) => v.id === voice) ? String(voice) : DEFAULT_VOICE;
 }
 
-// Telnyx's transcription engine. Google handles phone-quality audio better
-// than the built-in engine, and its `phone_call` model is trained on
-// exactly this: 8kHz narrowband speech over a carrier. Override per
-// deployment to try a different engine.
-const TRANSCRIPTION_ENGINE = process.env.TELNYX_TRANSCRIPTION_ENGINE || "Google";
+// Speech-to-text engine. Google (`phone_call`, enhanced) accepted the
+// transcription_start command on live calls and then never produced a
+// single transcript, so the assistant never heard the caller. Deepgram
+// Nova-3 is built for live phone audio and is what Telnyx's own voice AI
+// uses; Telnyx's built-in Whisper engine is the fallback. Override per
+// deployment with TELNYX_TRANSCRIPTION_ENGINE (Deepgram, Telnyx, Google).
+export type SttEngine = "Deepgram" | "Telnyx" | "Google";
+const STT_ENGINES: SttEngine[] = ["Deepgram", "Telnyx", "Google"];
+
+export function primarySttEngine(): SttEngine {
+  const configured = process.env.TELNYX_TRANSCRIPTION_ENGINE as SttEngine | undefined;
+  return configured && STT_ENGINES.includes(configured) ? configured : "Deepgram";
+}
+
+/** The engine to switch to when `current` produced nothing. */
+export function fallbackSttEngine(current: SttEngine): SttEngine {
+  return current === "Telnyx" ? "Deepgram" : "Telnyx";
+}
+
+/**
+ * transcription_start settings per engine. `language` and `interim_results`
+ * live inside transcription_engine_config, whose shape depends on the
+ * engine; top-level copies are silently dropped.
+ */
+export function transcriptionBody(engine: SttEngine, clientState: string) {
+  const config: Record<string, unknown> =
+    engine === "Deepgram"
+      ? {
+          transcription_engine: "Deepgram",
+          transcription_model: "deepgram/nova-3",
+          language: "en",
+          interim_results: false,
+          // Finalize a phrase after 0.8 s of silence: quick enough to feel
+          // conversational, long enough not to cut a caller off mid-thought.
+          utterance_end_ms: 800,
+        }
+      : engine === "Telnyx"
+        ? { transcription_engine: "Telnyx", transcription_model: "openai/whisper-large-v3-turbo", language: "en" }
+        : { transcription_engine: "Google", language: "en", interim_results: false, model: "phone_call", use_enhanced: true };
+  return {
+    transcription_engine: engine,
+    transcription_engine_config: config,
+    // Caller audio only. Transcribing our own track would feed the
+    // assistant's own words back to it as caller speech.
+    transcription_tracks: "inbound",
+    client_state: clientState,
+  };
+}
 
 export type AiCallSession = {
   id: string;
@@ -187,33 +230,19 @@ export async function speak(
   return chosen !== FALLBACK_VOICE && callAction(ccid, "speak", body(FALLBACK_VOICE));
 }
 
-export async function startTranscription(ccid: string, clientState: string) {
-  // `language` and `interim_results` are NOT top-level fields on this
-  // action — they live inside transcription_engine_config, and the shape of
-  // that object depends on which engine is selected. Passing them at the
-  // top level (as an earlier version of this did) silently drops them.
-  const engineConfig: Record<string, unknown> = {
-    transcription_engine: TRANSCRIPTION_ENGINE,
-    language: "en",
-  };
-  if (TRANSCRIPTION_ENGINE === "Google") {
-    engineConfig.interim_results = false;
-    // Trained on 8kHz narrowband carrier audio, which is exactly what a
-    // phone call is. Materially better than the default on this input.
-    engineConfig.model = "phone_call";
-    engineConfig.use_enhanced = true;
-  }
-
-  return callAction(ccid, "transcription_start", {
-    transcription_engine: TRANSCRIPTION_ENGINE,
-    transcription_engine_config: engineConfig,
-    // Caller audio only. Transcribing our own track would feed the
-    // assistant's own words back to it as caller speech. This is the
-    // documented default; set explicitly because the cost of being wrong
-    // is the assistant holding a conversation with itself.
-    transcription_tracks: "inbound",
-    client_state: clientState,
-  });
+/**
+ * Start listening to the caller. Returns the engine that Telnyx accepted,
+ * or null when every engine was refused.
+ */
+export async function startTranscription(
+  ccid: string,
+  clientState: string,
+  engine: SttEngine = primarySttEngine()
+): Promise<SttEngine | null> {
+  if (await callAction(ccid, "transcription_start", transcriptionBody(engine, clientState))) return engine;
+  const fallback = fallbackSttEngine(engine);
+  console.warn(`[ai-call] ${engine} transcription refused on ${ccid}; trying ${fallback}`);
+  return (await callAction(ccid, "transcription_start", transcriptionBody(fallback, clientState))) ? fallback : null;
 }
 
 export async function stopTranscription(ccid: string) {
