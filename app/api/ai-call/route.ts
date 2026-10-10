@@ -79,7 +79,7 @@ function readinessOf(profile: Record<string, unknown>, voice: VoiceSetupCheck): 
     },
   ];
   if (voice.webhook !== null) {
-    items.push({ id: "webhook", ok: voice.webhook, label: "Call events reach Text2Sale", detail: voice.webhook ? undefined : "Telnyx is not sending call events to Text2Sale. Contact support." });
+    items.push({ id: "webhook", ok: voice.webhook, label: "Inbound calls reach Text2Sale", detail: voice.webhook ? undefined : voice.error || "Telnyx is not sending call events to Text2Sale. Contact support." });
   }
   return items;
 }
