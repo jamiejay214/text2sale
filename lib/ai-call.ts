@@ -143,8 +143,20 @@ async function callAction(
   return true;
 }
 
+/**
+ * Answer settings for a call the assistant takes. Without
+ * send_silence_when_idle Telnyx sends no audio at all whenever nothing is
+ * playing, including the split seconds between chunks of speech, and the
+ * phone network clips or garbles speech each time the stream restarts:
+ * the caller hears the assistant cut in and out. Silence keeps the stream
+ * steady.
+ */
+export function aiAnswerBody(clientState: string) {
+  return { client_state: clientState, send_silence_when_idle: true };
+}
+
 export async function answerCall(ccid: string, clientState: string) {
-  return callAction(ccid, "answer", { client_state: clientState });
+  return callAction(ccid, "answer", aiAnswerBody(clientState));
 }
 
 /**

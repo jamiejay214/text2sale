@@ -138,3 +138,13 @@ test('words that land just as the greeting ends are still answered', async () =>
   assert.deepEqual(t.calls.speak, ['Sure thing.']);
   assert.equal(row.pending_transcript, '');
 });
+
+test('call quality is kept with the AI call without dropping what the caller told us', async () => {
+  const t = load();
+  const row = session({ collected: { caller_name: 'Jamie' } });
+  await t.recordCallQuality(fakeDb([row]), 'cc1', { mos: 4.2, inboundLossPct: 0.4, jitterMs: 3, outboundLossPct: 0, rating: 'good' });
+  assert.equal(row.collected.caller_name, 'Jamie');
+  assert.equal(row.collected.call_quality.rating, 'good');
+  await t.recordCallQuality(fakeDb([row]), 'missing', { rating: 'poor' });
+  assert.equal(row.collected.call_quality.rating, 'good');
+});

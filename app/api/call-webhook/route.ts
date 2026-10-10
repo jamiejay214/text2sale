@@ -10,13 +10,15 @@ import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
 } from "@/lib/availability";
-import { isWithinBusinessHours, settingsFromProfile } from "@/lib/ai-call";
+import { aiAnswerBody, isWithinBusinessHours, settingsFromProfile } from "@/lib/ai-call";
+import { summarizeCallQuality } from "@/lib/call-quality";
 import {
   ensureSession,
   finalizeAiSession,
   onSpeakEnded,
   onTranscript,
   openConversation,
+  recordCallQuality,
   reserveForAiCall,
 } from "@/lib/ai-call-turn";
 
@@ -290,7 +292,7 @@ async function handleEvent(payload: any, origin: string) {
           callRowId: row?.id,
           aiSessionId,
         });
-        const answered = await telnyx(`/calls/${ccid}/actions/answer`, { client_state: newState });
+        const answered = await telnyx(`/calls/${ccid}/actions/answer`, aiAnswerBody(newState));
         if (!answered.ok) {
           // The assistant couldn't pick up; ring the team instead of letting
           // the call fail. The unused reserve is returned at hangup.
@@ -458,6 +460,14 @@ async function handleEvent(payload: any, origin: string) {
 
     // ───────── HANGUP — finalize row, compute duration, charge wallet ─────────
     if (type === "call.hangup") {
+      // Audio quality for this leg, to tell a bad phone connection from
+      // gaps on our side. Logged for every call, kept with AI calls.
+      const quality = summarizeCallQuality(p.call_quality_stats);
+      if (quality && ccid) {
+        console.log(`[call-webhook] call quality ${ccid}: ${JSON.stringify(quality)}`);
+        await recordCallQuality(supabase, ccid, quality);
+      }
+
       // Browser calls and unanswered inbound calls carry no client_state, so
       // find their row by the call_control_id recorded for the leg.
       let rowId = state?.callRowId;

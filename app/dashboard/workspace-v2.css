@@ -483,6 +483,10 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-ai-transcript summary { cursor:pointer; color:var(--v2-muted); font-weight:600; }
 .v2-ai-transcript p { margin:4px 0 0; line-height:1.4; }
 .v2-ai-transcript p.is-unanswered { color:#e0a14a; }
+.v2-ai-quality { display:block; margin-top:4px; font-size:12px; font-weight:600; }
+.v2-ai-quality.is-good { color:var(--v2-green-2); }
+.v2-ai-quality.is-fair { color:#c58a2b; }
+.v2-ai-quality.is-poor { color:#d4553b; }
 .v2-ai-readiness ul { list-style:none; margin:0; padding:0; display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:10px; }
 .v2-ai-readiness li { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--v2-line); border-radius:12px; }
 .v2-ai-readiness li > span { flex:none; display:grid; place-items:center; width:22px; height:22px; border-radius:50%; font-weight:800; font-size:13px; }

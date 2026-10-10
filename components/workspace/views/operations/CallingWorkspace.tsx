@@ -64,8 +64,20 @@ type AiPayload = {
   voices?: { id: string; label: string }[];
   pricing?: { perMinute: number };
   readiness?: Array<{ id: string; ok: boolean; label: string; detail?: string }>;
-  sessions?: Array<{ id: string; from_number: string | null; outcome: string | null; summary: string | null; started_at: string; charged_amount: number | string; turns?: Array<{ role: string; content: unknown }>; pending_transcript?: string | null }>;
+  sessions?: Array<{ id: string; from_number: string | null; outcome: string | null; summary: string | null; started_at: string; charged_amount: number | string; turns?: Array<{ role: string; content: unknown }>; pending_transcript?: string | null; collected?: { call_quality?: CallQualitySummary } | null }>;
 };
+
+type CallQualitySummary = { mos: number | null; inboundLossPct: number | null; outboundLossPct: number | null; rating: "good" | "fair" | "poor" | "unknown" };
+
+/** Plain-English audio quality for one AI call, from Telnyx's stats. */
+function callQualityText(quality: CallQualitySummary) {
+  const parts: string[] = [];
+  if (quality.mos !== null) parts.push(`caller's audio ${quality.mos.toFixed(1)}/5`);
+  if (quality.inboundLossPct !== null) parts.push(`${quality.inboundLossPct}% lost from caller`);
+  if (quality.outboundLossPct !== null) parts.push(`${quality.outboundLossPct}% lost to caller`);
+  const label = quality.rating === "good" ? "Good" : quality.rating === "fair" ? "Fair" : quality.rating === "poor" ? "Poor" : "Unknown";
+  return `Call audio: ${label}${parts.length ? ` (${parts.join(", ")})` : ""}`;
+}
 
 const CALLING_ENABLED = process.env.NEXT_PUBLIC_CALLING_ENABLED === "true";
 const KEYS = [["1", ""], ["2", "ABC"], ["3", "DEF"], ["4", "GHI"], ["5", "JKL"], ["6", "MNO"], ["7", "PQRS"], ["8", "TUV"], ["9", "WXYZ"], ["*", ""], ["0", "+"], ["#", ""]];
@@ -144,7 +156,7 @@ function AiReceptionist({ profile }: Pick<Props, "profile">) {
         </Panel>
         <Panel className="v2-ai-sessions">
           <div className="v2-panel-head"><div><h2>Recent AI calls</h2><p>Outcomes and summaries</p></div><button className="v2-icon-btn" onClick={load}><RotateCcw size={15} /></button></div>
-          {sessions.length ? <div>{sessions.slice(0, 8).map((session) => <article key={session.id}><span className="v2-ai-session-icon"><Headphones size={15} /></span><div><strong>{prettyPhone(session.from_number || "Unknown")}</strong><small>{session.summary || "Call completed"}</small><time>{new Date(session.started_at).toLocaleString()}</time>{(session.turns || []).some((turn) => typeof turn.content === "string") && <details className="v2-ai-transcript"><summary>Transcript</summary>{(session.turns || []).filter((turn) => typeof turn.content === "string").map((turn, index) => <p key={index}><b>{turn.role === "assistant" ? "Assistant" : "Caller"}:</b> {String(turn.content)}</p>)}{session.pending_transcript?.trim() ? <p className="is-unanswered"><b>Heard but not answered:</b> {session.pending_transcript}</p> : !(session.turns || []).some((turn) => turn.role === "user") && <p className="is-unanswered">The assistant didn&apos;t hear anything from the caller.</p>}</details>}</div><StatusPill tone={session.outcome === "booked" ? "success" : "neutral"}>{session.outcome || "handled"}</StatusPill></article>)}</div> : <EmptyState title="No AI calls yet" description="Once Alex handles a call, its summary and outcome will appear here." />}
+          {sessions.length ? <div>{sessions.slice(0, 8).map((session) => <article key={session.id}><span className="v2-ai-session-icon"><Headphones size={15} /></span><div><strong>{prettyPhone(session.from_number || "Unknown")}</strong><small>{session.summary || "Call completed"}</small><time>{new Date(session.started_at).toLocaleString()}</time>{session.collected?.call_quality && <small className={`v2-ai-quality is-${session.collected.call_quality.rating}`}>{callQualityText(session.collected.call_quality)}</small>}{(session.turns || []).some((turn) => typeof turn.content === "string") && <details className="v2-ai-transcript"><summary>Transcript</summary>{(session.turns || []).filter((turn) => typeof turn.content === "string").map((turn, index) => <p key={index}><b>{turn.role === "assistant" ? "Assistant" : "Caller"}:</b> {String(turn.content)}</p>)}{session.pending_transcript?.trim() ? <p className="is-unanswered"><b>Heard but not answered:</b> {session.pending_transcript}</p> : !(session.turns || []).some((turn) => turn.role === "user") && <p className="is-unanswered">The assistant didn&apos;t hear anything from the caller.</p>}</details>}</div><StatusPill tone={session.outcome === "booked" ? "success" : "neutral"}>{session.outcome || "handled"}</StatusPill></article>)}</div> : <EmptyState title="No AI calls yet" description="Once Alex handles a call, its summary and outcome will appear here." />}
         </Panel>
       </div>
     </>
