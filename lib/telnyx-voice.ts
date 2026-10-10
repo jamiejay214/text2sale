@@ -7,10 +7,20 @@ export const CALL_WEBHOOK_URL = "https://text2sale.com/api/call-webhook";
 export const CALL_APP_NAME = "Text2Sale inbound calls";
 
 const isProduction = () => process.env.VERCEL_ENV === "production";
+
+/**
+ * Telnyx site that carries the call audio. Left on "Latency", Telnyx picks
+ * the site with the fastest ping to the app's webhook host, but that host
+ * is Vercel's worldwide edge, which answers nearby from every site, so the
+ * pick is effectively arbitrary: US callers' audio could cross an ocean
+ * and break up mid-word. Pinned to the US East site; override per
+ * deployment with TELNYX_ANCHORSITE.
+ */
+const anchorsite = () => process.env.TELNYX_ANCHORSITE || "Ashburn, VA";
 const credentialConnectionId = () => process.env.TELNYX_CREDENTIAL_CONNECTION_ID || "";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
-type CallApp = { id: string; webhook_event_url?: string | null; webhook_api_version?: string | number | null; active?: boolean; outbound?: Record<string, any> | null };
+type CallApp = { id: string; webhook_event_url?: string | null; webhook_api_version?: string | number | null; active?: boolean; anchorsite_override?: string | null; outbound?: Record<string, any> | null };
 
 const APP_CACHE_MS = 5 * 60 * 1000;
 let appCache: { id: string; at: number } | null = null;
@@ -34,8 +44,8 @@ async function outboundVoiceProfileId(): Promise<string> {
  *
  * Uses TELNYX_VOICE_APP_ID when it points at an app that sends events here,
  * else the app named CALL_APP_NAME, creating it in production if missing.
- * Production also keeps its webhook, API version and outbound voice profile
- * (needed to forward calls to a cell) correct.
+ * Production also keeps its webhook, API version, audio site (anchorsite)
+ * and outbound voice profile (needed to forward calls to a cell) correct.
  */
 export async function ensureCallControlApp(): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (appCache && Date.now() - appCache.at < APP_CACHE_MS) return { ok: true, id: appCache.id };
@@ -70,6 +80,7 @@ export async function ensureCallControlApp(): Promise<{ ok: true; id: string } |
         webhook_event_url: CALL_WEBHOOK_URL,
         webhook_api_version: "2",
         active: true,
+        anchorsite_override: anchorsite(),
         ...(profileId ? { outbound: { outbound_voice_profile_id: profileId } } : {}),
       }),
     });
@@ -84,6 +95,7 @@ export async function ensureCallControlApp(): Promise<{ ok: true; id: string } |
     if (url !== CALL_WEBHOOK_URL) patch.webhook_event_url = CALL_WEBHOOK_URL;
     if (String(app.webhook_api_version) !== "2") patch.webhook_api_version = "2";
     if (app.active === false) patch.active = true;
+    if (app.anchorsite_override !== anchorsite()) patch.anchorsite_override = anchorsite();
     if (!app.outbound?.outbound_voice_profile_id) {
       const profileId = await outboundVoiceProfileId();
       if (profileId) patch.outbound = { ...(app.outbound || {}), outbound_voice_profile_id: profileId };
