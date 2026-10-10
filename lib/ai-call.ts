@@ -57,7 +57,26 @@ export const TURN_DEBOUNCE_MS = 1200;
 /** Stop taking turns well before any sane call would need them. */
 export const MAX_TURNS = 40;
 
-export const DEFAULT_VOICE = "Telnyx.KokoroTTS.af";
+// Voices offered in the UI. HD voices first: the earlier default (Telnyx
+// KokoroTTS) is a lightweight model that sounded flat, read-aloud and quiet
+// on a phone line. Azure's DragonHD voices are the most natural Telnyx
+// offers; Polly Neural is the dependable fallback.
+export const VOICES = [
+  { id: "Azure.en-US-Ava:DragonHDLatestNeural", label: "Ava — natural, warm (HD)" },
+  { id: "Azure.en-US-Andrew:DragonHDLatestNeural", label: "Andrew — natural, friendly (HD)" },
+  { id: "AWS.Polly.Joanna-Neural", label: "Joanna — clear American" },
+  { id: "AWS.Polly.Matthew-Neural", label: "Matthew — clear American" },
+];
+
+export const DEFAULT_VOICE = VOICES[0].id;
+
+/** Spoken instead when Telnyx refuses the chosen voice, so the caller never hears silence. */
+export const FALLBACK_VOICE = "AWS.Polly.Joanna-Neural";
+
+/** A saved voice, or the default when it's no longer offered (e.g. the old Kokoro voices). */
+export function voiceOrDefault(voice: unknown): string {
+  return VOICES.some((v) => v.id === voice) ? String(voice) : DEFAULT_VOICE;
+}
 
 // Telnyx's transcription engine. Google handles phone-quality audio better
 // than the built-in engine, and its `phone_call` model is trained on
@@ -135,9 +154,9 @@ export async function speak(
   voice: string,
   clientState: string
 ) {
-  return callAction(ccid, "speak", {
+  const body = (chosen: string) => ({
     payload: sanitizeForSpeech(text),
-    voice: voice || DEFAULT_VOICE,
+    voice: chosen,
     language: "en-US",
     // Telnyx defaults this to "premium" anyway; set explicitly because it
     // is the single biggest cost line on an AI call (TTS is billed per
@@ -147,6 +166,10 @@ export async function speak(
     service_level: "premium",
     client_state: clientState,
   });
+  const chosen = voiceOrDefault(voice);
+  if (await callAction(ccid, "speak", body(chosen))) return true;
+  // A voice Telnyx won't synthesize must not leave the caller in silence.
+  return chosen !== FALLBACK_VOICE && callAction(ccid, "speak", body(FALLBACK_VOICE));
 }
 
 export async function startTranscription(ccid: string, clientState: string) {
@@ -224,7 +247,7 @@ export function speakableSlot(slot: AvailableSlot): string {
 // ─── Prompt ──────────────────────────────────────────────────────────────
 
 export function defaultGreeting(businessName: string): string {
-  return `Thanks for calling ${businessName}. I'm the scheduling assistant. How can I help you today?`;
+  return `Hi, thanks for calling ${businessName}! This is the virtual assistant. What can I help you with?`;
 }
 
 export function buildVoicePrompt(opts: {
@@ -259,7 +282,11 @@ ${opts.instructions.trim()}
   }. Someone has just called in. Your job is to find out what they need and get them on the calendar.
 
 YOU ARE ON A PHONE CALL. Everything you write is read aloud to the caller by a speech synthesizer.
-- One or two short sentences per turn. Never more.
+- Sound like a friendly receptionist talking, not someone reading a script. Write the way people actually speak on the phone: short, relaxed sentences, everyday words.
+- One or two short sentences per turn, about twenty words at most. Never more.
+- Open with a quick natural acknowledgment when it fits ("Okay.", "Gotcha.", "Sure.", "Perfect."), and vary it — don't start every turn the same way.
+- Don't repeat the caller's whole request back to them, and don't over-explain. Say it once, simply.
+- Use their first name now and then once you know it, not every turn.
 - Ask ONE question at a time, then stop and wait for the answer.
 - No lists, no bullet points, no numbers-as-digits-in-a-row, no emoji, no markdown, no formatting of any kind.
 - Plain spoken English. Contractions are good. "Sure thing", "got it", "no problem".
@@ -441,7 +468,7 @@ export function settingsFromProfile(profile: any): AiCallSettings {
     enabled: !!profile?.ai_call_enabled,
     greeting: profile?.ai_call_greeting || null,
     instructions: profile?.ai_call_instructions || null,
-    voice: profile?.ai_call_voice || DEFAULT_VOICE,
+    voice: voiceOrDefault(profile?.ai_call_voice),
     transferNumber: profile?.ai_call_transfer_number || null,
     afterHoursOnly: !!profile?.ai_call_after_hours_only,
     maxMinutes: Number(profile?.ai_call_max_minutes) || 10,
