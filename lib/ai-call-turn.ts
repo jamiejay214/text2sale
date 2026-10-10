@@ -30,13 +30,16 @@ import {
   type AiCallSession,
   type AiCallSettings,
   MAX_TURNS,
+  type SttEngine,
   TURN_DEBOUNCE_MS,
   TURN_LEASE_SECONDS,
   buildVoicePrompt,
   buildVoiceTools,
   businessNameFor,
   defaultGreeting,
+  fallbackSttEngine,
   hangupCall,
+  primarySttEngine,
   runModelTurn,
   settingsFromProfile,
   speak,
@@ -210,6 +213,62 @@ export async function ensureSession(
   return { session: data as AiCallSession, created: true };
 }
 
+// ─── Turn plumbing ───────────────────────────────────────────────────────
+// The three turn functions come from migration 011. If they are missing or
+// failing in an environment, every caller's words were silently dropped:
+// the RPC error was never read, nothing was stored, and the assistant sat
+// silent after its greeting. Fall back to plain queries (less race-proof,
+// but the call works) and log loudly so the database gets fixed.
+
+async function appendTranscript(db: Db, ccid: string, text: string): Promise<void> {
+  const { error } = await db.rpc("ai_call_append_transcript", { p_ccid: ccid, p_text: text });
+  if (!error) return;
+  console.error("[ai-call] ai_call_append_transcript failed, using fallback:", error.message);
+  const { data: row } = await db
+    .from("ai_call_sessions")
+    .select("id, pending_transcript")
+    .eq("call_control_id", ccid)
+    .maybeSingle();
+  if (!row) return;
+  await db
+    .from("ai_call_sessions")
+    .update({ pending_transcript: `${row.pending_transcript || ""} ${text}`.trim() })
+    .eq("id", row.id);
+}
+
+async function claimTurn(db: Db, ccid: string): Promise<boolean> {
+  const { data, error } = await db.rpc("ai_call_claim_turn", {
+    p_ccid: ccid,
+    p_lease_seconds: TURN_LEASE_SECONDS,
+  });
+  if (!error) return !!data;
+  console.error("[ai-call] ai_call_claim_turn failed, using fallback:", error.message);
+  const staleBefore = new Date(Date.now() - TURN_LEASE_SECONDS * 1000).toISOString();
+  const { data: claimed } = await db
+    .from("ai_call_sessions")
+    .update({ turn_lock_at: new Date().toISOString(), state: "thinking" })
+    .eq("call_control_id", ccid)
+    .neq("state", "done")
+    .or(`turn_lock_at.is.null,turn_lock_at.lt."${staleBefore}"`)
+    .select("id")
+    .maybeSingle();
+  return !!claimed;
+}
+
+async function consumeTranscript(db: Db, ccid: string): Promise<string> {
+  const { data, error } = await db.rpc("ai_call_consume_transcript", { p_ccid: ccid });
+  if (!error) return String(data || "").trim();
+  console.error("[ai-call] ai_call_consume_transcript failed, using fallback:", error.message);
+  const { data: row } = await db
+    .from("ai_call_sessions")
+    .select("id, pending_transcript")
+    .eq("call_control_id", ccid)
+    .maybeSingle();
+  if (!row) return "";
+  await db.from("ai_call_sessions").update({ pending_transcript: "" }).eq("id", row.id);
+  return String(row.pending_transcript || "").trim();
+}
+
 /** Start transcription and speak the opening line. */
 export async function openConversation(
   db: Db,
@@ -266,10 +325,49 @@ export async function openConversation(
     .update({
       state: "speaking",
       turns: [{ role: "assistant", content: greeting }],
+      collected: { ...(session.collected || {}), stt_engine: listening },
     })
     .eq("id", session.id);
 
   await speakOrListen(db, session.id, ccid, greeting, settings.voice, clientState);
+}
+
+/** How long after the greeting to wait for any caller speech before switching engines. */
+export const FIRST_REPLY_WAIT_MS = 8000;
+
+/**
+ * Safety net for the first reply. A speech-to-text engine can accept
+ * transcription_start and then never transcribe anything (Google did, on
+ * every live call), which leaves the caller talking to silence. If nothing
+ * at all has been heard a few seconds after the greeting, restart listening
+ * once on the other engine.
+ */
+async function watchFirstReply(db: Db, sessionId: string, ccid: string): Promise<void> {
+  await new Promise((r) => setTimeout(r, FIRST_REPLY_WAIT_MS));
+  const { data: s } = await db
+    .from("ai_call_sessions")
+    .select("id, call_id, state, turn_count, pending_transcript, collected")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (!s || s.state !== "listening" || s.turn_count > 0 || (s.pending_transcript || "").trim()) return;
+  if (s.collected?.stt_fallback) return;
+
+  const current = (s.collected?.stt_engine as SttEngine | undefined) || primarySttEngine();
+  const next = fallbackSttEngine(current);
+  console.warn(`[ai-call] nothing heard on ${ccid} with ${current}; switching to ${next}`);
+  await db
+    .from("ai_call_sessions")
+    .update({ collected: { ...(s.collected || {}), stt_fallback: next } })
+    .eq("id", s.id);
+  const clientState = encodeState({ v: 1, aiSessionId: s.id, callRowId: s.call_id });
+  await stopTranscription(ccid);
+  const started = await startTranscription(ccid, clientState, next);
+  if (started) {
+    await db
+      .from("ai_call_sessions")
+      .update({ collected: { ...(s.collected || {}), stt_fallback: next, stt_engine: started } })
+      .eq("id", s.id);
+  }
 }
 
 /**
@@ -309,7 +407,7 @@ export async function onTranscript(
   const text = (transcript || "").trim();
   if (!text) return;
 
-  await db.rpc("ai_call_append_transcript", { p_ccid: ccid, p_text: text });
+  await appendTranscript(db, ccid, text);
 
   const { data: session } = await db
     .from("ai_call_sessions")
@@ -324,10 +422,7 @@ export async function onTranscript(
   // run cut off mid-turn), which used to leave the call silent for good.
   if (session.state !== "listening" && session.state !== "thinking") return;
 
-  const { data: claimed } = await db.rpc("ai_call_claim_turn", {
-    p_ccid: ccid,
-    p_lease_seconds: TURN_LEASE_SECONDS,
-  });
+  const claimed = await claimTurn(db, ccid);
   if (!claimed) return;
 
   // Hold the lease briefly so the rest of the caller's sentence lands.
@@ -418,10 +513,7 @@ export async function onSpeakEnded(
 
   // Anything the caller said while we were talking is answered now.
   if ((session.pending_transcript || "").trim()) {
-    const { data: claimed } = await db.rpc("ai_call_claim_turn", {
-      p_ccid: ccid,
-      p_lease_seconds: TURN_LEASE_SECONDS,
-    });
+    const claimed = await claimTurn(db, ccid);
     if (claimed) {
       await new Promise((r) => setTimeout(r, TURN_DEBOUNCE_MS));
       await runTurnSafely(db, ccid);
@@ -430,6 +522,7 @@ export async function onSpeakEnded(
   }
 
   await db.from("ai_call_sessions").update({ state: "listening" }).eq("id", session.id);
+  const awaitingFirstReply = session.turn_count === 0;
 
   // The caller may have finished a sentence between the read above and the
   // switch to listening. Their transcript landed while we were "speaking",
@@ -441,15 +534,15 @@ export async function onSpeakEnded(
     .eq("id", session.id)
     .maybeSingle();
   if (after?.state === "listening" && (after.pending_transcript || "").trim()) {
-    const { data: claimed } = await db.rpc("ai_call_claim_turn", {
-      p_ccid: ccid,
-      p_lease_seconds: TURN_LEASE_SECONDS,
-    });
+    const claimed = await claimTurn(db, ccid);
     if (claimed) {
       await new Promise((r) => setTimeout(r, TURN_DEBOUNCE_MS));
       await runTurnSafely(db, ccid);
+      return;
     }
   }
+
+  if (awaitingFirstReply) await watchFirstReply(db, session.id, ccid);
 }
 
 /**
@@ -466,8 +559,7 @@ async function runTurn(db: Db, ccid: string): Promise<void> {
   if (!raw || raw.state === "done") return;
   const session = raw as AiCallSession;
 
-  const { data: heard } = await db.rpc("ai_call_consume_transcript", { p_ccid: ccid });
-  const callerSaid = ((heard as string) || "").trim();
+  const callerSaid = await consumeTranscript(db, ccid);
 
   const { data: profile } = await db
     .from("profiles")

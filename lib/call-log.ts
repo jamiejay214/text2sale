@@ -78,6 +78,9 @@ export function formatCallLog(input: CallLogInput): string {
   );
   const quality = session.collected?.call_quality;
   if (quality) lines.push(`audio: ${JSON.stringify(quality)}`);
+  if (session.collected?.stt_engine) {
+    lines.push(`listening with: ${session.collected.stt_engine}${session.collected.stt_fallback ? ` (switched to ${session.collected.stt_fallback} after hearing nothing)` : ""}`);
+  }
 
   lines.push("", "Transcript:");
   const turns = (session.turns || []).filter((t) => typeof t.content === "string");
@@ -87,11 +90,13 @@ export function formatCallLog(input: CallLogInput): string {
 
   lines.push("", "Telnyx events:");
   if (telnyxError) lines.push(`  ${telnyxError}`);
-  const events = [...input.events].sort((a, b) => String(a.event_timestamp).localeCompare(String(b.event_timestamp)));
-  const start = events.length ? Date.parse(String(events[0].event_timestamp)) : 0;
+  const when = (event: CallLogInput["events"][number]) =>
+    String(event.event_timestamp || (event as any).occurred_at || find(event.metadata, "occurred_at") || "");
+  const events = [...input.events].sort((a, b) => when(a).localeCompare(when(b)));
+  const start = events.length ? Date.parse(when(events[0])) : 0;
   if (!events.length && !telnyxError) lines.push("  (none returned)");
   for (const event of events) {
-    const at = Date.parse(String(event.event_timestamp));
+    const at = Date.parse(when(event));
     const offset = Number.isFinite(at) && start ? `+${((at - start) / 1000).toFixed(1)}s` : "?";
     lines.push(`  ${offset} ${event.type || "?"} ${event.name || "?"} ${describe(event)}`.trimEnd());
   }

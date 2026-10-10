@@ -8,7 +8,7 @@ const source = ts.transpileModule(readFileSync('lib/ai-call.ts', 'utf8'), { comp
 function load(fetchImpl = async () => ({ ok: true, text: async () => '' })) {
   const exports = {};
   vm.runInNewContext(source, {
-    exports, fetch: fetchImpl, JSON, console: { error() {} }, process: { env: {} }, Date,
+    exports, fetch: fetchImpl, JSON, console: { error() {}, warn() {} }, process: { env: {} }, Date,
     require: () => ({ formatDateNice: (d) => d, formatTime12: (t) => t }),
   });
   return exports;
@@ -50,4 +50,21 @@ test('the assistant answers with steady silence so speech does not cut in and ou
   await answerCall('cc1', 'state');
   assert.match(bodies[0][0], /\/calls\/cc1\/actions\/answer$/);
   assert.equal(bodies[0][1].send_silence_when_idle, true);
+});
+
+test('listening uses Deepgram Nova-3 for live phone audio, and falls back to Telnyx if refused', async () => {
+  const sent = [];
+  const { transcriptionBody, startTranscription, primarySttEngine } = load(async (url, init) => {
+    const body = JSON.parse(init.body);
+    sent.push(body.transcription_engine);
+    return { ok: body.transcription_engine !== 'Deepgram', status: 422, text: async () => '' };
+  });
+  assert.equal(primarySttEngine(), 'Deepgram');
+  const body = JSON.parse(JSON.stringify(transcriptionBody('Deepgram', 's')));
+  assert.deepEqual(body.transcription_engine_config, { transcription_engine: 'Deepgram', transcription_model: 'deepgram/nova-3', language: 'en', interim_results: false, utterance_end_ms: 800 });
+  assert.equal(body.transcription_tracks, 'inbound');
+  assert.equal(await startTranscription('cc1', 's'), 'Telnyx');
+  assert.deepEqual(sent, ['Deepgram', 'Telnyx']);
+  const telnyx = JSON.parse(JSON.stringify(transcriptionBody('Telnyx', 's')));
+  assert.equal(telnyx.transcription_engine_config.transcription_model, 'openai/whisper-large-v3-turbo');
 });
