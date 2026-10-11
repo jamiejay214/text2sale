@@ -7,6 +7,7 @@ import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
 import { fetchCampaigns, fetchConversationsPage, fetchMessagesPage, insertMessage, updateContact, updateConversation } from "@/lib/supabase-data";
 import { belongsInTab, type InboxFilter } from "@/lib/inbox-filter";
+import { canUseCalling } from "@/lib/owner";
 import type { Campaign, Contact, Conversation, Message } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
@@ -91,7 +92,7 @@ function ContactDetailsRail({
   onClose: () => void;
   onSave: (draft: ContactRailDraft) => Promise<Contact | null>;
   onViewContact: () => void;
-  onCallQueue: () => void;
+  onCallQueue?: () => void;
 }) {
   const [draft, setDraft] = useState<ContactRailDraft>(() => contactRailDraft(contact));
   const [newTag, setNewTag] = useState("");
@@ -239,7 +240,7 @@ function ContactDetailsRail({
         {notice ? <p className={`v2-client-save-notice is-${notice.tone}`}>{notice.tone === "ok" ? <CheckCircle2 size={15} /> : <X size={15} />}{notice.text}</p> : null}
       </div>
       <footer className="v2-contact-rail-footer">
-        <div><button className="v2-btn" onClick={onViewContact}>Full contact</button><button className="v2-btn" onClick={onCallQueue}><UserRound size={15} /> Call queue</button></div>
+        <div><button className="v2-btn" onClick={onViewContact}>Full contact</button>{onCallQueue ? <button className="v2-btn" onClick={onCallQueue}><UserRound size={15} /> Call queue</button> : null}</div>
         <button className="v2-btn v2-btn-primary" disabled={!dirty || !draft.phone.trim() || saving} onClick={() => void save()}>{saving ? <Loader2 className="v2-spin" size={16} /> : <Check size={16} />}{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</button>
       </footer>
     </aside>
@@ -762,7 +763,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
                 <div className="v2-thread-person"><span className="v2-avatar">{initials(selectedContact)}</span><span><strong>{contactName(selectedContact)}</strong><small>{selectedContact.phone}{selectedContact.city ? ` · ${selectedContact.city}, ${selectedContact.state} ${selectedContact.zip || ""}` : ""}</small></span></div>
                 <div className="v2-thread-actions">
                   <button className="v2-thread-quick" title="Archive conversation" onClick={() => archiveConversation(selected.id)}><Archive size={15} /><span>Archive</span></button>
-                  <button className="v2-thread-quick" title={`Call ${contactName(selectedContact)}`} onClick={openLeadInDialer}><PhoneCall size={15} /><span>Call</span></button>
+                  {canUseCalling(profile.email) ? <button className="v2-thread-quick" title={`Call ${contactName(selectedContact)}`} onClick={openLeadInDialer}><PhoneCall size={15} /><span>Call</span></button> : null}
                   <button className="v2-thread-quick" title="Add this lead to a campaign" onClick={() => void openCampaignPicker([selected.id])}><Megaphone size={15} /><span>Add to campaign</span></button>
                   <label className="v2-ai-switch"><span><Bot size={15} /> {aiAccess ? `AI ${selected.ai_enabled ? "on" : "off"}` : "Unlock AI"}</span><input type="checkbox" checked={aiAccess && !!selected.ai_enabled} onChange={toggleAi} /><i /></label>
                   <button className={contactRailOpen ? "is-active" : ""} aria-label={contactRailOpen ? "Hide contact details" : "Show contact details"} aria-expanded={contactRailOpen} aria-controls="conversation-contact-details" onClick={() => setContactRailOpen((open) => !open)}><MoreHorizontal size={18} /></button>
@@ -785,7 +786,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             onClose={() => setContactRailOpen(false)}
             onSave={saveContactDetails}
             onViewContact={() => onNavigate("contacts")}
-            onCallQueue={openLeadInDialer}
+            onCallQueue={canUseCalling(profile.email) ? openLeadInDialer : undefined}
           />
         ) : null}
       </Panel>

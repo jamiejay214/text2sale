@@ -1,5 +1,6 @@
 import { ensureVoiceRouting, ensureWebrtcMedia } from "@/lib/telnyx-voice";
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
+import { canUseCalling } from "@/lib/owner";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -60,9 +61,12 @@ export async function GET(req: NextRequest) {
     // Load existing credential id from profile
     const { data: profile } = await adminSupabase
       .from("profiles")
-      .select("telnyx_credential_id, owned_numbers")
+      .select("telnyx_credential_id, owned_numbers, email")
       .eq("id", userId)
       .single();
+    if (!canUseCalling(profile?.email)) {
+      return NextResponse.json({ error: "Calling isn't available on this account." }, { status: 403 });
+    }
 
     const numbers = Array.isArray(profile?.owned_numbers) ? profile.owned_numbers : [];
     if (!numbers.length) return NextResponse.json({ error: "Connect a business number before calling." }, { status: 409 });

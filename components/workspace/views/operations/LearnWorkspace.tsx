@@ -21,6 +21,7 @@ import {
 import type { WorkspaceTab } from "@/components/WorkspaceNavigation";
 import type { WorkspaceViewProps } from "../../WorkspaceApp";
 import { PageHeader, Panel } from "../../WorkspacePrimitives";
+import { canUseCalling } from "@/lib/owner";
 
 type Guide = {
   id: string;
@@ -172,10 +173,12 @@ const GUIDES: Guide[] = [
   },
 ];
 
-export default function LearnWorkspace({ onNavigate }: WorkspaceViewProps) {
+export default function LearnWorkspace({ profile, onNavigate }: WorkspaceViewProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState("launch");
-  const filtered = useMemo(() => GUIDES.filter((guide) => `${guide.title} ${guide.description} ${guide.steps.map((step) => `${step.title} ${step.detail}`).join(" ")}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  // Calling guides only for accounts that have calling.
+  const calling = canUseCalling(profile.email);
+  const filtered = useMemo(() => GUIDES.filter((guide) => (calling || (guide.tab !== "calls" && guide.tab !== "aicalls")) && `${guide.title} ${guide.description} ${guide.steps.map((step) => `${step.title} ${step.detail}`).join(" ")}`.toLowerCase().includes(query.toLowerCase())), [calling, query]);
   const selected = GUIDES.find((guide) => guide.id === active) || GUIDES[0];
   return (
     <>
