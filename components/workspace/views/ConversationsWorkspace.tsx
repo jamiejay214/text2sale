@@ -6,11 +6,10 @@ import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
 import { fetchCampaigns, fetchConversationsPage, fetchMessagesPage, insertMessage, updateContact, updateConversation } from "@/lib/supabase-data";
+import { belongsInTab, type InboxFilter } from "@/lib/inbox-filter";
 import type { Campaign, Contact, Conversation, Message } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
-
-type InboxFilter = "all" | "inbox" | "unread" | "ai" | "archived";
 
 type ContactRailDraft = Pick<Contact,
   "first_name" | "last_name" | "email" | "phone" | "tags" | "date_of_birth" |
@@ -304,7 +303,7 @@ const ConversationList = memo(function ConversationList({
               <span><strong>{contactName(contact)}</strong><small>{relativeTime(conversation.last_message_at)}</small></span>
               <span>{conversation.preview || "Conversation started"}</span>
               <span className="v2-inbox-badges">
-                {conversation.ai_enabled ? <StatusPill tone="info">AI</StatusPill> : null}
+                {conversation.ai_enabled || conversation.ai_replied_at ? <StatusPill tone="info">AI</StatusPill> : null}
                 {contact?.dnc ? <StatusPill tone="danger">DNC</StatusPill> : null}
               </span>
             </span>
@@ -317,10 +316,12 @@ const ConversationList = memo(function ConversationList({
 });
 
 const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { messages: Message[]; loading: boolean; hasOlder: boolean; onOlder: () => void }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
+  // Scroll only the thread's own box. scrollIntoView also scrolls every
+  // ancestor, which pushed the whole inbox panel up and hid the search bar.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [messages.length]);
   return (
-    <div className="v2-thread">
+    <div className="v2-thread" ref={box}>
       {hasOlder ? <button className="v2-load-older" onClick={onOlder}>Load earlier messages</button> : null}
       {loading ? <div className="v2-thread-loading"><Loader2 size={18} className="v2-spin" /> Loading messages</div> : null}
       {!loading && messages.length === 0 ? <EmptyState title="No messages yet" description="Start this conversation with a personal message." /> : null}
@@ -332,7 +333,6 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
           </div>
         </div>
       ))}
-      <div ref={end} />
     </div>
   );
 });
@@ -402,11 +402,28 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
   const selectedContact = selected ? contacts.get(selected.contact_id) : undefined;
   const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
 
-  const loadPage = useCallback(async (nextPage = page) => {
-    setLoading(true); setError("");
+  // What's on screen right now, for reloads that a live update schedules.
+  const latest = useRef({ filter, page, selectedId, archived, conversations });
+  useEffect(() => { latest.current = { filter, page, selectedId, archived, conversations }; });
+  const loadRequest = useRef(0);
+
+  // silent: a live refresh. No spinner, and the open conversation stays open
+  // even if it no longer fits the tab (say it was just read while on Unread).
+  const loadPage = useCallback(async (nextPage: number, options: { filter?: InboxFilter; silent?: boolean } = {}) => {
+    const request = ++loadRequest.current;
+    const now = latest.current;
+    if (!options.silent) { setLoading(true); setError(""); }
     try {
-      const result = await fetchConversationsPage(profile.id, { page: nextPage, pageSize: 50 });
-      const contactIds = Array.from(new Set(result.rows.map((item) => item.contact_id).filter(Boolean)));
+      const result = await fetchConversationsPage(profile.id, {
+        page: nextPage,
+        pageSize: 50,
+        filter: options.filter ?? now.filter,
+        archivedIds: [...now.archived],
+      });
+      let rows = result.rows;
+      const open = options.silent ? latest.current.conversations.find((item) => item.id === latest.current.selectedId) : undefined;
+      if (open && !rows.some((item) => item.id === open.id)) rows = [...rows, open];
+      const contactIds = Array.from(new Set(rows.map((item) => item.contact_id).filter(Boolean)));
       const nextContacts = new Map<string, Contact>();
       if (contactIds.length) {
         const { data, error: contactsError } = await supabase
@@ -417,25 +434,41 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
         if (contactsError) throw contactsError;
         for (const contact of (data || []) as Contact[]) nextContacts.set(contact.id, contact);
       }
-      setConversations(result.rows);
+      // A newer load (another tab or page) started meanwhile; it wins.
+      if (request !== loadRequest.current) return;
+      setConversations(rows);
       setContacts(nextContacts);
       setTotal(result.total);
       setPage(nextPage);
-      if (!result.rows.some((item) => item.id === selectedId)) setSelectedId(result.rows[0]?.id || "");
+      if (!options.silent && !rows.some((item) => item.id === latest.current.selectedId)) setSelectedId(rows[0]?.id || "");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load conversations.");
-    } finally { setLoading(false); }
-  }, [page, profile.id, selectedId]);
+      if (!options.silent && request === loadRequest.current) setError(reason instanceof Error ? reason.message : "Could not load conversations.");
+    } finally {
+      if (!options.silent && request === loadRequest.current) setLoading(false);
+    }
+  }, [profile.id]);
 
   useEffect(() => {
+    let stored = new Set<string>();
     try {
-      const stored = window.localStorage.getItem(`t2s_archived_convs_${profile.id}`);
-      if (stored) setArchived(new Set(JSON.parse(stored)));
+      const raw = window.localStorage.getItem(`t2s_archived_convs_${profile.id}`);
+      if (raw) stored = new Set(JSON.parse(raw));
     } catch {}
-    loadPage(0);
-  // only reload when the signed-in account changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.id]);
+    setArchived(stored);
+    latest.current = { ...latest.current, archived: stored };
+    void loadPage(0);
+  }, [loadPage, profile.id]);
+
+  // Live updates refresh the list at most every 1.5 s, however many arrive.
+  const refreshTimer = useRef<number | undefined>(undefined);
+  const refreshSoon = useCallback(() => {
+    if (refreshTimer.current !== undefined) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = undefined;
+      void loadPage(latest.current.page, { silent: true });
+    }, 1_500);
+  }, [loadPage]);
+  useEffect(() => () => window.clearTimeout(refreshTimer.current), []);
 
   useEffect(() => {
     try { window.localStorage.setItem(`t2s_archived_convs_${profile.id}`, JSON.stringify([...archived])); } catch {}
@@ -478,20 +511,37 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
         }
         setConversations((current) => current.map((item) => item.id === message.conversation_id ? { ...item, preview: message.body, last_message_at: message.created_at } : item));
+        // A reply moves its conversation to the top of every tab.
+        if (message.direction === "inbound") refreshSoon();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [profile.id, selectedId]);
+  }, [profile.id, refreshSoon, selectedId]);
+
+  // Conversation changes: refresh rows on screen, and reload when one that
+  // isn't shown now belongs in this tab (the AI just replied, say).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`workspace-inbox-${profile.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversations", filter: `user_id=eq.${profile.id}` }, (payload) => {
+        const row = payload.new as Conversation;
+        const { filter: tab, conversations: shown, archived: hidden } = latest.current;
+        if (shown.some((item) => item.id === row.id)) {
+          setConversations((current) => current.map((item) => item.id === row.id ? { ...item, ...row } : item));
+        } else if (tab !== "all" && tab !== "archived" && belongsInTab(row, tab, hidden.has(row.id))) {
+          refreshSoon();
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [profile.id, refreshSoon]);
 
   const visible = useMemo(() => {
     const needle = search.trim().toLowerCase();
     return conversations.filter((conversation) => {
       const contact = contacts.get(conversation.contact_id);
-      const isArchived = archived.has(conversation.id) || !!contact?.dnc;
       // "All texts" shows every conversation, archived and opted-out included.
-      if (filter !== "all" && (filter === "archived" ? !isArchived : isArchived)) return false;
-      if (filter === "unread" && conversation.unread < 1) return false;
-      if (filter === "ai" && !conversation.ai_enabled) return false;
+      if (!belongsInTab(conversation, filter, archived.has(conversation.id) || !!contact?.dnc)) return false;
       if (!needle) return true;
       return `${contactName(contact)} ${contact?.phone || ""} ${conversation.preview || ""}`.toLowerCase().includes(needle);
     });
@@ -679,7 +729,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             <div className="v2-inbox-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" /></div>
           </div>
           <div className="v2-inbox-filters">
-            {(["all", "inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "all" ? "All texts" : item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
+            {(["all", "inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => { setFilter(item); void loadPage(0, { filter: item }); }}>{item === "all" ? "All texts" : item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
           </div>
           {selectMode && checked.size > 0 ? (
             <div className="v2-bulk-actions">

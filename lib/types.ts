@@ -273,6 +273,9 @@ export type Conversation = {
   ai_enabled?: boolean;
   agent_enabled?: boolean;
   ai_skipped_reason?: string | null;
+  // Last real reply from the lead (opt-outs excluded) and last AI reply.
+  replied_at?: string | null;
+  ai_replied_at?: string | null;
 };
 
 export type Message = {
