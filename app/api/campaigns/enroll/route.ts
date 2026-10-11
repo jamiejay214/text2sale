@@ -6,6 +6,7 @@ import {
   validateSequence,
   renderCampaignMessage,
   sequenceTimes,
+  waveStart,
 } from "@/lib/campaign-sequence";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
@@ -162,11 +163,11 @@ export async function POST(req: NextRequest) {
         { error: "No eligible contacts in this audience." },
         { status: 400 },
       );
-    const times = sequenceTimes(steps, startsAt);
     let rows;
     try {
-      rows = contacts.flatMap((contact, index) =>
-        steps.map((step, stepIndex) => {
+      rows = contacts.flatMap((contact, index) => {
+        const times = sequenceTimes(steps, waveStart(startsAt, index));
+        return steps.map((step, stepIndex) => {
           const rendered = renderCampaignMessage(step.message, contact);
           return {
             contact_id: contact.id,
@@ -180,8 +181,8 @@ export async function POST(req: NextRequest) {
             step_index: stepIndex,
             delay_minutes: step.delayMinutes,
           };
-        }),
-      );
+        });
+      });
     } catch (error) {
       return NextResponse.json(
         {

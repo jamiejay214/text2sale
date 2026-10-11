@@ -5,14 +5,14 @@
 // database's statement timeout on a small instance, and the whole launch
 // failed with a generic "not ready". The first batch still goes through the
 // function (all of its checks, and the run id); the rest are appended under
-// the same run in batches. If any batch fails, the run is removed again so
+// the same run in batches of 500. If any batch fails, the run is removed again so
 // nothing half-queued is left behind.
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
 
-export const FIRST_BATCH = 1000;
-const APPEND_BATCH = 1000;
+export const FIRST_BATCH = 500;
+const APPEND_BATCH = 500;
 
 export type QueuedMessage = {
   contact_id: unknown;

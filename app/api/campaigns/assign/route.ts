@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   renderCampaignMessage,
   sequenceTimes,
+  waveStart,
   validateSequence,
 } from "@/lib/campaign-sequence";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
@@ -247,11 +248,11 @@ export async function POST(req: NextRequest) {
       campaign.status === "Scheduled" && Number.isFinite(scheduledStart)
         ? Math.max(Date.now(), scheduledStart)
         : Date.now();
-    const times = sequenceTimes(steps, startsAt);
     let messages;
     try {
-      messages = enrollContacts.flatMap((contact, contactIndex) =>
-        steps.map((step, stepIndex) => {
+      messages = enrollContacts.flatMap((contact, contactIndex) => {
+        const times = sequenceTimes(steps, waveStart(startsAt, contactIndex));
+        return steps.map((step, stepIndex) => {
           const rendered = renderCampaignMessage(step.message, contact);
           return {
             user_id: auth.user.id,
@@ -270,8 +271,8 @@ export async function POST(req: NextRequest) {
             campaign_step_index: stepIndex,
             campaign_delay_minutes: step.delayMinutes,
           };
-        }),
-      );
+        });
+      });
     } catch (error) {
       return assignedWithWarning(
         `${error instanceof Error ? error.message : "Set a first-message opt-out before adding leads."} The lead assignment was saved, but the active flow did not start.`,
