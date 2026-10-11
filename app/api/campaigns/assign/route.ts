@@ -181,9 +181,15 @@ export async function POST(req: NextRequest) {
     const scheduledIds = new Set(
       (alreadyScheduled || []).map((row) => String(row.contact_id)),
     );
-    const enrollContacts = eligible.filter(
-      (contact) => !scheduledIds.has(String(contact.id)),
-    );
+    // One sequence per phone number, so a lead saved twice isn't texted twice.
+    const seenPhones = new Set<string>();
+    const enrollContacts = eligible.filter((contact) => {
+      if (scheduledIds.has(String(contact.id))) return false;
+      const phone = String((contact as { phone?: unknown }).phone || "").replace(/\D/g, "").slice(-10);
+      if (!phone || seenPhones.has(phone)) return false;
+      seenPhones.add(phone);
+      return true;
+    });
     if (!enrollContacts.length) {
       return NextResponse.json({
         success: true,
