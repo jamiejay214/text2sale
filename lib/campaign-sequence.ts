@@ -57,6 +57,19 @@ export function renderCampaignMessage(
     );
 }
 
+/**
+ * Campaigns go out in waves: 200 leads a minute (the sender's per-minute
+ * batch), so a big list doesn't hit every number and the carriers in the
+ * same minute. Each lead's whole sequence shifts with its wave.
+ */
+export const CAMPAIGN_WAVE_SIZE = 200;
+export const CAMPAIGN_WAVE_GAP_MINUTES = 1;
+
+/** When the lead at `contactIndex` (0-based, in queue order) starts its sequence. */
+export function waveStart(startsAt: number, contactIndex: number): number {
+  return startsAt + Math.floor(Math.max(0, contactIndex) / CAMPAIGN_WAVE_SIZE) * CAMPAIGN_WAVE_GAP_MINUTES * 60_000;
+}
+
 export function sequenceTimes(
   steps: SequenceStep[],
   startsAt: number,

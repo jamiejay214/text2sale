@@ -87,3 +87,16 @@ test('failures say what actually went wrong', async () => {
   assert.match(explainEnqueueError({ code: '42703', message: 'column "campaign_run_id" does not exist' }, 10).message, /campaign_run_id/);
   assert.match(explainEnqueueError({ code: 'XX000', message: 'boom' }, 10).message, /XX000: boom/);
 });
+
+test('campaigns go out at 200 leads a minute, each lead keeping its own step spacing', () => {
+  const seq = {};
+  vm.runInNewContext(ts.transpileModule(readFileSync('lib/campaign-sequence.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports: seq, Date, Math });
+  const start = Date.parse('2026-10-11T17:00:00Z');
+  const at = (index) => new Date(seq.waveStart(start, index)).toISOString();
+  assert.equal(at(0), '2026-10-11T17:00:00.000Z');
+  assert.equal(at(199), '2026-10-11T17:00:00.000Z');
+  assert.equal(at(200), '2026-10-11T17:01:00.000Z');
+  assert.equal(at(1999), '2026-10-11T17:09:00.000Z');
+  const steps = seq.validateSequence([{ message: 'Hi', delayMinutes: 0 }, { message: 'Follow up', delayMinutes: 1440 }]);
+  assert.deepEqual(Array.from(seq.sequenceTimes(steps, seq.waveStart(start, 1200))), ['2026-10-11T17:06:00.000Z', '2026-10-12T17:06:00.000Z']);
+});
