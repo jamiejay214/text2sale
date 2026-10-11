@@ -10,7 +10,7 @@ import type { Campaign, Contact, Conversation, Message } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
 
-type InboxFilter = "inbox" | "unread" | "ai" | "archived";
+type InboxFilter = "all" | "inbox" | "unread" | "ai" | "archived";
 
 type ContactRailDraft = Pick<Contact,
   "first_name" | "last_name" | "email" | "phone" | "tags" | "date_of_birth" |
@@ -488,7 +488,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     return conversations.filter((conversation) => {
       const contact = contacts.get(conversation.contact_id);
       const isArchived = archived.has(conversation.id) || !!contact?.dnc;
-      if (filter === "archived" ? !isArchived : isArchived) return false;
+      // "All texts" shows every conversation, archived and opted-out included.
+      if (filter !== "all" && (filter === "archived" ? !isArchived : isArchived)) return false;
       if (filter === "unread" && conversation.unread < 1) return false;
       if (filter === "ai" && !conversation.ai_enabled) return false;
       if (!needle) return true;
@@ -678,7 +679,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             <div className="v2-inbox-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" /></div>
           </div>
           <div className="v2-inbox-filters">
-            {(["inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
+            {(["all", "inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "all" ? "All texts" : item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
           </div>
           {selectMode && checked.size > 0 ? (
             <div className="v2-bulk-actions">
@@ -695,7 +696,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             </div>
           ) : null}
           {loading ? <div className="v2-thread-loading"><Loader2 size={17} className="v2-spin" /> Loading inbox</div> : null}
-          {!loading && visible.length === 0 ? <EmptyState title="Nothing here" description={filter === "archived" ? "Archived conversations will stay available here." : "New replies will appear here as soon as they arrive."} /> : null}
+          {!loading && visible.length === 0 ? <EmptyState title="Nothing here" description={filter === "archived" ? "Archived conversations will stay available here." : filter === "all" ? "Every text you send or receive will appear here." : "New replies will appear here as soon as they arrive."} /> : null}
           <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={(id) => { setSelectedId(id); setContactRailOpen(false); }} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
           <div className="v2-page-controls">
             <button disabled={page === 0} onClick={() => loadPage(page - 1)}><ChevronLeft size={15} /></button>
