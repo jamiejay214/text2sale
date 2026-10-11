@@ -9,6 +9,7 @@ import {
 } from "@/lib/campaign-sequence";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
+import { enqueueSequence } from "@/lib/campaign-enqueue";
 
 export const maxDuration = 300;
 
@@ -200,25 +201,17 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
-    const { data, error } = await db.rpc("enqueue_campaign_sequence", {
-      p_user_id: auth.user.id,
-      p_campaign_id: campaign.id,
-      p_messages: rows,
-      p_starts_at: new Date(startsAt).toISOString(),
-      p_resume: input.resume === true,
+    const queued = await enqueueSequence(db, {
+      userId: auth.user.id,
+      campaignId: campaign.id,
+      rows,
+      startsAt: new Date(startsAt).toISOString(),
+      resume: input.resume === true,
+      audience: contacts.length,
+      previousStatus: campaign.status ?? null,
     });
-    if (error) {
-      console.error("[campaign enrollment]", error.code);
-      return NextResponse.json(
-        {
-          error:
-            error.code === "P0001"
-              ? error.message
-              : "Campaign scheduling is not ready. Contact support; no new sequence was committed.",
-        },
-        { status: error.code === "P0001" ? 409 : 503 },
-      );
-    }
+    if (!queued.ok) return NextResponse.json({ error: queued.message }, { status: queued.status });
+    const data = queued.data;
     return NextResponse.json({ success: true, ...data });
   } catch {
     return NextResponse.json(
