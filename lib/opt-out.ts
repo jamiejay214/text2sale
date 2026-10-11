@@ -105,5 +105,8 @@ export function withFirstMessageOptOut(
   const normalizedMessage = normalizeForMatch(message);
   const normalizedTrigger = normalizeForMatch(trigger);
   if (normalizedMessage === normalizedTrigger || normalizedMessage.endsWith(` ${normalizedTrigger}`)) return message;
+  // Already says how to opt out ("Reply STOP to opt out"): adding " N" after
+  // it would just look like a typo.
+  if (hasOptOutInstruction(message, settings.keywords)) return message;
   return `${message}${message ? " " : ""}${trigger}`;
 }
