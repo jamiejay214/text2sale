@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { mergeNewestFirst, tabQueries, type InboxFilter, type TabQuery } from "./inbox-filter";
 import type {
   Profile,
   Contact,
@@ -277,28 +278,44 @@ export async function fetchConversations(userId: string): Promise<Conversation[]
   return all;
 }
 
-/** Paginated conversation summaries. Message bodies are fetched on demand. */
+function conversationQuery(userId: string, plan: TabQuery) {
+  let query = supabase.from("conversations").select(plan.select, { count: "exact" }).eq("user_id", userId);
+  for (const step of plan.steps) {
+    if (step.op === "not") query = query.not(step.column, step.operator, step.value);
+    else if (step.op === "eq") query = query.eq(step.column, step.value);
+    else if (step.op === "gt") query = query.gt(step.column, step.value);
+    else if (step.op === "in") query = query.in(step.column, step.values);
+    else query = query.or(step.filters);
+  }
+  return query.order("last_message_at", { ascending: false });
+}
+
+// The Archived tab merges several lookups, so it pages over this many rows.
+const ARCHIVE_SCAN = 500;
+
+/** Paginated conversation summaries for one inbox tab. Message bodies are fetched on demand. */
 export async function fetchConversationsPage(
   userId: string,
-  options: { page?: number; pageSize?: number } = {},
+  options: { page?: number; pageSize?: number; filter?: InboxFilter; archivedIds?: readonly string[] } = {},
 ): Promise<PageResult<Conversation>> {
   const page = Math.max(0, options.page ?? 0);
   const pageSize = Math.min(100, Math.max(20, options.pageSize ?? 50));
   const from = page * pageSize;
   const to = from + pageSize - 1;
-  const { data, error, count } = await supabase
-    .from("conversations")
-    .select(
-      "id,user_id,contact_id,preview,unread,last_message_at,starred,created_at,from_number,ai_enabled,agent_enabled,ai_skipped_reason",
-      { count: "exact" },
-    )
-    .eq("user_id", userId)
-    .order("last_message_at", { ascending: false })
-    .range(from, to);
-  if (error) throw error;
-  const rows = (data || []) as Conversation[];
-  const total = count || 0;
-  return { rows, total, hasMore: from + rows.length < total };
+  const plans = tabQueries(options.filter ?? "all", options.archivedIds ?? []);
+  if (plans.length === 1) {
+    const { data, error, count } = await conversationQuery(userId, plans[0]).range(from, to);
+    if (error) throw error;
+    const rows = (data || []) as unknown as Conversation[];
+    const total = count || 0;
+    return { rows, total, hasMore: from + rows.length < total };
+  }
+  const results = await Promise.all(plans.map((plan) => conversationQuery(userId, plan).range(0, ARCHIVE_SCAN - 1)));
+  const failed = results.find((result) => result.error);
+  if (failed?.error) throw failed.error;
+  const merged = mergeNewestFirst(results.map((result) => (result.data || []) as unknown as Conversation[]));
+  const rows = merged.slice(from, to + 1);
+  return { rows, total: merged.length, hasMore: to + 1 < merged.length };
 }
 
 /** Latest messages for one open thread, returned oldest-to-newest for chat. */

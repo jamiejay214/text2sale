@@ -259,7 +259,18 @@ export async function POST(req: NextRequest) {
     // never be saved — leaving no in-app compliance audit trail that we received
     // and honored the request. Finds-or-creates the conversation and inserts the
     // inbound row (mirrors the normal-message path below).
-    const recordInbound = async () => {
+    //
+    // replied_at drives the Inbox tab: a real reply sets it, an opt-out clears
+    // it. Written on its own so a database without the column still saves the
+    // message and the conversation preview.
+    const markReplied = async (conversationId: string, replied: boolean) => {
+      const { error: markError } = await supabase
+        .from("conversations")
+        .update({ replied_at: replied ? new Date().toISOString() : null })
+        .eq("id", conversationId);
+      if (markError) console.warn("[incoming-sms] could not mark reply:", markError.message);
+    };
+    const recordInbound = async (replied: boolean) => {
       const { data: convs } = await supabase
         .from("conversations").select("id, unread")
         .eq("contact_id", contact.id)
@@ -286,6 +297,7 @@ export async function POST(req: NextRequest) {
         await supabase.from("messages").insert({
           conversation_id: convId, direction: "inbound", body, status: "received",
         });
+        await markReplied(convId, replied);
       }
     };
 
@@ -293,7 +305,7 @@ export async function POST(req: NextRequest) {
     // We do NOT mark DNC or change subscription state.
     if (isHelp) {
       await sendTelnyxReply(to, from, responses.help);
-      await recordInbound();
+      await recordInbound(true);
       return NextResponse.json({ status: "ok" });
     }
 
@@ -315,7 +327,7 @@ export async function POST(req: NextRequest) {
         .update({ status: "cancelled" })
         .in("contact_id", ids)
         .eq("status", "pending");
-      await recordInbound();
+      await recordInbound(false);
       // Always send a confirmation reply so the carrier sees compliance.
       await sendTelnyxReply(to, from, responses.optOut);
       return NextResponse.json({ status: "ok" });
@@ -325,7 +337,7 @@ export async function POST(req: NextRequest) {
       const { data: copies } = await sameNumberContacts();
       const ids = Array.from(new Set([contact.id, ...(copies || []).map((c) => c.id as string)]));
       await supabase.from("contacts").update({ dnc: false }).in("id", ids);
-      await recordInbound();
+      await recordInbound(true);
       await sendTelnyxReply(to, from, responses.optIn);
       return NextResponse.json({ status: "ok" });
     }
@@ -386,6 +398,7 @@ export async function POST(req: NextRequest) {
         body,
         status: "received",
       });
+      await markReplied(conversation.id, true);
 
       // Inbound SMS is free to the customer. Telnyx/provider inbound charges
       // are a Text2Sale cost and are never deducted from the customer wallet.

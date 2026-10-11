@@ -330,6 +330,8 @@ BOOKING RULES — follow exactly:
 
     if (toolUse && toolUse.name === "book_appointment") {
       const input = toolUse.input as { date: string; time: string; title?: string };
+      // Slots are "HH:MM:SS"; the model sometimes sends "HH:MM".
+      if (/^\d{1,2}:\d{2}$/.test(input.time || "")) input.time = `${input.time.padStart(5, "0")}:00`;
 
       // Verify the slot is valid
       const slotValid = availableSlots.some((s) => s.date === input.date && s.time === input.time);
@@ -423,6 +425,11 @@ BOOKING RULES — follow exactly:
             model: "claude-haiku-4-5-20251001",
             max_tokens: 300,
             system: systemPrompt,
+            // Required: the API rejects a tool_result without the tool
+            // definitions, which left the lead with no reply at all whenever
+            // the slot it picked was taken. tool_choice none: answer in text.
+            tools,
+            tool_choice: { type: "none" },
             messages: [
               ...turns,
               {
@@ -447,12 +454,18 @@ BOOKING RULES — follow exactly:
           }),
         });
 
-        const followUpData = await followUp.json();
+        const followUpData = await followUp.json().catch(() => ({}));
+        if (!followUp.ok) console.error("[ai-reply] booking follow-up failed:", JSON.stringify(followUpData).slice(0, 300));
         const followUpText = followUpData.content?.find((c: { type: string }) => c.type === "text");
         const cleanedFollowUp = cleanAiSms(followUpText?.text || "");
+        // If the model still has nothing to say, offer the next open time
+        // rather than leaving the lead without an answer.
+        const nextSlot = availableSlots.find((s) => !(s.date === input.date && s.time === input.time));
         aiReply = cleanedFollowUp || (appointmentBooked
           ? sanitizeForSms(`You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`)
-          : "");
+          : nextSlot
+            ? sanitizeForSms(`That time isn't open anymore. Would ${nextSlot.display} work for you?`)
+            : "");
         if (!aiReply) {
           return NextResponse.json(
             { error: "AI failed to generate a reply. Please try again." },
@@ -585,6 +598,14 @@ BOOKING RULES — follow exactly:
           last_message_at: new Date().toISOString(),
         })
         .eq("id", conversationId);
+
+      // Puts the conversation in the AI handled tab. Separate from the update
+      // above so a database without the column still saves the preview.
+      const { error: markError } = await supabase
+        .from("conversations")
+        .update({ ai_replied_at: new Date().toISOString() })
+        .eq("id", conversationId);
+      if (markError) console.warn("[ai-reply] could not mark AI reply:", markError.message);
 
       const newBalance = Number(reservedBalance);
 
