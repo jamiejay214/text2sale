@@ -723,6 +723,16 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-first-optout button { border:0; border-radius:7px; padding:5px 7px; background:#d9f779; color:#153f32; font-size:.62rem; font-weight:900; cursor:pointer; }
 .t2s-dark .v2-first-optout { border-color:#4c6840; background:#1d3528; color:#dff2cf; }
 .t2s-dark .v2-first-optout p,.t2s-dark .v2-first-optout p b { color:#bdd0c2; }
+.v2-spam-check { margin:-3px 0 13px; border:1px solid #b9d595; border-radius:11px; padding:11px; background:#eef7dd; color:#285c43; display:grid; grid-template-columns:18px minmax(0,1fr); align-items:start; gap:8px; }
+.v2-spam-check > svg { margin-top:1px; }
+.v2-spam-check strong { display:block; font-size:.72rem; }
+.v2-spam-check p,.v2-spam-check ul { margin:4px 0 0; font-size:.65rem; line-height:1.5; }
+.v2-spam-check ul { padding-left:16px; }
+.v2-spam-check.is-medium { border-color:#ecd59a; background:#fff8e6; color:#7a5414; }
+.v2-spam-check.is-high { border-color:#efcbc4; background:#fff1ee; color:#953d34; }
+.t2s-dark .v2-spam-check { border-color:#4c6840; background:#1d3528; color:#dff2cf; }
+.t2s-dark .v2-spam-check.is-medium { border-color:#6b5a2c; background:#2e2717; color:#f1dca4; }
+.t2s-dark .v2-spam-check.is-high { border-color:#6e3a33; background:#33201d; color:#f4c3b9; }
 
 .v2-team-membership-card { grid-column:1/-1; }
 .v2-optout-card { min-width:0; }
