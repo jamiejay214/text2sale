@@ -83,6 +83,59 @@ export type PageResult<T> = {
  * array. New workspace screens use this function and only keep the visible
  * page in React state.
  */
+/** PostgREST `or` filter for the contacts search box, or null for no search. */
+export function contactSearchFilter(raw?: string): string | null {
+  const search = (raw || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9+@.\-\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .slice(0, 80);
+  return search
+    ? `first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
+    : null;
+}
+
+/** Every contact matching the search (all pages), for "select all" exports. */
+export async function fetchAllMatchingContacts(userId: string, search?: string): Promise<Contact[]> {
+  const filter = contactSearchFilter(search);
+  const all: Contact[] = [];
+  for (let from = 0; ; from += 1000) {
+    let query = supabase
+      .from("contacts")
+      .select("id,user_id,first_name,last_name,phone,email,city,state,zip,campaign,lead_source,dnc,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .range(from, from + 999);
+    if (filter) query = query.or(filter);
+    const { data, error } = await query;
+    if (error) throw error;
+    all.push(...((data || []) as Contact[]));
+    if (!data || data.length < 1000) return all;
+  }
+}
+
+/** Update every contact matching the search. Returns how many changed, or null on failure. */
+export async function updateMatchingContacts(
+  userId: string,
+  search: string | undefined,
+  patch: Partial<Contact>,
+): Promise<number | null> {
+  let query = supabase.from("contacts").update(patch, { count: "exact" }).eq("user_id", userId);
+  const filter = contactSearchFilter(search);
+  if (filter) query = query.or(filter);
+  const { error, count } = await query;
+  return error ? null : count ?? 0;
+}
+
+/** Delete every contact matching the search. Returns how many were deleted, or null on failure. */
+export async function deleteMatchingContacts(userId: string, search: string | undefined): Promise<number | null> {
+  let query = supabase.from("contacts").delete({ count: "exact" }).eq("user_id", userId);
+  const filter = contactSearchFilter(search);
+  if (filter) query = query.or(filter);
+  const { error, count } = await query;
+  return error ? null : count ?? 0;
+}
+
 export async function fetchContactsPage(
   userId: string,
   options: { page?: number; pageSize?: number; search?: string } = {},
@@ -101,16 +154,8 @@ export async function fetchContactsPage(
     .order("created_at", { ascending: false })
     .range(from, to);
 
-  const search = (options.search || "")
-    .trim()
-    .replace(/[^a-zA-Z0-9+@.\-\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .slice(0, 80);
-  if (search) {
-    query = query.or(
-      `first_name.ilike.%${search}%,last_name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`,
-    );
-  }
+  const searchFilter = contactSearchFilter(options.search);
+  if (searchFilter) query = query.or(searchFilter);
 
   const { data, error, count } = await query;
   if (error) throw error;

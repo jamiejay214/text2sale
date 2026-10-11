@@ -25,6 +25,9 @@ import {
   deleteContact,
   fetchCampaigns,
   fetchContactsPage,
+  fetchAllMatchingContacts,
+  updateMatchingContacts,
+  deleteMatchingContacts,
   insertContact,
   updateContact,
 } from "@/lib/supabase-data";
@@ -113,6 +116,9 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  // Every contact matching the current search, across all pages, not just
+  // the rows loaded on this page.
+  const [allMatching, setAllMatching] = useState(false);
   const [editing, setEditing] = useState<Contact | null | "new">(null);
   const [saving, setSaving] = useState(false);
   const [campaignChoice, setCampaignChoice] = useState("");
@@ -122,6 +128,7 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
     const timer = window.setTimeout(() => {
       setPage(0);
       setQuery(search);
+      setAllMatching(false);
     }, 300);
     return () => window.clearTimeout(timer);
   }, [search]);
@@ -147,15 +154,29 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
   }, [profile.id]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const allPageSelected = contacts.length > 0 && contacts.every((contact) => selected.has(contact.id));
+  const allPageSelected = contacts.length > 0 && (allMatching || contacts.every((contact) => selected.has(contact.id)));
   const selectedContacts = useMemo(() => contacts.filter((contact) => selected.has(contact.id)), [contacts, selected]);
+  const selectionCount = allMatching ? total : selected.size;
+  const isSelected = (id: string) => allMatching || selected.has(id);
+  const clearSelection = () => { setAllMatching(false); setSelected(new Set()); };
 
-  const togglePage = () => setSelected(allPageSelected ? new Set() : new Set(contacts.map((contact) => contact.id)));
-  const toggle = (id: string) => setSelected((current) => {
-    const next = new Set(current);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    return next;
-  });
+  const togglePage = () => {
+    if (allPageSelected) { clearSelection(); return; }
+    setSelected(new Set(contacts.map((contact) => contact.id)));
+  };
+  const toggle = (id: string) => {
+    if (allMatching) {
+      // Unticking one row leaves "everything" mode: keep this page, minus it.
+      setAllMatching(false);
+      setSelected(new Set(contacts.map((contact) => contact.id).filter((item) => item !== id)));
+      return;
+    }
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const saveContact = async (draft: ContactDraft) => {
     setSaving(true);
@@ -194,6 +215,17 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
   };
 
   const removeSelected = async () => {
+    if (allMatching) {
+      const scope = query.trim() ? ` matching "${query.trim()}"` : "";
+      if (!window.confirm(`Delete ALL ${total.toLocaleString()} contacts${scope}? This cannot be undone.`)) return;
+      const deleted = await deleteMatchingContacts(profile.id, query);
+      if (deleted === null) { setNotice("Contacts could not be deleted."); return; }
+      setNotice(`${deleted.toLocaleString()} contacts deleted.`);
+      clearSelection();
+      setPage(0);
+      await load();
+      return;
+    }
     if (!selected.size || !window.confirm(`Delete ${selected.size} selected contacts? This cannot be undone.`)) return;
     const ids = [...selected];
     const { error } = await supabase.from("contacts").delete().eq("user_id", profile.id).in("id", ids);
@@ -207,9 +239,18 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
   };
 
   const assignCampaign = async () => {
-    if (!selected.size || !campaignChoice) return;
+    if (!selectionCount || !campaignChoice) return;
     const campaign = campaigns.find((item) => item.id === campaignChoice);
     if (!campaign) return;
+    if (allMatching) {
+      const updated = await updateMatchingContacts(profile.id, query, { campaign: campaign.name });
+      if (updated === null) { setNotice("Contacts could not be assigned to the campaign."); return; }
+      setContacts((current) => current.map((contact) => ({ ...contact, campaign: campaign.name })));
+      setNotice(`${updated.toLocaleString()} contacts assigned to ${campaign.name}.`);
+      clearSelection();
+      setCampaignChoice("");
+      return;
+    }
     const ids = [...selected];
     const { error } = await supabase.from("contacts").update({ campaign: campaign.name }).eq("user_id", profile.id).in("id", ids);
     if (error) {
@@ -227,8 +268,12 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
     if (result) setContacts((current) => current.map((item) => item.id === result.id ? result : item));
   };
 
-  const exportPage = () => {
-    const rows = selectedContacts.length ? selectedContacts : contacts;
+  const exportPage = async () => {
+    let rows = selectedContacts.length ? selectedContacts : contacts;
+    if (allMatching) {
+      try { rows = await fetchAllMatchingContacts(profile.id, query); }
+      catch { setNotice("Contacts could not be exported."); return; }
+    }
     const headings = ["First Name", "Last Name", "Phone", "Email", "City", "State", "ZIP", "Campaign", "Lead Source", "DNC"];
     const body = rows.map((contact) => [contact.first_name, contact.last_name, contact.phone, contact.email, contact.city, contact.state, contact.zip, contact.campaign, contact.lead_source, contact.dnc ? "Yes" : "No"].map(csvCell).join(","));
     const blob = new Blob([[headings.map(csvCell).join(","), ...body].join("\n")], { type: "text/csv;charset=utf-8" });
@@ -253,17 +298,18 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
         <div className="v2-contacts-toolbar">
           <div className="v2-contacts-search"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, phone, or email…" /></div>
           <button className="v2-btn"><Filter size={15} /> Filters</button>
-          <button className={`v2-btn v2-select-page ${allPageSelected ? "is-active" : ""}`} aria-pressed={allPageSelected} disabled={!contacts.length || loading} onClick={togglePage}><Check size={15} /> {allPageSelected ? "Clear page" : `Select all ${contacts.length || ""}`}</button>
+          <button className={`v2-btn v2-select-page ${allMatching ? "is-active" : ""}`} aria-pressed={allMatching} disabled={!total || loading} onClick={() => allMatching ? clearSelection() : (setSelected(new Set()), setAllMatching(true))}><Check size={15} /> {allMatching ? "Clear selection" : `Select all ${total.toLocaleString()}`}</button>
           <span>{total.toLocaleString()} contacts</span>
         </div>
-        {selected.size > 0 && (
+        {selectionCount > 0 && (
           <div className="v2-contact-bulk">
-            <strong>{selected.size} selected</strong>
+            <strong>{allMatching ? `All ${total.toLocaleString()} contacts selected` : `${selected.size} selected`}</strong>
+            {!allMatching && allPageSelected && total > contacts.length && <button onClick={() => { setSelected(new Set()); setAllMatching(true); }}>Select all {total.toLocaleString()} contacts</button>}
             <select value={campaignChoice} onChange={(event) => setCampaignChoice(event.target.value)}><option value="">Choose campaign…</option>{campaigns.map((campaign) => <option value={campaign.id} key={campaign.id}>{campaign.name}</option>)}</select>
             <button onClick={assignCampaign} disabled={!campaignChoice}>Assign</button>
             <button onClick={exportPage}><Download size={14} /> Export</button>
             <button className="is-danger" onClick={removeSelected}><Trash2 size={14} /> Delete</button>
-            <button className="is-clear" onClick={() => setSelected(new Set())}>Clear</button>
+            <button className="is-clear" onClick={clearSelection}>Clear</button>
           </div>
         )}
         <div className="v2-contacts-table-wrap">
@@ -271,8 +317,8 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
             <thead><tr><th><button className={`v2-table-check ${allPageSelected ? "is-on" : ""}`} onClick={togglePage}>{allPageSelected && <Check size={12} />}</button></th><th>Contact</th><th>Location</th><th>Campaign</th><th>Source</th><th>Status</th><th /></tr></thead>
             <tbody>
               {!loading && contacts.map((contact) => (
-                <tr key={contact.id} className={selected.has(contact.id) ? "is-selected" : ""}>
-                  <td><button className={`v2-table-check ${selected.has(contact.id) ? "is-on" : ""}`} onClick={() => toggle(contact.id)}>{selected.has(contact.id) && <Check size={12} />}</button></td>
+                <tr key={contact.id} className={isSelected(contact.id) ? "is-selected" : ""}>
+                  <td><button className={`v2-table-check ${isSelected(contact.id) ? "is-on" : ""}`} onClick={() => toggle(contact.id)}>{isSelected(contact.id) && <Check size={12} />}</button></td>
                   <td><button className="v2-contact-cell" onClick={() => setEditing(contact)}><span className="v2-avatar">{initials(contact)}</span><span><strong>{displayName(contact)}</strong><small><Phone size={11} /> {contact.phone || "No phone"}</small><small><Mail size={11} /> {contact.email || "No email"}</small></span></button></td>
                   <td>{contact.city || contact.state || contact.zip ? <span className="v2-location"><MapPin size={13} /> {[contact.city, contact.state, contact.zip].filter(Boolean).join(", ")}</span> : <span className="v2-muted-cell">Not added</span>}</td>
                   <td>{contact.campaign ? <StatusPill tone="info">{contact.campaign}</StatusPill> : <span className="v2-muted-cell">Unassigned</span>}</td>
