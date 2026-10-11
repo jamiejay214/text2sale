@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import type { Campaign, Contact, Conversation } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
+import { canUseCalling } from "@/lib/owner";
 
 type Appointment = {
   id: string;
@@ -212,12 +213,14 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
             {!snapshot.recentCampaigns.length && !loading ? <EmptyState title="Build your first campaign" description="Send one message or create a complete follow-up sequence." action={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("campaigns")}>Create campaign</button>} /> : null}
           </div>
         </Panel>
-        <Panel className="v2-call-card">
-          <span><Phone size={22} /></span>
-          <p>POWER CALLING</p>
-          <h3>Turn your next list into a focused call session.</h3>
-          <button className="v2-btn" onClick={() => onNavigate("calls")}>Open calling workspace</button>
-        </Panel>
+        {canUseCalling(profile.email) ? (
+          <Panel className="v2-call-card">
+            <span><Phone size={22} /></span>
+            <p>POWER CALLING</p>
+            <h3>Turn your next list into a focused call session.</h3>
+            <button className="v2-btn" onClick={() => onNavigate("calls")}>Open calling workspace</button>
+          </Panel>
+        ) : null}
       </section>
     </div>
   );

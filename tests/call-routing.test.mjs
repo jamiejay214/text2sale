@@ -5,10 +5,11 @@ import vm from 'node:vm';
 import ts from 'typescript';
 const transpile = (f) => ts.transpileModule(readFileSync(f, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const browser = {}; vm.runInNewContext(transpile('lib/browser-calls.ts'), { exports: browser, Date });
+const ownerLib = {}; vm.runInNewContext(transpile('lib/owner.ts'), { exports: ownerLib });
 
 function load(fetchImpl) {
   const exports = {};
-  const require = (name) => name.includes('browser-calls') ? browser : name.includes('call-pricing') ? { CALL_RATE_FORWARD_PER_MIN: 0.04, CALL_RATE_INBOUND_PER_MIN: 0.015 } : { isEntitled: (p) => p.subscription_status === 'active' };
+  const require = (name) => name.includes('browser-calls') ? browser : name.includes('owner') ? ownerLib : name.includes('call-pricing') ? { CALL_RATE_FORWARD_PER_MIN: 0.04, CALL_RATE_INBOUND_PER_MIN: 0.015 } : { isEntitled: (p) => p.subscription_status === 'active' };
   vm.runInNewContext(transpile('lib/call-routing.ts'), { exports, require, fetch: fetchImpl, Buffer, JSON, AbortSignal, encodeURIComponent, console: { error() {} }, process: { env: { TELNYX_API_KEY: 'k' } } });
   return exports;
 }
@@ -21,7 +22,7 @@ function db(profile) {
 }
 const ok = (json = {}) => ({ ok: true, status: 200, json: async () => json });
 const decode = (s) => JSON.parse(Buffer.from(s, 'base64').toString());
-const base = { wallet_balance: 5, subscription_status: 'active', telnyx_credential_id: 'cred1' };
+const base = { wallet_balance: 5, subscription_status: 'active', telnyx_credential_id: 'cred1', email: 'johnsonhealthquotes@gmail.com' };
 const call = { ccid: 'cc1', rowId: 'row1', userId: 'u1', callerNumber: '+13055550199', businessNumber: '+19545550100' };
 
 const owned = (forward) => [{ number: '(954) 555-0100', ...forward }];
@@ -74,6 +75,13 @@ test('browser shows the caller; if Telnyx refuses that caller ID, retries with t
   assert.equal(bodies.length, 2);
   assert.equal(bodies[0].from, '+13055550199');
   assert.equal(bodies[1].from, undefined);
+});
+
+test('texting-only accounts: no browser phone, but forwarding to a cell still works', async () => {
+  const { routeInboundCall } = load(async (url) => url.includes('/telephony_credentials/') ? ok({ data: { sip_username: 'gencredABC' } }) : ok());
+  const customer = { ...base, email: 'agent@example.com' };
+  assert.equal(await routeInboundCall(db(customer), call), null);
+  assert.equal(await routeInboundCall(db({ ...customer, owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) }), call), 'forward');
 });
 
 test('no subscription or no money for the first minute: the call rings out', async () => {

@@ -13,6 +13,7 @@
 import { CALL_RATE_FORWARD_PER_MIN, CALL_RATE_INBOUND_PER_MIN } from "./call-pricing";
 import { isEntitled } from "./messaging-status";
 import { toE164 } from "./browser-calls";
+import { canUseCalling } from "./owner";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -117,7 +118,7 @@ export async function findCallOwner(
 async function loadRoutingProfile(db: Db, userId: string) {
   const { data } = await db
     .from("profiles")
-    .select("telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription, owned_numbers")
+    .select("telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription, owned_numbers, email")
     .eq("id", userId)
     .maybeSingle();
   return data;
@@ -141,7 +142,7 @@ export async function routeInboundCall(
   if (forward && balance >= CALL_RATE_FORWARD_PER_MIN) {
     route = "forward";
     to = forward;
-  } else if (!forward && profile.telnyx_credential_id && balance >= CALL_RATE_INBOUND_PER_MIN) {
+  } else if (!forward && profile.telnyx_credential_id && canUseCalling(profile.email) && balance >= CALL_RATE_INBOUND_PER_MIN) {
     const credential = await telnyx(`/telephony_credentials/${encodeURIComponent(profile.telnyx_credential_id)}`, "GET");
     const username = credential.ok ? String(credential.json?.data?.sip_username || "") : "";
     if (username) {

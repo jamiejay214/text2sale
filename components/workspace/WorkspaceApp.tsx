@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
 import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
-import { isOwnerEmail } from "@/lib/owner";
+import { canUseCalling, isOwnerEmail } from "@/lib/owner";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/lib/supabase-data";
 import type { Profile } from "@/lib/types";
@@ -84,6 +84,8 @@ export default function WorkspaceApp() {
     !!profile?.free_subscription ||
     ["active", "canceling"].includes(String(profile?.subscription_status || ""));
   const aiAccess = subscribed || !!profile?.free_ai_plan;
+  // Text2Sale is texting-only for now; calling stays on the owner's account.
+  const callingEnabled = canUseCalling(profile?.email);
 
   const loadShell = useCallback(async () => {
     setLoading(true);
@@ -204,7 +206,8 @@ export default function WorkspaceApp() {
   }, [profileId]);
 
   const navigate = useCallback(
-    (tab: WorkspaceTab, subtab?: string) => {
+    (requested: WorkspaceTab, subtab?: string) => {
+      const tab = !callingEnabled && (requested === "calls" || requested === "aicalls") ? "overview" : requested;
       const aiOnly = tab === "aicalls" || (tab === "settings" && subtab === "ai");
       const destinationTab = aiOnly && !aiAccess ? "settings" : tab;
       const destinationSubtab = aiOnly && !aiAccess ? "upgrade" : subtab;
@@ -215,7 +218,7 @@ export default function WorkspaceApp() {
       const query = params.toString();
       router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
-    [aiAccess, impersonateId, router],
+    [aiAccess, callingEnabled, impersonateId, router],
   );
 
   const toggleTheme = () => {
@@ -234,6 +237,9 @@ export default function WorkspaceApp() {
   const view = useMemo(() => {
     if (!profile) return null;
     const shared: WorkspaceViewProps = { profile, onProfile: setProfile, onNavigate: navigate };
+    if (!callingEnabled && (activeTab === "calls" || activeTab === "aicalls")) {
+      return <OverviewWorkspace {...shared} />;
+    }
     if (!aiAccess && (activeTab === "aicalls" || (activeTab === "settings" && settingsTab === "ai"))) {
       return <OperationsWorkspace {...shared} tab="settings" settingsTab="upgrade" />;
     }
@@ -249,7 +255,7 @@ export default function WorkspaceApp() {
       default:
         return <OperationsWorkspace {...shared} tab={activeTab} settingsTab={settingsTab} />;
     }
-  }, [activeTab, aiAccess, navigate, profile, settingsTab]);
+  }, [activeTab, aiAccess, callingEnabled, navigate, profile, settingsTab]);
 
   if (loading) {
     return (
@@ -322,6 +328,7 @@ export default function WorkspaceApp() {
         onSearch={() => setSearchOpen(true)}
         onLogout={logout}
         aiAccess={aiAccess}
+        callingEnabled={callingEnabled}
       />
       <section className="workspace-content v2-workspace-content">
         {impersonated && (
@@ -346,7 +353,7 @@ export default function WorkspaceApp() {
                 ["conversations", "Open conversations"],
                 ["campaigns", "Build a campaign"],
                 ["contacts", "Find a contact"],
-                ["calls", "Open the power dialer"],
+                ...(callingEnabled ? [["calls", "Open the power dialer"]] : []),
                 ["website", "Edit your website"],
                 ["settings", "Manage phone numbers"],
                 ["learn", "Open tutorials"],

@@ -1,4 +1,5 @@
 import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
+import { canUseCalling } from "@/lib/owner";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -153,11 +154,14 @@ export async function PATCH(req: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: entitlement, error: entitlementError } = await supabase
     .from("profiles")
-    .select("ai_plan, free_ai_plan, subscription_status, free_subscription, owned_numbers")
+    .select("ai_plan, free_ai_plan, subscription_status, free_subscription, owned_numbers, email")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (entitlementError || !entitlement) {
     return NextResponse.json({ error: "Could not verify AI plan access." }, { status: 503 });
+  }
+  if (!canUseCalling(entitlement.email)) {
+    return NextResponse.json({ error: "The AI receptionist isn't available on this account." }, { status: 403 });
   }
   if (!hasAiAccess(entitlement)) {
     return NextResponse.json(
