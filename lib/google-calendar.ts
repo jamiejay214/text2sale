@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { zonedTimeToUtc, type BusyWindow } from "./availability";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
@@ -288,6 +289,42 @@ export async function deleteCalendarEvent(
 }
 
 /**
+ * Busy stretches on the user's primary Google Calendar between `from` and
+ * `to`. Empty when Calendar isn't connected or Google can't be reached: a
+ * calendar problem shouldn't stop booking altogether.
+ */
+export async function getCalendarBusy(userId: string, from: Date, to: Date): Promise<BusyWindow[]> {
+  try {
+    const supabase = createClient(supabaseUrl, supabaseKey);
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("google_calendar_tokens")
+      .eq("id", userId)
+      .single();
+    if (!profile?.google_calendar_tokens) return [];
+
+    const tokens = await refreshTokensIfNeeded(userId, profile.google_calendar_tokens as GoogleTokens);
+    // freebusy collapses every event into busy windows without exposing
+    // event details. Primary calendar only.
+    const res = await fetch("https://www.googleapis.com/calendar/v3/freeBusy", {
+      method: "POST",
+      headers: { ...authHeaders(tokens.access_token), "Content-Type": "application/json" },
+      body: JSON.stringify({ timeMin: from.toISOString(), timeMax: to.toISOString(), items: [{ id: "primary" }] }),
+    });
+    if (!res.ok) {
+      console.error("[google-calendar] freeBusy failed:", res.status, (await res.text()).slice(0, 200));
+      return [];
+    }
+    const data = await res.json();
+    const busy: Array<{ start: string; end: string }> = data?.calendars?.primary?.busy || [];
+    return busy.map((b) => ({ start: Date.parse(b.start), end: Date.parse(b.end) }));
+  } catch (e) {
+    console.error("[google-calendar] freeBusy failed:", e);
+    return [];
+  }
+}
+
+/**
  * Returns true if the user's Google Calendar already has an event that
  * overlaps the proposed appointment window. Used to prevent double-booking
  * when the local appointments table hasn't been synced or when the user
@@ -304,54 +341,11 @@ export async function checkCalendarConflict(
   durationMinutes: number,
   timeZone: string
 ): Promise<boolean> {
-  try {
-    const supabase = createClient(supabaseUrl, supabaseKey);
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("google_calendar_tokens")
-      .eq("id", userId)
-      .single();
-
-    if (!profile?.google_calendar_tokens) return false; // not connected, can't check
-
-    const tokens = await refreshTokensIfNeeded(
-      userId,
-      profile.google_calendar_tokens as GoogleTokens
-    );
-
-    // Build the window in the user's timezone using wall-clock strings
-    const startWall = `${date}T${time.slice(0, 5)}:00`;
-    const endWall = addMinutesToWallClock(date, time, durationMinutes);
-
-    // Google's freebusy API is the cleanest way to check for conflicts —
-    // it collapses all calendar events into busy windows without leaking
-    // event details. We query primary calendar only.
-    const freebusyRes = await fetch(
-      "https://www.googleapis.com/calendar/v3/freeBusy",
-      {
-        method: "POST",
-        headers: {
-          ...authHeaders(tokens.access_token),
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          timeMin: new Date(`${startWall} ${timeZone}`).toISOString().replace("Invalid Date", `${date}T${time.slice(0,5)}:00Z`),
-          timeMax: new Date(`${endWall} ${timeZone}`).toISOString().replace("Invalid Date", `${date}T${endWall.slice(11,16)}:00Z`),
-          timeZone,
-          items: [{ id: "primary" }],
-        }),
-      }
-    );
-
-    if (!freebusyRes.ok) return false;
-
-    const fbData = await freebusyRes.json();
-    const busy: Array<{ start: string; end: string }> =
-      fbData?.calendars?.primary?.busy || [];
-
-    return busy.length > 0;
-  } catch (e) {
-    console.error("[google-calendar] checkCalendarConflict failed:", e);
-    return false; // fail open — don't block booking if calendar check errors
-  }
+  // The window used to be built from "2026-10-12T10:30:00 America/New_York",
+  // which JavaScript can't parse. toISOString() then threw, the catch
+  // reported "no conflict", and every booking ignored the calendar.
+  const start = zonedTimeToUtc(date, time, timeZone);
+  const end = new Date(start.getTime() + durationMinutes * 60_000);
+  const busy = await getCalendarBusy(userId, start, end);
+  return busy.some((window) => window.start < end.getTime() && start.getTime() < window.end);
 }

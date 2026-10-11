@@ -2,7 +2,7 @@ import { authenticateWorkspaceOrInternal as authenticateOrInternal } from "@/lib
 import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
-import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calendar";
+import { createCalendarEvent, checkCalendarConflict, getCalendarBusy } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
 import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
@@ -224,7 +224,10 @@ export async function POST(req: NextRequest) {
     let availabilityContext = "";
     let availableSlots: { date: string; time: string; display: string }[] = [];
     if (hours.enabled) {
-      availableSlots = await getAvailableSlots(supabase, userId, hours, 8);
+      // Skip times already taken on the owner's Google Calendar, so the AI
+      // never offers a slot it would then have to take back.
+      const busy = await getCalendarBusy(userId, new Date(), new Date(Date.now() + (hours.maxDaysOut + 1) * 86_400_000));
+      availableSlots = await getAvailableSlots(supabase, userId, hours, 8, undefined, busy);
       if (availableSlots.length > 0) {
         availabilityContext = `\nAPPOINTMENT SCHEDULING:
 You can book appointments for the customer. Available slots (${hours.timezone}):
