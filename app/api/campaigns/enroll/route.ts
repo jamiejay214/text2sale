@@ -158,6 +158,17 @@ export async function POST(req: NextRequest) {
         );
       if (!data || data.length < 1000) break;
     }
+    // One sequence per phone number: the same person imported twice must
+    // not be texted (and charged) twice.
+    const seenPhones = new Set<string>();
+    const uniqueContacts = contacts.filter((contact) => {
+      const phone = String(contact.phone || "").replace(/\D/g, "").slice(-10);
+      if (phone.length < 10 || seenPhones.has(phone)) return false;
+      seenPhones.add(phone);
+      return true;
+    });
+    contacts.length = 0;
+    contacts.push(...uniqueContacts);
     if (!contacts.length)
       return NextResponse.json(
         { error: "No eligible contacts in this audience." },

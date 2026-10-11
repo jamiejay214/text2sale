@@ -152,11 +152,34 @@ export default function UploadWorkspace({ profile, onProfile, onNavigate }: Prop
     if (ignoreDuplicates) {
       const phones = [...new Set(valid.map((row) => normalizePhone(row.phone)))];
       const existing = new Set<string>();
+      let checked = true;
       for (let index = 0; index < phones.length; index += 1000) {
-        const { data } = await supabase.rpc("check_existing_phones", { p_user_id: profile.id, p_phones_last10: phones.slice(index, index + 1000) });
+        const { data, error } = await supabase.rpc("check_existing_phones", { p_user_id: profile.id, p_phones_last10: phones.slice(index, index + 1000) });
+        if (error) { checked = false; break; }
         for (const value of (data || []) as Array<string | { check_existing_phones?: string }>) {
           const phone = typeof value === "string" ? value : value.check_existing_phones;
           if (phone) existing.add(phone);
+        }
+      }
+      // The duplicate check used to fail silently (missing database
+      // function), so a re-uploaded list was imported, and charged, again.
+      // Read the existing numbers directly instead; if that fails too, stop
+      // before importing or charging anything.
+      if (!checked) {
+        try {
+          for (let from = 0; ; from += 1000) {
+            const { data, error } = await supabase.from("contacts").select("phone").eq("user_id", profile.id).range(from, from + 999);
+            if (error) throw error;
+            for (const row of (data || []) as Array<{ phone: string }>) {
+              const phone = normalizePhone(row.phone);
+              if (phone) existing.add(phone);
+            }
+            if (!data || data.length < 1000) break;
+          }
+        } catch {
+          setNotice({ tone: "error", text: "Could not check your existing contacts for duplicates, so nothing was imported or charged. Please try again." });
+          setUploading(false); setProgress(0);
+          return;
         }
       }
       const seen = new Set<string>();
