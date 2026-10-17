@@ -1,20 +1,24 @@
 // Spam grade for campaign text. Scores a message on the words and patterns
 // carrier spam filters are known to flag (Telnyx error 40002, "blocked as
 // spam"): pressure and money wording, prize and scam phrases, restricted
-// (SHAFT) topics, link shorteners, shouting and stacked punctuation. It only
-// looks at the words in the message; it doesn't require any particular
-// sentence, name or footer.
+// (SHAFT) topics, link shorteners, shouting and stacked punctuation. It is
+// tuned for health insurance texting: Medicare benefit-card wording, "$0
+// premium" and eligibility claims, and enrollment-deadline pressure are the
+// phrases carriers filter hardest in this industry. It only looks at the
+// words in the message; it doesn't require any particular sentence, name or
+// footer.
 
-export type SpamIssue = { id: string; severity: "high" | "medium" | "low"; text: string };
+export type SpamIssue = { id: string; severity: "high" | "medium" | "low"; text: string; tip?: string };
 export type SpamCheck = { score: number; level: "low" | "medium" | "high"; issues: SpamIssue[] };
 
-type WordGroup = { id: string; severity: SpamIssue["severity"]; label: string; words: string[] };
+type WordGroup = { id: string; severity: SpamIssue["severity"]; label: string; tip: string; words: string[] };
 
 const WORD_GROUPS: WordGroup[] = [
   {
     id: "scam",
     severity: "high",
     label: "Prize or scam wording",
+    tip: "Remove prize and account-warning language entirely.",
     words: [
       "you've won", "you have won", "you won", "winner", "claim your", "claim now", "prize", "congratulations",
       "you've been selected", "you have been selected", "gift card", "free gift", "verify your account",
@@ -25,6 +29,7 @@ const WORD_GROUPS: WordGroup[] = [
     id: "restricted",
     severity: "high",
     label: "Restricted topics carriers block",
+    tip: "Carriers block these topics on standard 10DLC campaigns.",
     words: [
       "cannabis", "marijuana", "cbd", "thc", "weed", "vape", "tobacco", "cigarette", "firearm", "firearms", "guns",
       "casino", "gambling", "betting", "sweepstakes", "payday loan", "debt relief", "credit repair", "debt forgiveness",
@@ -32,20 +37,49 @@ const WORD_GROUPS: WordGroup[] = [
     ],
   },
   {
+    id: "medicare",
+    severity: "high",
+    label: "Medicare benefit-card wording",
+    tip: "Carriers block most Medicare card and giveback texts because of scams. Ask a plain question instead, like \"Are you looking at Medicare plans this year?\"",
+    words: [
+      "flex card", "giveback", "give back benefit", "grocery card", "grocery allowance", "food card", "otc card",
+      "spending card", "benefits card", "benefit card", "medicare card", "new medicare card", "stimulus",
+      "government benefit", "government benefits", "government program", "social security benefit", "free medicare",
+      "unclaimed benefits", "benefits you're missing", "benefits you are missing",
+    ],
+  },
+  {
+    id: "health",
+    severity: "medium",
+    label: "Health plan claims carriers flag",
+    tip: "Don't promise $0 or eligibility in a first text. Ask if they'd like a quote, then share details once they reply.",
+    words: [
+      "$0 premium", "$0 premiums", "zero premium", "$0 plan", "$0 plans", "$0 health", "$0 coverage",
+      "free health insurance", "free insurance", "free coverage", "cheap health insurance", "cheap insurance",
+      "obamacare", "you qualify", "you may qualify", "you're eligible", "you are eligible", "pre-qualified",
+      "prequalified", "subsidy", "subsidies", "tax credit", "lower your premium", "cut your premium",
+      "slash your premium", "save hundreds", "save thousands",
+    ],
+  },
+  {
     id: "urgency",
     severity: "medium",
     label: "Pressure wording",
+    tip: "Drop the deadline. \"Would you like a quote?\" works better and filters ignore it.",
     words: [
       "act now", "act fast", "urgent", "urgently", "hurry", "last chance", "limited time", "expires today", "expires soon",
       "today only", "don't miss", "dont miss", "don't wait", "dont wait", "before it's too late", "before its too late",
-      "before rates go up", "rates are going up", "while supplies last", "ends soon", "ends tonight", "only hours left",
-      "final reminder", "time is running out",
+      "while supplies last", "ends soon", "ends tonight", "only hours left", "final reminder", "time is running out",
+      "rates go up", "rates are going up", "rates going up", "rate increase", "premiums are going up", "premiums going up",
+      "premiums are rising", "open enrollment ends", "enrollment ends", "enrollment deadline", "deadline to enroll",
+      "last day to enroll", "before you lose coverage", "lose your coverage",
     ],
   },
   {
     id: "money",
     severity: "medium",
     label: "Money or \"free\" wording",
+    tip: "Say \"quote\" or \"options\" instead of free, guaranteed or lowest.",
     words: [
       "free", "100% free", "guaranteed", "guarantee", "risk free", "risk-free", "no cost", "no obligation", "cash",
       "cash bonus", "lowest rate", "lowest price", "best price", "cheap", "save big", "huge savings", "extra income",
@@ -56,6 +90,7 @@ const WORD_GROUPS: WordGroup[] = [
     id: "pushy",
     severity: "low",
     label: "Pushy call-to-action",
+    tip: "Ask a question they can answer by replying instead.",
     words: ["click here", "click now", "click the link", "call now", "buy now", "order now", "apply now", "sign up now", "subscribe now", "tap here"],
   },
 ];
@@ -63,7 +98,7 @@ const WORD_GROUPS: WordGroup[] = [
 const SHORTENERS = /\b(bit\.ly|tinyurl\.com|goo\.gl|t\.co|ow\.ly|is\.gd|buff\.ly|rebrand\.ly|cutt\.ly|shorturl\.at|tiny\.cc|rb\.gy)\b/i;
 
 // Short all-caps words that are normal in texts and shouldn't count as shouting.
-const CAPS_OK = new Set(["STOP", "HELP", "PPO", "HMO", "ACA", "USA", "LLC", "EIN", "FAQ", "HVAC", "ASAP"]);
+const CAPS_OK = new Set(["STOP", "HELP", "PPO", "HMO", "EPO", "POS", "HSA", "ACA", "AEP", "OEP", "SEP", "USA", "LLC", "EIN", "FAQ", "HVAC", "ASAP"]);
 
 const WEIGHT = { high: 30, medium: 15, low: 5 } as const;
 
@@ -89,7 +124,7 @@ export function checkSpam(message: string): SpamCheck {
 
   for (const group of WORD_GROUPS) {
     const found = wordsFound(text, group.words);
-    if (found.length) issues.push({ id: group.id, severity: group.severity, text: `${group.label}: "${found.join("\", \"")}"` });
+    if (found.length) issues.push({ id: group.id, severity: group.severity, text: `${group.label}: "${found.join("\", \"")}"`, tip: group.tip });
   }
 
   const links = text.match(/https?:\/\/\S+|www\.\S+/gi) || [];

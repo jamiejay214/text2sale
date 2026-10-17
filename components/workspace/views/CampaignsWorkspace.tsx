@@ -46,7 +46,7 @@ function SpamCheckPanel({ message }: { message: string }) {
       {result.level === "low" ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
       <div>
         <strong>{label} · spam score {result.score}/100</strong>
-        {result.issues.length ? <ul>{result.issues.map((issue) => <li key={issue.id}>{issue.text}</li>)}</ul> : <p>No words or patterns that spam filters usually flag.</p>}
+        {result.issues.length ? <ul>{result.issues.map((issue) => <li key={issue.id}>{issue.text}{issue.tip ? <small>{issue.tip}</small> : null}</li>)}</ul> : <p>No words or patterns that spam filters usually flag.</p>}
       </div>
     </div>
   );

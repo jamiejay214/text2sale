@@ -19,7 +19,8 @@ test('a plain text with no flagged words is low risk, without needing a business
 test('the Blast message is graded on its words only: one pressure phrase', () => {
   const result = checkSpam('Hi {firstName}, may I send you a quick quote for a PPO plan before rates go up? n');
   assert.deepEqual(ids(result), ['urgency']);
-  assert.match(result.issues[0].text, /before rates go up/);
+  assert.match(result.issues[0].text, /rates go up/);
+  assert.match(result.issues[0].tip, /quote/);
   assert.equal(result.level, 'medium');
 });
 
@@ -38,6 +39,28 @@ test('several flagged signals stack up', () => {
 test('everyday wording is not flagged', () => {
   assert.deepEqual(ids(checkSpam('Feel free to text back anytime, {firstName}. Ask about PPO and HMO freedom of choice.')), []);
   assert.deepEqual(ids(checkSpam('Your appointment is approved for Tuesday at 2 pm.')), []);
+});
+
+test('Medicare benefit-card wording is high risk', () => {
+  const result = checkSpam('Hi {firstName}, claim your Medicare flex card and grocery allowance');
+  assert.ok(ids(result).includes('medicare'));
+  assert.equal(result.level, 'high');
+  assert.match(result.issues.find((issue) => issue.id === 'medicare').text, /flex card", "grocery allowance/);
+});
+
+test('$0 premium and eligibility claims are flagged as health plan claims', () => {
+  assert.deepEqual(ids(checkSpam('You qualify for $0 premium plans with a subsidy')), ['health']);
+  assert.deepEqual(ids(checkSpam('Open enrollment ends Dec 15, your premiums are going up')), ['urgency']);
+});
+
+test('plain health insurance questions are not flagged', () => {
+  for (const message of [
+    'Hi {firstName}, are you looking at Medicare plans this year?',
+    'Hi {firstName}, this is Jamie with Johnson Health Quotes. Would you like a health insurance quote? Reply STOP to opt out',
+    'Do you prefer a PPO or an HMO? I can compare ACA and private options for you.',
+  ]) {
+    assert.deepEqual(ids(checkSpam(message)), [], message);
+  }
 });
 
 test('an empty message has nothing to report', () => {

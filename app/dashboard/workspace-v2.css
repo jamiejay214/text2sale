@@ -728,6 +728,7 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-spam-check strong { display:block; font-size:.72rem; }
 .v2-spam-check p,.v2-spam-check ul { margin:4px 0 0; font-size:.65rem; line-height:1.5; }
 .v2-spam-check ul { padding-left:16px; }
+.v2-spam-check li small { display:block; opacity:.8; }
 .v2-spam-check.is-medium { border-color:#ecd59a; background:#fff8e6; color:#7a5414; }
 .v2-spam-check.is-high { border-color:#efcbc4; background:#fff1ee; color:#953d34; }
 .t2s-dark .v2-spam-check { border-color:#4c6840; background:#1d3528; color:#dff2cf; }
