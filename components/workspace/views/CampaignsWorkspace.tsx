@@ -38,15 +38,15 @@ import { checkSpam } from "@/lib/spam-check";
 const TOKENS = ["{firstName}", "{lastName}", "{phone}", "{city}", "{state}"];
 
 // Live spam check under the message box: what carrier filters would flag.
-function SpamCheckPanel({ message, firstMessage, businessName }: { message: string; firstMessage: boolean; businessName: string }) {
-  const result = useMemo(() => checkSpam(message, { firstMessage, businessName }), [message, firstMessage, businessName]);
+function SpamCheckPanel({ message }: { message: string }) {
+  const result = useMemo(() => checkSpam(message), [message]);
   const label = result.level === "high" ? "High spam risk" : result.level === "medium" ? "Some spam risk" : "Low spam risk";
   return (
     <div className={`v2-spam-check is-${result.level}`} role="status">
       {result.level === "low" ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
       <div>
-        <strong>{label}</strong>
-        {result.issues.length ? <ul>{result.issues.map((issue) => <li key={issue.id}>{issue.text}</li>)}</ul> : <p>Nothing carriers usually flag.</p>}
+        <strong>{label} · spam score {result.score}/100</strong>
+        {result.issues.length ? <ul>{result.issues.map((issue) => <li key={issue.id}>{issue.text}</li>)}</ul> : <p>No words or patterns that spam filters usually flag.</p>}
       </div>
     </div>
   );
@@ -168,7 +168,6 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const validSteps = draft.steps.filter((step) => step.message.trim());
   const optOutSettings = normalizeOptOutSettings(profile.opt_out_settings);
   const firstMessageOptOut = optOutSettings.firstMessageText;
-  const businessName = profile.a2p_registration?.businessName || optOutSettings.companyName || "";
   const allNumbersSelected = ownedNumbers.length > 0 && ownedNumbers.every((number) => draft.selectedNumbers.includes(number.number));
 
   const chooseCampaign = (campaign: Campaign) => {
@@ -283,10 +282,10 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       setNotice({ tone: "error", text: "Add a sending number before launching." });
       return;
     }
-    const firstCheck = checkSpam(selected.steps?.[0]?.message || selected.message || "", { firstMessage: true, businessName });
+    const firstCheck = checkSpam(selected.steps?.[0]?.message || selected.message || "");
     if (
       firstCheck.level === "high" &&
-      !window.confirm(`Carriers are likely to block this first message as spam:\n\n${firstCheck.issues.map((issue) => `• ${issue.text}`).join("\n")}\n\nSend it anyway?`)
+      !window.confirm(`This message has words carriers often block as spam:\n\n${firstCheck.issues.map((issue) => `• ${issue.text}`).join("\n")}\n\nSend it anyway?`)
     ) {
       return;
     }
@@ -479,7 +478,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                   <div className="v2-message-meta"><span>{active.message.length} characters</span><span>Personalize:</span></div>
                   <div className="v2-token-row">{TOKENS.map((token) => <button key={token} onClick={() => patchStep(activeStep, { message: `${active.message}${active.message && !active.message.endsWith(" ") ? " " : ""}${token}` })}>{token}</button>)}</div>
                 </div>
-                {active.message.trim() ? <SpamCheckPanel message={active.message} firstMessage={activeStep === 0} businessName={businessName} /> : null}
+                {active.message.trim() ? <SpamCheckPanel message={active.message} /> : null}
                 {activeStep === 0 ? <div className="v2-first-optout"><ShieldCheck size={16} /><div><strong>First-message opt-out</strong><p><b>{firstMessageOptOut}</b> is added automatically when this campaign starts, unless your message already says how to opt out. Follow-up steps do not repeat it.</p></div><button onClick={() => onNavigate("settings", "team")}>Edit</button></div> : null}
                 <div className="v2-spin-help">
                   <Sparkles size={16} />
