@@ -5,41 +5,62 @@ import vm from 'node:vm';
 import ts from 'typescript';
 
 const exports = {};
-vm.runInNewContext(ts.transpileModule(readFileSync('lib/spam-check.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, RegExp });
+vm.runInNewContext(ts.transpileModule(readFileSync('lib/spam-check.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020 } }).outputText, { exports, RegExp });
 const { checkSpam } = exports;
 const ids = (result) => JSON.parse(JSON.stringify(result.issues.map((issue) => issue.id)));
 
-test('the Blast message that carriers blocked scores high risk', () => {
-  const result = checkSpam('Hi {firstName}, may I send you a quick quote for a PPO plan before rates go up? n', { firstMessage: true, businessName: 'Johnson Health Quotes' });
-  assert.equal(result.level, 'high');
-  assert.deepEqual(ids(result), ['opt_out', 'identity', 'urgency']);
-  assert.match(result.issues[0].text, /single letter/);
-});
-
-test('a first text that names the sender and says how to opt out is low risk', () => {
-  const result = checkSpam("Hi {firstName}, it's Jamie with Johnson Health Quotes. You asked about health coverage. Want a quick quote? Reply STOP to opt out.", { firstMessage: true, businessName: 'Johnson Health Quotes' });
-  assert.equal(result.level, 'low');
+test('a plain text with no flagged words is low risk, without needing a business name', () => {
+  const result = checkSpam('Hi {firstName}, may I send you a quick quote for a PPO plan? n');
   assert.deepEqual(ids(result), []);
+  assert.equal(result.level, 'low');
+  assert.equal(result.score, 0);
 });
 
-test('follow-up steps skip the first-contact rules', () => {
-  assert.deepEqual(ids(checkSpam('Just checking in, {firstName}. Still interested?')), []);
+test('the Blast message is graded on its words only: one pressure phrase', () => {
+  const result = checkSpam('Hi {firstName}, may I send you a quick quote for a PPO plan before rates go up? n');
+  assert.deepEqual(ids(result), ['urgency']);
+  assert.match(result.issues[0].text, /rates go up/);
+  assert.match(result.issues[0].tip, /quote/);
+  assert.equal(result.level, 'medium');
 });
 
-test('shorteners, money and pressure words, caps and punctuation are flagged', () => {
-  const result = checkSpam('FREE QUOTE TODAY ONLY!!! Guaranteed lowest rate: bit.ly/abc');
-  assert.deepEqual(ids(result), ['shortener', 'urgency', 'money', 'caps', 'punctuation']);
+test('prize, restricted and shortener patterns are high risk', () => {
+  assert.equal(checkSpam('Congratulations! You have won a gift card, claim your prize').level, 'high');
+  assert.equal(checkSpam('Get CBD delivered today').level, 'high');
+  assert.deepEqual(ids(checkSpam('See details: bit.ly/abc')), ['shortener']);
+});
+
+test('several flagged signals stack up', () => {
+  const result = checkSpam('FREE QUOTE TODAY ONLY!!! Guaranteed lowest rate. Click here: https://a.com and https://b.com');
+  assert.deepEqual(ids(result), ['urgency', 'money', 'pushy', 'links', 'caps', 'punctuation']);
   assert.equal(result.level, 'high');
 });
 
-test('words inside other words are not flagged', () => {
-  // "freedom" is not "free"; "PPO" is a normal acronym, not shouting.
-  assert.deepEqual(ids(checkSpam('Ask about PPO and HMO freedom of choice, {firstName}.')), []);
+test('everyday wording is not flagged', () => {
+  assert.deepEqual(ids(checkSpam('Feel free to text back anytime, {firstName}. Ask about PPO and HMO freedom of choice.')), []);
+  assert.deepEqual(ids(checkSpam('Your appointment is approved for Tuesday at 2 pm.')), []);
 });
 
-test('without a known business name it still asks who is texting', () => {
-  assert.deepEqual(ids(checkSpam('Hi {firstName}, want a quote? Reply STOP to opt out.', { firstMessage: true })), ['identity']);
-  assert.deepEqual(ids(checkSpam("Hi {firstName}, it's Jamie. Want a quote? Reply STOP to opt out.", { firstMessage: true })), []);
+test('Medicare benefit-card wording is high risk', () => {
+  const result = checkSpam('Hi {firstName}, claim your Medicare flex card and grocery allowance');
+  assert.ok(ids(result).includes('medicare'));
+  assert.equal(result.level, 'high');
+  assert.match(result.issues.find((issue) => issue.id === 'medicare').text, /flex card", "grocery allowance/);
+});
+
+test('$0 premium and eligibility claims are flagged as health plan claims', () => {
+  assert.deepEqual(ids(checkSpam('You qualify for $0 premium plans with a subsidy')), ['health']);
+  assert.deepEqual(ids(checkSpam('Open enrollment ends Dec 15, your premiums are going up')), ['urgency']);
+});
+
+test('plain health insurance questions are not flagged', () => {
+  for (const message of [
+    'Hi {firstName}, are you looking at Medicare plans this year?',
+    'Hi {firstName}, this is Jamie with Johnson Health Quotes. Would you like a health insurance quote? Reply STOP to opt out',
+    'Do you prefer a PPO or an HMO? I can compare ACA and private options for you.',
+  ]) {
+    assert.deepEqual(ids(checkSpam(message)), [], message);
+  }
 });
 
 test('an empty message has nothing to report', () => {
