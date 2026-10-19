@@ -42,10 +42,27 @@ async function authorize(req: NextRequest) {
   return { userId, supabase, profile, payer: access.payer };
 }
 
-/** The caller ID numbers calls go out from (the payer's business numbers). */
-async function callerIds(supabase: ReturnType<typeof db>, payerId: string): Promise<string[]> {
+/**
+ * The caller ID numbers this account's dialer may use: the payer's business
+ * numbers, split between the payer and their agents when the operator set
+ * calling_sponsors.caller_numbers. An agent gets their listed numbers; the
+ * payer keeps the ones no agent was given.
+ */
+async function callerIds(supabase: ReturnType<typeof db>, userId: string, payerId: string): Promise<string[]> {
   const { data } = await supabase.from("owned_phone_numbers").select("digits").eq("user_id", payerId);
-  return (data || []).map((row: { digits: string }) => `+1${row.digits}`);
+  const all = (data || []).map((row: { digits: string }) => `+1${row.digits}`);
+  const { data: links } = await supabase.from("calling_sponsors").select("agent_id, caller_numbers").eq("sponsor_id", payerId);
+  const assigned = ((links || []) as Array<{ agent_id: string; caller_numbers: unknown }>).map((link) => ({
+    agent: link.agent_id,
+    numbers: (Array.isArray(link.caller_numbers) ? link.caller_numbers : []).map(toE164).filter((n): n is string => !!n && all.includes(n)),
+  }));
+  if (userId !== payerId) {
+    const mine = assigned.find((link) => link.agent === userId)?.numbers || [];
+    return mine.length ? mine : all;
+  }
+  const taken = new Set(assigned.flatMap((link) => link.numbers));
+  const kept = all.filter((n) => !taken.has(n));
+  return kept.length ? kept : all;
 }
 
 async function openSession(supabase: ReturnType<typeof db>, userId: string) {
@@ -140,7 +157,7 @@ export async function GET(req: NextRequest) {
   }
   const body = await snapshot(supabase, session);
   if (!session && req.nextUrl.searchParams.get("lists") === "1") {
-    return NextResponse.json({ ...body, ...(await leadLists(supabase, userId)), callerIds: await callerIds(supabase, payer.id) });
+    return NextResponse.json({ ...body, ...(await leadLists(supabase, userId)), callerIds: await callerIds(supabase, userId, payer.id) });
   }
   return NextResponse.json(body);
 }
@@ -273,7 +290,7 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
   }
 
   const requested = (Array.isArray(input?.fromNumbers) ? input.fromNumbers : []).map(toE164).filter(Boolean) as string[];
-  const ownedE164 = await callerIds(supabase, payer.id);
+  const ownedE164 = await callerIds(supabase, userId, payer.id);
   const fromNumbers = requested.length ? requested : ownedE164;
   if (!fromNumbers.length || fromNumbers.some((n) => !ownedE164.includes(n))) {
     return NextResponse.json({ error: "Choose caller ID numbers from your own business numbers." }, { status: 400 });
