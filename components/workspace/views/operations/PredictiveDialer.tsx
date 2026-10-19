@@ -74,6 +74,24 @@ const DISPOSITIONS: Array<{ id: string; label: string }> = [
   { id: "dnc", label: "Do not call" },
 ];
 
+/**
+ * Ask for the microphone while the agent is clicking. Dialer calls are picked
+ * up automatically later, when the browser can't show its permission prompt,
+ * so without this the caller hears dead air.
+ */
+async function microphoneReady(): Promise<boolean> {
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream.getTracks().forEach((track) => track.stop());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const MIC_BLOCKED =
+  "Your microphone is blocked, so callers can't hear you. Click the lock icon next to text2sale.com in the address bar, allow Microphone, then try again.";
+
 const OPEN = (session: Session | null) => !!session && (session.status === "active" || session.status === "paused");
 
 function prettyPhone(value: string) {
@@ -162,8 +180,14 @@ export default function PredictiveDialer({
     }
   };
 
+  const ready = async () => {
+    if (!(await microphoneReady())) { setNotice(MIC_BLOCKED); return; }
+    await act({ action: "ready" });
+  };
+
   const start = async () => {
     if (!phoneReady) { setNotice("Wait until the browser phone says Phone ready."); return; }
+    if (!(await microphoneReady())) { setNotice(MIC_BLOCKED); return; }
     try { window.localStorage.setItem("t2s_dialer_names", JSON.stringify({ agentName, businessName })); } catch { /* optional */ }
     // "upload:<id>" dials one CSV file's leads; "list:<name>" a campaign list.
     const audience = list.startsWith("upload:") ? { upload: list.slice(7) } : list.startsWith("list:") ? { list: list.slice(5) } : {};
@@ -236,7 +260,7 @@ export default function PredictiveDialer({
         <div className="v2-pd-actions">
           {session!.agent_state === "connecting" && <button className="v2-btn" disabled={busy} onClick={hangUp}><PhoneOff size={15} /> Hang up</button>}
           {session!.status === "paused" || session!.agent_state === "away"
-            ? <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady} onClick={() => act({ action: "ready" })}><Play size={15} /> {phoneReady ? "Ready, resume dialing" : "Waiting for phone…"}</button>
+            ? <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady} onClick={ready}><Play size={15} /> {phoneReady ? "Ready, resume dialing" : "Waiting for phone…"}</button>
             : <button className="v2-btn" disabled={busy} onClick={() => act({ action: "pause" })}><Pause size={15} /> Pause</button>}
           <button className="v2-btn" disabled={busy} onClick={() => act({ action: "stop" })}><Square size={14} /> Stop</button>
         </div>
