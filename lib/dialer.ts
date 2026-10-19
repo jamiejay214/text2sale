@@ -22,6 +22,7 @@ import { chargeStartedMinutes } from "./call-metering";
 import { isEntitled } from "./messaging-status";
 import { callingAccess } from "./calling-access";
 import { ensureCallControlApp } from "./telnyx-voice";
+import { summarizeCallQuality } from "./call-quality";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -83,6 +84,28 @@ async function telnyx(path: string, method: "GET" | "POST", body?: Record<string
 }
 
 const hangup = (ccid: string) => telnyx(`/calls/${ccid}/actions/hangup`, "POST", {});
+
+const packets = (value: unknown): number | null => {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+};
+
+/**
+ * Keep each leg's audio stats on the queue item: on the agent's leg,
+ * inbound packets are the agent's microphone and outbound packets what
+ * reached their speakers, so a one-way or silent call shows which end
+ * was quiet.
+ */
+async function recordLegAudio(db: Db, itemId: string, leg: "lead" | "agent", stats: any) {
+  if (!stats || typeof stats !== "object") return;
+  const { data } = await db.from("dialer_queue").select("call_quality").eq("id", itemId).maybeSingle();
+  const audio = {
+    ...(summarizeCallQuality(stats) || {}),
+    inPackets: packets(stats.inbound?.packet_count),
+    outPackets: packets(stats.outbound?.packet_count),
+  };
+  await db.from("dialer_queue").update({ call_quality: { ...(data?.call_quality || {}), [leg]: audio } }).eq("id", itemId);
+}
 
 /**
  * Hang up a session's lead legs that are still up: one item, or all of them.
@@ -345,6 +368,7 @@ export async function handleDialerEvent(db: Db, type: string, p: any, state: Dia
   // ── The browser phone's leg of a transferred lead ──
   if (state.leg === "agent") {
     if (type !== "call.hangup") return true;
+    await recordLegAudio(db, state.item, "agent", p.call_quality_stats);
     const { data: item } = await db.from("dialer_queue").select("*").eq("id", state.item).maybeSingle();
     if (!item) return true;
     if (item.result === "connected") {
@@ -431,6 +455,7 @@ export async function handleDialerEvent(db: Db, type: string, p: any, state: Dia
       return true;
 
     case "call.hangup": {
+      await recordLegAudio(db, state.item, "lead", p.call_quality_stats);
       const { data: item } = await db.from("dialer_queue").select("*").eq("id", state.item).maybeSingle();
       if (item && item.status !== "done") {
         const result = item.result || unansweredResult(String(p.hangup_cause || ""));
