@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Check, Pause, PhoneCall, Play, Square, Zap } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
-import type { OwnedNumber } from "@/lib/types";
 import { Panel, StatusPill } from "../../WorkspacePrimitives";
 
 // The predictive dialer's controls and live view (server side: lib/dialer.ts
@@ -61,6 +60,9 @@ type Snapshot = {
   pacing?: { lines: number; abandonRate30d: number; cap: number };
   total?: number;
   lists?: Array<{ name: string; count: number }>;
+  uploads?: Array<{ id: string; file_name: string; uploaded_at: string; success: number }>;
+  /** Business numbers calls go out from (the sponsor's, for an agent). */
+  callerIds?: string[];
   error?: string;
 };
 
@@ -91,13 +93,13 @@ function stateLabel(session: Session) {
 }
 
 export default function PredictiveDialer({
-  ownedNumbers,
   phoneReady,
   onAutoAnswerChange,
+  onCallerIds,
 }: {
-  ownedNumbers: OwnedNumber[];
   phoneReady: boolean;
   onAutoAnswerChange: (on: boolean) => void;
+  onCallerIds?: (numbers: string[]) => void;
 }) {
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
@@ -117,8 +119,9 @@ export default function PredictiveDialer({
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);
     const data = (await response.json().catch(() => ({}))) as Snapshot;
     if (!response.ok) { setNotice(data.error || "Could not load the dialer."); return; }
-    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists }));
-  }, []);
+    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds }));
+    if (data.callerIds) onCallerIds?.(data.callerIds);
+  }, [onCallerIds]);
 
   useEffect(() => {
     try {
@@ -149,7 +152,7 @@ export default function PredictiveDialer({
       const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await response.json().catch(() => ({}))) as Snapshot;
       if (!response.ok) { setNotice(data.error || "Something went wrong. Please retry."); return false; }
-      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists }));
+      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds }));
       return true;
     } finally {
       setBusy(false);
@@ -159,7 +162,9 @@ export default function PredictiveDialer({
   const start = async () => {
     if (!phoneReady) { setNotice("Wait until the browser phone says Phone ready."); return; }
     try { window.localStorage.setItem("t2s_dialer_names", JSON.stringify({ agentName, businessName })); } catch { /* optional */ }
-    if (await act({ action: "start", list, maxLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
+    // "upload:<id>" dials one CSV file's leads; "list:<name>" a campaign list.
+    const audience = list.startsWith("upload:") ? { upload: list.slice(7) } : list.startsWith("list:") ? { list: list.slice(5) } : {};
+    if (await act({ action: "start", ...audience, maxLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
   };
 
   const next = async () => {
@@ -174,12 +179,12 @@ export default function PredictiveDialer({
         <div className="v2-panel-head"><div><h2>Predictive dialer</h2><p>Dials several leads at once and puts the first person who answers through to you</p></div><Zap size={18} /></div>
         {notice && <div role="alert" className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}>×</button></div>}
         <div className="v2-pd-form">
-          <label>Leads<select value={list} onChange={(event) => setList(event.target.value)}><option value="">All leads ({(snap.total || 0).toLocaleString()})</option>{(snap.lists || []).map((item) => <option key={item.name} value={item.name}>{item.name} ({item.count.toLocaleString()})</option>)}</select></label>
+          <label>Leads to call<select value={list} onChange={(event) => setList(event.target.value)}><option value="">All leads ({(snap.total || 0).toLocaleString()})</option>{snap.uploads?.length ? <optgroup label="Uploaded CSV files">{snap.uploads.map((item) => <option key={item.id} value={`upload:${item.id}`}>{item.file_name} · {Number(item.success || 0).toLocaleString()} leads · {new Date(item.uploaded_at).toLocaleDateString()}</option>)}</optgroup> : null}{snap.lists?.length ? <optgroup label="Campaign lists">{snap.lists.map((item) => <option key={item.name} value={`list:${item.name}`}>{item.name} ({item.count.toLocaleString()})</option>)}</optgroup> : null}</select></label>
           <label>Lines at once<select value={maxLines} onChange={(event) => setMaxLines(Number(event.target.value))}><option value={1}>1 (power dialer, never abandons)</option><option value={2}>Up to 2</option><option value={3}>Up to 3</option></select></label>
           <label>Your name<input value={agentName} maxLength={40} onChange={(event) => setAgentName(event.target.value)} placeholder="Sarah" /></label>
           <label>Business name<input value={businessName} maxLength={60} onChange={(event) => setBusinessName(event.target.value)} placeholder="Johnson Health Quotes" /></label>
         </div>
-        {ownedNumbers.length > 1 && <div className="v2-pd-numbers"><span>Caller ID</span><div className="v2-number-picks">{ownedNumbers.map((owned) => { const checked = numbers.includes(owned.number); return <button key={owned.number} className={checked ? "is-active" : ""} onClick={() => setNumbers((current) => checked ? current.filter((n) => n !== owned.number) : [...current, owned.number])}><span>{checked ? <Check size={12} /> : null}</span>{prettyPhone(owned.number)}<small>{checked ? "Used" : "Not used"}</small></button>; })}</div><small>None selected uses all your numbers in turn.</small></div>}
+        {(snap.callerIds?.length || 0) > 1 && <div className="v2-pd-numbers"><span>Caller ID</span><div className="v2-number-picks">{snap.callerIds!.map((owned) => { const checked = numbers.includes(owned); return <button key={owned} className={checked ? "is-active" : ""} onClick={() => setNumbers((current) => checked ? current.filter((n) => n !== owned) : [...current, owned])}><span>{checked ? <Check size={12} /> : null}</span>{prettyPhone(owned)}<small>{checked ? "Used" : "Not used"}</small></button>; })}</div><small>None selected uses all of them in turn.</small></div>}
         <p className="v2-pd-rules">Calls 8 AM–8 PM in each lead&apos;s time zone, skips Do Not Call contacts and anyone dialed in the last 24 hours, and hangs up on answering machines. It adds lines only while the abandoned-call rate stays under the legal 3%. Anyone who answers while you&apos;re busy hears your name, business and callback number, and can press 9 to opt out. You still need to scrub lists against the National Do Not Call Registry and only call people who agreed to be contacted.</p>
         <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady || !agentName.trim() || !businessName.trim()} onClick={start}><Play size={15} /> {busy ? "Starting…" : phoneReady ? "Start dialing" : "Waiting for phone…"}</button>
       </Panel>

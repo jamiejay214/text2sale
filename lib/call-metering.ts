@@ -22,6 +22,17 @@ export type MeteredCall = {
 
 const round4 = (n: number) => Number(n.toFixed(4));
 
+/**
+ * The wallet a user's calls are charged to: their calling sponsor's when the
+ * operator listed one in calling_sponsors (lib/calling-access.ts), else their
+ * own. Read here, from a table users can't write, rather than from the call
+ * row, which users can edit.
+ */
+export async function payerFor(db: Db, userId: string): Promise<string> {
+  const { data } = await db.from("calling_sponsors").select("sponsor_id").eq("agent_id", userId).maybeSingle();
+  return data?.sponsor_id || userId;
+}
+
 /** Minutes started so far on a call answered at `answeredAt` (at least 1). */
 export function startedMinutes(answeredAt: string, now: Date = new Date()): number {
   const elapsed = (now.getTime() - new Date(answeredAt).getTime()) / 1000;
@@ -57,7 +68,7 @@ export async function chargeStartedMinutes(
   if (!claimed) return "skip";
 
   const { data: balance, error } = await db.rpc("decrement_wallet", {
-    p_user_id: call.user_id,
+    p_user_id: await payerFor(db, call.user_id),
     p_amount: owed,
   });
   if (error || balance === null || balance === undefined) {
@@ -79,11 +90,12 @@ export async function settleCallCharge(
   alreadyCharged: number
 ): Promise<void> {
   const delta = round4(finalCharge - alreadyCharged);
+  const payer = delta ? await payerFor(db, call.user_id) : call.user_id;
   if (delta > 0) {
-    await db.rpc("decrement_wallet", { p_user_id: call.user_id, p_amount: delta });
+    await db.rpc("decrement_wallet", { p_user_id: payer, p_amount: delta });
   } else if (delta < 0) {
     await db.rpc("credit_wallet", {
-      p_user_id: call.user_id,
+      p_user_id: payer,
       p_amount: -delta,
       p_idempotency_key: `call_settle_${call.id}`,
       p_description: "Call minutes reconciled at hangup",

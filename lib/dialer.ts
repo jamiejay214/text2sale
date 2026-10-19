@@ -20,7 +20,7 @@ import { toE164 } from "./browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "./call-pricing";
 import { chargeStartedMinutes } from "./call-metering";
 import { isEntitled } from "./messaging-status";
-import { canUseCalling } from "./owner";
+import { callingAccess } from "./calling-access";
 import { ensureCallControlApp } from "./telnyx-voice";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -209,12 +209,11 @@ export async function dialNext(db: Db, sessionId: string, now: Date = new Date()
   const { data: session } = await db.from("dialer_sessions").select("*").eq("id", sessionId).maybeSingle();
   if (!session || session.status !== "active" || session.agent_state !== "ready") return 0;
 
-  const { data: profile } = await db
-    .from("profiles")
-    .select("wallet_balance, paused, subscription_status, free_subscription, email")
-    .eq("id", session.user_id)
-    .maybeSingle();
-  if (!profile || profile.paused || !isEntitled(profile) || !canUseCalling(profile.email)) {
+  // The dialing account may call on a sponsor's account: their wallet pays.
+  const { data: caller } = await db.from("profiles").select("email, paused").eq("id", session.user_id).maybeSingle();
+  const access = caller && !caller.paused ? await callingAccess(db, { id: session.user_id, email: caller.email }) : null;
+  const profile = access?.payer;
+  if (!profile || profile.paused || !isEntitled(profile)) {
     await pauseSession(db, sessionId, "Calling needs an active subscription.");
     return 0;
   }

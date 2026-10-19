@@ -6,7 +6,7 @@ import ts from 'typescript';
 const exports = {};
 vm.runInNewContext(ts.transpileModule(readFileSync('lib/call-metering.ts', 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText, { exports, Date });
 
-function fakeDb({ claim = { id: 'c1' }, balance = 10 } = {}) {
+function fakeDb({ claim = { id: 'c1' }, balance = 10, sponsor = null } = {}) {
   const log = [];
   const builder = (op) => {
     const q = { filters: [] };
@@ -16,7 +16,9 @@ function fakeDb({ claim = { id: 'c1' }, balance = 10 } = {}) {
   };
   return {
     log,
-    from: () => ({ update: (u) => { const op = { update: u, first: !log.some((e) => e.update) }; log.push(op); return builder(op); } }),
+    from: (table) => table === 'calling_sponsors'
+      ? { select: () => { const c = { eq: () => c, maybeSingle: async () => ({ data: sponsor ? { sponsor_id: sponsor } : null }) }; return c; } }
+      : { update: (u) => { const op = { update: u, first: !log.some((e) => e.update) }; log.push(op); return builder(op); } },
     rpc: async (name, args) => { log.push({ rpc: name, args }); return name === 'decrement_wallet' ? { data: balance, error: null } : { data: 1, error: null }; },
   };
 }
@@ -62,4 +64,19 @@ test('hangup reconciles: refunds over-collection and collects any shortfall', as
   const short = fakeDb();
   await exports.settleCallCharge(short, { id: 'c1', user_id: 'u1' }, 0.075, 0.05);
   assert.equal(short.log.find((e) => e.rpc === 'decrement_wallet').args.p_amount, 0.025);
+});
+
+test('an agent calling on a sponsor\'s account charges the sponsor\'s wallet', async () => {
+  const db = fakeDb({ sponsor: 'owner1' });
+  const call = { id: 'c1', user_id: 'agent1', answered_at: '2026-10-09T12:00:00Z', cost_per_min: 0.025, cost_charged: null };
+  assert.equal(await exports.chargeStartedMinutes(db, call, new Date('2026-10-09T12:00:10Z')), 'ok');
+  assert.equal(db.log.find((e) => e.rpc === 'decrement_wallet').args.p_user_id, 'owner1');
+
+  const settle = fakeDb({ sponsor: 'owner1' });
+  await exports.settleCallCharge(settle, { id: 'c1', user_id: 'agent1' }, 0, 0.025);
+  assert.equal(settle.log.find((e) => e.rpc === 'credit_wallet').args.p_user_id, 'owner1');
+
+  const own = fakeDb();
+  await exports.chargeStartedMinutes(own, call, new Date('2026-10-09T12:00:10Z'));
+  assert.equal(own.log.find((e) => e.rpc === 'decrement_wallet').args.p_user_id, 'agent1');
 });

@@ -194,7 +194,10 @@ function Dialer({ profile, onNavigate }: Props) {
   const [callId, setCallId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
   const [autoAnswer, setAutoAnswer] = useState(false);
-  const fromNumber = profile.owned_numbers?.[0]?.number || "";
+  // An agent calling on a sponsor's account has no numbers of their own; the
+  // dialer API reports the numbers their calls go out from.
+  const [callerIds, setCallerIds] = useState<string[]>([]);
+  const fromNumber = profile.owned_numbers?.[0]?.number || callerIds[0] || "";
 
   useEffect(() => {
     Promise.all([
@@ -305,12 +308,12 @@ function Dialer({ profile, onNavigate }: Props) {
         </Panel>
 
         <div className="v2-calling-main">
-          {CALLING_ENABLED && <PredictiveDialer ownedNumbers={profile.owned_numbers || []} phoneReady={phoneStatus.ready && !!token} onAutoAnswerChange={setAutoAnswer} />}
+          {CALLING_ENABLED && <PredictiveDialer phoneReady={phoneStatus.ready && !!token} onAutoAnswerChange={setAutoAnswer} onCallerIds={setCallerIds} />}
           <Panel className="v2-queue-card">
             <div className="v2-panel-head"><div><h2>Power queue</h2><p>Dial leads back-to-back</p></div><label className="v2-compact-switch">Auto advance<input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} /><i /></label></div>
             {queue.length ? <div className="v2-active-queue"><div className="v2-queue-progress"><span style={{ width: `${((queueIndex + 1) / queue.length) * 100}%` }} /></div><div className="v2-current-lead"><span className="v2-avatar">{queue[queueIndex]?.first_name?.[0]}{queue[queueIndex]?.last_name?.[0]}</span><div><small>Lead {queueIndex + 1} of {queue.length}</small><strong>{nameOf(queue[queueIndex])}</strong><span>{prettyPhone(queue[queueIndex]?.phone || "")} · {[queue[queueIndex]?.city, queue[queueIndex]?.state, queue[queueIndex]?.zip].filter(Boolean).join(", ") || "Location not added"}</span></div><button onClick={() => setQueuePaused((current) => !current)}>{queuePaused ? <Play size={16} /> : <Pause size={16} />}{queuePaused ? "Resume" : "Pause"}</button></div><div className="v2-queue-next"><button disabled={queueIndex === 0} onClick={() => setQueueIndex((current) => current - 1)}><ChevronLeft size={15} /></button><span>Up next: {queue[queueIndex + 1] ? nameOf(queue[queueIndex + 1]) : "Queue complete"}</span><button disabled={queueIndex + 1 >= queue.length} onClick={() => setQueueIndex((current) => current + 1)}><ChevronRight size={15} /></button></div></div> : <EmptyState title="Build a back-to-back call queue" description="Start with your newest 50 eligible leads, or choose a list from Contacts." action={<button className="v2-btn v2-btn-accent" onClick={startQueue}><Plus size={15} /> Load newest leads</button>} />}
           </Panel>
-          <CallForwarding />
+          {profile.owned_numbers?.length ? <CallForwarding /> : null}
           <Panel className="v2-call-history">
             <div className="v2-panel-head"><div><h2>Recent calls</h2><p>Today and recent activity</p></div><History size={18} /></div>
             {history.length ? <div>{history.map((call) => { const contact = call.contact_id ? contactById.get(call.contact_id) : undefined; return <article key={call.id}><span className={`v2-history-icon is-${call.direction}`}><Phone size={14} /></span><div><strong>{nameOf(contact)}</strong><small>{prettyPhone(call.direction === "inbound" ? call.from_number || "" : call.to_number)} · {call.outcome || call.status}</small></div><div><strong>{Math.floor(Number(call.duration_seconds || 0) / 60)}:{String(Number(call.duration_seconds || 0) % 60).padStart(2, "0")}</strong><small>{new Date(call.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></div></article>; })}</div> : <EmptyState title="No calls yet" description="Placed and received calls will appear here." />}

@@ -90,6 +90,7 @@ function setup({ claim = true, item = {}, session = {} } = {}) {
     if (name.includes('call-metering')) return { chargeStartedMinutes: async () => 'ok' };
     if (name.includes('messaging-status')) return { isEntitled: () => true };
     if (name.includes('owner')) return { canUseCalling: () => true };
+    if (name.includes('calling-access')) return { callingAccess: async (_db, user) => ({ userId: user.id, payer: { id: 'u1', wallet_balance: 100, paused: false }, sponsored: false }) };
     if (name.includes('telnyx-voice')) return { ensureCallControlApp: async () => ({ ok: true, id: 'app1' }) };
     return {};
   };

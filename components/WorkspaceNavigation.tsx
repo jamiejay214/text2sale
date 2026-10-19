@@ -56,6 +56,8 @@ type Props = {
   aiAccess: boolean;
   // Dialer and AI receptionist: only on the owner's account for now.
   callingEnabled: boolean;
+  /** AI receptionist settings; owner only, even when callingEnabled. */
+  aiCallingEnabled?: boolean;
 };
 
 const groups = [
@@ -164,7 +166,7 @@ export default function WorkspaceNavigation(props: Props) {
           {groups.map((group) => (
             <div className="workspace-nav-group" key={group.label}>
               <p>{group.label}</p>
-              {group.items.filter((item) => props.callingEnabled || (item.tab !== "calls" && item.tab !== "aicalls")).map((item) => {
+              {group.items.filter((item) => (item.tab !== "calls" || props.callingEnabled) && (item.tab !== "aicalls" || (props.aiCallingEnabled ?? props.callingEnabled))).map((item) => {
                 const sub = "sub" in item ? item.sub : undefined;
                 const locked = "aiOnly" in item && item.aiOnly && !props.aiAccess;
                 const active =
