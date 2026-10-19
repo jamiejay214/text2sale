@@ -133,7 +133,7 @@ async function snapshot(supabase: ReturnType<typeof db>, session: Record<string,
     stats,
     lead,
     pacing: {
-      lines: linesFor(session as { max_lines: number }, stats),
+      lines: linesFor(session as { max_lines: number; force_lines?: boolean }, stats),
       abandonRate30d: abandonRate(stats.abandoned_30d, stats.connected_30d),
       cap: ABANDON_CAP,
     },
@@ -267,6 +267,7 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
     return NextResponse.json({ error: "Enter your name and business name. Leads who can't be connected hear them." }, { status: 400 });
   }
   const maxLines = Math.min(3, Math.max(1, Math.floor(Number(input?.maxLines) || 1)));
+  const forceLines = input?.forceLines === true && maxLines > 1;
   const list = typeof input?.list === "string" ? input.list.trim() : "";
   const uploadId = typeof input?.upload === "string" && /^[0-9a-f-]{36}$/i.test(input.upload) ? input.upload : "";
   // A chosen CSV file limits the call list to the phone numbers in it.
@@ -352,6 +353,7 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
       user_id: userId,
       status: "paused",
       max_lines: maxLines,
+      force_lines: forceLines,
       lines: 1,
       from_numbers: fromNumbers,
       agent_state: "away",
