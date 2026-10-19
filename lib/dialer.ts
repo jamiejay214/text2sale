@@ -138,7 +138,10 @@ export async function loadDialerStats(db: Db, sessionId: string): Promise<Dialer
 }
 
 /** Lines the session should dial right now, from its own answer rate and the 30-day abandon rate. */
-export function linesFor(session: { max_lines: number }, stats: DialerStats): number {
+export function linesFor(session: { max_lines: number; force_lines?: boolean | null }, stats: DialerStats): number {
+  // The account holder chose to always dial their maximum, accepting the
+  // abandoned-call risk; leads they can't take still get the message.
+  if (session.force_lines) return Math.min(3, Math.max(1, Math.floor(session.max_lines)));
   return chooseLines({
     maxLines: session.max_lines,
     dials: stats.dials,

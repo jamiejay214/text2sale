@@ -127,6 +127,8 @@ export default function PredictiveDialer({
   const [notice, setNotice] = useState("");
   const [list, setList] = useState("");
   const [maxLines, setMaxLines] = useState(3);
+  // On by default for this account's callers (owner's choice).
+  const [forceLines, setForceLines] = useState(true);
   const [agentName, setAgentName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [numbers, setNumbers] = useState<string[]>([]);
@@ -191,7 +193,7 @@ export default function PredictiveDialer({
     try { window.localStorage.setItem("t2s_dialer_names", JSON.stringify({ agentName, businessName })); } catch { /* optional */ }
     // "upload:<id>" dials one CSV file's leads; "list:<name>" a campaign list.
     const audience = list.startsWith("upload:") ? { upload: list.slice(7) } : list.startsWith("list:") ? { list: list.slice(5) } : {};
-    if (await act({ action: "start", ...audience, maxLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
+    if (await act({ action: "start", ...audience, maxLines, forceLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
   };
 
   const hangUp = async () => {
@@ -217,6 +219,7 @@ export default function PredictiveDialer({
           <label>Your name<input value={agentName} maxLength={40} onChange={(event) => setAgentName(event.target.value)} placeholder="Sarah" /></label>
           <label>Business name<input value={businessName} maxLength={60} onChange={(event) => setBusinessName(event.target.value)} placeholder="Johnson Health Quotes" /></label>
         </div>
+        {maxLines > 1 && <label className="v2-pd-force"><input type="checkbox" checked={forceLines} onChange={(event) => setForceLines(event.target.checked)} /><span><b>Always dial {maxLines} lines at once</b><small>Skips the safety pacing. When many people answer, the extra ones are dropped (they hear your name and callback number and can press 9 to opt out). The FTC limits dropped calls to 3% of answered calls; going over can bring fines.</small></span></label>}
         {(snap.callerIds?.length || 0) > 1 && <div className="v2-pd-numbers"><span>Caller ID</span><div className="v2-number-picks">{snap.callerIds!.map((owned) => { const checked = numbers.includes(owned); return <button key={owned} className={checked ? "is-active" : ""} onClick={() => setNumbers((current) => checked ? current.filter((n) => n !== owned) : [...current, owned])}><span>{checked ? <Check size={12} /> : null}</span>{prettyPhone(owned)}<small>{checked ? "Used" : "Not used"}</small></button>; })}</div><small>None selected uses all of them in turn.</small></div>}
         <p className="v2-pd-rules">Calls 8 AM–8 PM in each lead&apos;s time zone, skips Do Not Call contacts and anyone dialed in the last 24 hours, and hangs up on answering machines. It adds lines only while the abandoned-call rate stays under the legal 3%. Anyone who answers while you&apos;re busy hears your name, business and callback number, and can press 9 to opt out. You still need to scrub lists against the National Do Not Call Registry and only call people who agreed to be contacted.</p>
         <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady || !agentName.trim() || !businessName.trim()} onClick={start}><Play size={15} /> {busy ? "Starting…" : phoneReady ? "Start dialing" : "Waiting for phone…"}</button>
