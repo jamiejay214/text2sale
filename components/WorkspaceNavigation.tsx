@@ -60,61 +60,33 @@ type Props = {
   aiCallingEnabled?: boolean;
 };
 
+// Calling-first navigation: keep daily sales tools prominent and move setup to Manage.
 const groups = [
-  {
-    label: "Workspace",
-    items: [
-      { tab: "overview", label: "Overview", icon: LayoutDashboard },
-      { tab: "conversations", label: "Conversations", icon: MessageSquare },
-      { tab: "calls", label: "Calling", icon: Phone },
-      { tab: "settings", sub: "ai", label: "AI texting", icon: Sparkles, aiOnly: true },
-      { tab: "aicalls", label: "AI receptionist", icon: Phone, aiOnly: true },
-      { tab: "campaigns", label: "Campaigns", icon: Megaphone },
-    ],
-  },
-  {
-    label: "Your business",
-    items: [
-      { tab: "contacts", label: "Contacts", icon: Users },
-      { tab: "upload", label: "Lead imports", icon: Upload },
-      { tab: "pipeline", label: "Pipeline", icon: Kanban },
-      { tab: "appointments", label: "Calendar", icon: CalendarDays },
-      { tab: "website", label: "Website", icon: Globe2 },
-      { tab: "templates", label: "Message templates", icon: FileText },
-    ],
-  },
-  {
-    label: "Manage",
-    items: [
-      { tab: "settings", sub: "numbers", label: "Phone numbers", icon: Phone },
-      {
-        tab: "settings",
-        sub: "billing",
-        label: "Billing & funds",
-        icon: Wallet,
-      },
-      {
-        tab: "settings",
-        sub: "10dlc",
-        label: "Messaging setup",
-        icon: ShieldCheck,
-      },
-      {
-        tab: "settings",
-        sub: "integrations",
-        label: "Integrations",
-        icon: Plug,
-      },
-      {
-        tab: "settings",
-        sub: "team",
-        label: "Workspace & team",
-        icon: Settings,
-      },
-      { tab: "settings", sub: "support", label: "Support chat", icon: MessageSquare },
-      { tab: "learn", label: "Tutorials", icon: BookOpen },
-    ],
-  },
+  { label: "Sales workspace", items: [
+    { tab: "overview", label: "Dashboard", icon: LayoutDashboard },
+    { tab: "calls", label: "Dialer", icon: Phone },
+    { tab: "contacts", label: "Leads", icon: Users },
+    { tab: "conversations", label: "Conversations", icon: MessageSquare },
+    { tab: "appointments", label: "Appointments", icon: CalendarDays },
+    { tab: "pipeline", label: "Pipeline", icon: Kanban },
+  ] },
+  { label: "Automation", items: [
+    { tab: "campaigns", label: "Campaigns", icon: Megaphone },
+    { tab: "settings", sub: "ai", label: "AI follow-up", icon: Sparkles, aiOnly: true },
+    { tab: "aicalls", label: "AI receptionist", icon: Phone, aiOnly: true },
+  ] },
+  { label: "Manage", items: [
+    { tab: "upload", label: "Import leads", icon: Upload },
+    { tab: "settings", sub: "numbers", label: "Phone numbers", icon: Phone },
+    { tab: "settings", sub: "billing", label: "Billing & funds", icon: Wallet },
+    { tab: "settings", sub: "10dlc", label: "Messaging setup", icon: ShieldCheck },
+    { tab: "settings", sub: "integrations", label: "Integrations", icon: Plug },
+    { tab: "settings", sub: "team", label: "Workspace & team", icon: Settings },
+    { tab: "website", label: "Website", icon: Globe2 },
+    { tab: "templates", label: "Templates", icon: FileText },
+    { tab: "settings", sub: "support", label: "Support", icon: MessageSquare },
+    { tab: "learn", label: "Tutorials", icon: BookOpen },
+  ] },
 ] as const;
 
 export default function WorkspaceNavigation(props: Props) {
@@ -159,7 +131,7 @@ export default function WorkspaceNavigation(props: Props) {
           </span>
           <div>
             <strong>{props.name}&apos;s workspace</strong>
-            <small>Text2Sale CRM</small>
+            <small>Sales Command Center</small>
           </div>
         </div>
         <nav>
