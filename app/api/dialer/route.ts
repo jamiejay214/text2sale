@@ -1,18 +1,21 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getWorkspaceUserId } from "@/lib/workspace-auth";
-import { canUseCalling } from "@/lib/owner";
+import { callingAccess, type CallingAccess } from "@/lib/calling-access";
 import { isEntitled } from "@/lib/messaging-status";
 import { toE164 } from "@/lib/browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { abandonRate, ABANDON_CAP } from "@/lib/dialer-pacing";
 import { dialNext, linesFor, loadDialerStats } from "@/lib/dialer";
+import { phonesFromCsv } from "@/lib/csv-phones";
 
 // ─── /api/dialer ─────────────────────────────────────────────────────────
 // The predictive dialer's controls (see lib/dialer.ts). GET is the Calling
 // page's poll: session, live stats and the lead on the line; it also tells
 // the server the agent's browser is still there. POST takes an action:
 // start, ready, pause, next (save the disposition, then ready), stop.
+// An agent with a calling sponsor dials their own leads from the sponsor's
+// numbers, billed to the sponsor's wallet (lib/calling-access.ts).
 
 export const maxDuration = 60;
 
@@ -28,13 +31,20 @@ async function authorize(req: NextRequest) {
   const supabase = db();
   const { data: profile } = await supabase
     .from("profiles")
-    .select("email, wallet_balance, paused, subscription_status, free_subscription, telnyx_credential_id, owned_numbers")
+    .select("email, paused, telnyx_credential_id")
     .eq("id", userId)
     .maybeSingle();
-  if (!profile || !canUseCalling(profile.email)) {
+  const access = profile ? await callingAccess(supabase, { id: userId, email: profile.email }) : null;
+  if (!profile || !access) {
     return { error: NextResponse.json({ error: "The dialer isn't available on this account." }, { status: 403 }) };
   }
-  return { userId, supabase, profile };
+  return { userId, supabase, profile, payer: access.payer };
+}
+
+/** The caller ID numbers calls go out from (the payer's business numbers). */
+async function callerIds(supabase: ReturnType<typeof db>, payerId: string): Promise<string[]> {
+  const { data } = await supabase.from("owned_phone_numbers").select("digits").eq("user_id", payerId);
+  return (data || []).map((row: { digits: string }) => `+1${row.digits}`);
 }
 
 async function openSession(supabase: ReturnType<typeof db>, userId: string) {
@@ -66,7 +76,19 @@ async function leadLists(supabase: ReturnType<typeof db>, userId: string) {
     }
     if (!data || data.length < 1000) break;
   }
-  return { total, lists: Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count) };
+  // Uploaded CSV files: dial exactly the leads in one file.
+  const { data: uploads } = await supabase
+    .from("csv_uploads")
+    .select("id, file_name, uploaded_at, success")
+    .eq("user_id", userId)
+    .not("file_content", "is", null)
+    .order("uploaded_at", { ascending: false })
+    .limit(30);
+  return {
+    total,
+    lists: Array.from(counts, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
+    uploads: uploads || [],
+  };
 }
 
 async function snapshot(supabase: ReturnType<typeof db>, session: Record<string, unknown> | null) {
@@ -103,7 +125,7 @@ async function snapshot(supabase: ReturnType<typeof db>, session: Record<string,
 export async function GET(req: NextRequest) {
   const auth = await authorize(req);
   if ("error" in auth) return auth.error;
-  const { supabase, userId } = auth;
+  const { supabase, userId, payer } = auth;
   let session = await openSession(supabase, userId);
   if (session) {
     // The poll is the agent's heartbeat: no poll, no new dials.
@@ -117,7 +139,7 @@ export async function GET(req: NextRequest) {
   }
   const body = await snapshot(supabase, session);
   if (!session && req.nextUrl.searchParams.get("lists") === "1") {
-    return NextResponse.json({ ...body, ...(await leadLists(supabase, userId)) });
+    return NextResponse.json({ ...body, ...(await leadLists(supabase, userId)), callerIds: await callerIds(supabase, payer.id) });
   }
   return NextResponse.json(body);
 }
@@ -125,12 +147,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authorize(req);
   if ("error" in auth) return auth.error;
-  const { supabase, userId, profile } = auth;
+  const { supabase, userId, profile, payer } = auth;
   const input = await req.json().catch(() => ({}));
   const action = String(input?.action || "");
   const now = new Date();
 
-  if (action === "start") return start(supabase, userId, profile, input);
+  if (action === "start") return start(supabase, userId, profile, payer, input);
 
   const session = await openSession(supabase, userId);
   if (!session) return NextResponse.json({ error: "No dialer session is running." }, { status: 404 });
@@ -162,7 +184,7 @@ export async function POST(req: NextRequest) {
         await supabase.from("contacts").update({ dnc: true }).eq("id", item.contact_id).eq("user_id", userId);
       }
     }
-    if ((Number(profile.wallet_balance) || 0) < MIN_WALLET) {
+    if ((Number(payer.wallet_balance) || 0) < MIN_WALLET) {
       return NextResponse.json({ error: `Add funds to keep dialing. Calls are $${CALL_RATE_OUTBOUND_PER_MIN.toFixed(3)} per minute.` }, { status: 402 });
     }
     const { data: updated } = await supabase
@@ -202,11 +224,11 @@ export async function POST(req: NextRequest) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function start(supabase: ReturnType<typeof db>, userId: string, profile: any, input: any) {
-  if (profile.paused || !isEntitled(profile)) {
+async function start(supabase: ReturnType<typeof db>, userId: string, profile: any, payer: CallingAccess["payer"], input: any) {
+  if (profile.paused || payer.paused || !isEntitled(payer)) {
     return NextResponse.json({ error: "An active account and subscription are required to call." }, { status: 403 });
   }
-  if ((Number(profile.wallet_balance) || 0) < MIN_WALLET) {
+  if ((Number(payer.wallet_balance) || 0) < MIN_WALLET) {
     return NextResponse.json({ error: `Add funds before dialing. Calls are $${CALL_RATE_OUTBOUND_PER_MIN.toFixed(3)} per minute.` }, { status: 402 });
   }
   if (await openSession(supabase, userId)) {
@@ -219,10 +241,29 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
   }
   const maxLines = Math.min(3, Math.max(1, Math.floor(Number(input?.maxLines) || 1)));
   const list = typeof input?.list === "string" ? input.list.trim() : "";
+  const uploadId = typeof input?.upload === "string" && /^[0-9a-f-]{36}$/i.test(input.upload) ? input.upload : "";
+  // A chosen CSV file limits the call list to the phone numbers in it.
+  let filePhones: Set<string> | null = null;
+  let fileName = "";
+  if (uploadId) {
+    const { data: upload } = await supabase
+      .from("csv_uploads")
+      .select("file_name, file_content")
+      .eq("id", uploadId)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (!upload?.file_content) {
+      return NextResponse.json({ error: "That CSV file isn't available anymore. Choose another list." }, { status: 404 });
+    }
+    filePhones = phonesFromCsv(upload.file_content);
+    fileName = String(upload.file_name || "CSV file");
+    if (!filePhones.size) {
+      return NextResponse.json({ error: "Couldn't find phone numbers in that CSV file." }, { status: 400 });
+    }
+  }
 
   const requested = (Array.isArray(input?.fromNumbers) ? input.fromNumbers : []).map(toE164).filter(Boolean) as string[];
-  const { data: owned } = await supabase.from("owned_phone_numbers").select("digits").eq("user_id", userId);
-  const ownedE164 = (owned || []).map((row: { digits: string }) => `+1${row.digits}`);
+  const ownedE164 = await callerIds(supabase, payer.id);
   const fromNumbers = requested.length ? requested : ownedE164;
   if (!fromNumbers.length || fromNumbers.some((n) => !ownedE164.includes(n))) {
     return NextResponse.json({ error: "Choose caller ID numbers from your own business numbers." }, { status: 400 });
@@ -263,12 +304,12 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
       .order("created_at", { ascending: false })
       .order("id")
       .range(offset, offset + 999);
-    if (list) query = query.eq("campaign", list);
+    if (list && !filePhones) query = query.eq("campaign", list);
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: "Could not load your leads. Please retry." }, { status: 503 });
     for (const row of data || []) {
       const phone = toE164(row.phone);
-      if (!phone || seen.has(phone) || recent.has(phone)) continue;
+      if (!phone || seen.has(phone) || recent.has(phone) || (filePhones && !filePhones.has(phone))) continue;
       seen.add(phone);
       leads.push({ contact_id: row.id, phone });
     }
@@ -290,7 +331,7 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
       sip_username: sipUsername,
       business_name: businessName,
       agent_name: agentName,
-      audience: list || null,
+      audience: fileName || list || null,
     })
     .select("*")
     .single();

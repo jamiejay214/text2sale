@@ -1,6 +1,6 @@
 import { ensureVoiceRouting, ensureWebrtcMedia } from "@/lib/telnyx-voice";
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
-import { canUseCalling } from "@/lib/owner";
+import { callingAccess } from "@/lib/calling-access";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -64,11 +64,14 @@ export async function GET(req: NextRequest) {
       .select("telnyx_credential_id, owned_numbers, email")
       .eq("id", userId)
       .single();
-    if (!canUseCalling(profile?.email)) {
+    // An agent calling on a sponsor's account gets their own browser line,
+    // presenting the sponsor's numbers.
+    const access = profile ? await callingAccess(adminSupabase, { id: userId, email: profile.email }) : null;
+    if (!access) {
       return NextResponse.json({ error: "Calling isn't available on this account." }, { status: 403 });
     }
 
-    const numbers = Array.isArray(profile?.owned_numbers) ? profile.owned_numbers : [];
+    const numbers = Array.isArray(access.payer.owned_numbers) ? access.payer.owned_numbers : [];
     if (!numbers.length) return NextResponse.json({ error: "Connect a business number before calling." }, { status: 409 });
     const media = await ensureWebrtcMedia();
     if (!media.ok) return NextResponse.json({ error: media.error }, { status: 503 });

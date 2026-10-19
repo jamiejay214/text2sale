@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { toE164 } from "@/lib/browser-calls";
 import { isEntitled } from "@/lib/messaging-status";
+import { callingAccess } from "@/lib/calling-access";
 
 // ─── POST /api/calls/log ─────────────────────────────────────────────────────
 // Called by the browser BEFORE it dials. Creates the `calls` row that the
@@ -29,19 +30,20 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Enter a complete US phone number." }, { status: 400 });
     }
 
-    const [{ data: owned }, { data: profile }] = await Promise.all([
-      adminSupabase
-        .from("owned_phone_numbers")
-        .select("user_id")
-        .eq("digits", from.slice(2))
-        .eq("user_id", userId)
-        .limit(1),
-      adminSupabase
-        .from("profiles")
-        .select("wallet_balance, paused, subscription_status, free_subscription")
-        .eq("id", userId)
-        .maybeSingle(),
-    ]);
+    // The caller ID and wallet belong to whoever the calls are billed to: the
+    // user, or the sponsor an agent calls for (lib/calling-access.ts).
+    const { data: caller } = await adminSupabase.from("profiles").select("email, paused").eq("id", userId).maybeSingle();
+    const access = caller ? await callingAccess(adminSupabase, { id: userId, email: caller.email }) : null;
+    if (!access || caller?.paused) {
+      return NextResponse.json({ error: "Calling isn't available on this account." }, { status: 403 });
+    }
+    const profile = access.payer;
+    const { data: owned } = await adminSupabase
+      .from("owned_phone_numbers")
+      .select("user_id")
+      .eq("digits", from.slice(2))
+      .eq("user_id", profile.id)
+      .limit(1);
     if (!owned?.length) {
       return NextResponse.json({ error: "You can only call from your own business number." }, { status: 403 });
     }

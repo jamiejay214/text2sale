@@ -84,8 +84,13 @@ export default function WorkspaceApp() {
     !!profile?.free_subscription ||
     ["active", "canceling"].includes(String(profile?.subscription_status || ""));
   const aiAccess = subscribed || !!profile?.free_ai_plan;
-  // Text2Sale is texting-only for now; calling stays on the owner's account.
-  const callingEnabled = canUseCalling(profile?.email);
+  // Text2Sale is texting-only for now; calling stays on the owner's account,
+  // plus agents the operator lets call on it (calling_sponsors): they get the
+  // browser phone and dialer, not the AI receptionist settings.
+  const ownerCalling = canUseCalling(profile?.email);
+  const [sponsoredCalling, setSponsoredCalling] = useState(false);
+  const callingEnabled = ownerCalling || sponsoredCalling;
+  const aiCallingEnabled = ownerCalling;
 
   const loadShell = useCallback(async () => {
     setLoading(true);
@@ -205,9 +210,21 @@ export default function WorkspaceApp() {
     };
   }, [profileId]);
 
+  useEffect(() => {
+    if (!profileId || ownerCalling) return;
+    let live = true;
+    void supabase
+      .from("calling_sponsors")
+      .select("agent_id")
+      .eq("agent_id", profileId)
+      .maybeSingle()
+      .then(({ data }) => { if (live) setSponsoredCalling(!!data); });
+    return () => { live = false; };
+  }, [profileId, ownerCalling]);
+
   const navigate = useCallback(
     (requested: WorkspaceTab, subtab?: string) => {
-      const tab = !callingEnabled && (requested === "calls" || requested === "aicalls") ? "overview" : requested;
+      const tab = (!callingEnabled && requested === "calls") || (!aiCallingEnabled && requested === "aicalls") ? "overview" : requested;
       const aiOnly = tab === "aicalls" || (tab === "settings" && subtab === "ai");
       const destinationTab = aiOnly && !aiAccess ? "settings" : tab;
       const destinationSubtab = aiOnly && !aiAccess ? "upgrade" : subtab;
@@ -218,7 +235,7 @@ export default function WorkspaceApp() {
       const query = params.toString();
       router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
-    [aiAccess, callingEnabled, impersonateId, router],
+    [aiAccess, aiCallingEnabled, callingEnabled, impersonateId, router],
   );
 
   const toggleTheme = () => {
@@ -237,7 +254,7 @@ export default function WorkspaceApp() {
   const view = useMemo(() => {
     if (!profile) return null;
     const shared: WorkspaceViewProps = { profile, onProfile: setProfile, onNavigate: navigate };
-    if (!callingEnabled && (activeTab === "calls" || activeTab === "aicalls")) {
+    if ((!callingEnabled && activeTab === "calls") || (!aiCallingEnabled && activeTab === "aicalls")) {
       return <OverviewWorkspace {...shared} />;
     }
     if (!aiAccess && (activeTab === "aicalls" || (activeTab === "settings" && settingsTab === "ai"))) {
@@ -255,7 +272,7 @@ export default function WorkspaceApp() {
       default:
         return <OperationsWorkspace {...shared} tab={activeTab} settingsTab={settingsTab} />;
     }
-  }, [activeTab, aiAccess, callingEnabled, navigate, profile, settingsTab]);
+  }, [activeTab, aiAccess, aiCallingEnabled, callingEnabled, navigate, profile, settingsTab]);
 
   if (loading) {
     return (
@@ -329,6 +346,7 @@ export default function WorkspaceApp() {
         onLogout={logout}
         aiAccess={aiAccess}
         callingEnabled={callingEnabled}
+        aiCallingEnabled={aiCallingEnabled}
       />
       <section className="workspace-content v2-workspace-content">
         {impersonated && (
