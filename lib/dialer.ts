@@ -84,6 +84,25 @@ async function telnyx(path: string, method: "GET" | "POST", body?: Record<string
 
 const hangup = (ccid: string) => telnyx(`/calls/${ccid}/actions/hangup`, "POST", {});
 
+/**
+ * Hang up a session's lead legs that are still up: one item, or all of them.
+ * The server does this itself rather than trusting the browser's hangup to
+ * reach the lead's leg; each leg's hangup event then closes and bills it.
+ */
+export async function hangUpLeads(db: Db, sessionId: string, itemId?: string): Promise<number> {
+  let query = db
+    .from("dialer_queue")
+    .select("id, call_control_id")
+    .eq("session_id", sessionId)
+    .eq("status", "dialing")
+    .not("call_control_id", "is", null);
+  if (itemId) query = query.eq("id", itemId);
+  const { data } = await query;
+  const legs = (data || []) as Array<{ call_control_id: string }>;
+  await Promise.all(legs.map((leg) => hangup(leg.call_control_id)));
+  return legs.length;
+}
+
 export async function loadDialerStats(db: Db, sessionId: string): Promise<DialerStats> {
   const { data } = await db.rpc("dialer_stats", { p_session: sessionId });
   const row = (data || {}) as Partial<DialerStats>;

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Pause, PhoneCall, Play, Square, Zap } from "lucide-react";
+import { Check, Pause, PhoneCall, PhoneOff, Play, Square, Zap } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { Panel, StatusPill } from "../../WorkspacePrimitives";
 
@@ -96,8 +96,11 @@ export default function PredictiveDialer({
   phoneReady,
   onAutoAnswerChange,
   onCallerIds,
+  onHangup,
 }: {
   phoneReady: boolean;
+  /** Hang up the browser phone's call (the server ends the lead's side). */
+  onHangup?: () => void;
   onAutoAnswerChange: (on: boolean) => void;
   onCallerIds?: (numbers: string[]) => void;
 }) {
@@ -167,7 +170,13 @@ export default function PredictiveDialer({
     if (await act({ action: "start", ...audience, maxLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
   };
 
+  const hangUp = async () => {
+    onHangup?.();
+    await act({ action: "hangup" });
+  };
+
   const next = async () => {
+    if (session?.agent_state === "on_call" || session?.agent_state === "connecting") onHangup?.();
     if (await act({ action: "next", disposition: disposition || null, notes })) { setDisposition(""); setNotes(""); }
   };
 
@@ -218,12 +227,14 @@ export default function PredictiveDialer({
           <div className="v2-pd-dispositions">{DISPOSITIONS.map((item) => <button key={item.id} className={disposition === item.id ? "is-active" : ""} onClick={() => setDisposition(item.id)}>{item.label}</button>)}</div>
           <textarea rows={2} value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Notes for this call" />
           <div className="v2-pd-actions">
-            <button className="v2-btn v2-btn-primary" disabled={busy || session!.agent_state === "on_call"} onClick={next}><PhoneCall size={15} /> {session!.agent_state === "on_call" ? "Hang up to continue" : "Save & dial next"}</button>
+            {session!.agent_state === "on_call" && <button className="v2-btn" disabled={busy} onClick={hangUp}><PhoneOff size={15} /> Hang up</button>}
+            <button className="v2-btn v2-btn-primary" disabled={busy} onClick={next}><PhoneCall size={15} /> {session!.agent_state === "on_call" ? "Hang up & dial next" : "Save & dial next"}</button>
             <button className="v2-btn" disabled={busy} onClick={() => act({ action: "stop" })}><Square size={14} /> Stop</button>
           </div>
         </div>
       ) : (
         <div className="v2-pd-actions">
+          {session!.agent_state === "connecting" && <button className="v2-btn" disabled={busy} onClick={hangUp}><PhoneOff size={15} /> Hang up</button>}
           {session!.status === "paused" || session!.agent_state === "away"
             ? <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady} onClick={() => act({ action: "ready" })}><Play size={15} /> {phoneReady ? "Ready, resume dialing" : "Waiting for phone…"}</button>
             : <button className="v2-btn" disabled={busy} onClick={() => act({ action: "pause" })}><Pause size={15} /> Pause</button>}

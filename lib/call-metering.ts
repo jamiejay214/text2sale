@@ -23,14 +23,23 @@ export type MeteredCall = {
 const round4 = (n: number) => Number(n.toFixed(4));
 
 /**
- * The wallet a user's calls are charged to: their calling sponsor's when the
- * operator listed one in calling_sponsors (lib/calling-access.ts), else their
- * own. Read here, from a table users can't write, rather than from the call
- * row, which users can edit.
+ * The wallet a user's calls and texts are charged to: their sponsor's when
+ * the operator listed one in calling_sponsors (lib/calling-access.ts), else
+ * their own. Read here, from a table users can't write, rather than from the
+ * call row, which users can edit. (The wallet RPCs make the same switch for
+ * server-side charges; see the calling_sponsors wallet migration.)
  */
 export async function payerFor(db: Db, userId: string): Promise<string> {
   const { data } = await db.from("calling_sponsors").select("sponsor_id").eq("agent_id", userId).maybeSingle();
   return data?.sponsor_id || userId;
+}
+
+/** The balance a user's usage can draw on: the sponsor's wallet for a sponsored agent. */
+export async function spendableBalance(db: Db, userId: string, ownBalance: unknown): Promise<number> {
+  const payer = await payerFor(db, userId);
+  if (payer === userId) return Number(ownBalance) || 0;
+  const { data } = await db.from("profiles").select("wallet_balance").eq("id", payer).maybeSingle();
+  return Number(data?.wallet_balance) || 0;
 }
 
 /** Minutes started so far on a call answered at `answeredAt` (at least 1). */

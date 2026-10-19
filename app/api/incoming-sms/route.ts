@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { hasAiAccess } from "@/lib/messaging-status";
+import { spendableBalance } from "@/lib/call-metering";
 import { MANDATORY_OPT_OUT_KEYWORDS, normalizeOptOutSettings } from "@/lib/opt-out";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -95,10 +96,13 @@ export async function POST(req: NextRequest) {
     // `.maybeSingle()` ERRORED whenever a number had more than one owner, which
     // dropped or misrouted every reply to a shared line — the cause of replies
     // landing in the wrong account / not showing up at all.
+    // Oldest first: when nobody has the sender as a contact, the number's
+    // original owner gets the text, not an agent it was shared with later.
     const { data: ownerRows } = await supabase
       .from("owned_phone_numbers")
       .select("user_id")
-      .eq("digits", toNormalized);
+      .eq("digits", toNormalized)
+      .order("created_at", { ascending: true });
     const ownerIds: string[] = Array.from(new Set((ownerRows || []).map((o) => o.user_id as string)));
 
     // Fallback for legacy numbers only present on profiles.owned_numbers.
@@ -499,7 +503,7 @@ export async function POST(req: NextRequest) {
           .eq("id", conversation.id);
 
         if (aiAccess && (globalAi || perConvAi)) {
-          const balance = Number(aiProfile.wallet_balance) || 0;
+          const balance = await spendableBalance(supabase, contact.user_id, aiProfile.wallet_balance);
           if (balance >= 0.025) {
             // Runs after the webhook response via after(): a bare promise could
             // be cut off when the serverless function froze, which looked like

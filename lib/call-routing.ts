@@ -91,6 +91,16 @@ export async function findCallOwner(
   }
   if (!owners.length) return null;
 
+  // An agent sharing a sponsor's numbers (calling_sponsors) has no phone line
+  // of their own: calls to those numbers, their leads' callbacks included, go
+  // to the sponsor (AI receptionist or forwarding).
+  if (owners.length > 1) {
+    const { data: agents } = await db.from("calling_sponsors").select("agent_id").in("agent_id", owners);
+    const agentIds = new Set(((agents || []) as Array<{ agent_id: string }>).map((a) => a.agent_id));
+    const sponsors = owners.filter((id) => !agentIds.has(id));
+    if (sponsors.length) owners = sponsors;
+  }
+
   const variants = phoneVariants(callerNumber);
   const { data: contacts } = variants.length
     ? await db

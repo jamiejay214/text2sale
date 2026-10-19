@@ -116,6 +116,17 @@ test('call owner: a number shared by two accounts no longer rejects the call', a
   assert.deepEqual(plain(await findCallOwner(ownerDb(withContact), '+19545550100', '+13055550199')), { userId: 'a', contactId: 'c1' });
 });
 
+test('call owner: an agent sharing the sponsor\'s numbers never takes the call, even for their own lead', async () => {
+  const { findCallOwner } = load(async () => ok());
+  const shared = {
+    owned_phone_numbers: [{ user_id: 'owner', digits: '9545550100' }, { user_id: 'maria', digits: '9545550100' }],
+    calling_sponsors: [{ agent_id: 'maria', sponsor_id: 'owner' }],
+    contacts: [{ id: 'c9', user_id: 'maria', phone: '(305) 555-0199' }],
+    profiles: [],
+  };
+  assert.deepEqual(plain(await findCallOwner(ownerDb(shared), '+19545550100', '+13055550199')), { userId: 'owner', contactId: null });
+});
+
 test('call owner: legacy numbers on the profile are found; unknown numbers are not', async () => {
   const { findCallOwner } = load(async () => ok());
   const legacy = { owned_phone_numbers: [], profiles: [{ id: 'u9', owned_numbers: [{ number: '(954) 555-0100' }] }] };

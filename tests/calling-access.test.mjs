@@ -55,3 +55,8 @@ test('with no phone header, the column that holds phone numbers is used', () => 
   assert.deepEqual(plain(Array.from(phones)), ['+19545550101', '+13055550102']);
   assert.equal(csv.phonesFromCsv('Name,Zip\nAmy,33301\n').size, 0);
 });
+
+test('phone numbers are found in any column (Business, Mobile, Home)', () => {
+  const csvText = 'FirstName,Business,Mobile,Home,ZipCode\nLuis,9205417526,,,33128\nAna,,(305) 555-0102,,33101\nBo,,,786-555-0103,33102\n';
+  assert.deepEqual(plain(Array.from(csv.phonesFromCsv(csvText))), ['+19205417526', '+13055550102', '+17865550103']);
+});

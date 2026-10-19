@@ -34,12 +34,29 @@ export async function GET(req: NextRequest) {
     .limit(200);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  // Dialer calls left up after their session was stopped (the agent's
+  // hangup never reached the lead's leg): hang up instead of billing on.
+  const ids = (calls || []).map((call) => call.id);
+  const { data: orphans } = ids.length
+    ? await db
+        .from("dialer_queue")
+        .select("call_row_id, dialer_sessions!inner(status)")
+        .in("call_row_id", ids)
+        .in("dialer_sessions.status", ["stopped", "completed"])
+    : { data: [] };
+  const orphaned = new Set(((orphans || []) as Array<{ call_row_id: string }>).map((row) => row.call_row_id));
+
   let charged = 0;
   let cutOff = 0;
   let closed = 0;
   const now = new Date();
   for (const call of calls || []) {
     if (call.handled_by_ai || !call.call_control_id) continue;
+    if (orphaned.has(call.id)) {
+      await hangupLeg(call.call_control_id);
+      cutOff++;
+      continue;
+    }
     if (!(await legIsAlive(call.call_control_id))) {
       const duration = Math.max(0, Math.round((now.getTime() - new Date(call.answered_at).getTime()) / 1000));
       const { data: done } = await db
