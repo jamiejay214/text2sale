@@ -69,6 +69,34 @@ function startTone(onSeconds: number, offSeconds: number): () => void {
   }
 }
 
+/**
+ * A short double beep through this computer's speakers when the dialer puts
+ * a lead through. It plays locally, outside the call, so only the agent
+ * hears it.
+ */
+function playConnectBeep() {
+  try {
+    const context = new AudioContext();
+    void context.resume().catch(() => undefined);
+    const gain = context.createGain();
+    gain.connect(context.destination);
+    const tone = context.createOscillator();
+    tone.frequency.value = 880;
+    tone.connect(gain);
+    const start = context.currentTime;
+    gain.gain.setValueAtTime(0, start);
+    for (const offset of [0, 0.18]) {
+      gain.gain.setValueAtTime(0.12, start + offset);
+      gain.gain.setValueAtTime(0, start + offset + 0.1);
+    }
+    tone.onended = () => void context.close();
+    tone.start(start);
+    tone.stop(start + 0.35);
+  } catch {
+    // no audio available; the screen still shows the lead
+  }
+}
+
 export type BrowserPhoneHandle = {
   makeCall: (to: string, from: string) => void;
   /** Pick up the inbound call ringing this browser. */
@@ -161,6 +189,7 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
             if (autoAnswerRef.current) {
               try {
                 call.answer();
+                playConnectBeep();
                 return;
               } catch {
                 // fall through to ringing so the agent can answer by hand
