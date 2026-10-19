@@ -84,6 +84,11 @@ type Props = {
   /** Short-lived Telnyx JWT returned by /api/telnyx/webrtc-token */
   token: string | null;
   onStateChange?: (status: BrowserPhoneStatus) => void;
+  /**
+   * Pick up inbound calls without ringing. On while the predictive dialer is
+   * waiting for a lead: the person who answered is already on the line.
+   */
+  autoAnswer?: boolean;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,7 +97,7 @@ type TelnyxCall = any;
 type TelnyxClient = any;
 
 const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
-  ({ token, onStateChange }, ref) => {
+  ({ token, onStateChange, autoAnswer = false }, ref) => {
     const clientRef = useRef<TelnyxClient>(null);
     const readyRef = useRef(false);
     const ringbackRef = useRef<(() => void) | null>(null);
@@ -100,6 +105,8 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
     const callRef = useRef<TelnyxCall>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
     const [muted, setMuted] = useState(false);
+    const autoAnswerRef = useRef(autoAnswer);
+    useEffect(() => { autoAnswerRef.current = autoAnswer; }, [autoAnswer]);
 
     const emit = (callState: BrowserCallState, extra?: Partial<BrowserPhoneStatus>) => {
       onStateChange?.({
@@ -151,6 +158,14 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
           // Inbound call ringing this browser (routed here by the call
           // webhook): ring and show Answer / Decline until it's picked up.
           if (call.direction === "inbound" && call.state === "ringing") {
+            if (autoAnswerRef.current) {
+              try {
+                call.answer();
+                return;
+              } catch {
+                // fall through to ringing so the agent can answer by hand
+              }
+            }
             if (!ringtoneRef.current) ringtoneRef.current = startTone(2, 4);
             emit("ringing", { incoming: { from: String(call.options?.remoteCallerNumber || call.options?.callerNumber || "") } });
             return;

@@ -735,6 +735,31 @@ tr:hover .v2-row-actions { opacity:1; }
 .t2s-dark .v2-spam-check.is-medium { border-color:#6b5a2c; background:#2e2717; color:#f1dca4; }
 .t2s-dark .v2-spam-check.is-high { border-color:#6e3a33; background:#33201d; color:#f4c3b9; }
 
+.v2-pd-card { display:grid; gap:12px; }
+.v2-pd-form { display:grid; grid-template-columns:1fr 1fr; gap:11px; }
+.v2-pd-form label { display:grid; gap:5px; color:var(--v2-muted); font-size:.64rem; font-weight:800; }
+.v2-pd-form select,.v2-pd-form input,.v2-pd-wrap textarea { border:1px solid var(--v2-line); border-radius:9px; padding:8px 10px; background:var(--v2-panel); color:var(--v2-ink); font:inherit; font-size:.72rem; font-weight:500; width:100%; }
+.v2-pd-numbers { display:grid; gap:6px; font-size:.64rem; font-weight:800; color:var(--v2-muted); }
+.v2-pd-numbers small { font-weight:500; }
+.v2-pd-rules { margin:0; color:var(--v2-muted); font-size:.62rem; line-height:1.5; }
+.v2-pd-lead { border:1px solid var(--v2-line); border-radius:11px; padding:12px; display:grid; gap:8px; }
+.v2-pd-lead small { color:var(--v2-muted); font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }
+.v2-pd-lead strong { display:block; font-size:.95rem; }
+.v2-pd-lead span,.v2-pd-lead p { color:var(--v2-muted); font-size:.68rem; margin:0; }
+.v2-pd-lead dl { display:flex; flex-wrap:wrap; gap:6px 16px; margin:0; font-size:.66rem; }
+.v2-pd-lead dt { color:var(--v2-muted); font-weight:800; }
+.v2-pd-lead dd { margin:0; }
+.v2-pd-wrap { display:grid; gap:8px; }
+.v2-pd-dispositions { display:flex; flex-wrap:wrap; gap:6px; }
+.v2-pd-dispositions button { border:1px solid var(--v2-line); border-radius:999px; padding:6px 11px; background:var(--v2-panel); color:var(--v2-ink); font-size:.66rem; font-weight:700; cursor:pointer; }
+.v2-pd-dispositions button.is-active { border-color:#27694d; background:#27694d; color:white; }
+.v2-pd-actions { display:flex; flex-wrap:wrap; gap:8px; }
+.v2-pd-stats { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:6px; }
+.v2-pd-stats div { border:1px solid var(--v2-line); border-radius:9px; padding:8px; text-align:center; }
+.v2-pd-stats b { display:block; font-size:.9rem; }
+.v2-pd-stats small { color:var(--v2-muted); font-size:.57rem; }
+@media(max-width:650px){.v2-pd-form{grid-template-columns:1fr}.v2-pd-stats{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
 .v2-team-membership-card { grid-column:1/-1; }
 .v2-optout-card { min-width:0; }
 .v2-optout-body { padding:16px; }
