@@ -9,13 +9,13 @@ import { canUseCalling } from "./owner";
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
 
-const PAYER_COLUMNS = "id, email, wallet_balance, paused, subscription_status, free_subscription, owned_numbers";
+const PAYER_COLUMNS = "id, email, wallet_balance, paused, subscription_status, free_subscription, owned_numbers, ai_call_transfer_number";
 
 export type CallingAccess = {
   /** The account placing calls (its leads, dialer session, call history). */
   userId: string;
   /** The account whose numbers and wallet the calls use. */
-  payer: { id: string; email: string | null; wallet_balance: number | string | null; paused: boolean | null; subscription_status: string | null; free_subscription: boolean | null; owned_numbers: unknown };
+  payer: { id: string; email: string | null; ai_call_transfer_number?: string | null; wallet_balance: number | string | null; paused: boolean | null; subscription_status: string | null; free_subscription: boolean | null; owned_numbers: unknown };
   sponsored: boolean;
 };
 

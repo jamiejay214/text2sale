@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
         .select("call_row_id, dialer_sessions!inner(status)")
         .in("call_row_id", ids)
         .in("dialer_sessions.status", ["stopped", "completed"])
+        .is("transferred_to", null)
     : { data: [] };
   const orphaned = new Set(((orphans || []) as Array<{ call_row_id: string }>).map((row) => row.call_row_id));
 

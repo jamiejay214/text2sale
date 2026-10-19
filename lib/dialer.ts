@@ -32,7 +32,8 @@ export type DialerLegState = {
   dialer: string;
   item: string;
   callRowId: string;
-  leg: "lead" | "agent";
+  // agent: the browser phone's leg; cell: the agent's cell after a transfer.
+  leg: "lead" | "agent" | "cell";
   stage?: "abandon" | "bye";
 };
 
@@ -118,12 +119,47 @@ export async function hangUpLeads(db: Db, sessionId: string, itemId?: string): P
     .select("id, call_control_id")
     .eq("session_id", sessionId)
     .eq("status", "dialing")
-    .not("call_control_id", "is", null);
+    .not("call_control_id", "is", null)
+    .is("transferred_to", null); // a call moved to the agent's cell carries on
   if (itemId) query = query.eq("id", itemId);
   const { data } = await query;
   const legs = (data || []) as Array<{ call_control_id: string }>;
   await Promise.all(legs.map((leg) => hangup(leg.call_control_id)));
   return legs.length;
+}
+
+/**
+ * Move the agent's live call to their cell phone. The lead's leg is
+ * transferred to the cell (the browser leg drops off); the agent is free to
+ * wrap up and dial on while the conversation continues on the phone. The
+ * call keeps billing per minute, at two outbound legs' rate.
+ */
+export async function transferToCell(db: Db, session: any, cell: string): Promise<string | null> {
+  if (!session.active_item) return "There's no call to transfer.";
+  const { data: item } = await db.from("dialer_queue").select("*").eq("id", session.active_item).maybeSingle();
+  if (!item || item.status === "done" || item.result !== "connected" || !item.call_control_id) {
+    return "The call already ended.";
+  }
+  const state: DialerLegState = { v: 1, dialer: session.id, item: item.id, callRowId: item.call_row_id, leg: "lead" };
+  // Mark first so the browser leg's hangup doesn't end the lead's call.
+  await db.from("dialer_queue").update({ transferred_to: cell }).eq("id", item.id);
+  const moved = await telnyx(`/calls/${item.call_control_id}/actions/transfer`, "POST", {
+    to: cell,
+    from: toE164(item.from_number) || undefined,
+    timeout_secs: 25,
+    client_state: encodeDialerState(state),
+    target_leg_client_state: encodeDialerState({ ...state, leg: "cell" }),
+  });
+  if (!moved.ok) {
+    await db.from("dialer_queue").update({ transferred_to: null }).eq("id", item.id);
+    console.error(`[dialer] transfer to cell failed ${moved.status}: ${JSON.stringify(moved.json).slice(0, 300)}`);
+    return "Couldn't transfer the call. It's still on your browser.";
+  }
+  if (item.call_row_id) {
+    await db.from("calls").update({ cost_per_min: CALL_RATE_OUTBOUND_PER_MIN * 2, outcome: "transferred" }).eq("id", item.call_row_id);
+  }
+  await db.from("dialer_sessions").update({ agent_state: "wrap" }).eq("id", session.id).eq("active_item", item.id);
+  return null;
 }
 
 export async function loadDialerStats(db: Db, sessionId: string): Promise<DialerStats> {
@@ -368,12 +404,22 @@ export async function handleDialerEvent(db: Db, type: string, p: any, state: Dia
   const ccid: string | undefined = p?.call_control_id;
   if (!ccid || !state.item) return true;
 
+  // ── The agent's cell after "Transfer to my cell" ──
+  // When the cell hangs up, end the lead's leg too (its hangup bills it).
+  if (state.leg === "cell") {
+    if (type !== "call.hangup") return true;
+    const { data: item } = await db.from("dialer_queue").select("status, call_control_id").eq("id", state.item).maybeSingle();
+    if (item?.call_control_id && item.status !== "done") await hangup(item.call_control_id);
+    return true;
+  }
+
   // ── The browser phone's leg of a transferred lead ──
   if (state.leg === "agent") {
     if (type !== "call.hangup") return true;
     await recordLegAudio(db, state.item, "agent", p.call_quality_stats);
     const { data: item } = await db.from("dialer_queue").select("*").eq("id", state.item).maybeSingle();
     if (!item) return true;
+    if (item.transferred_to) return true; // the call moved to the agent's cell
     if (item.result === "connected") {
       // The agent hung up: end the lead's leg too (its hangup bills the call).
       if (item.call_control_id && item.status !== "done") await hangup(item.call_control_id);
