@@ -7,6 +7,7 @@ import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
 import { findCallOwner, hangupLeg, routeInboundCall } from "@/lib/call-routing";
 import { hasAiAccess } from "@/lib/messaging-status";
 import { canUseCalling } from "@/lib/owner";
+import { handleDialerEvent, type DialerLegState } from "@/lib/dialer";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -82,6 +83,10 @@ type ClientState = {
   // leg:"target" marks the leg ringing the owner's cell or browser.
   route?: string;
   leg?: string;
+  // Predictive dialer legs (lib/dialer.ts): dialer session id, queue item.
+  dialer?: string;
+  item?: string;
+  stage?: string;
 };
 
 const FINAL_STATUSES = ["completed", "failed", "no-answer", "busy", "canceled"];
@@ -140,6 +145,14 @@ async function handleEvent(payload: any, origin: string) {
     const p = event.payload || {};
     const ccid: string | undefined = p.call_control_id;
     const state = decodeClientState(p.client_state);
+
+    // ───────── PREDICTIVE DIALER legs ─────────
+    // Handled first: their events must not fall into the browser, inbound or
+    // AI paths. A lead's hangup continues below to close and bill its row.
+    if (state?.dialer && state.item) {
+      const handled = await handleDialerEvent(supabase, type, p, state as DialerLegState);
+      if (handled) return NextResponse.json({ status: "ok" });
+    }
 
     // ───────── INBOUND: the very first event is call.initiated ─────────
     if (type === "call.initiated" && p.direction === "incoming" && !state?.callRowId) {

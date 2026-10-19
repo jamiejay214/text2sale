@@ -26,6 +26,7 @@ import {
   Volume2,
 } from "lucide-react";
 import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "@/components/BrowserPhone";
+import PredictiveDialer from "./PredictiveDialer";
 import { authFetch } from "@/lib/auth-fetch";
 import { fetchContactsPage } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
@@ -192,6 +193,7 @@ function Dialer({ profile, onNavigate }: Props) {
   const [activeContact, setActiveContact] = useState<Contact | null>(null);
   const [callId, setCallId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+  const [autoAnswer, setAutoAnswer] = useState(false);
   const fromNumber = profile.owned_numbers?.[0]?.number || "";
 
   useEffect(() => {
@@ -288,7 +290,7 @@ function Dialer({ profile, onNavigate }: Props) {
   const inCall = ["calling", "ringing", "active"].includes(phoneStatus.callState);
   return (
     <>
-      <BrowserPhone ref={phoneRef} token={token} onStateChange={setPhoneStatus} />
+      <BrowserPhone ref={phoneRef} token={token} onStateChange={setPhoneStatus} autoAnswer={autoAnswer} />
       <PageHeader eyebrow="Calling workspace" title="Call one lead—or fifty—without losing your rhythm." description="A cleaner browser dialer, keyboard input, organized call history, and a back-to-back queue with lead context." actions={<><button className="v2-btn" onClick={() => onNavigate("contacts")}><Users size={16} /> Choose leads</button><button className="v2-btn v2-btn-primary" onClick={startQueue}><Play size={16} /> Start power queue</button></>} />
       {(notice || phoneStatus.error) && <div role="alert" className="v2-notice is-error">{notice || phoneStatus.error}<button onClick={() => setNotice("")}>×</button></div>}
       {phoneStatus.incoming && phoneStatus.callState === "ringing" && <div role="alert" className="v2-incoming-call"><span><PhoneIncoming size={18} /></span><div><strong>Incoming call</strong><small>{prettyPhone(phoneStatus.incoming.from) || "Unknown caller"}</small></div><button className="v2-btn" onClick={() => phoneRef.current?.decline()}>Decline</button><button className="v2-btn v2-btn-primary" onClick={() => phoneRef.current?.answer()}><Phone size={15} /> Answer</button></div>}
@@ -303,6 +305,7 @@ function Dialer({ profile, onNavigate }: Props) {
         </Panel>
 
         <div className="v2-calling-main">
+          {CALLING_ENABLED && <PredictiveDialer ownedNumbers={profile.owned_numbers || []} phoneReady={phoneStatus.ready && !!token} onAutoAnswerChange={setAutoAnswer} />}
           <Panel className="v2-queue-card">
             <div className="v2-panel-head"><div><h2>Power queue</h2><p>Dial leads back-to-back</p></div><label className="v2-compact-switch">Auto advance<input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} /><i /></label></div>
             {queue.length ? <div className="v2-active-queue"><div className="v2-queue-progress"><span style={{ width: `${((queueIndex + 1) / queue.length) * 100}%` }} /></div><div className="v2-current-lead"><span className="v2-avatar">{queue[queueIndex]?.first_name?.[0]}{queue[queueIndex]?.last_name?.[0]}</span><div><small>Lead {queueIndex + 1} of {queue.length}</small><strong>{nameOf(queue[queueIndex])}</strong><span>{prettyPhone(queue[queueIndex]?.phone || "")} · {[queue[queueIndex]?.city, queue[queueIndex]?.state, queue[queueIndex]?.zip].filter(Boolean).join(", ") || "Location not added"}</span></div><button onClick={() => setQueuePaused((current) => !current)}>{queuePaused ? <Play size={16} /> : <Pause size={16} />}{queuePaused ? "Resume" : "Pause"}</button></div><div className="v2-queue-next"><button disabled={queueIndex === 0} onClick={() => setQueueIndex((current) => current - 1)}><ChevronLeft size={15} /></button><span>Up next: {queue[queueIndex + 1] ? nameOf(queue[queueIndex + 1]) : "Queue complete"}</span><button disabled={queueIndex + 1 >= queue.length} onClick={() => setQueueIndex((current) => current + 1)}><ChevronRight size={15} /></button></div></div> : <EmptyState title="Build a back-to-back call queue" description="Start with your newest 50 eligible leads, or choose a list from Contacts." action={<button className="v2-btn v2-btn-accent" onClick={startQueue}><Plus size={15} /> Load newest leads</button>} />}
