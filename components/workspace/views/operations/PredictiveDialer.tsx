@@ -126,7 +126,7 @@ export default function PredictiveDialer({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [list, setList] = useState("");
-  const [maxLines, setMaxLines] = useState(2);
+  const [maxLines, setMaxLines] = useState(3);
   const [agentName, setAgentName] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [numbers, setNumbers] = useState<string[]>([]);
