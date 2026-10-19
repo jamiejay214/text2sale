@@ -46,7 +46,11 @@ export function certificateStorageName(name: string, type: string): string {
 
 
 export async function hasEINCertificate(admin: SupabaseClient, userId: string): Promise<boolean> {
-  return !!(await getEINCertificate(admin, userId));
+  if (await getEINCertificate(admin, userId)) return true;
+  // An agent texting on a sponsor's numbers sends under the sponsor's
+  // registration, so the sponsor's certificate covers them.
+  const { data } = await admin.from("calling_sponsors").select("sponsor_id").eq("agent_id", userId).maybeSingle();
+  return !!data?.sponsor_id && !!(await getEINCertificate(admin, data.sponsor_id));
 }
 
 export const EIN_CERTIFICATE_REQUIRED_MESSAGE =

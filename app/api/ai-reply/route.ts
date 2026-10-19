@@ -8,6 +8,7 @@ import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
 import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
 import { requireSameUser } from "@/lib/auth-guard";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
+import { spendableBalance } from "@/lib/call-metering";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -161,7 +162,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const balance = Number(profile.wallet_balance) || 0;
+    const balance = await spendableBalance(supabase, userId, profile.wallet_balance);
 
     const messages = (messagesRes.data || []).slice().reverse();
     const contact = contactRes.data;

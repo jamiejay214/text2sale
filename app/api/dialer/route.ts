@@ -6,14 +6,15 @@ import { isEntitled } from "@/lib/messaging-status";
 import { toE164 } from "@/lib/browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { abandonRate, ABANDON_CAP } from "@/lib/dialer-pacing";
-import { dialNext, linesFor, loadDialerStats } from "@/lib/dialer";
+import { dialNext, hangUpLeads, linesFor, loadDialerStats } from "@/lib/dialer";
 import { phonesFromCsv } from "@/lib/csv-phones";
 
 // ─── /api/dialer ─────────────────────────────────────────────────────────
 // The predictive dialer's controls (see lib/dialer.ts). GET is the Calling
 // page's poll: session, live stats and the lead on the line; it also tells
 // the server the agent's browser is still there. POST takes an action:
-// start, ready, pause, next (save the disposition, then ready), stop.
+// start, ready, pause, hangup, next (save the disposition, hang up if still
+// on the line, then ready), stop.
 // An agent with a calling sponsor dials their own leads from the sponsor's
 // numbers, billed to the sponsor's wallet (lib/calling-access.ts).
 
@@ -158,13 +159,9 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "No dialer session is running." }, { status: 404 });
 
   if (action === "ready" || action === "next") {
-    if (session.active_item && (session.agent_state === "on_call" || session.agent_state === "connecting")) {
-      // A call whose hangup never arrived must not lock the agent out.
-      const { data: active } = await supabase.from("dialer_queue").select("status").eq("id", session.active_item).maybeSingle();
-      if (active && active.status !== "done") {
-        return NextResponse.json({ error: "Finish the current call first." }, { status: 409 });
-      }
-    }
+    // Moving on ends the current call, even if the browser's hangup never
+    // reached the lead's leg.
+    if (session.active_item) await hangUpLeads(supabase, session.id, session.active_item);
     if (action === "next" && session.active_item) {
       const disposition = DISPOSITIONS.includes(input.disposition) ? input.disposition : null;
       const notes = typeof input.notes === "string" ? input.notes.trim().slice(0, 2000) : "";
@@ -210,7 +207,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(await snapshot(supabase, data));
   }
 
+  if (action === "hangup") {
+    if (session.active_item) await hangUpLeads(supabase, session.id, session.active_item);
+    const { data } = await supabase
+      .from("dialer_sessions")
+      .update({ agent_state: "wrap" })
+      .eq("id", session.id)
+      .in("agent_state", ["connecting", "on_call"])
+      .select("*")
+      .maybeSingle();
+    return NextResponse.json(await snapshot(supabase, data || session));
+  }
+
   if (action === "stop") {
+    await hangUpLeads(supabase, session.id);
     const { data } = await supabase
       .from("dialer_sessions")
       .update({ status: "stopped", agent_state: "away", ended_at: now.toISOString() })
