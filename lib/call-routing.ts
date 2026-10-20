@@ -226,7 +226,7 @@ const DIALER_HEARTBEAT_MS = 45_000;
 
 export type OverflowState = { agentId: string; agentSession?: string | null };
 
-async function sipUsername(credentialId: string | null | undefined): Promise<string> {
+export async function sipUsername(credentialId: string | null | undefined): Promise<string> {
   if (!credentialId) return "";
   const credential = await telnyx(`/telephony_credentials/${encodeURIComponent(credentialId)}`, "GET");
   return credential.ok ? String(credential.json?.data?.sip_username || "") : "";
@@ -243,20 +243,65 @@ async function openDialerSession(db: Db, userId: string) {
   return data && Date.now() - seen < DIALER_HEARTBEAT_MS ? data : null;
 }
 
-/** Hand an agent's dialer session back after an overflow call. */
-export async function releaseOverflow(db: Db, overflow: OverflowState) {
-  if (!overflow.agentSession) return;
+/**
+ * Hold a user's open dialer session for a call put through to them: no new
+ * dials, no lead put through, their ringing lead lines dropped. Only from
+ * one of `states` (never mid-call). Returns the session (with its SIP user),
+ * or null when they have no fresh session or it isn't free.
+ */
+export async function holdSession(
+  db: Db,
+  userId: string,
+  hold: { from: string; label?: string | null; states: string[] }
+): Promise<{ id: string; sip_username: string | null } | null> {
+  const session = await openDialerSession(db, userId);
+  if (!session || !hold.states.includes(session.agent_state)) return null;
+  const { data } = await db
+    .from("dialer_sessions")
+    .update({ agent_state: "on_call", inbound_from: hold.from, inbound_label: hold.label || null, inbound_prev_state: session.agent_state })
+    .eq("id", session.id)
+    .eq("agent_state", session.agent_state)
+    .is("inbound_from", null)
+    .select("id, sip_username")
+    .maybeSingle();
+  if (!data) return null;
+  const { data: ringing } = await db
+    .from("dialer_queue")
+    .select("call_control_id")
+    .eq("session_id", session.id)
+    .eq("status", "dialing")
+    .not("call_control_id", "is", null)
+    .is("human_at", null);
+  await Promise.all(((ringing || []) as Array<{ call_control_id: string }>).map((leg) => hangupLeg(leg.call_control_id)));
+  return data;
+}
+
+/**
+ * Hand a held dialer session back in the state it was held from. Returns
+ * that state ("ready" means the caller should restart dialing), or null.
+ */
+export async function releaseHold(db: Db, sessionId: string | null | undefined): Promise<string | null> {
+  if (!sessionId) return null;
   const { data: session } = await db
     .from("dialer_sessions")
     .select("inbound_prev_state")
-    .eq("id", overflow.agentSession)
+    .eq("id", sessionId)
     .maybeSingle();
-  if (!session) return;
-  await db
+  if (!session) return null;
+  const restored = session.inbound_prev_state || "wrap";
+  const { data } = await db
     .from("dialer_sessions")
-    .update({ agent_state: session.inbound_prev_state || "wrap", inbound_from: null, inbound_prev_state: null })
-    .eq("id", overflow.agentSession)
-    .not("inbound_from", "is", null);
+    .update({ agent_state: restored, inbound_from: null, inbound_label: null, inbound_prev_state: null })
+    .eq("id", sessionId)
+    .not("inbound_from", "is", null)
+    .select("id")
+    .maybeSingle();
+  return data ? restored : null;
+}
+
+/** Hand an agent's dialer session back after an overflow call. */
+export async function releaseOverflow(db: Db, overflow: OverflowState): Promise<string | null> {
+  return releaseHold(db, overflow.agentSession);
 }
 
 /**
@@ -285,28 +330,15 @@ export async function routeOverflow(
 
     // Hold the agent's own dialer, if running, so it neither dials nor puts
     // a lead through while they're on this call.
-    const session = await openDialerSession(db, agentId);
     let held: string | null = null;
-    if (session) {
-      if (!["ready", "wrap"].includes(session.agent_state)) continue;
-      const { data } = await db
-        .from("dialer_sessions")
-        .update({ agent_state: "on_call", inbound_from: toE164(call.callerNumber) || call.callerNumber, inbound_prev_state: session.agent_state })
-        .eq("id", session.id)
-        .eq("agent_state", session.agent_state)
-        .is("inbound_from", null)
-        .select("id")
-        .maybeSingle();
-      if (!data) continue;
-      held = data.id;
-      const { data: ringing } = await db
-        .from("dialer_queue")
-        .select("call_control_id")
-        .eq("session_id", session.id)
-        .eq("status", "dialing")
-        .not("call_control_id", "is", null)
-        .is("human_at", null);
-      await Promise.all(((ringing || []) as Array<{ call_control_id: string }>).map((leg) => hangupLeg(leg.call_control_id)));
+    if (await openDialerSession(db, agentId)) {
+      const session = await holdSession(db, agentId, {
+        from: toE164(call.callerNumber) || call.callerNumber,
+        label: "Customer calling your business line",
+        states: ["ready", "wrap"],
+      });
+      if (!session) continue;
+      held = session.id;
     }
 
     const overflow: OverflowState = { agentId, agentSession: held };

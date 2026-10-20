@@ -6,7 +6,7 @@ import { isEntitled } from "@/lib/messaging-status";
 import { toE164 } from "@/lib/browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { abandonRate, ABANDON_CAP } from "@/lib/dialer-pacing";
-import { dialNext, hangUpLeads, linesFor, loadDialerStats, transferToCell } from "@/lib/dialer";
+import { dialNext, hangUpLeads, linesFor, loadDialerStats, sendToTeammate, teammates, transferToCell } from "@/lib/dialer";
 import { phonesFromCsv } from "@/lib/csv-phones";
 
 // ─── /api/dialer ─────────────────────────────────────────────────────────
@@ -40,6 +40,17 @@ async function authorize(req: NextRequest) {
     return { error: NextResponse.json({ error: "The dialer isn't available on this account." }, { status: 403 }) };
   }
   return { userId, supabase, profile, payer: access.payer };
+}
+
+/** Who this user can pass a live call to ("Send to …" on the dialer). */
+async function teamList(supabase: ReturnType<typeof db>, userId: string) {
+  const ids = await teammates(supabase, userId, false);
+  if (!ids.length) return [];
+  const { data } = await supabase.from("profiles").select("id, first_name, last_name, email").in("id", ids);
+  return ((data || []) as Array<{ id: string; first_name: string | null; last_name: string | null; email: string | null }>).map((p) => ({
+    id: p.id,
+    name: p.first_name || [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || "Teammate",
+  }));
 }
 
 /** The owner's agents and whether each takes overflow calls. */
@@ -167,7 +178,9 @@ export async function GET(req: NextRequest) {
   }
   const body = await snapshot(supabase, session);
   const withLists = req.nextUrl.searchParams.get("lists") === "1";
-  const overflow = withLists && payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {};
+  const overflow = withLists
+    ? { teammates: await teamList(supabase, userId), ...(payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {}) }
+    : {};
   if (withLists && !session) {
     return NextResponse.json({
       ...body,
@@ -253,6 +266,13 @@ export async function POST(req: NextRequest) {
       .select("*")
       .maybeSingle();
     return NextResponse.json(await snapshot(supabase, data));
+  }
+
+  if (action === "send") {
+    const failed = await sendToTeammate(supabase, session, String(input?.to || ""));
+    if (failed) return NextResponse.json({ error: failed }, { status: 409 });
+    const { data } = await supabase.from("dialer_sessions").select("*").eq("id", session.id).maybeSingle();
+    return NextResponse.json(await snapshot(supabase, data || session));
   }
 
   if (action === "transfer") {
