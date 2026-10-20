@@ -745,6 +745,20 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-pd-force small { display:block; color:var(--v2-muted); font-size:.62rem; line-height:1.45; margin-top:2px; }
 .v2-pd-transfer { display:flex; gap:6px; flex-wrap:wrap; }
 .v2-pd-transfer input { border:1px solid var(--v2-line); border-radius:9px; padding:7px 10px; background:var(--v2-panel); color:var(--v2-ink); font:inherit; font-size:.72rem; width:150px; }
+.v2-pd-from { display:block; margin-top:3px; font-size:.64rem; color:var(--v2-muted); }
+.v2-pd-from b { color:var(--v2-ink); }
+.v2-pd-callback, .v2-pd-book label { display:grid; gap:4px; font-size:.64rem; font-weight:800; color:var(--v2-muted); }
+.v2-pd-callback small, .v2-pd-book small { font-weight:500; line-height:1.45; }
+.v2-pd-callback input, .v2-pd-book input, .v2-pd-book select { border:1px solid var(--v2-line); border-radius:9px; padding:7px 10px; background:var(--v2-panel); color:var(--v2-ink); font:inherit; font-size:.72rem; }
+.v2-pd-book { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:8px; padding:10px; border:1px solid var(--v2-line); border-radius:12px; }
+.v2-pd-book small, .v2-pd-book .v2-pd-actions { grid-column:1 / -1; }
+.v2-pd-callbacks { display:grid; gap:6px; font-size:.68rem; }
+.v2-pd-callbacks > span { display:flex; align-items:center; gap:6px; font-weight:800; color:var(--v2-muted); font-size:.64rem; }
+.v2-pd-callbacks ul { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.v2-pd-callbacks li { display:grid; grid-template-columns:1fr auto; gap:2px 8px; padding:8px 10px; border:1px solid var(--v2-line); border-radius:10px; }
+.v2-pd-callbacks li span, .v2-pd-callbacks li small { grid-column:1; color:var(--v2-muted); font-size:.62rem; }
+.v2-pd-callbacks li button { grid-column:2; grid-row:1 / span 3; align-self:center; padding:5px 7px; }
+.v2-pd-callbacks > small { color:var(--v2-muted); font-size:.6rem; line-height:1.45; }
 .v2-pd-rules { margin:0; color:var(--v2-muted); font-size:.62rem; line-height:1.5; }
 .v2-pd-lead { border:1px solid var(--v2-line); border-radius:11px; padding:12px; display:grid; gap:8px; }
 .v2-pd-lead small { color:var(--v2-muted); font-size:.6rem; font-weight:800; text-transform:uppercase; letter-spacing:.04em; }

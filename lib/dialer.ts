@@ -232,13 +232,17 @@ async function placeLeadCall(db: Db, session: any, item: any, appId: string, now
   const { data: contact } = item.contact_id
     ? await db.from("contacts").select("state, dnc").eq("id", item.contact_id).maybeSingle()
     : { data: null };
-  if (contact?.dnc || !withinCallingHours(contact?.state, now)) {
+  // A callback the lead asked for is made at the time they chose; once it is
+  // well overdue it is an ordinary call again and needs calling hours.
+  const requested = callbackWindowOpen(item.callback_due_at, now);
+  if (contact?.dnc || (!requested && !withinCallingHours(contact?.state, now))) {
     await finishItem(db, item.id, "skipped");
     return false;
   }
   const to = toE164(item.phone);
   const numbers = (Array.isArray(session.from_numbers) ? session.from_numbers : []).map(toE164).filter(Boolean) as string[];
-  const from = numbers.length ? numbers[Math.abs(Number(item.position) || 0) % numbers.length] : null;
+  // Callbacks come from the number the lead already knows.
+  const from = toE164(item.call_from) || (numbers.length ? numbers[Math.abs(Number(item.position) || 0) % numbers.length] : null);
   if (!to || !from) {
     await finishItem(db, item.id, "failed");
     return false;
@@ -326,10 +330,22 @@ export async function dialNext(db: Db, sessionId: string, now: Date = new Date()
   const app = await ensureCallControlApp().catch(() => ({ ok: false as const, error: "" }));
   if (!app.ok) return 0;
 
+  // A due callback is dialed on its own, once the lines in flight are done,
+  // so the lead who asked for it never gets the abandoned-call message.
+  const { data: callback } = await db
+    .from("dialer_queue")
+    .select("id")
+    .eq("session_id", sessionId)
+    .eq("status", "queued")
+    .not("callback_id", "is", null)
+    .limit(1)
+    .maybeSingle();
+  const limit = callback ? 1 : lines;
+
   let placed = 0;
   // Skipped leads (outside calling hours, DNC) free their line; reserve again.
   for (let round = 0; round < 8; round++) {
-    const { data: items } = await db.rpc("dialer_reserve", { p_session: sessionId, p_limit: lines });
+    const { data: items } = await db.rpc("dialer_reserve", { p_session: sessionId, p_limit: limit });
     if (!items?.length) break;
     let skipped = 0;
     for (const item of items) {
@@ -341,7 +357,16 @@ export async function dialNext(db: Db, sessionId: string, now: Date = new Date()
 
   if (!placed) {
     const after = await loadDialerStats(db, sessionId);
-    if (!after.queued && !after.in_flight) {
+    // Keep the session open while a callback is coming up later today.
+    const { data: upcoming } = await db
+      .from("dialer_callbacks")
+      .select("id")
+      .eq("user_id", session.user_id)
+      .eq("status", "scheduled")
+      .lte("due_at", new Date(now.getTime() + 12 * 60 * 60 * 1000).toISOString())
+      .limit(1)
+      .maybeSingle();
+    if (!after.queued && !after.in_flight && !upcoming) {
       await db
         .from("dialer_sessions")
         .update({ status: "completed", agent_state: "away", ended_at: now.toISOString() })
@@ -350,6 +375,76 @@ export async function dialNext(db: Db, sessionId: string, now: Date = new Date()
     }
   }
   return placed;
+}
+
+// ── Scheduled callbacks ──────────────────────────────────────────────────
+/** How long after its time a callback still counts as the one asked for. */
+const CALLBACK_WINDOW_MS = 2 * 60 * 60 * 1000;
+
+/** True while a callback is due and not yet too late to be "as requested". */
+export function callbackWindowOpen(dueAt: string | null | undefined, now: Date = new Date()): boolean {
+  if (!dueAt) return false;
+  const due = new Date(dueAt).getTime();
+  return Number.isFinite(due) && now.getTime() >= due - 60_000 && now.getTime() - due <= CALLBACK_WINDOW_MS;
+}
+
+const CALLBACK_MAX_DAYS = 90;
+
+/** A requested callback time as ISO, or null when missing, past or too far out. */
+export function callbackTime(raw: unknown, now: Date = new Date()): string | null {
+  if (typeof raw !== "string" || !raw) return null;
+  const t = new Date(raw).getTime();
+  if (!Number.isFinite(t) || t < now.getTime() - 60_000 || t > now.getTime() + CALLBACK_MAX_DAYS * 86_400_000) return null;
+  return new Date(t).toISOString();
+}
+
+/**
+ * Put the agent's due callbacks at the front of their dialer queue. Returns
+ * how many were added; the caller then runs dialNext.
+ */
+export async function enqueueDueCallbacks(db: Db, session: any, now: Date = new Date()): Promise<number> {
+  if (!session || session.status !== "active") return 0;
+  const { data: due } = await db
+    .from("dialer_callbacks")
+    .select("*")
+    .eq("user_id", session.user_id)
+    .eq("status", "scheduled")
+    .lte("due_at", now.toISOString())
+    .order("due_at", { ascending: true })
+    .limit(5);
+  let added = 0;
+  for (const callback of (due || []) as any[]) {
+    // Claim it first, so two polls can't queue the same callback twice.
+    const { data: claimed } = await db
+      .from("dialer_callbacks")
+      .update({ status: "dialed" })
+      .eq("id", callback.id)
+      .eq("status", "scheduled")
+      .select("id")
+      .maybeSingle();
+    if (!claimed) continue;
+    const { data: item } = await db
+      .from("dialer_queue")
+      .insert({
+        session_id: session.id,
+        user_id: session.user_id,
+        contact_id: callback.contact_id,
+        phone: callback.phone,
+        position: -1,
+        callback_id: callback.id,
+        callback_due_at: callback.due_at,
+        call_from: callback.from_number,
+      })
+      .select("id")
+      .maybeSingle();
+    if (!item) {
+      await db.from("dialer_callbacks").update({ status: "scheduled" }).eq("id", callback.id);
+      continue;
+    }
+    await db.from("dialer_callbacks").update({ queue_item: item.id }).eq("id", callback.id);
+    added++;
+  }
+  return added;
 }
 
 /** Tell an answered lead nobody can take the call, with an opt-out. */

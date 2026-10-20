@@ -70,7 +70,7 @@ function setup({ claim = true, item = {}, session = {}, extra = {}, lists = {}, 
     from(table) {
       const q = { table, op: 'select', filters: [] };
       const b = {
-        select: () => b, eq: (k, v) => (q.filters.push([k, v]), b), neq: () => b, is: () => b, in: () => b, lt: () => b, gte: () => b, order: () => b, range: () => b, limit: () => b,
+        select: () => b, eq: (k, v) => (q.filters.push([k, v]), b), neq: () => b, is: () => b, in: () => b, lt: () => b, lte: () => b, not: () => b, gte: () => b, order: () => b, range: () => b, limit: () => b,
         update: (payload) => { q.op = 'update'; q.payload = payload; writes.push(q); return b; },
         insert: (payload) => { q.op = 'insert'; q.payload = payload; writes.push(q); return b; },
         maybeSingle: async () => ({ data: rows[table] || null, error: null }),
@@ -260,4 +260,40 @@ test('teammate leg: answered then hung up ends the call; never answered comes ba
   const back = missed.telnyx.find((t) => t.path === '/calls/lead-cc/actions/transfer');
   assert.equal(back.body.to, 'sip:jamieSIP@sip.telnyx.com');
   assert.ok(!missed.telnyx.some((t) => t.path.endsWith('/hangup') && t.path.includes('lead-cc')));
+});
+
+// ── Scheduled callbacks ──
+test('callback time: must be in the future and within 90 days', () => {
+  const { dialer } = setup();
+  const now = new Date('2026-10-20T15:00:00Z');
+  assert.equal(dialer.callbackTime('2026-10-20T19:30:00.000Z', now), '2026-10-20T19:30:00.000Z');
+  assert.equal(dialer.callbackTime('2026-10-20T14:00:00Z', now), null, 'in the past');
+  assert.equal(dialer.callbackTime('2027-03-01T15:00:00Z', now), null, 'too far out');
+  assert.equal(dialer.callbackTime('soon', now), null);
+  assert.equal(dialer.callbackTime(undefined, now), null);
+});
+
+test('a callback counts as requested from its time until two hours late', () => {
+  const { dialer } = setup();
+  const due = '2026-10-20T19:30:00Z';
+  assert.equal(dialer.callbackWindowOpen(due, new Date('2026-10-20T19:30:20Z')), true);
+  assert.equal(dialer.callbackWindowOpen(due, new Date('2026-10-20T21:00:00Z')), true);
+  assert.equal(dialer.callbackWindowOpen(due, new Date('2026-10-20T22:00:00Z')), false, 'well overdue: an ordinary call again');
+  assert.equal(dialer.callbackWindowOpen(due, new Date('2026-10-20T19:00:00Z')), false, 'not yet');
+  assert.equal(dialer.callbackWindowOpen(null), false);
+});
+
+test('due callbacks go to the front of the queue, from the number that first called the lead', async () => {
+  const callback = { id: 'cb1', user_id: 'u1', contact_id: 'c1', phone: '+13055550199', from_number: '+19546761423', due_at: '2026-10-20T19:30:00Z', status: 'scheduled' };
+  const ctx = setup({ extra: { dialer_callbacks: { id: 'cb1' } }, lists: { dialer_callbacks: [callback] } });
+  const added = await ctx.dialer.enqueueDueCallbacks(ctx.dbRef, { id: 's1', user_id: 'u1', status: 'active' }, new Date('2026-10-20T19:31:00Z'));
+  assert.equal(added, 1);
+  const insert = ctx.writes.find((w) => w.table === 'dialer_queue' && w.op === 'insert');
+  assert.equal(insert.payload.position, -1);
+  assert.equal(insert.payload.call_from, '+19546761423');
+  assert.equal(insert.payload.callback_id, 'cb1');
+  assert.ok(updatesTo(ctx.writes, 'dialer_callbacks').some((u) => u.status === 'dialed'), 'claimed so it is queued only once');
+
+  const idle = setup();
+  assert.equal(await idle.dialer.enqueueDueCallbacks(idle.dbRef, { id: 's1', user_id: 'u1', status: 'paused' }), 0, 'not while paused');
 });
