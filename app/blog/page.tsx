@@ -6,9 +6,9 @@ import MarketingFooter from "@/components/MarketingFooter";
 const SITE = "https://text2sale.com";
 
 export const metadata: Metadata = {
-  title: "Text2Sale Blog — Texting, Lead Follow-Up & Compliance for Agents",
+  title: "Text2Sale Blog — Dialing, Texting & Compliance for Agents",
   description:
-    "Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, drip campaigns, and deliverability for insurance agents and sales teams.",
+    "Guides on predictive dialing, calling and texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for insurance agents and sales teams.",
   alternates: {
     canonical: "/blog",
     types: { "application/rss+xml": `${SITE}/blog/rss.xml` },

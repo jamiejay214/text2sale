@@ -314,6 +314,38 @@ export const TAG_INTROS: Record<string, TagIntro> = {
     ],
     landing: { href: "/medicare-agent-texting-crm", label: "See the Medicare agent texting CRM" },
   },
+  dialer: {
+    intro: [
+      "Guides to dialing leads by phone: predictive, power and preview dialers, calling hours, Do Not Call, caller ID, costs, and the workflows that turn dials into conversations.",
+      "A dialer takes the manual work out of calling: no typing numbers, no listening to rings and voicemail greetings, no hunting for the next lead. These articles explain how dialers work, how to set one up in a browser, which rules apply to sales calls, and how to measure whether your calling time is paying off. Legal topics are general information, not legal advice.",
+    ],
+    landing: { href: "/insurance-agents", label: "See Text2Sale's dialer and CRM for insurance agents" },
+  },
+  "predictive-dialer": {
+    intro: [
+      "Everything about predictive dialing: how it calls several leads at once, how pacing and answering machine detection work, and how to stay under the 3% abandoned-call limit.",
+      "A predictive dialer connects you only to calls a person answered, which can multiply talk time on lists where few people pick up. It also brings rules of its own. These articles cover choosing the number of lines, the abandoned-call safe harbor, compliant recorded messages, and using predictive dialing for health insurance and other sales teams.",
+    ],
+    landing: { href: "/health-insurance-texting-crm", label: "See the dialer and CRM for health insurance agents" },
+  },
+  calling: {
+    intro: [
+      "Guides to business calling from a browser: dialers, caller ID reputation, transfers, inbound callbacks, audio setup and AI phone answering.",
+      "Calling and texting work best together, on the same contact record and the same business numbers. These articles cover the practical side of calling: keeping your numbers from being labeled spam, moving calls to your cell or a teammate, making sure callbacks get answered, and fixing audio problems before they cost you a lead.",
+    ],
+  },
+  "power-dialer": {
+    intro: [
+      "Guides to power dialing: calling one lead after another without manual dialing, recording outcomes, and knowing when to step up to predictive dialing.",
+      "A power dialer calls one number at a time and moves straight to the next when a call ends, so it never abandons a call. It suits fresh leads, small lists and careful compliance. These articles compare it with predictive and preview dialing and show how to build a fast disposition routine.",
+    ],
+  },
+  pricing: {
+    intro: [
+      "Articles on what texting and calling cost: per-message and per-minute pricing, what you are and are not charged for, and how to budget a campaign.",
+      "Usage-based pricing is predictable once you know your volumes. These articles break down the math for real campaigns so you can compare cost per conversation and cost per sale, not just headline rates.",
+    ],
+  },
   "missed-calls": {
     intro: [
       "Guides to recovering missed calls: automatic text-backs, AI phone receptionists, and forwarding your cell so no caller is lost to voicemail.",
