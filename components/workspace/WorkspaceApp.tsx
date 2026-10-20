@@ -6,7 +6,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
 import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
-import { canUseCalling, isOwnerEmail } from "@/lib/owner";
+import { isOwnerEmail } from "@/lib/owner";
+import { canCall, canText } from "@/lib/entitlements";
+import PlanPicker from "./PlanPicker";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/lib/supabase-data";
 import type { Profile } from "@/lib/types";
@@ -72,8 +74,6 @@ export default function WorkspaceApp() {
   const [searchOpen, setSearchOpen] = useState(false);
   const [viewerEmail, setViewerEmail] = useState("");
   const [impersonated, setImpersonated] = useState(false);
-  const [paymentBusy, setPaymentBusy] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
   const profileId = profile?.id;
 
   const requestedTab = searchParams.get("tab") as WorkspaceTab | null;
@@ -84,10 +84,12 @@ export default function WorkspaceApp() {
     !!profile?.free_subscription ||
     ["active", "canceling"].includes(String(profile?.subscription_status || ""));
   const aiAccess = subscribed || !!profile?.free_ai_plan;
-  // Text2Sale is texting-only for now; calling stays on the owner's account,
-  // plus agents the operator lets call on it (calling_sponsors): they get the
-  // browser phone and dialer, not the AI receptionist settings.
-  const ownerCalling = canUseCalling(profile?.email);
+  // What the plan includes (lib/entitlements.ts): Text → texting, Dialer →
+  // calling, Complete → both. Agents an account sponsors (calling_sponsors)
+  // also get the browser phone and dialer, not the AI receptionist settings.
+  // Locked features stay in the menu and open an upgrade page instead.
+  const textingEnabled = canText(profile);
+  const ownerCalling = canCall(profile);
   const [sponsoredCalling, setSponsoredCalling] = useState(false);
   const callingEnabled = ownerCalling || sponsoredCalling;
   const aiCallingEnabled = ownerCalling;
@@ -224,7 +226,7 @@ export default function WorkspaceApp() {
 
   const navigate = useCallback(
     (requested: WorkspaceTab, subtab?: string) => {
-      const tab = (!callingEnabled && requested === "calls") || (!aiCallingEnabled && requested === "aicalls") ? "overview" : requested;
+      const tab = requested;
       const aiOnly = tab === "aicalls" || (tab === "settings" && subtab === "ai");
       const destinationTab = aiOnly && !aiAccess ? "settings" : tab;
       const destinationSubtab = aiOnly && !aiAccess ? "upgrade" : subtab;
@@ -235,7 +237,7 @@ export default function WorkspaceApp() {
       const query = params.toString();
       router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
-    [aiAccess, aiCallingEnabled, callingEnabled, impersonateId, router],
+    [aiAccess, impersonateId, router],
   );
 
   const toggleTheme = () => {
@@ -254,8 +256,25 @@ export default function WorkspaceApp() {
   const view = useMemo(() => {
     if (!profile) return null;
     const shared: WorkspaceViewProps = { profile, onProfile: setProfile, onNavigate: navigate };
-    if ((!callingEnabled && activeTab === "calls") || (!aiCallingEnabled && activeTab === "aicalls")) {
-      return <OverviewWorkspace {...shared} />;
+    const textingTab =
+      activeTab === "conversations" || activeTab === "campaigns" || activeTab === "templates" ||
+      (activeTab === "settings" && (settingsTab === "ai" || settingsTab === "10dlc"));
+    const lockedFeature =
+      !callingEnabled && activeTab === "calls" ? "calling" :
+      !aiCallingEnabled && activeTab === "aicalls" ? "calling" :
+      !textingEnabled && textingTab ? "texting" : null;
+    if (lockedFeature) {
+      return (
+        <div className="v2-upgrade-page">
+          <h1>{lockedFeature === "texting" ? "Texting isn't on your plan" : "Calling isn't on your plan"}</h1>
+          <p>
+            {lockedFeature === "texting"
+              ? "Texting, campaigns and AI text replies come with Text2Sale Text and Complete. After upgrading, register your business for texting (EIN and business details) to start sending."
+              : "The dialer, browser phone and AI receptionist come with Text2Sale Dialer and Complete."}
+          </p>
+          <PlanPicker profile={profile} onProfile={setProfile} highlight={lockedFeature} onMessagingSetup={() => navigate("settings", "10dlc")} />
+        </div>
+      );
     }
     if (!aiAccess && (activeTab === "aicalls" || (activeTab === "settings" && settingsTab === "ai"))) {
       return <OperationsWorkspace {...shared} tab="settings" settingsTab="upgrade" />;
@@ -272,7 +291,7 @@ export default function WorkspaceApp() {
       default:
         return <OperationsWorkspace {...shared} tab={activeTab} settingsTab={settingsTab} />;
     }
-  }, [activeTab, aiAccess, aiCallingEnabled, callingEnabled, navigate, profile, settingsTab]);
+  }, [activeTab, aiAccess, aiCallingEnabled, callingEnabled, navigate, profile, settingsTab, textingEnabled]);
 
   if (loading) {
     return (
@@ -295,35 +314,13 @@ export default function WorkspaceApp() {
     );
   }
 
-  const startSubscription = async () => {
-    if (paymentBusy) return;
-    setPaymentBusy(true);
-    setPaymentError("");
-    try {
-      const response = await authFetch("/api/create-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: profile.id, userEmail: profile.email }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.url) throw new Error(data.error || "Secure checkout could not be opened.");
-      window.location.href = data.url;
-    } catch (reason) {
-      setPaymentError(reason instanceof Error ? reason.message : "Secure checkout could not be opened.");
-      setPaymentBusy(false);
-    }
-  };
-
   if (!subscribed && !impersonated) {
     return (
       <main className="crm-theme workspace-v2 t2s-light v2-entry-loading">
         <div className="v2-error-card">
-          <strong>Activate Text2Sale</strong>
-          <p>Your account is created, but the workspace stays locked until the $39.99 monthly subscription is paid. There is no free trial.</p>
-          {paymentError ? <p>{paymentError}</p> : null}
-          <button onClick={startSubscription} disabled={paymentBusy}>
-            {paymentBusy ? "Opening secure checkout…" : "Pay $39.99 & unlock workspace"}
-          </button>
+          <strong>Choose your Text2Sale plan</strong>
+          <p>Your account is created. Pick a plan to unlock the workspace; there is no free trial. You can upgrade or switch later.</p>
+          <PlanPicker profile={profile} onProfile={setProfile} />
           <button onClick={logout}>Sign out</button>
         </div>
       </main>
@@ -347,6 +344,7 @@ export default function WorkspaceApp() {
         aiAccess={aiAccess}
         callingEnabled={callingEnabled}
         aiCallingEnabled={aiCallingEnabled}
+        textingEnabled={textingEnabled}
       />
       <section className="workspace-content v2-workspace-content">
         {impersonated && (

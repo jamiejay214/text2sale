@@ -58,7 +58,11 @@ type Props = {
   callingEnabled: boolean;
   /** AI receptionist settings; owner only, even when callingEnabled. */
   aiCallingEnabled?: boolean;
+  /** Texting tools (inbox, campaigns, AI texting, messaging setup) are on the plan. */
+  textingEnabled?: boolean;
 };
+
+const TEXTING_ITEMS = new Set(["conversations", "campaigns", "templates", "settings:ai", "settings:10dlc"]);
 
 // Calling-first navigation: keep daily sales tools prominent and move setup to Manage.
 const groups = [
@@ -138,9 +142,14 @@ export default function WorkspaceNavigation(props: Props) {
           {groups.map((group) => (
             <div className="workspace-nav-group" key={group.label}>
               <p>{group.label}</p>
-              {group.items.filter((item) => (item.tab !== "calls" || props.callingEnabled) && (item.tab !== "aicalls" || (props.aiCallingEnabled ?? props.callingEnabled))).map((item) => {
+              {group.items.map((item) => {
                 const sub = "sub" in item ? item.sub : undefined;
-                const locked = "aiOnly" in item && item.aiOnly && !props.aiAccess;
+                // Features outside the plan stay listed and open an upgrade page.
+                const offPlan =
+                  (item.tab === "calls" && !props.callingEnabled) ||
+                  (item.tab === "aicalls" && !(props.aiCallingEnabled ?? props.callingEnabled)) ||
+                  (props.textingEnabled === false && TEXTING_ITEMS.has(sub ? `${item.tab}:${sub}` : item.tab));
+                const locked = offPlan || ("aiOnly" in item && item.aiOnly && !props.aiAccess);
                 const active =
                   props.activeTab === item.tab &&
                   (!sub || props.settingsTab === sub);

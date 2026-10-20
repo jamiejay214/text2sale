@@ -178,6 +178,11 @@ export type Plan = {
   name: string;
   price: number;
   messageCost: number;
+  /** text | dialer | complete (lib/plans.ts). Missing on legacy rows: Text. */
+  key?: "text" | "dialer" | "complete";
+  /** A downgrade booked for the next renewal, and when it takes effect. */
+  pendingKey?: "text" | "dialer" | "complete" | null;
+  pendingAt?: string | null;
 };
 
 export type UsageHistoryItem = {

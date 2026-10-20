@@ -31,7 +31,7 @@ export default function Page() {
         },
         {
           question: "Is Text2Sale cheaper than GoHighLevel?",
-          answer: "Text2Sale starts at $39.99/month compared to GoHighLevel's higher-tier pricing. For sales teams that only need SMS outreach, mass texting, and AI reply support, Text2Sale is typically the more cost-effective option."
+          answer: "Text2Sale plans start at $39.99/month compared to GoHighLevel's higher-tier pricing. For sales teams that only need SMS outreach, mass texting, and AI reply support, Text2Sale is typically the more cost-effective option."
         },
         {
           question: "Is Text2Sale better than GoHighLevel for insurance agents?",

@@ -4,12 +4,14 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { loadEntitlements } from './entitlements-helper.mjs';
 
 const transpile = (f) => ts.transpileModule(readFileSync(f, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true } }).outputText;
 const nodeRequire = createRequire(import.meta.url);
 const owner = {}; vm.runInNewContext(transpile('lib/owner.ts'), { exports: owner });
 const browser = {}; vm.runInNewContext(transpile('lib/browser-calls.ts'), { exports: browser, Date });
-const access = {}; vm.runInNewContext(transpile('lib/calling-access.ts'), { exports: access, require: () => owner });
+const entitlements = loadEntitlements();
+const access = {}; vm.runInNewContext(transpile('lib/calling-access.ts'), { exports: access, require: (name) => (name.includes('entitlements') ? entitlements : owner) });
 const csv = {}; vm.runInNewContext(transpile('lib/csv-phones.ts'), { exports: csv, require: (name) => name === 'papaparse' ? nodeRequire('papaparse') : browser });
 const plain = (value) => JSON.parse(JSON.stringify(value));
 

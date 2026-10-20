@@ -1,10 +1,10 @@
 import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
-import { canUseCalling } from "@/lib/owner";
+import { canCall, type PlanProfile } from "@/lib/entitlements";
+import { PLANS } from "@/lib/plans";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 import { DEFAULT_VOICE, VOICES, settingsFromProfile } from "@/lib/ai-call";
-import { hasAiAccess } from "@/lib/messaging-status";
 import { ensureInboundVoice, type VoiceSetupCheck } from "@/lib/telnyx-voice";
 import {
   AI_CALL_MIN_RESERVE,
@@ -22,7 +22,7 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const PROFILE_COLUMNS =
-  "ai_plan, free_ai_plan, subscription_status, free_subscription, paused, wallet_balance, owned_numbers, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, " +
+  "ai_plan, free_ai_plan, plan, email, subscription_status, free_subscription, paused, wallet_balance, owned_numbers, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, " +
   "ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
 
 
@@ -54,7 +54,7 @@ type ReadinessItem = { id: string; ok: boolean; label: string; detail?: string }
 function readinessOf(profile: Record<string, unknown>, voice: VoiceSetupCheck): ReadinessItem[] {
   const balance = Number(profile.wallet_balance) || 0;
   const items: ReadinessItem[] = [
-    { id: "plan", ok: hasAiAccess(profile), label: "Active subscription", detail: "AI calling is included with the $39.99/month plan." },
+    { id: "plan", ok: canCall(profile as PlanProfile), label: "Plan with calling", detail: `The AI receptionist comes with ${PLANS.dialer.name} ($${PLANS.dialer.price}/month) and ${PLANS.complete.name} ($${PLANS.complete.price}/month). Its minutes are billed from your wallet.` },
     { id: "enabled", ok: !!profile.ai_call_enabled, label: "Assistant switched on", detail: "Turn on the switch at the top of this page." },
     { id: "paused", ok: !profile.paused, label: "Account active", detail: "This account is paused, so calls are not answered." },
     {
@@ -119,11 +119,11 @@ export async function GET(req: NextRequest) {
     ai_plan?: boolean;
     free_ai_plan?: boolean;
   };
-  if (!hasAiAccess(profile)) {
+  if (!canCall(profile as PlanProfile)) {
     return NextResponse.json({
       available: false,
       reason: "plan_required",
-      message: "AI calling is included with an active Text2Sale subscription ($39.99/month). Subscribe to train and activate your receptionist.",
+      message: `The AI receptionist comes with ${PLANS.dialer.name} ($${PLANS.dialer.price}/month) or ${PLANS.complete.name} ($${PLANS.complete.price}/month). Upgrade to train and switch on your receptionist.`,
     });
   }
   if (!process.env.TELNYX_API_KEY || !process.env.ANTHROPIC_API_KEY) {
@@ -154,18 +154,15 @@ export async function PATCH(req: NextRequest) {
   const supabase = createClient(supabaseUrl, supabaseKey);
   const { data: entitlement, error: entitlementError } = await supabase
     .from("profiles")
-    .select("ai_plan, free_ai_plan, subscription_status, free_subscription, owned_numbers, email")
+    .select("ai_plan, free_ai_plan, plan, subscription_status, free_subscription, owned_numbers, email")
     .eq("id", auth.user.id)
     .maybeSingle();
   if (entitlementError || !entitlement) {
     return NextResponse.json({ error: "Could not verify AI plan access." }, { status: 503 });
   }
-  if (!canUseCalling(entitlement.email)) {
-    return NextResponse.json({ error: "The AI receptionist isn't available on this account." }, { status: 403 });
-  }
-  if (!hasAiAccess(entitlement)) {
+  if (!canCall(entitlement)) {
     return NextResponse.json(
-      { error: "AI calling requires an active Text2Sale subscription ($39.99/month)." },
+      { error: `The AI receptionist comes with ${PLANS.dialer.name} or ${PLANS.complete.name}. Upgrade to use it.`, upgrade: "calling" },
       { status: 403 },
     );
   }

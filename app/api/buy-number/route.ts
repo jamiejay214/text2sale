@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSameUser } from "@/lib/auth-guard";
 import { ensureVoiceRouting } from "@/lib/telnyx-voice";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
+import { isActiveSubscriber } from "@/lib/entitlements";
+import { isOwnerEmail } from "@/lib/owner";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -25,6 +27,18 @@ export async function POST(req: NextRequest) {
     // Phone numbers have no activation charge. The customer is billed
     // $1.50/month by the recurring billing job after the number is connected.
     const walletClient = createClient(supabaseUrl, serviceKey);
+
+    // Pay first: a number costs us monthly from the moment it's ordered, so
+    // only a paying account (any plan) can order one. Voice-only (Dialer)
+    // accounts need no messaging registration for it.
+    const { data: buyer } = await walletClient
+      .from("profiles")
+      .select("email, plan, paused, subscription_status, free_subscription")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!buyer || buyer.paused || !(isActiveSubscriber(buyer) || isOwnerEmail(buyer.email))) {
+      return NextResponse.json({ success: false, error: "Start your subscription before adding phone numbers." }, { status: 402 });
+    }
 
     const fail = (message: string, status = 500) =>
       NextResponse.json({ success: false, error: message }, { status });

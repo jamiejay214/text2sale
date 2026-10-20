@@ -329,7 +329,7 @@ const ARTICLES: NewArticle[] = [
       {
         question: "Does Text2Sale include a dialer?",
         answer:
-          "Yes. It includes a predictive dialer (one to three lines), a browser phone, call forwarding and an AI receptionist alongside texting.",
+          "Yes. The Dialer ($89.99/month) and Complete ($119.99/month, with texting) plans include a predictive dialer (one to three lines), a browser phone, call forwarding and an AI receptionist.",
       },
       {
         question: "Can I keep my existing dialer?",
@@ -418,9 +418,9 @@ const ARTICLES: NewArticle[] = [
     ],
     sections: [
       {
-        heading: "Pay for minutes, not seats",
+        heading: "No contracts or seat minimums",
         paragraphs: [
-          "With per-minute pricing, a slow week costs little and a busy open enrollment costs more, in line with your revenue. Text2Sale bills outbound calls at $0.025 per minute from a prepaid wallet, and unanswered and voicemail calls are free.",
+          "The Text2Sale Dialer plan is $89.99 per user per month with no seat minimum or contract, and calling minutes are paid from a prepaid wallet at $0.025 per outbound minute, so a slow week costs little and a busy open enrollment costs more, in line with your revenue.",
         ],
       },
       {

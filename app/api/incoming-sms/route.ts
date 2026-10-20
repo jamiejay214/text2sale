@@ -1,4 +1,5 @@
 import { smsProgramResponses } from "@/lib/sms-consent";
+import { canText } from "@/lib/entitlements";
 import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
@@ -448,7 +449,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: aiProfile } = await supabase
           .from("profiles")
-          .select("ai_plan, free_ai_plan, subscription_status, free_subscription, ai_auto_reply, wallet_balance")
+          .select("ai_plan, free_ai_plan, plan, email, subscription_status, free_subscription, ai_auto_reply, wallet_balance")
           .eq("id", contact.user_id)
           .single();
 
@@ -459,7 +460,8 @@ export async function POST(req: NextRequest) {
           .eq("id", conversation.id)
           .single();
 
-        const aiAccess = !!aiProfile && hasAiAccess(aiProfile);
+        // AI text replies are a texting feature: Text or Complete plans only.
+        const aiAccess = !!aiProfile && hasAiAccess(aiProfile) && canText(aiProfile);
         const globalAi = aiAccess && aiProfile?.ai_auto_reply;
         const perConvAi = aiAccess && convData?.ai_enabled;
 

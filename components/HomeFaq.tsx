@@ -20,7 +20,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "How much does Text2Sale cost?",
     answer:
-      "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. Standard calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI-assisted calls are $0.18 per minute. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no free trial and no long-term contract.",
+      "Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. Standard calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI-assisted calls are $0.18 per minute. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no free trial and no long-term contract.",
   },
   {
     question: "Is Text2Sale TCPA compliant?",
@@ -41,7 +41,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "What does Text2Sale AI do?",
     answer:
-      "AI is included with every paid Text2Sale account. It can reply to inbound texts, handle common objections, qualify leads, book appointments that sync to Google Calendar, and power the AI calling receptionist. You can control AI workspace-wide or one conversation at a time.",
+      "AI text replies come with Text and Complete: they reply to inbound texts, handle common objections, qualify leads and book appointments that sync to Google Calendar. The AI receptionist for incoming calls comes with Dialer and Complete. AI usage is billed from the wallet ($0.02 per AI text reply plus SMS; $0.18 per AI receptionist minute). You can control AI workspace-wide or one conversation at a time.",
     link: { href: "/ai-texting-crm", label: "See the AI texting CRM" },
   },
 ];

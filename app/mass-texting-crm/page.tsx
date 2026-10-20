@@ -71,7 +71,7 @@ export default function MassTextingCrmPage() {
           heading: "Built for compliance and deliverability",
           paragraphs: [
             "Mass texting only works if your messages get delivered. Text2Sale walks you through 10DLC registration, records STOP replies automatically, excludes opted-out contacts from every future campaign, and applies quiet-hours sending windows.",
-            "Pricing is straightforward: Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and a $500+ wallet purchase unlocks the $0.0135 volume SMS rate.",
+            "Pricing is straightforward: Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, inbound SMS is free, and a $500+ wallet purchase unlocks the $0.0135 volume SMS rate.",
           ],
         },
       ]}
@@ -94,7 +94,7 @@ export default function MassTextingCrmPage() {
         },
         {
           question: "How much does Text2Sale cost?",
-          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS costs $0.015 per segment, inbound SMS is free, and AI replies cost $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract.",
+          answer: "Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS costs $0.015 per segment, inbound SMS is free, and AI replies cost $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks $0.0135/SMS. There is no long-term contract.",
         },
       ]}
       relatedPages={[

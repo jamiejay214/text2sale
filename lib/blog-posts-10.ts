@@ -309,11 +309,11 @@ const ARTICLES: NewArticle[] = [
       {
         heading: "What AMD saves",
         paragraphs: [
-          "Skipping machines saves agent time, and in Text2Sale it also saves money: calls detected as voicemail are marked as voicemail on your stats and are not billed. Your live view shows how many dials went to voicemail, so you can see how much of a list is unreachable.",
+          "Skipping machines saves agent time and keeps billed minutes down: calls detected as voicemail are hung up right away and marked as voicemail on your stats. Your live view shows how many dials went to voicemail, so you can see how much of a list is unreachable.",
         ],
         bullets: [
           "Agents only hear calls a person answered",
-          "Voicemail-detected calls are hung up and not charged",
+          "Voicemail-detected calls are hung up right away",
           "Voicemail counts help you judge list quality",
         ],
       },
@@ -327,7 +327,7 @@ const ARTICLES: NewArticle[] = [
     keyTakeaways: [
       "AMD listens to the start of a call to tell people from voicemail.",
       "It is never perfect; unsure calls are best treated as people.",
-      "Voicemail-detected calls in Text2Sale are hung up and not billed.",
+      "Voicemail-detected calls in Text2Sale are hung up right away, which keeps billed minutes down.",
       "Fast pickup by the agent keeps AMD within the two-second rule.",
     ],
     faq: [
@@ -381,7 +381,7 @@ const ARTICLES: NewArticle[] = [
       {
         heading: "What it costs",
         paragraphs: [
-          "Text2Sale charges $0.025 per minute for outbound calls, billed per started minute from your prepaid wallet. Calls that reach voicemail are hung up and not charged. Unanswered calls cost nothing, so a thousand dials that reach a person about 10% of the time, with five-minute conversations, come to roughly 500 billed minutes, about $12.50 to $15 in calling.",
+          "The Dialer plan is $89.99 per month (Complete, with texting, is $119.99). Outbound calls are $0.025 per minute, billed per started minute from your prepaid wallet. A thousand dials that reach a person about 10% of the time, with five-minute conversations, come to roughly 500 billed conversation minutes, about $12.50 to $15 in calling; voicemail and other connected calls can add to that.",
         ],
       },
     ],

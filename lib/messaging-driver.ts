@@ -100,7 +100,7 @@ export type ProfileRow = {
 };
 
 export const PROFILE_COLUMNS =
-  "id, email, phone, first_name, last_name, industry, subscription_status, free_subscription, wallet_balance, custom_domain, business_slug, messaging_status, messaging_status_at, messaging_attempts, messaging_error, a2p_registration, owned_numbers";
+  "plan, id, email, phone, first_name, last_name, industry, subscription_status, free_subscription, wallet_balance, custom_domain, business_slug, messaging_status, messaging_status_at, messaging_attempts, messaging_error, a2p_registration, owned_numbers";
 
 /** Outcome of advancing one account, for run summaries and API responses. */
 export type StepResult = { userId: string; from: MessagingStatus; to: MessagingStatus; note?: string };

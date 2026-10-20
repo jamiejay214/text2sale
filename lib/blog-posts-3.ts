@@ -444,7 +444,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "How much do AI replies cost in Text2Sale?",
         answer:
-          "AI access is included in the $39.99 per month Text2Sale plan. Each AI reply costs $0.02, plus $0.015 per text segment sent.",
+          "AI text replies are included in the Text2Sale Text ($39.99/month) and Complete ($119.99/month) plans. Each AI reply costs $0.02, plus $0.015 per text segment sent.",
       },
     ],
     relatedSlugs: ["sales-rep-texting-kpis", "sms-marketing-roi-metrics", "writing-instructions-for-an-ai-appointment-setter", "appointment-reminder-text-templates"],
@@ -663,7 +663,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         heading: "Running it from one place",
         paragraphs: [
-          "The sequence works best when calls and texts live in the same system, so each rep sees the whole history before dialing. Text2Sale includes a power dialer and a browser phone alongside texting, with outbound calls at $0.025 per minute and inbound at $0.015 per minute, so the text thread and the call happen in one workflow.",
+          "The sequence works best when calls and texts live in the same system, so each rep sees the whole history before dialing. Text2Sale Complete includes a power dialer and a browser phone alongside texting, with outbound calls at $0.025 per minute and inbound at $0.015 per minute, so the text thread and the call happen in one workflow.",
         ],
       },
       {
@@ -694,7 +694,7 @@ export const BLOG_POSTS_3: BlogPost[] = [
       {
         question: "Does Text2Sale include a dialer?",
         answer:
-          "Yes. Text2Sale includes a power dialer and browser calling alongside texting. Outbound calls are $0.025 per minute and inbound calls are $0.015 per minute.",
+          "Yes. The Text2Sale Dialer and Complete plans include a power and predictive dialer and browser calling; Complete adds texting. Outbound calls are $0.025 per minute and inbound calls are $0.015 per minute.",
       },
     ],
     relatedSlugs: ["sms-vs-cold-calling-leads", "how-fast-to-text-insurance-leads", "best-time-to-text-sales-leads", "tcpa-compliance-texting-leads"],

@@ -164,15 +164,15 @@ const ARTICLES: NewArticle[] = [
         ],
       },
       {
-        heading: "What you do not pay for",
+        heading: "Keeping wasted minutes down",
         paragraphs: [
-          "Calls nobody answers are not charged. Calls the dialer detects as voicemail are hung up and not charged either. That matters for predictive dialing, where most dials never connect.",
+          "Most predictive dials never reach a person. The dialer hangs up on answering machines as soon as it detects them and stops ringing after 25 seconds, so the minutes you pay for are mostly conversations. Don't budget as if only answered calls can cost money: connected voicemails and other provider-billable activity can add to the bill.",
         ],
       },
       {
         heading: "Worked example: 1,000 leads",
         paragraphs: [
-          "Suppose 1,000 dials reach a person 10% of the time, and the average conversation lasts five minutes. That is 100 conversations and about 500 billed minutes: $12.50. Rounding up to the started minute and a few abandoned-call messages might bring it to about $15.",
+          "Suppose 1,000 dials reach a person 10% of the time, and the average conversation lasts five minutes. That is 100 conversations and about 500 billed minutes: $12.50. Rounding up to the started minute, short voicemail connections and a few abandoned-call messages might bring it to about $15 or more.",
           "If half of those conversations are short (under a minute) and half run ten minutes, the total is closer to 50 plus 500 minutes, about $14. The number that moves your bill most is total talk time, which is the time you want to be spending anyway.",
         ],
       },
@@ -185,7 +185,7 @@ const ARTICLES: NewArticle[] = [
     ],
     keyTakeaways: [
       "Outbound calls cost $0.025 per started minute.",
-      "Unanswered and voicemail-detected calls are not charged.",
+      "Answering machine detection hangs up on voicemail quickly to keep billed minutes down.",
       "1,000 dials at a 10% answer rate with 5-minute talks is roughly $12.50 to $15.",
       "Talk time drives the bill; measure cost per conversation and per sale.",
     ],
@@ -193,7 +193,7 @@ const ARTICLES: NewArticle[] = [
       {
         question: "Is there a monthly dialer fee?",
         answer:
-          "No separate dialer license. Calling minutes are paid per minute from your wallet; your Text2Sale plan covers the CRM itself.",
+          "The Text2Sale Dialer plan is $89.99 per user per month, or $119.99 for Complete with texting included. Calling minutes are paid separately from your prepaid wallet, and phone numbers are $1.50 per month each.",
       },
       {
         question: "What happens if my wallet runs out mid-call?",

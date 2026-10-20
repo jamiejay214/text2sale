@@ -1,5 +1,6 @@
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
+import { canText } from "@/lib/entitlements";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
@@ -104,12 +105,15 @@ export async function POST(req: NextRequest) {
     // per-campaign override here because this is an ad-hoc reply/send.
     const { data: profileCfg } = await adminSupabase
       .from("profiles")
-      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour, plan, paused, subscription_status, free_subscription, opt_out_settings")
+      .select("quiet_hours_enabled, quiet_hours_start_hour, quiet_hours_end_hour, plan, email, paused, subscription_status, free_subscription, opt_out_settings")
       .eq("id", userId)
       .single();
 
     if (!profileCfg || profileCfg.paused || (!profileCfg.free_subscription && !["active","canceling"].includes(profileCfg.subscription_status))) {
       return NextResponse.json({success:false,error:"An active account and subscription are required."},{status:403});
+    }
+    if (!canText(profileCfg)) {
+      return NextResponse.json({ success: false, upgrade: "texting", error: "Texting comes with Text2Sale Text or Complete. Upgrade your plan to send texts." }, { status: 403 });
     }
     const qhEnabled = profileCfg?.quiet_hours_enabled ?? true;
     const qhStart = profileCfg?.quiet_hours_start_hour ?? 21;

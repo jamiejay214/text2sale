@@ -1116,3 +1116,32 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-forwarding-note.is-success { color:#2e704e; }
 .v2-forwarding-note.is-error { color:#a33a2c; }
 @media (max-width: 640px) { .v2-forwarding-row { flex-wrap:wrap; } .v2-forwarding-row button { width:100%; } .v2-incoming-call { flex-wrap:wrap; } }
+
+/* ── Plans (components/workspace/PlanPicker.tsx) ── */
+.v2-plan-picker { display:grid; gap:12px; text-align:left; }
+.v2-plan-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:12px; }
+.v2-plan-card { display:flex; flex-direction:column; gap:8px; padding:16px; border:1px solid var(--v2-line); border-radius:14px; background:var(--v2-panel); color:var(--v2-ink); }
+.v2-plan-card.is-featured { border-color:var(--v2-green-2); box-shadow:0 0 0 1px var(--v2-green-2); }
+.v2-plan-card header { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+.v2-plan-card header small { font-size:.6rem; color:var(--v2-green-2); font-weight:800; }
+.v2-plan-card > b { font-size:1.4rem; }
+.v2-plan-card > b small { font-size:.62rem; color:var(--v2-muted); font-weight:600; margin-left:3px; }
+.v2-plan-card p { margin:0; font-size:.7rem; color:var(--v2-muted); }
+.v2-plan-card ul { list-style:none; margin:0; padding:0; display:grid; gap:5px; font-size:.68rem; flex:1; }
+.v2-plan-card li { display:flex; gap:6px; align-items:flex-start; }
+.v2-plan-card .v2-plan-excludes { font-size:.62rem; }
+.v2-plan-current { font-size:.66rem; font-weight:800; color:var(--v2-green-2); }
+.v2-plan-confirm { display:grid; gap:8px; padding:14px; border:1px solid var(--v2-green-2); border-radius:14px; background:var(--v2-panel); font-size:.72rem; }
+.v2-plan-confirm ul { margin:0; padding-left:18px; color:var(--v2-muted); }
+.v2-plan-note { font-size:.62rem; color:var(--v2-muted); margin:0; }
+.v2-upgrade-page { display:grid; gap:12px; max-width:1000px; }
+.v2-upgrade-page h1 { margin:0; font-size:1.3rem; }
+.v2-upgrade-page > p { margin:0; color:var(--v2-muted); font-size:.78rem; }
+.v2-error-card:has(.v2-plan-picker) { width:min(1000px, calc(100vw - 40px)); }
+.v2-error-card .v2-plan-picker { margin:8px 0; }
+.v2-setup-checklist ol { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.v2-setup-checklist button { display:flex; gap:10px; align-items:flex-start; width:100%; text-align:left; padding:9px 10px; border:1px solid var(--v2-line); border-radius:11px; background:var(--v2-panel); color:var(--v2-ink); cursor:pointer; font:inherit; }
+.v2-setup-checklist button strong { display:block; font-size:.74rem; }
+.v2-setup-checklist button small { display:block; font-size:.62rem; color:var(--v2-muted); }
+.v2-setup-checklist li.is-done button { opacity:.6; }
+.v2-setup-checklist li.is-done span:first-child { color:var(--v2-green-2); }

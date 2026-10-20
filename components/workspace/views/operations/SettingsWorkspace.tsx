@@ -29,6 +29,9 @@ import ActivationStatus from "@/components/ActivationStatus";
 import EINCertificateUpload from "@/components/EINCertificateUpload";
 import BusinessDetailsForm, { EMPTY_BUSINESS_FORM, businessFormProblem, type BusinessFormValues } from "@/components/BusinessDetailsForm";
 import { authFetch } from "@/lib/auth-fetch";
+import PlanPicker from "../../PlanPicker";
+import { canCall, planKeyOf } from "@/lib/entitlements";
+import { PLANS } from "@/lib/plans";
 import { fetchCampaigns, fetchProfile, joinTeamByCode, leaveTeam, updateProfile } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
 import { hasNonGsmChars, sanitizeForSms } from "@/lib/sms-text";
@@ -61,7 +64,9 @@ function Numbers({ profile, onProfile, onNavigate }: Props) {
   const [deliverability, setDeliverability] = useState<Record<string, Delivery>>({});
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-  const approved = isTextingApproved(profile);
+  // Calling plans can buy a number straight away: voice needs no carrier
+  // (10DLC) registration. Text-only accounts register for texting first.
+  const approved = isTextingApproved(profile) || canCall(profile);
 
   const refreshDelivery = useCallback(async () => {
     const { data } = await supabase.rpc("deliverability_stats", { p_user_id: profile.id, p_days: 30 });
@@ -110,10 +115,10 @@ function Numbers({ profile, onProfile, onNavigate }: Props) {
   </>;
 }
 
-function AiUpgrade({ onNavigate }: Props) {
+function AiUpgrade({ profile, onProfile, onNavigate }: Props) {
   return <>
-    <PageHeader eyebrow="AI included" title="AI is included with every paid Text2Sale account." description="There is no separate AI subscription anymore. AI texting, qualification, appointment booking, and AI calling are available on the $39.99/month plan; usage is billed from the wallet." actions={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("settings", "ai")}>Open AI texting <ArrowRight size={15} /></button>} />
-    <Panel><EmptyState title="No upgrade required" description="AI replies are $0.020 each plus the outbound SMS segment charge. AI calls are $0.18/minute." /></Panel>
+    <PageHeader eyebrow="Plans" title="Choose the plan that fits how you sell." description="AI text replies come with Text and Complete; the AI receptionist comes with Dialer and Complete. AI usage is billed from the wallet: $0.020 per AI text reply plus the SMS segment charge, and $0.18 per AI receptionist minute." />
+    <Panel><PlanPicker profile={profile} onProfile={onProfile} onMessagingSetup={() => onNavigate("settings", "10dlc")} /></Panel>
   </>;
 }
 
@@ -131,7 +136,6 @@ function Billing({ profile, onProfile, onNavigate }: Props) {
     if (data.success && data.url) window.location.href = data.url; else setNotice(data.error || "Could not open secure checkout.");
   };
   const portal = async () => { setBusy("portal"); const response = await authFetch("/api/create-portal", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: profile.id }) }); const data = await response.json(); setBusy(""); if (data.success && data.url) window.location.href = data.url; else setNotice(data.error || "Could not open the billing portal."); };
-  const subscribe = async () => { setBusy("subscribe"); const response = await authFetch("/api/create-subscription", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: profile.id, userEmail: profile.email }) }); const data = await response.json(); setBusy(""); if (data.success && data.url) window.location.href = data.url; else setNotice(data.error || "Could not open subscription checkout."); };
   const saveAutoRecharge = async (enabled: boolean) => { const latest = await updateProfile(profile.id, { auto_recharge: { enabled, threshold: profile.auto_recharge?.threshold || 10, amount: profile.auto_recharge?.amount || 50 } }); if (latest) onProfile(latest); };
   return <>
     <SettingsHeader eyebrow="Billing & funds" title="Billing & funds" description="Your live wallet balance stays in the top bar. Add funds securely through Stripe, manage cards, and prevent campaigns from stopping." />
@@ -139,7 +143,7 @@ function Billing({ profile, onProfile, onNavigate }: Props) {
     <div className="v2-billing-grid">
       <Panel className="v2-wallet-card"><div className="v2-wallet-hero"><span><Wallet size={22} /></span><p>Available balance</p><strong>${Number(profile.wallet_balance || 0).toFixed(2)}</strong><small>Updates automatically after payments and usage</small></div><div className="v2-fund-picker"><label>Add funds<input type="number" min={20} step={10} value={amount} onChange={(event) => setAmount(Number(event.target.value))} /></label><div>{[20, 50, 100, 250, 500].map((value) => <button className={amount === value ? "is-active" : ""} key={value} onClick={() => setAmount(value)}>${value}</button>)}</div>{amount >= 500 && <p><Sparkles size={14} /> $500+ unlocks the $0.0135/SMS volume rate. You pay and receive the full ${amount.toFixed(2)}.</p>}<button className="v2-btn v2-btn-accent" onClick={checkout} disabled={!subscribed || busy === "funds"}><CreditCard size={16} /> {busy === "funds" ? "Opening Stripe…" : `Add $${amount.toFixed(2)}`}</button>{!subscribed && <small>Activate your subscription before adding usage funds.</small>}</div></Panel>
       <div className="v2-billing-stack">
-        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{profile.plan?.name || "Text2Sale"}</strong><small>CRM, AI texting, AI calling, campaigns, imports, and integrations</small></span><b>${Number(profile.plan?.price || 39.99).toFixed(2)}<small>/month</small></b></div>{subscribed ? <><button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button></> : <button className="v2-settings-row" onClick={subscribe}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Activate Text2Sale</strong><small>Choose a card securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
+        <Panel><div className="v2-panel-head"><div><h2>Subscription</h2><p>Platform access</p></div><StatusPill tone={subscribed ? "success" : "warning"}>{profile.free_subscription ? "Owner sponsored" : profile.subscription_status || "Inactive"}</StatusPill></div><div className="v2-subscription-card"><span><strong>{PLANS[planKeyOf(profile)].name}</strong><small>{PLANS[planKeyOf(profile)].tagline}{profile.plan?.pendingKey && profile.plan?.pendingAt ? ` · switching to ${PLANS[profile.plan.pendingKey].name} on ${new Date(profile.plan.pendingAt).toLocaleDateString()}` : ""}</small></span><b>${PLANS[planKeyOf(profile)].price.toFixed(2)}<small>/month</small></b></div>{subscribed && <button className="v2-settings-row" onClick={() => onNavigate("settings", "upgrade")}><span className="v2-settings-icon"><Sparkles size={16} /></span><span><strong>Change plan</strong><small>Text, Dialer or Complete. See the price before you confirm.</small></span><ArrowRight size={15} /></button>}{subscribed ? <><button className="v2-settings-row" onClick={portal}><span className="v2-settings-icon"><CreditCard size={16} /></span><span><strong>Cards, invoices & subscription</strong><small>Opens the secure Stripe customer portal.</small></span><ArrowRight size={15} /></button></> : <button className="v2-settings-row" onClick={() => onNavigate("settings", "upgrade")}><span className="v2-settings-icon"><Plus size={16} /></span><span><strong>Choose a plan</strong><small>Text, Dialer or Complete, paid securely on Stripe.</small></span><ArrowRight size={15} /></button>}</Panel>
         <Panel><div className="v2-panel-head"><div><h2>Auto recharge</h2><p>Protect active campaigns from a low balance.</p></div><label className="v2-compact-switch"><input type="checkbox" checked={profile.auto_recharge?.enabled || false} onChange={(event) => saveAutoRecharge(event.target.checked)} /><i /></label></div><div className="v2-auto-recharge"><div><span>When balance falls below</span><strong>${Number(profile.auto_recharge?.threshold || 10).toFixed(2)}</strong></div><ArrowRight size={16} /><div><span>Automatically add</span><strong>${Number(profile.auto_recharge?.amount || 50).toFixed(2)}</strong></div></div></Panel>
       </div>
       <Panel className="v2-usage-panel"><div className="v2-panel-head"><div><h2>Recent account activity</h2><p>Wallet deposits, message usage, and number purchases</p></div></div>{profile.usage_history?.length ? <div>{profile.usage_history.slice(0, 20).map((entry) => <article key={entry.id}><span className="v2-usage-icon">{entry.amount >= 0 ? "+" : "−"}</span><div><strong>{entry.description}</strong><small>{new Date(entry.createdAt).toLocaleString()}</small></div><b className={entry.amount >= 0 ? "is-credit" : ""}>{entry.amount >= 0 ? "+" : ""}${Math.abs(entry.amount).toFixed(2)}</b></article>)}</div> : <EmptyState title="No billing activity yet" description="Deposits and usage will appear here." />}</Panel>
