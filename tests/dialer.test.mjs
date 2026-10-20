@@ -103,7 +103,7 @@ function setup({ claim = true, item = {}, session = {}, extra = {}, lists = {}, 
 }
 const updatesTo = (writes, table) => writes.filter((w) => w.table === table && w.op === 'update').map((w) => plain(w.payload));
 
-test('answering machine: hung up and marked voicemail (not billed)', async () => {
+test('answering machine: hung up at once and marked voicemail', async () => {
   const ctx = setup();
   assert.equal(await ctx.handle('call.machine.detection.ended', { result: 'machine' }), true);
   assert.ok(updatesTo(ctx.writes, 'dialer_queue').some((u) => u.result === 'voicemail'));
