@@ -42,6 +42,16 @@ async function authorize(req: NextRequest) {
   return { userId, supabase, profile, payer: access.payer };
 }
 
+/** The owner's agents and whether each takes overflow calls. */
+async function overflowAgents(supabase: ReturnType<typeof db>, ownerId: string) {
+  const { data: links } = await supabase.from("calling_sponsors").select("agent_id, take_overflow").eq("sponsor_id", ownerId);
+  const rows = (links || []) as Array<{ agent_id: string; take_overflow: boolean }>;
+  if (!rows.length) return [];
+  const { data: people } = await supabase.from("profiles").select("id, first_name, last_name, email").in("id", rows.map((r) => r.agent_id));
+  const names = new Map(((people || []) as Array<{ id: string; first_name: string | null; last_name: string | null; email: string | null }>).map((p) => [p.id, [p.first_name, p.last_name].filter(Boolean).join(" ") || p.email || "Agent"]));
+  return rows.map((r) => ({ id: r.agent_id, name: names.get(r.agent_id) || "Agent", on: !!r.take_overflow }));
+}
+
 /**
  * The caller ID numbers this account's dialer may use: the payer's business
  * numbers, split between the payer and their agents when the operator set
@@ -156,14 +166,18 @@ export async function GET(req: NextRequest) {
     session = data || session;
   }
   const body = await snapshot(supabase, session);
-  if (!session && req.nextUrl.searchParams.get("lists") === "1") {
+  const withLists = req.nextUrl.searchParams.get("lists") === "1";
+  const overflow = withLists && payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {};
+  if (withLists && !session) {
     return NextResponse.json({
       ...body,
       ...(await leadLists(supabase, userId)),
       callerIds: await callerIds(supabase, userId, payer.id),
       transferNumber: payer.id === userId ? payer.ai_call_transfer_number || null : null,
+      ...overflow,
     });
   }
+  if (withLists) return NextResponse.json({ ...body, ...overflow });
   return NextResponse.json(body);
 }
 
@@ -176,6 +190,18 @@ export async function POST(req: NextRequest) {
   const now = new Date();
 
   if (action === "start") return start(supabase, userId, profile, payer, input);
+
+  // The owner picks which agents take their inbound calls while they're
+  // dialing (lib/call-routing.ts routeOverflow).
+  if (action === "overflow") {
+    if (payer.id !== userId) return NextResponse.json({ error: "Only the account owner can change this." }, { status: 403 });
+    await supabase
+      .from("calling_sponsors")
+      .update({ take_overflow: input.enabled === true })
+      .eq("sponsor_id", userId)
+      .eq("agent_id", String(input.agentId || ""));
+    return NextResponse.json({ overflowAgents: await overflowAgents(supabase, userId) });
+  }
 
   const session = await openSession(supabase, userId);
   if (!session) return NextResponse.json({ error: "No dialer session is running." }, { status: 404 });

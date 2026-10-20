@@ -116,7 +116,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
   const responseRate = snapshot.sent > 0 ? (snapshot.replies / snapshot.sent) * 100 : 0;
   const cards = useMemo(
     () => [
-      { label: "Contacts", value: compactNumber(snapshot.contacts), note: "Ready for follow-up", icon: Users },
+      { label: "Leads", value: compactNumber(snapshot.contacts), note: "In your CRM", icon: Users },
       { label: "Conversations", value: compactNumber(snapshot.conversations), note: `${snapshot.unread} unread`, icon: MessageSquare },
       { label: "Messages sent", value: compactNumber(snapshot.sent), note: `${responseRate.toFixed(1)}% reply rate`, icon: CheckCircle2 },
       { label: "Available balance", value: `$${Number(profile.wallet_balance || 0).toFixed(2)}`, note: "Messaging wallet", icon: Sparkles },
@@ -127,16 +127,37 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
   return (
     <div className="v2-overview">
       <PageHeader
-        eyebrow="Workspace overview"
-        title={`Welcome back, ${firstName}.`}
-        description="Here is the next best place to spend your attention."
+        eyebrow="Sales command center"
+        title={`Good to see you, ${firstName}.`}
+        description="Your leads, conversations, and appointments in one place."
         actions={
           <>
-            <button className="v2-btn" onClick={() => onNavigate("contacts")}>Import leads</button>
-            <button className="v2-btn v2-btn-primary" onClick={() => onNavigate("conversations")}>New message <ArrowRight size={16} /></button>
+            <button className="v2-btn" onClick={() => onNavigate("upload")}>Import leads</button>
+            <button className="v2-btn v2-btn-primary" onClick={() => onNavigate(canUseCalling(profile.email) ? "calls" : "contacts")}>{canUseCalling(profile.email) ? "Open dialer" : "View leads"} <ArrowRight size={16} /></button>
           </>
         }
       />
+
+      <section className="t2s-sales-launchpad" aria-label="Start your sales day">
+        <div className="t2s-sales-launchpad-copy">
+          <span className="t2s-sales-kicker"><Phone size={14} /> SALES WORKSPACE</span>
+          <h2>Everything you need to close the next deal.</h2>
+          <p>Call your leads, manage follow-ups, and keep every appointment in one place.</p>
+          <div className="t2s-sales-launchpad-actions">
+            {canUseCalling(profile.email) ? (
+              <button className="t2s-sales-start" onClick={() => onNavigate("calls")}><Phone size={17} /> Open dialer <ArrowRight size={16} /></button>
+            ) : (
+              <button className="t2s-sales-start" onClick={() => onNavigate("contacts")}><Users size={17} /> Open leads <ArrowRight size={16} /></button>
+            )}
+            <button className="t2s-sales-secondary" onClick={() => onNavigate("appointments")}><CalendarDays size={17} /> Appointments</button>
+          </div>
+        </div>
+        <div className="t2s-sales-quicklinks" aria-label="Quick actions">
+          <button onClick={() => onNavigate("contacts")}><Users size={18} /><span><strong>My leads</strong><small>Find the next person to contact</small></span><ArrowRight size={16}/></button>
+          <button onClick={() => onNavigate("conversations")}><MessageSquare size={18}/><span><strong>Follow-ups</strong><small>Pick up recent conversations</small></span><ArrowRight size={16}/></button>
+          <button onClick={() => onNavigate("pipeline")}><CheckCircle2 size={18}/><span><strong>Sales pipeline</strong><small>Move opportunities forward</small></span><ArrowRight size={16}/></button>
+        </div>
+      </section>
 
       {error ? <div className="v2-inline-error">{error} <button onClick={load}>Retry</button></div> : null}
 

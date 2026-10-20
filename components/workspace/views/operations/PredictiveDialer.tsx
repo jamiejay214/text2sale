@@ -17,6 +17,8 @@ type Session = {
   max_lines: number;
   lines: number;
   pause_reason: string | null;
+  /** Set while a customer calling the owner's numbers rings this agent. */
+  inbound_from?: string | null;
   business_name: string;
   agent_name: string;
   audience: string | null;
@@ -65,6 +67,8 @@ type Snapshot = {
   callerIds?: string[];
   /** The account's saved transfer number (owner only), to prefill the cell box. */
   transferNumber?: string | null;
+  /** Owner only: agents who take inbound calls while the owner dials. */
+  overflowAgents?: Array<{ id: string; name: string; on: boolean }>;
   error?: string;
 };
 
@@ -102,6 +106,7 @@ function prettyPhone(value: string) {
 }
 
 function stateLabel(session: Session) {
+  if (session.inbound_from) return "Inbound call";
   if (session.status === "paused") return session.agent_state === "on_call" ? "On a call (paused)" : "Paused";
   switch (session.agent_state) {
     case "ready": return "Dialing";
@@ -144,7 +149,7 @@ export default function PredictiveDialer({
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);
     const data = (await response.json().catch(() => ({}))) as Snapshot;
     if (!response.ok) { setNotice(data.error || "Could not load the dialer."); return; }
-    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber }));
+    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents }));
     if (data.callerIds) onCallerIds?.(data.callerIds);
   }, [onCallerIds]);
 
@@ -177,7 +182,7 @@ export default function PredictiveDialer({
       const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await response.json().catch(() => ({}))) as Snapshot;
       if (!response.ok) { setNotice(data.error || "Something went wrong. Please retry."); return false; }
-      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber }));
+      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents }));
       return true;
     } finally {
       setBusy(false);
@@ -223,6 +228,24 @@ export default function PredictiveDialer({
     if (await act({ action: "next", disposition: disposition || null, notes })) { setDisposition(""); setNotes(""); }
   };
 
+  const setOverflow = async (agentId: string, enabled: boolean) => {
+    const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "overflow", agentId, enabled }) });
+    const data = (await response.json().catch(() => ({}))) as Snapshot;
+    if (!response.ok) { setNotice(data.error || "Could not save that setting."); return; }
+    setSnap((current) => current && { ...current, overflowAgents: data.overflowAgents });
+  };
+
+  const overflowToggles = snap?.overflowAgents?.length ? (
+    <div className="v2-pd-overflow">
+      {snap.overflowAgents.map((agent) => (
+        <label key={agent.id} className="v2-pd-force">
+          <input type="checkbox" checked={agent.on} onChange={(event) => void setOverflow(agent.id, event.target.checked)} />
+          <span><b>Send my incoming calls to {agent.name} while I&apos;m dialing</b><small>While your dialer is running, customers calling your numbers ring {agent.name}&apos;s browser phone (unless {agent.name} is on a call). If {agent.name} doesn&apos;t answer in 20 seconds, your AI receptionist picks up. Billed to your wallet at the inbound rate.</small></span>
+        </label>
+      ))}
+    </div>
+  ) : null;
+
   if (!snap) return <Panel className="v2-pd-card"><p className="v2-forwarding-note">Loading the dialer…</p></Panel>;
 
   if (!open) {
@@ -238,6 +261,7 @@ export default function PredictiveDialer({
         </div>
         {maxLines > 1 && <label className="v2-pd-force"><input type="checkbox" checked={forceLines} onChange={(event) => setForceLines(event.target.checked)} /><span><b>Always dial {maxLines} lines at once</b><small>Skips the safety pacing. When many people answer, the extra ones are dropped (they hear your name and callback number and can press 9 to opt out). The FTC limits dropped calls to 3% of answered calls; going over can bring fines.</small></span></label>}
         {(snap.callerIds?.length || 0) > 1 && <div className="v2-pd-numbers"><span>Caller ID</span><div className="v2-number-picks">{snap.callerIds!.map((owned) => { const checked = numbers.includes(owned); return <button key={owned} className={checked ? "is-active" : ""} onClick={() => setNumbers((current) => checked ? current.filter((n) => n !== owned) : [...current, owned])}><span>{checked ? <Check size={12} /> : null}</span>{prettyPhone(owned)}<small>{checked ? "Used" : "Not used"}</small></button>; })}</div><small>None selected uses all of them in turn.</small></div>}
+        {overflowToggles}
         <p className="v2-pd-rules">Calls 8 AM–8 PM in each lead&apos;s time zone, skips Do Not Call contacts and anyone dialed in the last 24 hours, and hangs up on answering machines. It adds lines only while the abandoned-call rate stays under the legal 3%. Anyone who answers while you&apos;re busy hears your name, business and callback number, and can press 9 to opt out. You still need to scrub lists against the National Do Not Call Registry and only call people who agreed to be contacted.</p>
         <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady || !agentName.trim() || !businessName.trim()} onClick={start}><Play size={15} /> {busy ? "Starting…" : phoneReady ? "Start dialing" : "Waiting for phone…"}</button>
       </Panel>
@@ -258,7 +282,13 @@ export default function PredictiveDialer({
       </div>
       {(notice || session!.pause_reason) && <div role="alert" className="v2-notice is-error">{notice || session!.pause_reason}<button onClick={() => setNotice("")}>×</button></div>}
 
-      {lead && (session!.agent_state === "connecting" || session!.agent_state === "on_call" || session!.agent_state === "wrap") && (
+      {session!.inbound_from && (
+        <div className="v2-pd-lead">
+          <div><small>Customer calling your business line</small><strong>{prettyPhone(session!.inbound_from)}</strong><span>Answer it on the phone above. Dialing resumes where you left off when the call ends.</span></div>
+        </div>
+      )}
+
+      {lead && !session!.inbound_from && (session!.agent_state === "connecting" || session!.agent_state === "on_call" || session!.agent_state === "wrap") && (
         <div className="v2-pd-lead">
           <div><small>{session!.agent_state === "connecting" ? "Connecting…" : session!.agent_state === "on_call" ? "On the line" : "Last call"}</small><strong>{leadName}</strong><span>{prettyPhone(lead.phone)} · {[contact?.city, contact?.state, contact?.zip].filter(Boolean).join(", ") || "Location not added"}</span></div>
           <dl>{contact?.age && <div><dt>Age</dt><dd>{contact.age}</dd></div>}{contact?.household_size && <div><dt>Household</dt><dd>{contact.household_size}</dd></div>}{contact?.quote && <div><dt>Quote</dt><dd>{contact.quote}</dd></div>}{contact?.lead_source && <div><dt>Source</dt><dd>{contact.lead_source}</dd></div>}</dl>
@@ -266,7 +296,7 @@ export default function PredictiveDialer({
         </div>
       )}
 
-      {session!.agent_state === "wrap" || (session!.agent_state === "on_call" && lead) ? (
+      {!session!.inbound_from && (session!.agent_state === "wrap" || (session!.agent_state === "on_call" && lead)) ? (
         <div className="v2-pd-wrap">
           <div className="v2-pd-dispositions">{DISPOSITIONS.map((item) => <button key={item.id} className={disposition === item.id ? "is-active" : ""} onClick={() => setDisposition(item.id)}>{item.label}</button>)}</div>
           <textarea rows={2} value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Notes for this call" />
@@ -297,6 +327,7 @@ export default function PredictiveDialer({
           <div><b>{stats.queued.toLocaleString()}</b><small>Left to dial</small></div>
         </div>
       )}
+      {overflowToggles}
       <p className="v2-pd-rules">30-day abandoned rate {abandonPct}% (legal limit 3%){stats?.opted_out ? ` · ${stats.opted_out} opted out` : ""}{stats?.skipped ? ` · ${stats.skipped} skipped (calling hours or DNC)` : ""}</p>
     </Panel>
   );
