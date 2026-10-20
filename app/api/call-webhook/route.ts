@@ -4,7 +4,7 @@ import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify
 import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
 import { bindBrowserCall, toE164 as toE164Number } from "@/lib/browser-calls";
 import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
-import { findCallOwner, hangupLeg, routeInboundCall } from "@/lib/call-routing";
+import { findCallOwner, hangupLeg, releaseOverflow, routeInboundCall, routeOverflow, type OverflowState } from "@/lib/call-routing";
 import { hasAiAccess } from "@/lib/messaging-status";
 import { canUseCalling } from "@/lib/owner";
 import { handleDialerEvent, type DialerLegState } from "@/lib/dialer";
@@ -83,6 +83,8 @@ type ClientState = {
   // leg:"target" marks the leg ringing the owner's cell or browser.
   route?: string;
   leg?: string;
+  // route:"overflow" — the agent rung while the owner was dialing.
+  overflow?: OverflowState;
   // Predictive dialer legs (lib/dialer.ts): dialer session id, queue item.
   dialer?: string;
   item?: string;
@@ -132,6 +134,117 @@ export async function POST(req: NextRequest) {
     }
   });
   return NextResponse.json({ status: "ok" });
+}
+
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Db = any;
+
+type InboundCall = { ccid: string; rowId: string; userId: string; contactId: string | null; from: string; to: string };
+
+// Forward to the owner's cell or ring the browser phone. When nobody can
+// take the call, end it with a busy signal: a Voice API call nobody
+// answers would otherwise keep ringing until the caller gives up.
+async function ringTeam(supabase: Db, call: InboundCall) {
+  const route = await routeInboundCall(supabase, {
+    ccid: call.ccid,
+    rowId: call.rowId,
+    userId: call.userId,
+    callerNumber: call.from,
+    businessNumber: call.to,
+  });
+  if (!route) await telnyx(`/calls/${call.ccid}/actions/reject`, { cause: "USER_BUSY" });
+}
+
+/**
+ * Let the AI assistant answer an inbound call, if it should. Returns false
+ * when it isn't taking the call (off, after-hours only, no funds) or could
+ * not pick up, leaving the caller's leg for the caller to route elsewhere.
+ */
+async function answerWithAi(supabase: Db, call: InboundCall): Promise<boolean> {
+  // The assistant is opt-in per user, can be limited to after hours,
+  // and — per the operator's standing rule that nothing is bought
+  // before it's paid for — only runs once the wallet has actually
+  // covered the reserve. Any "no" here falls through to the normal
+  // ring path, so a billing problem never drops a customer's call.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select(AI_PROFILE_COLUMNS)
+    .eq("id", call.userId)
+    .maybeSingle();
+
+  const settings = settingsFromProfile(profile);
+  const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
+  const inHours = isWithinBusinessHours(hours);
+  const shouldAnswer =
+    !!profile &&
+    canUseCalling(profile.email) &&
+    hasAiAccess(profile) &&
+    !profile.paused &&
+    settings.enabled &&
+    !(settings.afterHoursOnly && inHours);
+  if (profile && settings.enabled && !shouldAnswer && canUseCalling(profile.email)) {
+    console.warn(
+      `[call-webhook] AI assistant not answering for ${call.userId}: ` +
+        (!hasAiAccess(profile) ? "no active subscription" : profile.paused ? "account paused" : "within business hours (after-hours only)")
+    );
+  }
+  if (!shouldAnswer) return false;
+
+  // Session first, reserve second. The session row is unique per
+  // call_control_id, so a retried call.initiated finds the existing
+  // one and takes no second reserve off the caller's wallet.
+  const opened = await ensureSession({
+    db: supabase,
+    userId: call.userId,
+    callRowId: call.rowId,
+    contactId: call.contactId,
+    callControlId: call.ccid,
+    fromNumber: call.from,
+    toNumber: call.to,
+    profile,
+  });
+
+  let aiSessionId: string | undefined;
+  if (opened?.created) {
+    const reserved = await reserveForAiCall(supabase, call.userId, opened.session.id);
+    if (reserved > 0) {
+      aiSessionId = opened.session.id;
+      await supabase.from("calls").update({ handled_by_ai: true }).eq("id", call.rowId);
+    } else {
+      // Wallet can't cover it. Mark the session settled so nothing
+      // later mistakes it for a live call, and ring through instead.
+      console.warn(`[call-webhook] AI assistant skipped for ${call.userId}: wallet cannot cover the reserve`);
+      await supabase
+        .from("ai_call_sessions")
+        .update({ state: "done", outcome: "declined", ended_at: new Date().toISOString() })
+        .eq("id", opened.session.id);
+    }
+  } else if (opened) {
+    // A retry of an event we already handled — resume, don't re-charge.
+    aiSessionId = opened.session.id;
+  }
+  if (!aiSessionId) return false;
+
+  // Answer only when the assistant has the leg; call.answered then starts
+  // transcription and speaks the greeting (see openConversation). Every
+  // other call is transferred unanswered (or rejected busy); its hangup is
+  // matched back to this row by call_control_id.
+  const newState = encodeClientState({
+    v: 1,
+    inboundUserId: call.userId,
+    inboundContactId: call.contactId,
+    callRowId: call.rowId,
+    aiSessionId,
+  });
+  const answered = await telnyx(`/calls/${call.ccid}/actions/answer`, aiAnswerBody(newState));
+  if (!answered.ok) {
+    // The assistant couldn't pick up; ring the team instead of letting
+    // the call fail. The unused reserve is returned at hangup.
+    console.error(`[call-webhook] AI answer failed ${answered.status}: ${(await answered.text().catch(() => "")).slice(0, 300)}`);
+    return false;
+  }
+  return true;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -197,125 +310,28 @@ async function handleEvent(payload: any, origin: string) {
         .select("id")
         .single();
 
-      // ── Should the AI assistant take this call? ──
-      // The assistant is opt-in per user, can be limited to after hours,
-      // and — per the operator's standing rule that nothing is bought
-      // before it's paid for — only runs once the wallet has actually
-      // covered the reserve. Any "no" here falls through to the normal
-      // ring path, so a billing problem never drops a customer's call.
-      let aiSessionId: string | undefined;
-      if (ccid) {
-        const { data: profile } = await supabase
-          .from("profiles")
-          .select(AI_PROFILE_COLUMNS)
-          .eq("id", ownership.user_id)
-          .maybeSingle();
-
-        const settings = settingsFromProfile(profile);
-        const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
-        const inHours = isWithinBusinessHours(hours);
-        const shouldAnswer =
-          !!profile &&
-          canUseCalling(profile.email) &&
-          hasAiAccess(profile) &&
-          !profile.paused &&
-          settings.enabled &&
-          !(settings.afterHoursOnly && inHours);
-        if (profile && settings.enabled && !shouldAnswer && canUseCalling(profile.email)) {
-          console.warn(
-            `[call-webhook] AI assistant not answering for ${ownership.user_id}: ` +
-              (!hasAiAccess(profile) ? "no active subscription" : profile.paused ? "account paused" : "within business hours (after-hours only)")
-          );
-        }
-
-        if (shouldAnswer) {
-          // Session first, reserve second. The session row is unique per
-          // call_control_id, so a retried call.initiated finds the existing
-          // one and takes no second reserve off the caller's wallet.
-          const opened = await ensureSession({
-            db: supabase,
-            userId: ownership.user_id,
-            callRowId: row?.id || null,
-            contactId: contactMatch?.id || null,
-            callControlId: ccid,
-            fromNumber: fromE164,
-            toNumber: toE164,
-            profile,
-          });
-
-          if (opened?.created) {
-            const reserved = await reserveForAiCall(
-              supabase,
-              ownership.user_id,
-              opened.session.id
-            );
-            if (reserved > 0) {
-              aiSessionId = opened.session.id;
-              if (row?.id) {
-                await supabase
-                  .from("calls")
-                  .update({ handled_by_ai: true })
-                  .eq("id", row.id);
-              }
-            } else {
-              // Wallet can't cover it. Mark the session settled so nothing
-              // later mistakes it for a live call, and ring through instead.
-              console.warn(
-                `[call-webhook] AI assistant skipped for ${ownership.user_id}: wallet cannot cover the reserve`
-              );
-              await supabase
-                .from("ai_call_sessions")
-                .update({
-                  state: "done",
-                  outcome: "declined",
-                  ended_at: new Date().toISOString(),
-                })
-                .eq("id", opened.session.id);
-            }
-          } else if (opened) {
-            // A retry of an event we already handled — resume, don't re-charge.
-            aiSessionId = opened.session.id;
-          }
-        }
-      }
-
-      // Forward to the owner's cell or ring the browser phone. When nobody can
-      // take the call, end it with a busy signal: a Voice API call nobody
-      // answers would otherwise keep ringing until the caller gives up.
-      const ringTeam = async () => {
-        const route = row?.id
-          ? await routeInboundCall(supabase, {
-              ccid: ccid!,
-              rowId: row.id,
-              userId: ownership.user_id,
-              callerNumber: fromE164,
-              businessNumber: toE164,
-            })
-          : null;
-        if (!route) await telnyx(`/calls/${ccid}/actions/reject`, { cause: "USER_BUSY" });
-      };
-
-      // Answer only when the assistant has the leg; call.answered then starts
-      // transcription and speaks the greeting (see openConversation). Every
-      // other call is transferred unanswered (or rejected busy); its hangup is
-      // matched back to this row by call_control_id.
-      if (ccid && aiSessionId) {
-        const newState = encodeClientState({
-          v: 1,
-          inboundUserId: ownership.user_id,
-          inboundContactId: contactMatch?.id || null,
-          callRowId: row?.id,
-          aiSessionId,
+      if (ccid && row?.id) {
+        const call: InboundCall = {
+          ccid,
+          rowId: row.id,
+          userId: ownership.user_id,
+          contactId: contactMatch?.id || null,
+          from: fromE164,
+          to: toE164,
+        };
+        // The owner is busy on the dialer: an opted-in agent gets the first
+        // ring. If they don't pick up, the target-leg hangup below hands
+        // the call to the AI receptionist.
+        const overflowed = await routeOverflow(supabase, {
+          ccid,
+          rowId: row.id,
+          userId: ownership.user_id,
+          callerNumber: fromE164,
+          businessNumber: toE164,
         });
-        const answered = await telnyx(`/calls/${ccid}/actions/answer`, aiAnswerBody(newState));
-        if (!answered.ok) {
-          // The assistant couldn't pick up; ring the team instead of letting
-          // the call fail. The unused reserve is returned at hangup.
-          console.error(`[call-webhook] AI answer failed ${answered.status}: ${(await answered.text().catch(() => "")).slice(0, 300)}`);
-          await ringTeam();
-        }
+        if (!overflowed && !(await answerWithAi(supabase, call))) await ringTeam(supabase, call);
       } else if (ccid) {
-        await ringTeam();
+        await telnyx(`/calls/${ccid}/actions/reject`, { cause: "USER_BUSY" });
       }
 
       return NextResponse.json({ status: "ok" });
@@ -372,14 +388,28 @@ async function handleEvent(payload: any, origin: string) {
     // end the caller's leg too so they aren't left in silence; that leg's
     // own hangup closes and bills the row.
     if (type === "call.hangup" && state?.leg === "target") {
+      if (state.overflow) await releaseOverflow(supabase, state.overflow);
       if (state.callRowId) {
         const { data: callRow } = await supabase
           .from("calls")
-          .select("call_control_id, status")
+          .select("call_control_id, status, answered_at, user_id, contact_id, from_number, to_number")
           .eq("id", state.callRowId)
           .maybeSingle();
         if (callRow?.call_control_id && !FINAL_STATUSES.includes(callRow.status)) {
-          await hangupLeg(callRow.call_control_id);
+          // The agent didn't pick up an overflow call: the AI receptionist
+          // takes it instead of the caller being hung up on.
+          const toAi =
+            state.route === "overflow" &&
+            !callRow.answered_at &&
+            (await answerWithAi(supabase, {
+              ccid: callRow.call_control_id,
+              rowId: state.callRowId,
+              userId: callRow.user_id,
+              contactId: callRow.contact_id,
+              from: callRow.from_number,
+              to: callRow.to_number,
+            }));
+          if (!toAi) await hangupLeg(callRow.call_control_id);
         }
       }
       return NextResponse.json({ status: "ok" });
