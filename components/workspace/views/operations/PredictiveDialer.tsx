@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Pause, PhoneCall, PhoneForwarded, PhoneOff, Play, Square, Zap } from "lucide-react";
+import { CalendarPlus, Check, Clock, Pause, PhoneCall, PhoneForwarded, PhoneOff, Play, Square, X, Zap } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
+import { inferTimezone } from "@/lib/quiet-hours";
 import { Panel, StatusPill } from "../../WorkspacePrimitives";
 
 // The predictive dialer's controls and live view (server side: lib/dialer.ts
@@ -11,6 +12,7 @@ import { Panel, StatusPill } from "../../WorkspacePrimitives";
 // automatically (see the autoAnswer prop on BrowserPhone).
 
 type Session = {
+  user_id: string;
   id: string;
   status: "active" | "paused" | "stopped" | "completed";
   agent_state: "ready" | "connecting" | "on_call" | "wrap" | "away";
@@ -41,6 +43,11 @@ type Stats = {
 type Lead = {
   id: string;
   phone: string;
+  contact_id?: string | null;
+  /** The business number this call went out from. */
+  from_number?: string | null;
+  /** Set when this call is a scheduled callback. */
+  callback_id?: string | null;
   contact: {
     first_name?: string | null;
     last_name?: string | null;
@@ -72,8 +79,24 @@ type Snapshot = {
   overflowAgents?: Array<{ id: string; name: string; on: boolean }>;
   /** People a live call can be passed to. */
   teammates?: Array<{ id: string; name: string }>;
+  /** Scheduled callbacks, soonest first. */
+  callbacks?: Callback[];
+  /** The time zone appointments are booked in. */
+  calendarTimeZone?: string;
   error?: string;
 };
+
+type Callback = {
+  id: string;
+  phone: string;
+  due_at: string;
+  notes: string | null;
+  from_number: string | null;
+  contacts?: { first_name?: string | null; last_name?: string | null } | null;
+};
+
+const timeLabel = (iso: string, timeZone?: string) =>
+  new Date(iso).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", ...(timeZone ? { timeZone, timeZoneName: "short" } : {}) });
 
 const DISPOSITIONS: Array<{ id: string; label: string }> = [
   { id: "interested", label: "Interested" },
@@ -155,7 +178,7 @@ export default function PredictiveDialer({
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);
     const data = (await response.json().catch(() => ({}))) as Snapshot;
     if (!response.ok) { setNotice(data.error || "Could not load the dialer."); return; }
-    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents, teammates: data.teammates ?? current?.teammates }));
+    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, callbacks: data.callbacks ?? current?.callbacks, calendarTimeZone: data.calendarTimeZone ?? current?.calendarTimeZone, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents, teammates: data.teammates ?? current?.teammates }));
     if (data.callerIds) onCallerIds?.(data.callerIds);
   }, [onCallerIds]);
 
@@ -188,7 +211,7 @@ export default function PredictiveDialer({
       const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await response.json().catch(() => ({}))) as Snapshot;
       if (!response.ok) { setNotice(data.error || "Something went wrong. Please retry."); return false; }
-      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents, teammates: current?.teammates }));
+      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, callbacks: data.callbacks ?? current?.callbacks, calendarTimeZone: current?.calendarTimeZone, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents, teammates: current?.teammates }));
       return true;
     } finally {
       setBusy(false);
@@ -229,9 +252,59 @@ export default function PredictiveDialer({
     await act({ action: "hangup" });
   };
 
+  // "Call back at 3:30": entered in the agent's own clock, sent as an exact time.
+  const [callbackAt, setCallbackAt] = useState("");
   const next = async () => {
+    if (disposition === "callback" && callbackAt && !(new Date(callbackAt).getTime() > Date.now())) {
+      setNotice("Pick a callback time in the future.");
+      return;
+    }
     if (session?.agent_state === "on_call" || session?.agent_state === "connecting") onHangup?.();
-    if (await act({ action: "next", disposition: disposition || null, notes })) { setDisposition(""); setNotes(""); }
+    const at = disposition === "callback" && callbackAt ? new Date(callbackAt).toISOString() : undefined;
+    if (await act({ action: "next", disposition: disposition || null, notes, callbackAt: at })) {
+      setDisposition("");
+      setNotes("");
+      setCallbackAt("");
+      setBooking(null);
+    }
+  };
+
+  const cancelCallback = async (id: string) => {
+    const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "cancel_callback", id }) });
+    const data = (await response.json().catch(() => ({}))) as Snapshot;
+    if (response.ok) setSnap((current) => current && { ...current, callbacks: data.callbacks });
+  };
+
+  // Book an appointment for the lead on the line; it lands on the agent's
+  // calendar (and Google Calendar when connected) via /api/appointments.
+  const [booking, setBooking] = useState<{ date: string; time: string; duration: number; notes: string } | null>(null);
+  const [booked, setBooked] = useState("");
+  const book = async (leadName: string) => {
+    if (!booking || !snap?.session || !booking.date || !booking.time) { setNotice("Pick a date and time for the appointment."); return; }
+    setBusy(true);
+    setNotice("");
+    try {
+      const response = await authFetch("/api/appointments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: snap.session.user_id,
+          contactId: snap.lead?.contact_id || null,
+          date: booking.date,
+          time: `${booking.time}:00`,
+          duration: booking.duration,
+          title: `Appointment with ${leadName}`,
+          notes: booking.notes,
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) { setNotice(data.error || "Could not book the appointment."); return; }
+      setBooked(`Booked ${leadName} for ${booking.date} at ${booking.time}.`);
+      setBooking(null);
+      if (!disposition) setDisposition("interested");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const setOverflow = async (agentId: string, enabled: boolean) => {
@@ -240,6 +313,27 @@ export default function PredictiveDialer({
     if (!response.ok) { setNotice(data.error || "Could not save that setting."); return; }
     setSnap((current) => current && { ...current, overflowAgents: data.overflowAgents });
   };
+
+  const callbackList = snap?.callbacks?.length ? (
+    <div className="v2-pd-callbacks">
+      <span><Clock size={14} /> Upcoming callbacks</span>
+      <ul>
+        {snap.callbacks.map((cb) => {
+          const name = [cb.contacts?.first_name, cb.contacts?.last_name].filter(Boolean).join(" ") || prettyPhone(cb.phone);
+          const late = new Date(cb.due_at).getTime() <= Date.now();
+          return (
+            <li key={cb.id}>
+              <b>{name}</b>
+              <span>{timeLabel(cb.due_at)}{late ? " · due now" : ""}{cb.from_number ? ` · from ${prettyPhone(cb.from_number)}` : ""}</span>
+              {cb.notes && <small>{cb.notes}</small>}
+              <button className="v2-btn" aria-label={`Cancel callback to ${name}`} onClick={() => void cancelCallback(cb.id)}><X size={13} /></button>
+            </li>
+          );
+        })}
+      </ul>
+      <small>The dialer calls each one at its time, from the same number, as soon as you&apos;re free on the dialer. Start or resume dialing to make due callbacks.</small>
+    </div>
+  ) : null;
 
   const overflowToggles = snap?.overflowAgents?.length ? (
     <div className="v2-pd-overflow">
@@ -267,6 +361,7 @@ export default function PredictiveDialer({
         </div>
         {maxLines > 1 && <label className="v2-pd-force"><input type="checkbox" checked={forceLines} onChange={(event) => setForceLines(event.target.checked)} /><span><b>Always dial {maxLines} lines at once</b><small>Skips the safety pacing. When many people answer, the extra ones are dropped (they hear your name and callback number and can press 9 to opt out). The FTC limits dropped calls to 3% of answered calls; going over can bring fines.</small></span></label>}
         {(snap.callerIds?.length || 0) > 1 && <div className="v2-pd-numbers"><span>Caller ID</span><div className="v2-number-picks">{snap.callerIds!.map((owned) => { const checked = numbers.includes(owned); return <button key={owned} className={checked ? "is-active" : ""} onClick={() => setNumbers((current) => checked ? current.filter((n) => n !== owned) : [...current, owned])}><span>{checked ? <Check size={12} /> : null}</span>{prettyPhone(owned)}<small>{checked ? "Used" : "Not used"}</small></button>; })}</div><small>None selected uses all of them in turn.</small></div>}
+        {callbackList}
         {overflowToggles}
         <p className="v2-pd-rules">Calls 8 AM–8 PM in each lead&apos;s time zone, skips Do Not Call contacts and anyone dialed in the last 24 hours, and hangs up on answering machines. It adds lines only while the abandoned-call rate stays under the legal 3%. Anyone who answers while you&apos;re busy hears your name, business and callback number, and can press 9 to opt out. You still need to scrub lists against the National Do Not Call Registry and only call people who agreed to be contacted.</p>
         <button className="v2-btn v2-btn-primary" disabled={busy || !phoneReady || !agentName.trim() || !businessName.trim()} onClick={start}><Play size={15} /> {busy ? "Starting…" : phoneReady ? "Start dialing" : "Waiting for phone…"}</button>
@@ -296,7 +391,7 @@ export default function PredictiveDialer({
 
       {lead && !session!.inbound_from && (session!.agent_state === "connecting" || session!.agent_state === "on_call" || session!.agent_state === "wrap") && (
         <div className="v2-pd-lead">
-          <div><small>{session!.agent_state === "connecting" ? "Connecting…" : session!.agent_state === "on_call" ? "On the line" : "Last call"}</small><strong>{leadName}</strong><span>{prettyPhone(lead.phone)} · {[contact?.city, contact?.state, contact?.zip].filter(Boolean).join(", ") || "Location not added"}</span></div>
+          <div><small>{session!.agent_state === "connecting" ? "Connecting…" : session!.agent_state === "on_call" ? "On the line" : "Last call"}</small><strong>{leadName}</strong><span>{prettyPhone(lead.phone)} · {[contact?.city, contact?.state, contact?.zip].filter(Boolean).join(", ") || "Location not added"}</span>{lead.from_number && <span className="v2-pd-from">Calling from <b>{prettyPhone(lead.from_number)}</b>{lead.callback_id ? " · scheduled callback" : ""}</span>}</div>
           <dl>{contact?.age && <div><dt>Age</dt><dd>{contact.age}</dd></div>}{contact?.household_size && <div><dt>Household</dt><dd>{contact.household_size}</dd></div>}{contact?.quote && <div><dt>Quote</dt><dd>{contact.quote}</dd></div>}{contact?.lead_source && <div><dt>Source</dt><dd>{contact.lead_source}</dd></div>}</dl>
           {contact?.notes && <p>{contact.notes}</p>}
         </div>
@@ -305,7 +400,34 @@ export default function PredictiveDialer({
       {!session!.inbound_from && (session!.agent_state === "wrap" || (session!.agent_state === "on_call" && lead)) ? (
         <div className="v2-pd-wrap">
           <div className="v2-pd-dispositions">{DISPOSITIONS.map((item) => <button key={item.id} className={disposition === item.id ? "is-active" : ""} onClick={() => setDisposition(item.id)}>{item.label}</button>)}</div>
+          {disposition === "callback" && (
+            <label className="v2-pd-callback">
+              <span>Call back at</span>
+              <input type="datetime-local" value={callbackAt} onChange={(event) => setCallbackAt(event.target.value)} />
+              <small>
+                {callbackAt
+                  ? `That's ${new Date(callbackAt).toLocaleString("en-US", { weekday: "short", hour: "numeric", minute: "2-digit", timeZone: inferTimezone(contact?.state || undefined), timeZoneName: "short" })} for ${leadName}. The dialer calls them then${lead?.from_number ? ` from ${prettyPhone(lead.from_number)}` : ""}.`
+                  : "Your local time. Leave empty to just mark it as a callback."}
+              </small>
+            </label>
+          )}
           <textarea rows={2} value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Notes for this call" />
+          {booked && <div role="status" className="v2-notice">{booked}<button onClick={() => setBooked("")}>×</button></div>}
+          {booking ? (
+            <div className="v2-pd-book">
+              <label>Date<input type="date" value={booking.date} onChange={(event) => setBooking({ ...booking, date: event.target.value })} /></label>
+              <label>Time<input type="time" value={booking.time} onChange={(event) => setBooking({ ...booking, time: event.target.value })} /></label>
+              <label>Length<select value={booking.duration} onChange={(event) => setBooking({ ...booking, duration: Number(event.target.value) })}><option value={15}>15 min</option><option value={30}>30 min</option><option value={45}>45 min</option><option value={60}>1 hour</option></select></label>
+              <label>Notes<input value={booking.notes} maxLength={500} onChange={(event) => setBooking({ ...booking, notes: event.target.value })} placeholder="What it's about" /></label>
+              <small>Times are in your calendar&apos;s time zone ({snap.calendarTimeZone || "America/New_York"}). It goes on your Text2Sale calendar and your Google Calendar if connected.</small>
+              <div className="v2-pd-actions">
+                <button className="v2-btn v2-btn-primary" disabled={busy} onClick={() => void book(leadName)}><CalendarPlus size={15} /> Book it</button>
+                <button className="v2-btn" disabled={busy} onClick={() => setBooking(null)}>Cancel</button>
+              </div>
+            </div>
+          ) : (
+            lead && <button className="v2-btn" disabled={busy} onClick={() => { setBooked(""); setBooking({ date: "", time: "", duration: 30, notes: "" }); }}><CalendarPlus size={15} /> Book appointment</button>
+          )}
           <div className="v2-pd-actions">
             {session!.agent_state === "on_call" && <span className="v2-pd-transfer"><input aria-label="Your cell number" inputMode="tel" placeholder="Your cell" value={cell} onChange={(event) => setCell(event.target.value.replace(/[^0-9+() -]/g, ""))} /><button className="v2-btn" disabled={busy} onClick={transferToCell}><PhoneForwarded size={15} /> Transfer to my cell</button></span>}
             {session!.agent_state === "on_call" && snap.teammates?.map((mate) => <button key={mate.id} className="v2-btn" disabled={busy} onClick={() => act({ action: "send", to: mate.id })}><PhoneForwarded size={15} /> Send to {mate.name}</button>)}
@@ -334,6 +456,7 @@ export default function PredictiveDialer({
           <div><b>{stats.queued.toLocaleString()}</b><small>Left to dial</small></div>
         </div>
       )}
+      {callbackList}
       {overflowToggles}
       <p className="v2-pd-rules">30-day abandoned rate {abandonPct}% (legal limit 3%){stats?.opted_out ? ` · ${stats.opted_out} opted out` : ""}{stats?.skipped ? ` · ${stats.skipped} skipped (calling hours or DNC)` : ""}</p>
     </Panel>

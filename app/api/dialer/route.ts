@@ -6,7 +6,7 @@ import { isEntitled } from "@/lib/messaging-status";
 import { toE164 } from "@/lib/browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { abandonRate, ABANDON_CAP } from "@/lib/dialer-pacing";
-import { dialNext, hangUpLeads, linesFor, loadDialerStats, sendToTeammate, teammates, transferToCell } from "@/lib/dialer";
+import { callbackTime, dialNext, enqueueDueCallbacks, hangUpLeads, linesFor, loadDialerStats, sendToTeammate, teammates, transferToCell } from "@/lib/dialer";
 import { phonesFromCsv } from "@/lib/csv-phones";
 
 // ─── /api/dialer ─────────────────────────────────────────────────────────
@@ -40,6 +40,12 @@ async function authorize(req: NextRequest) {
     return { error: NextResponse.json({ error: "The dialer isn't available on this account." }, { status: 403 }) };
   }
   return { userId, supabase, profile, payer: access.payer };
+}
+
+/** The time zone appointments are booked in (the calendar's, as /api/appointments uses). */
+async function calendarTimeZone(supabase: ReturnType<typeof db>, userId: string): Promise<string> {
+  const { data } = await supabase.from("profiles").select("available_hours").eq("id", userId).maybeSingle();
+  return (data?.available_hours as { timezone?: string } | null)?.timezone || "America/New_York";
 }
 
 /** Who this user can pass a live call to ("Send to …" on the dialer). */
@@ -130,6 +136,18 @@ async function leadLists(supabase: ReturnType<typeof db>, userId: string) {
   };
 }
 
+/** The user's upcoming scheduled callbacks, soonest first. */
+async function scheduledCallbacks(supabase: ReturnType<typeof db>, userId: string) {
+  const { data } = await supabase
+    .from("dialer_callbacks")
+    .select("id, phone, due_at, notes, from_number, contacts(first_name, last_name)")
+    .eq("user_id", userId)
+    .eq("status", "scheduled")
+    .order("due_at", { ascending: true })
+    .limit(20);
+  return data || [];
+}
+
 async function snapshot(supabase: ReturnType<typeof db>, session: Record<string, unknown> | null) {
   if (!session) return { session: null };
   const stats = await loadDialerStats(supabase, String(session.id));
@@ -137,7 +155,7 @@ async function snapshot(supabase: ReturnType<typeof db>, session: Record<string,
   if (session.active_item) {
     const { data: item } = await supabase
       .from("dialer_queue")
-      .select("id, phone, result, contact_id, human_at")
+      .select("id, phone, result, contact_id, human_at, from_number, callback_id")
       .eq("id", session.active_item)
       .maybeSingle();
     const { data: contact } = item?.contact_id
@@ -153,6 +171,7 @@ async function snapshot(supabase: ReturnType<typeof db>, session: Record<string,
     session,
     stats,
     lead,
+    callbacks: await scheduledCallbacks(supabase, String(session.user_id)),
     pacing: {
       lines: linesFor(session as { max_lines: number; force_lines?: boolean }, stats),
       abandonRate30d: abandonRate(stats.abandoned_30d, stats.connected_30d),
@@ -175,11 +194,18 @@ export async function GET(req: NextRequest) {
       .select("*")
       .maybeSingle();
     session = data || session;
+    // Callbacks whose time has come go to the front of the queue.
+    if (session && (await enqueueDueCallbacks(supabase, session)) > 0) await dialNext(supabase, String(session.id));
   }
   const body = await snapshot(supabase, session);
   const withLists = req.nextUrl.searchParams.get("lists") === "1";
   const overflow = withLists
-    ? { teammates: await teamList(supabase, userId), ...(payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {}) }
+    ? {
+        teammates: await teamList(supabase, userId),
+        callbacks: await scheduledCallbacks(supabase, userId),
+        calendarTimeZone: await calendarTimeZone(supabase, userId),
+        ...(payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {}),
+      }
     : {};
   if (withLists && !session) {
     return NextResponse.json({
@@ -204,6 +230,16 @@ export async function POST(req: NextRequest) {
 
   if (action === "start") return start(supabase, userId, profile, payer, input);
 
+  if (action === "cancel_callback") {
+    await supabase
+      .from("dialer_callbacks")
+      .update({ status: "cancelled" })
+      .eq("id", String(input?.id || ""))
+      .eq("user_id", userId)
+      .eq("status", "scheduled");
+    return NextResponse.json({ callbacks: await scheduledCallbacks(supabase, userId) });
+  }
+
   // The owner picks which agents take their inbound calls while they're
   // dialing (lib/call-routing.ts routeOverflow).
   if (action === "overflow") {
@@ -220,6 +256,11 @@ export async function POST(req: NextRequest) {
   if (!session) return NextResponse.json({ error: "No dialer session is running." }, { status: 404 });
 
   if (action === "ready" || action === "next") {
+    const wantsCallback = action === "next" && input.disposition === "callback" && !!input.callbackAt;
+    const callbackAt = wantsCallback ? callbackTime(input.callbackAt, now) : null;
+    if (wantsCallback && !callbackAt) {
+      return NextResponse.json({ error: "Pick a callback time in the future (up to 90 days out)." }, { status: 400 });
+    }
     // Moving on ends the current call, even if the browser's hangup never
     // reached the lead's leg.
     if (session.active_item) await hangUpLeads(supabase, session.id, session.active_item);
@@ -230,8 +271,19 @@ export async function POST(req: NextRequest) {
         .from("dialer_queue")
         .update({ disposition })
         .eq("id", session.active_item)
-        .select("contact_id, call_row_id")
+        .select("contact_id, call_row_id, phone, from_number")
         .maybeSingle();
+      // "Call back at 3:30": the dialer rings them then, from the same number.
+      if (item && callbackAt) {
+        await supabase.from("dialer_callbacks").insert({
+          user_id: userId,
+          contact_id: item.contact_id,
+          phone: item.phone,
+          from_number: item.from_number,
+          due_at: callbackAt,
+          notes: notes || null,
+        });
+      }
       if (item?.call_row_id && (disposition || notes)) {
         await supabase
           .from("calls")
