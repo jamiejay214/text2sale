@@ -6,7 +6,7 @@ import { isEntitled } from "@/lib/messaging-status";
 import { toE164 } from "@/lib/browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { abandonRate, ABANDON_CAP } from "@/lib/dialer-pacing";
-import { dialNext, hangUpLeads, linesFor, loadDialerStats } from "@/lib/dialer";
+import { dialNext, hangUpLeads, linesFor, loadDialerStats, transferToCell } from "@/lib/dialer";
 import { phonesFromCsv } from "@/lib/csv-phones";
 
 // ─── /api/dialer ─────────────────────────────────────────────────────────
@@ -169,7 +169,13 @@ export async function GET(req: NextRequest) {
   const withLists = req.nextUrl.searchParams.get("lists") === "1";
   const overflow = withLists && payer.id === userId ? { overflowAgents: await overflowAgents(supabase, userId) } : {};
   if (withLists && !session) {
-    return NextResponse.json({ ...body, ...(await leadLists(supabase, userId)), callerIds: await callerIds(supabase, userId, payer.id), ...overflow });
+    return NextResponse.json({
+      ...body,
+      ...(await leadLists(supabase, userId)),
+      callerIds: await callerIds(supabase, userId, payer.id),
+      transferNumber: payer.id === userId ? payer.ai_call_transfer_number || null : null,
+      ...overflow,
+    });
   }
   if (withLists) return NextResponse.json({ ...body, ...overflow });
   return NextResponse.json(body);
@@ -247,6 +253,18 @@ export async function POST(req: NextRequest) {
       .select("*")
       .maybeSingle();
     return NextResponse.json(await snapshot(supabase, data));
+  }
+
+  if (action === "transfer") {
+    const cell = toE164(input?.to);
+    const own = await callerIds(supabase, userId, payer.id);
+    if (!cell || own.includes(cell)) {
+      return NextResponse.json({ error: "Enter your cell phone number to transfer to." }, { status: 400 });
+    }
+    const failed = await transferToCell(supabase, session, cell);
+    if (failed) return NextResponse.json({ error: failed }, { status: 409 });
+    const { data } = await supabase.from("dialer_sessions").select("*").eq("id", session.id).maybeSingle();
+    return NextResponse.json(await snapshot(supabase, data || session));
   }
 
   if (action === "hangup") {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Pause, PhoneCall, PhoneOff, Play, Square, Zap } from "lucide-react";
+import { Check, Pause, PhoneCall, PhoneForwarded, PhoneOff, Play, Square, Zap } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { Panel, StatusPill } from "../../WorkspacePrimitives";
 
@@ -65,6 +65,8 @@ type Snapshot = {
   uploads?: Array<{ id: string; file_name: string; uploaded_at: string; success: number }>;
   /** Business numbers calls go out from (the sponsor's, for an agent). */
   callerIds?: string[];
+  /** The account's saved transfer number (owner only), to prefill the cell box. */
+  transferNumber?: string | null;
   /** Owner only: agents who take inbound calls while the owner dials. */
   overflowAgents?: Array<{ id: string; name: string; on: boolean }>;
   error?: string;
@@ -147,7 +149,7 @@ export default function PredictiveDialer({
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);
     const data = (await response.json().catch(() => ({}))) as Snapshot;
     if (!response.ok) { setNotice(data.error || "Could not load the dialer."); return; }
-    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, overflowAgents: data.overflowAgents ?? current?.overflowAgents }));
+    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents }));
     if (data.callerIds) onCallerIds?.(data.callerIds);
   }, [onCallerIds]);
 
@@ -180,7 +182,7 @@ export default function PredictiveDialer({
       const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await response.json().catch(() => ({}))) as Snapshot;
       if (!response.ok) { setNotice(data.error || "Something went wrong. Please retry."); return false; }
-      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, overflowAgents: current?.overflowAgents }));
+      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents }));
       return true;
     } finally {
       setBusy(false);
@@ -199,6 +201,21 @@ export default function PredictiveDialer({
     // "upload:<id>" dials one CSV file's leads; "list:<name>" a campaign list.
     const audience = list.startsWith("upload:") ? { upload: list.slice(7) } : list.startsWith("list:") ? { list: list.slice(5) } : {};
     if (await act({ action: "start", ...audience, maxLines, forceLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
+  };
+
+  const [cell, setCell] = useState("");
+  useEffect(() => {
+    if (cell) return;
+    let saved = "";
+    try { saved = window.localStorage.getItem("t2s_transfer_cell") || ""; } catch { /* optional */ }
+    const fallback = saved || snap?.transferNumber || "";
+    if (fallback) setCell(prettyPhone(fallback));
+  }, [cell, snap?.transferNumber]);
+
+  const transferToCell = async () => {
+    if (!cell.trim()) { setNotice("Enter your cell phone number to transfer to."); return; }
+    try { window.localStorage.setItem("t2s_transfer_cell", cell); } catch { /* optional */ }
+    await act({ action: "transfer", to: cell });
   };
 
   const hangUp = async () => {
@@ -284,6 +301,7 @@ export default function PredictiveDialer({
           <div className="v2-pd-dispositions">{DISPOSITIONS.map((item) => <button key={item.id} className={disposition === item.id ? "is-active" : ""} onClick={() => setDisposition(item.id)}>{item.label}</button>)}</div>
           <textarea rows={2} value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Notes for this call" />
           <div className="v2-pd-actions">
+            {session!.agent_state === "on_call" && <span className="v2-pd-transfer"><input aria-label="Your cell number" inputMode="tel" placeholder="Your cell" value={cell} onChange={(event) => setCell(event.target.value.replace(/[^0-9+() -]/g, ""))} /><button className="v2-btn" disabled={busy} onClick={transferToCell}><PhoneForwarded size={15} /> Transfer to my cell</button></span>}
             {session!.agent_state === "on_call" && <button className="v2-btn" disabled={busy} onClick={hangUp}><PhoneOff size={15} /> Hang up</button>}
             <button className="v2-btn v2-btn-primary" disabled={busy} onClick={next}><PhoneCall size={15} /> {session!.agent_state === "on_call" ? "Hang up & dial next" : "Save & dial next"}</button>
             <button className="v2-btn" disabled={busy} onClick={() => act({ action: "stop" })}><Square size={14} /> Stop</button>

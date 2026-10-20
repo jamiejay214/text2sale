@@ -173,3 +173,13 @@ test('unanswered results come from the hangup cause', () => {
   assert.equal(dialer.unansweredResult('timeout'), 'no-answer');
   assert.equal(dialer.unansweredResult(''), 'no-answer');
 });
+
+test('after a transfer to the cell, the browser dropping off keeps the call; the cell hanging up ends it', async () => {
+  const moved = setup({ item: { result: 'connected', status: 'dialing', transferred_to: '+19548057882' } });
+  assert.equal(await moved.handle('call.hangup', { call_control_id: 'agent-cc' }, { ...moved.state, leg: 'agent' }), true);
+  assert.deepEqual(moved.telnyx.map((t) => t.path), []);
+
+  const cell = setup({ item: { result: 'connected', status: 'dialing', transferred_to: '+19548057882' } });
+  assert.equal(await cell.handle('call.hangup', { call_control_id: 'cell-cc' }, { ...cell.state, leg: 'cell' }), true);
+  assert.deepEqual(cell.telnyx.map((t) => t.path), ['/calls/lead-cc/actions/hangup']);
+});
