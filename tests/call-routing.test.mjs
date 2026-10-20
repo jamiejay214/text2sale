@@ -134,3 +134,99 @@ test('call owner: legacy numbers on the profile are found; unknown numbers are n
   assert.equal(await findCallOwner(ownerDb(legacy), '+17865550000', '+13055550199'), null);
   assert.equal(await findCallOwner(ownerDb(legacy), 'garbage', '+13055550199'), null);
 });
+
+// ── Overflow: owner dialing → ring the opted-in agent ──
+function tables(t) {
+  const log = [];
+  const from = (table) => {
+    const q = { table, filters: {}, update: null };
+    const rows = () => (t[table] || []).filter((r) => Object.entries(q.filters).every(([k, v]) => Array.isArray(v) ? v.includes(r[k]) : r[k] === v));
+    const c = {
+      select: () => c,
+      eq: (k, v) => ((q.filters[k] = v), c),
+      in: (k, v) => ((q.filters[k] = v), c),
+      is: (k, v) => ((q.filters[k] = v ?? undefined), c),
+      not: () => c,
+      update: (u) => ((q.update = u), c),
+      maybeSingle: async () => {
+        const hit = rows()[0] || null;
+        if (q.update && hit) { Object.assign(hit, q.update); log.push([table, q.update]); }
+        return { data: hit };
+      },
+      then: (resolve) => {
+        const hits = rows();
+        if (q.update) { hits.forEach((h) => Object.assign(h, q.update)); log.push([table, q.update]); }
+        return resolve({ data: hits });
+      },
+    };
+    return c;
+  };
+  return { from, log };
+}
+const fresh = () => new Date().toISOString();
+const telnyxFake = (calls, fail = false) => async (url, init) => {
+  calls.push([url, init && init.body && JSON.parse(init.body)]);
+  if (url.includes('/telephony_credentials/')) return ok({ data: { sip_username: 'mariaSIP' } });
+  return fail && url.includes('/transfer') ? { ok: false, status: 422, json: async () => ({}) } : ok();
+};
+const world = (over = {}) => ({
+  profiles: [{ id: 'u1', ...base, inbound_from: undefined }, { id: 'm1', telnyx_credential_id: 'credM', paused: false }],
+  calling_sponsors: [{ agent_id: 'm1', sponsor_id: 'u1', take_overflow: true }],
+  dialer_sessions: [{ id: 's-owner', user_id: 'u1', status: 'active', agent_state: 'on_call', agent_seen_at: fresh() }],
+  dialer_queue: [],
+  calls: [{ id: 'row1' }],
+  ...over,
+});
+
+test('overflow: owner dialing → rings the agent, with a header so her dialer doesn\'t auto-answer', async () => {
+  const calls = [];
+  const { routeOverflow } = load(telnyxFake(calls));
+  const d = tables(world());
+  assert.equal(await routeOverflow(d, call), true);
+  const transfer = calls.find(([u]) => u.endsWith('/actions/transfer'))[1];
+  assert.equal(transfer.to, 'sip:mariaSIP@sip.telnyx.com');
+  assert.deepEqual(transfer.custom_headers, [{ name: 'X-Text2Sale-Route', value: 'overflow' }]);
+  assert.equal(decode(transfer.client_state).route, 'overflow');
+  assert.equal(decode(transfer.target_leg_client_state).overflow.agentId, 'm1');
+});
+
+test('overflow: off unless the owner is dialing and the agent is opted in', async () => {
+  const calls = [];
+  const { routeOverflow } = load(telnyxFake(calls));
+  assert.equal(await routeOverflow(tables(world({ dialer_sessions: [] })), call), false);
+  const stale = new Date(Date.now() - 120_000).toISOString();
+  assert.equal(await routeOverflow(tables(world({ dialer_sessions: [{ id: 's', user_id: 'u1', status: 'active', agent_state: 'ready', agent_seen_at: stale }] })), call), false);
+  assert.equal(await routeOverflow(tables(world({ calling_sponsors: [{ agent_id: 'm1', sponsor_id: 'u1', take_overflow: false }] })), call), false);
+  assert.equal(calls.filter(([u]) => u.includes('/transfer')).length, 0);
+});
+
+test('overflow: agent mid-call is skipped; agent waiting on her dialer is held, then handed back', async () => {
+  const calls = [];
+  const { routeOverflow, releaseOverflow } = load(telnyxFake(calls));
+  const busy = world();
+  busy.dialer_sessions.push({ id: 's-maria', user_id: 'm1', status: 'active', agent_state: 'on_call', agent_seen_at: fresh() });
+  assert.equal(await routeOverflow(tables(busy), call), false);
+
+  const waiting = world({ dialer_queue: [{ session_id: 's-maria', status: 'dialing', call_control_id: 'lead-leg', human_at: undefined }] });
+  waiting.dialer_sessions.push({ id: 's-maria', user_id: 'm1', status: 'active', agent_state: 'ready', agent_seen_at: fresh() });
+  const d = tables(waiting);
+  assert.equal(await routeOverflow(d, call), true);
+  const maria = waiting.dialer_sessions[1];
+  assert.equal(maria.agent_state, 'on_call');
+  assert.equal(maria.inbound_from, '+13055550199');
+  assert.ok(calls.some(([u]) => u.endsWith('/calls/lead-leg/actions/hangup')), 'her ringing lead lines are dropped');
+  const transfer = calls.find(([u]) => u.endsWith('/calls/cc1/actions/transfer'))[1];
+  await releaseOverflow(d, decode(transfer.target_leg_client_state).overflow);
+  assert.equal(maria.agent_state, 'ready');
+  assert.equal(maria.inbound_from, null);
+});
+
+test('overflow: a failed transfer hands the agent\'s dialer back and falls through', async () => {
+  const calls = [];
+  const { routeOverflow } = load(telnyxFake(calls, true));
+  const w = world();
+  w.dialer_sessions.push({ id: 's-maria', user_id: 'm1', status: 'active', agent_state: 'wrap', agent_seen_at: fresh() });
+  assert.equal(await routeOverflow(tables(w), call), false);
+  assert.equal(w.dialer_sessions[1].agent_state, 'wrap');
+  assert.equal(w.dialer_sessions[1].inbound_from, null);
+});

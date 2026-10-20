@@ -186,7 +186,12 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
           // Inbound call ringing this browser (routed here by the call
           // webhook): ring and show Answer / Decline until it's picked up.
           if (call.direction === "inbound" && call.state === "ringing") {
-            if (autoAnswerRef.current) {
+            // A customer calling in (rung here while the account owner is
+            // dialing, lib/call-routing.ts routeOverflow) rings for the
+            // agent to accept; only dialer leads are picked up automatically.
+            const headers: Array<{ name?: string; value?: string }> = Array.isArray(call.options?.customHeaders) ? call.options.customHeaders : [];
+            const overflow = headers.some((h) => String(h?.name || "").toLowerCase() === "x-text2sale-route" && h?.value === "overflow");
+            if (autoAnswerRef.current && !overflow) {
               try {
                 call.answer();
                 playConnectBeep();
