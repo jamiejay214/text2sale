@@ -367,7 +367,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     <>
       <PageHeader
         eyebrow="Campaign studio"
-        title="Build the whole follow-up in one place."
+        title="Campaigns"
         description="One campaign can be a single text or a complete multi-step workflow with timing, spin text, and personalization."
         actions={
           <>

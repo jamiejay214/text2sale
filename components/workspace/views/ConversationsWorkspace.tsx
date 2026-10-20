@@ -708,8 +708,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     <div className="v2-conversations">
       <PageHeader
         eyebrow="Workspace / Conversations"
-        title={SALES_QUOTES[quoteIndex]}
-        description="Handle replies, turn AI on when you need it, and move leads into the right follow-up."
+        title="Conversations"
+        description={SALES_QUOTES[quoteIndex]}
         actions={
           <>
             <label className="v2-global-ai"><span><Bot size={16} /> {aiAccess ? "AI handles all replies" : "Unlock AI replies"}</span><input type="checkbox" checked={aiAccess && !!profile.ai_auto_reply} onChange={toggleGlobalAi} /><i /></label>

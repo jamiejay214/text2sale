@@ -125,8 +125,10 @@ export default function PredictiveDialer({
   onAutoAnswerChange,
   onCallerIds,
   onHangup,
+  onSessionActiveChange,
 }: {
   phoneReady: boolean;
+  onSessionActiveChange?: (active: boolean) => void;
   /** Hang up the browser phone's call (the server ends the lead's side). */
   onHangup?: () => void;
   onAutoAnswerChange: (on: boolean) => void;
@@ -147,6 +149,7 @@ export default function PredictiveDialer({
 
   const session = snap?.session || null;
   const open = OPEN(session);
+  useEffect(() => { onSessionActiveChange?.(!!open || busy); }, [open, busy, onSessionActiveChange]);
 
   const load = useCallback(async (withLists = false) => {
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);

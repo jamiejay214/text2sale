@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bot,
   Check,
-  ChevronLeft,
   ChevronRight,
   Clock3,
   Headphones,
@@ -18,12 +17,11 @@ import {
   PhoneIncoming,
   PhoneOff,
   Play,
-  Plus,
   RotateCcw,
   Save,
   Sparkles,
   Users,
-  Volume2,
+  Search,
 } from "lucide-react";
 import BrowserPhone, { type BrowserPhoneHandle, type BrowserPhoneStatus } from "@/components/BrowserPhone";
 import PredictiveDialer from "./PredictiveDialer";
@@ -139,7 +137,7 @@ function AiReceptionist({ profile }: Pick<Props, "profile">) {
   const blockers = readiness.filter((item) => !item.ok);
   return (
     <>
-      <PageHeader eyebrow="AI receptionist" title="Train an assistant that sounds like your business." description="Set its goal, voice, guardrails, booking rules, and handoff behavior. It answers, qualifies, and books around the clock." actions={<label className="v2-master-switch"><span><Bot size={17} /><b>{draft.enabled ? "Assistant live" : "Assistant off"}</b></span><input type="checkbox" checked={draft.enabled} onChange={() => save({ enabled: !draft.enabled })} /><i /></label>} />
+      <PageHeader eyebrow="AI receptionist" title="AI receptionist" description="Set its goal, voice, guardrails, booking rules, and handoff behavior. It answers, qualifies, and books around the clock." actions={<label className="v2-master-switch"><span><Bot size={17} /><b>{draft.enabled ? "Assistant live" : "Assistant off"}</b></span><input type="checkbox" checked={draft.enabled} onChange={() => save({ enabled: !draft.enabled })} /><i /></label>} />
       {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       {readiness.length > 0 && (
         <Panel className="v2-ai-readiness">
@@ -182,6 +180,13 @@ export default function CallingWorkspace(props: Props) {
 function Dialer({ profile, onNavigate }: Props) {
   const phoneRef = useRef<BrowserPhoneHandle>(null);
   const [number, setNumber] = useState("");
+  const [predictiveActive, setPredictiveActive] = useState(false);
+  const [dialerMode, setDialerMode] = useState<"manual" | "power" | "predictive">("manual");
+  const [leadSearch, setLeadSearch] = useState("");
+  const [showKeypad, setShowKeypad] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [phoneStarting, setPhoneStarting] = useState(false);
+  const dialingRef = useRef(false);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [history, setHistory] = useState<CallRow[]>([]);
   const [token, setToken] = useState<string | null>(null);
@@ -197,6 +202,7 @@ function Dialer({ profile, onNavigate }: Props) {
   // An agent calling on a sponsor's account has no numbers of their own; the
   // dialer API reports the numbers their calls go out from.
   const [callerIds, setCallerIds] = useState<string[]>([]);
+  const handlePredictiveActive = useCallback((active: boolean) => { setPredictiveActive(active); if (active) { setDialerMode("predictive"); setQueuePaused(true); } }, []);
   const fromNumber = profile.owned_numbers?.[0]?.number || callerIds[0] || "";
 
   useEffect(() => {
@@ -229,6 +235,7 @@ function Dialer({ profile, onNavigate }: Props) {
 
   const append = useCallback((key: string) => setNumber((current) => key === "+" && current ? current : `${current}${key}`.slice(0, 18)), []);
   const dial = useCallback(async (to: string, contact?: Contact) => {
+    if (predictiveActive || dialingRef.current || ["calling", "ringing", "active"].includes(phoneStatus.callState)) return;
     if (!CALLING_ENABLED) { setNotice("Calling is temporarily paused while the provider connection is being finalized."); return; }
     if (!fromNumber) { setNotice("Add a business number before placing calls."); return; }
     if (!token || !phoneRef.current || !phoneStatus.ready) { setNotice("The browser phone is still connecting. Try again in a moment."); return; }
@@ -237,22 +244,27 @@ function Dialer({ profile, onNavigate }: Props) {
     const destination = `+${digits.startsWith("1") ? digits : `1${digits}`}`;
     const fromDigits = fromNumber.replace(/\D/g, "");
     const from = `+${fromDigits.startsWith("1") ? fromDigits : `1${fromDigits}`}`;
-    setActiveContact(contact || null);
-    // Log the call first: the server checks the number, subscription and
-    // wallet, and the row it creates is what Telnyx's webhooks bill against.
-    const response = await authFetch("/api/calls/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: destination, from, contactId: contact?.id || null }) });
-    const data = await response.json().catch(() => ({}));
-    if (!response.ok || !data.callId) { setNotice(data.error || "Could not start the call. Please retry."); return; }
-    setCallId(data.callId);
+    dialingRef.current = true;
+    setPhoneStarting(true);
     try {
-      phoneRef.current.makeCall(destination, from);
-      setNotice("");
-    } catch (error) {
-      void authFetch("/api/hangup-call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callId: data.callId }) }).catch(() => undefined);
-      setCallId(null);
-      setNotice(error instanceof Error ? error.message : "Could not start the call. Please retry.");
-    }
-  }, [fromNumber, token, phoneStatus.ready]);
+      setActiveContact(contact || null);
+      // Log the call first: the server checks the number, subscription and
+      // wallet, and the row it creates is what Telnyx's webhooks bill against.
+      const response = await authFetch("/api/calls/log", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: destination, from, contactId: contact?.id || null }) });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || !data.callId) { setNotice(data.error || "Could not start the call. Please retry."); return; }
+      setCallId(data.callId);
+      try {
+        phoneRef.current.makeCall(destination, from);
+        setNotice("");
+      } catch (error) {
+        void authFetch("/api/hangup-call", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ callId: data.callId }) }).catch(() => undefined);
+        setCallId(null);
+        setNotice(error instanceof Error ? error.message : "Could not start the call. Please retry.");
+      }
+    } catch { setNotice("Could not connect. Check your connection and try again."); }
+    finally { dialingRef.current = false; setPhoneStarting(false); }
+  }, [fromNumber, token, phoneStatus.ready, phoneStatus.callState, predictiveActive]);
 
   const hangup = useCallback(async () => {
     phoneRef.current?.hangup();
@@ -263,30 +275,30 @@ function Dialer({ profile, onNavigate }: Props) {
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement;
-      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return;
-      if (/^[0-9*#]$/.test(event.key)) append(event.key);
+      if (["INPUT", "TEXTAREA", "SELECT", "BUTTON"].includes(target.tagName) || target.isContentEditable || event.metaKey || event.ctrlKey || event.altKey || dialerMode === "predictive" || phoneStarting || ["calling", "ringing", "active"].includes(phoneStatus.callState)) return;
+      if (/^[0-9*#]$/.test(event.key)) { append(event.key); setActiveContact(null); }
       else if (event.key === "Backspace") setNumber((current) => current.slice(0, -1));
-      else if (event.key === "Enter" && number) void dial(number);
+      else if (event.key === "Enter" && number) { event.preventDefault(); void dial(number, activeContact || undefined); }
       else if (event.key === "Escape") setNumber("");
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [append, dial, number]);
+  }, [append, dial, number, dialerMode, activeContact, phoneStarting, phoneStatus.callState]);
 
   useEffect(() => {
-    if (phoneStatus.callState !== "ended" || !autoAdvance || queuePaused || !queue.length) return;
+    if (dialerMode !== "power" || phoneStatus.callState !== "ended" || !autoAdvance || queuePaused || !queue.length) return;
     const timer = window.setTimeout(() => {
       const next = queueIndex + 1;
       if (next < queue.length) { setQueueIndex(next); setNumber(queue[next].phone); void dial(queue[next].phone, queue[next]); }
       else { setQueuePaused(true); setNotice("Queue complete."); }
     }, 2500);
     return () => window.clearTimeout(timer);
-  }, [autoAdvance, dial, phoneStatus.callState, queue, queueIndex, queuePaused]);
+  }, [autoAdvance, dial, dialerMode, phoneStatus.callState, queue, queueIndex, queuePaused]);
 
   const startQueue = () => {
     const next = contacts.slice(0, 50);
     if (!next.length) { setNotice("Import leads with phone numbers before starting a queue."); return; }
-    setQueue(next); setQueueIndex(0); setQueuePaused(false); setNumber(next[0].phone); void dial(next[0].phone, next[0]);
+    setDialerMode("power"); setQueue(next); setQueueIndex(0); setQueuePaused(false); setNumber(next[0].phone); void dial(next[0].phone, next[0]);
   };
 
   const contactById = useMemo(() => new Map(contacts.map((contact) => [contact.id, contact])), [contacts]);
@@ -294,31 +306,39 @@ function Dialer({ profile, onNavigate }: Props) {
   return (
     <>
       <BrowserPhone ref={phoneRef} token={token} onStateChange={setPhoneStatus} autoAnswer={autoAnswer} />
-      <PageHeader eyebrow="Calling workspace" title="Call one lead—or fifty—without losing your rhythm." description="A cleaner browser dialer, keyboard input, organized call history, and a back-to-back queue with lead context." actions={<><button className="v2-btn" onClick={() => onNavigate("contacts")}><Users size={16} /> Choose leads</button><button className="v2-btn v2-btn-primary" onClick={startQueue}><Play size={16} /> Start power queue</button></>} />
+      <PageHeader eyebrow="SALES WORKSPACE" title="Dialer" description="Less between you and your next conversation." actions={<><button className="v2-btn" onClick={() => setShowSettings(!showSettings)} aria-expanded={showSettings}>Call settings</button><button className="v2-btn" onClick={() => onNavigate("contacts")}><Users size={16} /> Manage leads</button></>} />
       {(notice || phoneStatus.error) && <div role="alert" className="v2-notice is-error">{notice || phoneStatus.error}<button onClick={() => setNotice("")}>×</button></div>}
-      {phoneStatus.incoming && phoneStatus.callState === "ringing" && <div role="alert" className="v2-incoming-call"><span><PhoneIncoming size={18} /></span><div><strong>Incoming call</strong><small>{prettyPhone(phoneStatus.incoming.from) || "Unknown caller"}</small></div><button className="v2-btn" onClick={() => phoneRef.current?.decline()}>Decline</button><button className="v2-btn v2-btn-primary" onClick={() => phoneRef.current?.answer()}><Phone size={15} /> Answer</button></div>}
-      {!CALLING_ENABLED && <div className="v2-provider-banner"><Clock3 size={18} /><div><strong>Calling provider connection is temporarily paused</strong><span>The workspace and queue are ready; placing live calls will unlock once routing is confirmed.</span></div><button onClick={() => onNavigate("settings", "numbers")}>Manage numbers</button></div>}
-      <div className="v2-calling-layout">
-        <Panel className="v2-dialer-card">
-          <div className="v2-panel-head"><div><h2>Browser dialer</h2><p>From {fromNumber || "No number selected"}</p></div><StatusPill tone={phoneStatus.ready ? "success" : "warning"}>{phoneStatus.ready ? "Phone ready" : "Connecting"}</StatusPill></div>
-          <div className="v2-dial-display"><small>{activeContact ? nameOf(activeContact) : "Enter a phone number"}</small><input aria-label="Phone number" value={number} onChange={(event) => setNumber(event.target.value.replace(/[^0-9+*#() -]/g, ""))} placeholder="(000) 000-0000" /><span>{inCall ? phoneStatus.callState : "Use your keyboard or keypad"}</span></div>
-          <div className="v2-keypad">{KEYS.map(([key, letters]) => <button key={key} onClick={() => append(key)}><strong>{key}</strong><small>{letters}</small></button>)}</div>
-          <div className="v2-dial-actions">{inCall ? <><button className={`v2-call-control ${phoneStatus.muted ? "is-on" : ""}`} onClick={() => phoneStatus.muted ? phoneRef.current?.unmute() : phoneRef.current?.mute()}>{phoneStatus.muted ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="v2-hangup" onClick={hangup}><PhoneOff size={21} /></button><button className="v2-call-control"><Volume2 size={18} /></button></> : <><button className="v2-dial-clear" onClick={() => setNumber((current) => current.slice(0, -1))}>Delete</button><button className="v2-call-start" onClick={() => dial(number)} disabled={!number || !phoneStatus.ready}><PhoneCall size={21} /></button><button className="v2-dial-clear" onClick={() => setNumber("")}>Clear</button></>}</div>
-          <p className="v2-keyboard-hint"><kbd>0–9</kbd> type · <kbd>Enter</kbd> call · <kbd>Esc</kbd> clear</p>
+      {phoneStatus.incoming && phoneStatus.callState === "ringing" && <div role="alert" className="v2-incoming-call"><PhoneIncoming size={18} /><div><strong>Incoming call</strong><small>{prettyPhone(phoneStatus.incoming.from) || "Unknown caller"}</small></div><button className="v2-btn" onClick={() => phoneRef.current?.decline()}>Decline</button><button className="v2-btn v2-btn-primary" onClick={() => phoneRef.current?.answer()}>Answer</button></div>}
+      {!CALLING_ENABLED && <div className="v2-provider-banner"><Clock3 size={18} /><div><strong>Calling is temporarily paused</strong><span>Your lead lists and call history are still available.</span></div><button onClick={() => onNavigate("settings", "numbers")}>Manage numbers</button></div>}
+      <div className="emerald-modebar">
+        <div role="group" aria-label="Calling mode">{(["manual", "power", "predictive"] as const).map(mode => <button key={mode} className={dialerMode === mode ? "is-active" : ""} aria-pressed={dialerMode === mode} disabled={inCall || phoneStarting || predictiveActive || (mode === "predictive" && !CALLING_ENABLED)} onClick={() => { setDialerMode(mode); setQueuePaused(true); }}>{mode === "manual" ? "Manual dialer" : mode === "power" ? "Power dialer" : "Predictive dialer"}</button>)}</div>
+        <StatusPill tone={phoneStatus.ready ? "success" : "warning"}>{phoneStatus.ready ? "Phone connected" : CALLING_ENABLED ? "Phone connecting" : "Calling paused"}</StatusPill>
+      </div>
+      {showSettings && <div className="emerald-call-settings">{profile.owned_numbers?.length ? <CallForwarding /> : <Panel><EmptyState title="No owned numbers" description="Manage your business numbers in workspace settings." action={<button className="v2-btn" onClick={() => onNavigate("settings", "numbers")}>Phone numbers</button>} /></Panel>}</div>}
+      {/* Keep the predictive engine mounted when changing the workspace view. */}
+      {CALLING_ENABLED && <div hidden={dialerMode !== "predictive"} className="emerald-predictive">{inCall && <div className="emerald-live-controls"><StatusPill tone="success">{phoneStatus.callState}</StatusPill><button className="v2-btn" onClick={() => phoneStatus.muted ? phoneRef.current?.unmute() : phoneRef.current?.mute()}>{phoneStatus.muted ? <MicOff size={16} /> : <Mic size={16} />}{phoneStatus.muted ? "Unmute" : "Mute"}</button></div>}<PredictiveDialer onSessionActiveChange={handlePredictiveActive} phoneReady={phoneStatus.ready && !!token} onAutoAnswerChange={setAutoAnswer} onCallerIds={setCallerIds} onHangup={() => phoneRef.current?.hangup()} /></div>}
+      <div className="emerald-call-workspace" hidden={dialerMode === "predictive"}>
+        <Panel className="emerald-lead-queue">
+          <div className="v2-panel-head"><div><h2>{dialerMode === "power" ? "Call queue" : "Your leads"}</h2><p>{dialerMode === "power" && queue.length ? `${queue.length} leads in this session` : `${contacts.length} recent eligible leads`}</p></div><Users size={18} /></div>
+          <label className="emerald-lead-search"><Search size={16} /><input aria-label="Search calling leads" placeholder="Search leads…" value={leadSearch} onChange={e => setLeadSearch(e.target.value)} /></label>
+          <div className="emerald-queue-list">{(dialerMode === "power" && queue.length ? queue : contacts).filter(c => `${nameOf(c)} ${c.phone} ${c.city} ${c.state}`.toLowerCase().includes(leadSearch.toLowerCase())).map(contact => <button key={contact.id} disabled={inCall || phoneStarting} aria-pressed={activeContact?.id === contact.id} className={activeContact?.id === contact.id ? "is-active" : ""} onClick={() => { setActiveContact(contact); setNumber(contact.phone); setQueuePaused(true); const index = queue.findIndex(c => c.id === contact.id); if (index >= 0) setQueueIndex(index); }}><span className="v2-avatar">{contact.first_name?.[0]}{contact.last_name?.[0]}</span><span><strong>{nameOf(contact)}</strong><small>{[contact.city, contact.state].filter(Boolean).join(", ") || prettyPhone(contact.phone)}</small></span><ChevronRight size={14} /></button>)}</div>
+          {!contacts.length && <EmptyState title="Your next conversation starts here" description="Import a lead list to get started." action={<button className="v2-btn" onClick={() => onNavigate("upload")}>Import leads</button>} />}
+          <div className="emerald-queue-footer"><button className="v2-btn" onClick={() => onNavigate("contacts")}>View all leads <ChevronRight size={15} /></button></div>
         </Panel>
-
-        <div className="v2-calling-main">
-          {CALLING_ENABLED && <PredictiveDialer phoneReady={phoneStatus.ready && !!token} onAutoAnswerChange={setAutoAnswer} onCallerIds={setCallerIds} onHangup={() => phoneRef.current?.hangup()} />}
-          <Panel className="v2-queue-card">
-            <div className="v2-panel-head"><div><h2>Power queue</h2><p>Dial leads back-to-back</p></div><label className="v2-compact-switch">Auto advance<input type="checkbox" checked={autoAdvance} onChange={(event) => setAutoAdvance(event.target.checked)} /><i /></label></div>
-            {queue.length ? <div className="v2-active-queue"><div className="v2-queue-progress"><span style={{ width: `${((queueIndex + 1) / queue.length) * 100}%` }} /></div><div className="v2-current-lead"><span className="v2-avatar">{queue[queueIndex]?.first_name?.[0]}{queue[queueIndex]?.last_name?.[0]}</span><div><small>Lead {queueIndex + 1} of {queue.length}</small><strong>{nameOf(queue[queueIndex])}</strong><span>{prettyPhone(queue[queueIndex]?.phone || "")} · {[queue[queueIndex]?.city, queue[queueIndex]?.state, queue[queueIndex]?.zip].filter(Boolean).join(", ") || "Location not added"}</span></div><button onClick={() => setQueuePaused((current) => !current)}>{queuePaused ? <Play size={16} /> : <Pause size={16} />}{queuePaused ? "Resume" : "Pause"}</button></div><div className="v2-queue-next"><button disabled={queueIndex === 0} onClick={() => setQueueIndex((current) => current - 1)}><ChevronLeft size={15} /></button><span>Up next: {queue[queueIndex + 1] ? nameOf(queue[queueIndex + 1]) : "Queue complete"}</span><button disabled={queueIndex + 1 >= queue.length} onClick={() => setQueueIndex((current) => current + 1)}><ChevronRight size={15} /></button></div></div> : <EmptyState title="Build a back-to-back call queue" description="Start with your newest 50 eligible leads, or choose a list from Contacts." action={<button className="v2-btn v2-btn-accent" onClick={startQueue}><Plus size={15} /> Load newest leads</button>} />}
-          </Panel>
-          {profile.owned_numbers?.length ? <CallForwarding /> : null}
-          <Panel className="v2-call-history">
-            <div className="v2-panel-head"><div><h2>Recent calls</h2><p>Today and recent activity</p></div><History size={18} /></div>
-            {history.length ? <div>{history.map((call) => { const contact = call.contact_id ? contactById.get(call.contact_id) : undefined; return <article key={call.id}><span className={`v2-history-icon is-${call.direction}`}><Phone size={14} /></span><div><strong>{nameOf(contact)}</strong><small>{prettyPhone(call.direction === "inbound" ? call.from_number || "" : call.to_number)} · {call.outcome || call.status}</small></div><div><strong>{Math.floor(Number(call.duration_seconds || 0) / 60)}:{String(Number(call.duration_seconds || 0) % 60).padStart(2, "0")}</strong><small>{new Date(call.started_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</small></div></article>; })}</div> : <EmptyState title="No calls yet" description="Placed and received calls will appear here." />}
-          </Panel>
-        </div>
+        <Panel className="emerald-active-call">
+          <div className="emerald-caller-id"><Phone size={15} /><span>Calling from <strong>{prettyPhone(fromNumber) || "No number selected"}</strong></span></div>
+          <div className="emerald-contact-focus"><span className="emerald-large-avatar">{activeContact ? `${activeContact.first_name?.[0] || ""}${activeContact.last_name?.[0] || ""}` : <Phone size={30} />}</span><h2>{activeContact ? nameOf(activeContact) : "Make a connection"}</h2><p>{activeContact ? [activeContact.city, activeContact.state, activeContact.zip].filter(Boolean).join(", ") || "Location not added" : "Choose a lead or enter a number below."}</p><StatusPill tone={inCall ? "success" : "neutral"}>{phoneStarting ? "Starting call…" : inCall ? phoneStatus.callState : "Ready for your next call"}</StatusPill></div>
+          <div className="v2-dial-display"><input aria-label="Phone number" inputMode="tel" disabled={inCall || phoneStarting} value={number} onChange={event => { setNumber(event.target.value.replace(/[^0-9+*#() -]/g, "")); setActiveContact(null); }} onKeyDown={event => { if (event.key === "Enter") { event.preventDefault(); void dial(number, activeContact || undefined); } }} placeholder="Enter phone number" /></div>
+          <button className="emerald-keypad-toggle" onClick={() => setShowKeypad(!showKeypad)} aria-expanded={showKeypad}>{showKeypad ? "Hide keypad" : "Show keypad"}</button>
+          {showKeypad && <div className="v2-keypad">{KEYS.map(([key, letters]) => <button key={key} disabled={inCall || phoneStarting} onClick={() => { append(key); setActiveContact(null); }}><strong>{key}</strong><small>{letters}</small></button>)}</div>}
+          <div className="v2-dial-actions">{inCall ? <><button aria-label={phoneStatus.muted ? "Unmute" : "Mute"} className={`v2-call-control ${phoneStatus.muted ? "is-on" : ""}`} onClick={() => phoneStatus.muted ? phoneRef.current?.unmute() : phoneRef.current?.mute()}>{phoneStatus.muted ? <MicOff size={18} /> : <Mic size={18} />}</button><button className="v2-hangup" onClick={hangup} aria-label="End call"><PhoneOff size={21} /></button></> : <button className="v2-btn v2-btn-primary emerald-start-call" onClick={() => dial(number, activeContact || undefined)} disabled={!number || !phoneStatus.ready || phoneStarting}><PhoneCall size={18} /> {phoneStarting ? "Connecting…" : "Call lead"}</button>}</div>
+          <p className="v2-keyboard-hint"><kbd>0–9</kbd> enter number · <kbd>Enter</kbd> call</p>
+          {dialerMode === "power" && <div className="emerald-power-controls"><label className="v2-compact-switch">Auto advance<input type="checkbox" checked={autoAdvance} onChange={e => setAutoAdvance(e.target.checked)} /><i /></label><p>{queue.length ? `Lead ${queueIndex + 1} of ${queue.length} · ${queuePaused ? "Paused" : "Session running"}` : "Start a session with your newest 50 eligible leads."}</p>{queue.length ? <button className="v2-btn" onClick={() => setQueuePaused(!queuePaused)}>{queuePaused ? <Play size={15} /> : <Pause size={15} />}{queuePaused ? "Resume auto advance" : "Pause auto advance"}</button> : <button className="v2-btn" disabled={inCall || phoneStarting || !phoneStatus.ready} onClick={startQueue}><Play size={15} /> Start power session</button>}</div>}
+        </Panel>
+        <aside className="emerald-call-context">
+          <Panel><div className="v2-panel-head"><h2>Lead details</h2><button className="v2-text-button" onClick={() => onNavigate("contacts")}>Manage</button></div><dl className="emerald-detail-list"><div><dt>Email</dt><dd>{activeContact?.email || "—"}</dd></div><div><dt>Location</dt><dd>{activeContact ? [activeContact.city, activeContact.state, activeContact.zip].filter(Boolean).join(", ") || "—" : "—"}</dd></div><div><dt>Campaign</dt><dd>{activeContact?.campaign || "Not assigned"}</dd></div><div><dt>Source</dt><dd>{activeContact?.lead_source || "—"}</dd></div></dl><div className="emerald-contact-notes"><h3>Notes</h3><p>{activeContact?.notes || "Select a lead to review their notes before calling."}</p></div></Panel>
+          <Panel className="v2-call-history"><div className="v2-panel-head"><h2>Recent activity</h2><History size={17} /></div>{history.length ? <div>{history.slice(0, 6).map(call => { const contact = call.contact_id ? contactById.get(call.contact_id) : undefined; return <article key={call.id}><span className={`v2-history-icon is-${call.direction}`}><Phone size={14} /></span><div><strong>{contact ? nameOf(contact) : prettyPhone(call.direction === "inbound" ? call.from_number || "" : call.to_number)}</strong><small>{call.outcome || call.status} · {Math.floor(Number(call.duration_seconds || 0) / 60)}:{String(Number(call.duration_seconds || 0) % 60).padStart(2, "0")}</small></div><small>{new Date(call.started_at).toLocaleDateString([], { month: "short", day: "numeric" })}</small></article>; })}</div> : <EmptyState title="No calls yet" description="Your recent calls will appear here." />}</Panel>
+        </aside>
       </div>
     </>
   );

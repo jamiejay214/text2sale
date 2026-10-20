@@ -255,7 +255,7 @@ export default function UploadWorkspace({ profile, onProfile, onNavigate }: Prop
 
   return (
     <>
-      <PageHeader eyebrow="Lead import" title="Turn any CSV into campaign-ready leads." description="Upload, map fields, clean duplicates, choose a campaign, and keep every prior list available for a future follow-up." />
+      <PageHeader eyebrow="Lead import" title="Import leads" description="Upload, map fields, clean duplicates, choose a campaign, and keep every prior list available for a future follow-up." />
       {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       <div className="v2-import-layout">
         <Panel className="v2-import-wizard">

@@ -332,7 +332,7 @@ export default function WorkspaceApp() {
 
   const displayName = [profile.first_name, profile.last_name].filter(Boolean).join(" ") || "My";
   return (
-    <main className={`crm-theme workspace-v2 workspace-app t2s-${theme}`}>
+    <main className={`crm-theme workspace-v2 workspace-app emerald-workspace t2s-${theme}`}>
       <WorkspaceNavigation
         activeTab={activeTab}
         settingsTab={settingsTab}
