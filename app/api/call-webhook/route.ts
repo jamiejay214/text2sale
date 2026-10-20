@@ -7,7 +7,7 @@ import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
 import { findCallOwner, hangupLeg, releaseOverflow, routeInboundCall, routeOverflow, type OverflowState } from "@/lib/call-routing";
 import { hasAiAccess } from "@/lib/messaging-status";
 import { canUseCalling } from "@/lib/owner";
-import { handleDialerEvent, type DialerLegState } from "@/lib/dialer";
+import { dialNext, handleDialerEvent, type DialerLegState } from "@/lib/dialer";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -388,7 +388,11 @@ async function handleEvent(payload: any, origin: string) {
     // end the caller's leg too so they aren't left in silence; that leg's
     // own hangup closes and bills the row.
     if (type === "call.hangup" && state?.leg === "target") {
-      if (state.overflow) await releaseOverflow(supabase, state.overflow);
+      // The agent's dialer goes back to how it was; if it was waiting for a
+      // lead, start dialing again (nothing else would).
+      if (state.overflow && (await releaseOverflow(supabase, state.overflow)) === "ready" && state.overflow.agentSession) {
+        await dialNext(supabase, state.overflow.agentSession);
+      }
       if (state.callRowId) {
         const { data: callRow } = await supabase
           .from("calls")

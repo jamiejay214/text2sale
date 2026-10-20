@@ -23,6 +23,7 @@ import { isEntitled } from "./messaging-status";
 import { callingAccess } from "./calling-access";
 import { ensureCallControlApp } from "./telnyx-voice";
 import { summarizeCallQuality } from "./call-quality";
+import { holdSession, releaseHold } from "./call-routing";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -32,9 +33,14 @@ export type DialerLegState = {
   dialer: string;
   item: string;
   callRowId: string;
-  // agent: the browser phone's leg; cell: the agent's cell after a transfer.
-  leg: "lead" | "agent" | "cell";
+  // agent: the browser phone's leg; cell: the agent's cell after a transfer;
+  // team: a teammate's phone taking the lead (spillToTeammate, sendToTeammate).
+  leg: "lead" | "agent" | "cell" | "team";
   stage?: "abandon" | "bye";
+  /** team leg: the teammate's dialer session held for this call. */
+  team?: string | null;
+  /** team leg: the sender's session, to bring an unanswered hand-off back to. */
+  back?: string | null;
 };
 
 export type DialerStats = {
@@ -367,6 +373,146 @@ async function abandonLead(db: Db, ccid: string, state: DialerLegState, session:
   if (!spoken.ok) await hangup(ccid);
 }
 
+// ── Passing calls between the owner and their agents ─────────────────────
+// The owner and the agents they sponsor (calling_sponsors) share calls:
+//   spillToTeammate: a lead answers while its agent is busy → put through to
+//     a teammate waiting on their own dialer instead of being abandoned
+//     (only with the owner's "share calls" switch on, take_overflow)
+//   sendToTeammate: the agent passes a live lead to a teammate by hand →
+//     their browser if they're on the dialer, else their saved cell; if
+//     nobody picks up the call comes back to the sender.
+// A teammate's dialer is held while the call is theirs (holdSession) and
+// handed back after (releaseHold). The call stays the sender's queue item
+// and bills to the same wallet.
+
+/** Header values the browser phone reads (components/BrowserPhone.tsx). */
+const RING_HEADER = [{ name: "X-Text2Sale-Route", value: "overflow" }];
+const AUTO_ANSWER_HEADER = [{ name: "X-Text2Sale-Route", value: "autoanswer" }];
+
+/** The people a user shares dialer calls with. */
+export async function teammates(db: Db, userId: string, requireSharing = true): Promise<string[]> {
+  const { data: link } = await db.from("calling_sponsors").select("sponsor_id, take_overflow").eq("agent_id", userId).maybeSingle();
+  const sponsor = link?.sponsor_id || userId;
+  if (link && requireSharing && !link.take_overflow) return [];
+  const { data: agents } = await db.from("calling_sponsors").select("agent_id, take_overflow").eq("sponsor_id", sponsor);
+  const others = ((agents || []) as Array<{ agent_id: string; take_overflow: boolean }>)
+    .filter((a) => a.agent_id !== userId && (!requireSharing || a.take_overflow))
+    .map((a) => a.agent_id);
+  return link ? [sponsor, ...others] : others;
+}
+
+async function transferLead(ccid: string, body: Record<string, unknown>, leadPhone: string | null) {
+  let moved = await telnyx(`/calls/${ccid}/actions/transfer`, "POST", leadPhone ? { ...body, from: leadPhone } : body);
+  if (!moved.ok && leadPhone) moved = await telnyx(`/calls/${ccid}/actions/transfer`, "POST", body);
+  return moved;
+}
+
+/** Put a lead that answered while its agent is busy through to a free teammate. */
+async function spillToTeammate(db: Db, ccid: string, state: DialerLegState, session: any, item: any): Promise<boolean> {
+  if (!session?.user_id) return false;
+  const leadPhone = item?.phone ? toE164(item.phone) : null;
+  for (const mate of await teammates(db, session.user_id)) {
+    const held = await holdSession(db, mate, {
+      from: leadPhone || String(item?.phone || ""),
+      label: `Lead from ${session.agent_name || "your teammate"}'s dialer`,
+      states: ["ready"],
+    });
+    if (!held) continue;
+    if (!held.sip_username) { await releaseHold(db, held.id); continue; }
+    await db.from("dialer_queue").update({ transferred_to: "team", team_answered_at: null }).eq("id", state.item);
+    const moved = await transferLead(ccid, {
+      to: `sip:${held.sip_username}@sip.telnyx.com`,
+      timeout_secs: AGENT_PICKUP_SECONDS,
+      custom_headers: AUTO_ANSWER_HEADER,
+      client_state: encodeDialerState({ ...state, leg: "lead" }),
+      target_leg_client_state: encodeDialerState({ ...state, leg: "team", team: held.id }),
+    }, leadPhone);
+    if (moved.ok) return true;
+    console.error(`[dialer] spill to teammate failed ${moved.status}: ${JSON.stringify(moved.json).slice(0, 300)}`);
+    await db.from("dialer_queue").update({ transferred_to: null }).eq("id", state.item);
+    await releaseHold(db, held.id);
+  }
+  return false;
+}
+
+/**
+ * Pass the agent's live lead to a teammate: their browser phone if they're
+ * free on the dialer, otherwise their saved cell. Returns an error message,
+ * or null once the teammate's phone is ringing.
+ */
+export async function sendToTeammate(db: Db, session: any, mateId: string): Promise<string | null> {
+  if (!session.active_item) return "There's no call to transfer.";
+  const { data: item } = await db.from("dialer_queue").select("*").eq("id", session.active_item).maybeSingle();
+  if (!item || item.status === "done" || item.result !== "connected" || !item.call_control_id) {
+    return "The call already ended.";
+  }
+  if (!(await teammates(db, session.user_id, false)).includes(mateId)) return "You can't send calls to that person.";
+  const { data: mate } = await db.from("profiles").select("first_name, ai_call_transfer_number").eq("id", mateId).maybeSingle();
+  const name = mate?.first_name || "Your teammate";
+  const leadPhone = toE164(item.phone);
+
+  const held = await holdSession(db, mateId, {
+    from: leadPhone || String(item.phone || ""),
+    label: `Transfer from ${session.agent_name || "your teammate"}`,
+    states: ["ready", "wrap"],
+  });
+  let to = held?.sip_username ? `sip:${held.sip_username}@sip.telnyx.com` : "";
+  if (held && !to) await releaseHold(db, held.id);
+  const cell = to ? null : toE164(mate?.ai_call_transfer_number);
+  if (!to && cell) to = cell;
+  if (!to) return `${name} isn't on the dialer and has no cell number saved.`;
+
+  const state: DialerLegState = { v: 1, dialer: session.id, item: item.id, callRowId: item.call_row_id, leg: "lead" };
+  await db.from("dialer_queue").update({ transferred_to: to, team_answered_at: null }).eq("id", item.id);
+  const transfer = {
+    to,
+    timeout_secs: 20,
+    ...(cell ? {} : { custom_headers: RING_HEADER }),
+    client_state: encodeDialerState(state),
+    target_leg_client_state: encodeDialerState({ ...state, leg: "team", team: cell ? null : held?.id, back: session.id }),
+  };
+  // A browser shows the lead's number; a cell gets the business number the
+  // lead was called from, which Telnyx always accepts (as transferToCell).
+  const moved = cell
+    ? await telnyx(`/calls/${item.call_control_id}/actions/transfer`, "POST", { ...transfer, from: toE164(item.from_number) || undefined })
+    : await transferLead(item.call_control_id, transfer, leadPhone);
+  if (!moved.ok) {
+    await db.from("dialer_queue").update({ transferred_to: null }).eq("id", item.id);
+    if (held && !cell) await releaseHold(db, held.id);
+    console.error(`[dialer] send to teammate failed ${moved.status}: ${JSON.stringify(moved.json).slice(0, 300)}`);
+    return `Couldn't reach ${name}. The call is still on your phone.`;
+  }
+  if (cell && item.call_row_id) {
+    await db.from("calls").update({ cost_per_min: CALL_RATE_OUTBOUND_PER_MIN * 2, outcome: "transferred" }).eq("id", item.call_row_id);
+  }
+  await db.from("dialer_sessions").update({ agent_state: "wrap" }).eq("id", session.id).eq("active_item", item.id);
+  return null;
+}
+
+/** Ring the sender again when nobody took a lead they passed on. */
+async function returnToSender(db: Db, state: DialerLegState, item: any): Promise<boolean> {
+  const { data: sender } = await db.from("dialer_sessions").select("user_id").eq("id", state.back).maybeSingle();
+  if (!sender) return false;
+  const held = await holdSession(db, sender.user_id, {
+    from: toE164(item.phone) || String(item.phone || ""),
+    label: "Your transfer wasn't picked up",
+    states: ["ready", "wrap"],
+  });
+  if (!held) return false;
+  if (!held.sip_username) { await releaseHold(db, held.id); return false; }
+  await db.from("dialer_queue").update({ transferred_to: "team", team_answered_at: null }).eq("id", item.id);
+  const moved = await transferLead(item.call_control_id, {
+    to: `sip:${held.sip_username}@sip.telnyx.com`,
+    timeout_secs: 20,
+    custom_headers: RING_HEADER,
+    client_state: encodeDialerState({ ...state, leg: "lead", team: null, back: null }),
+    target_leg_client_state: encodeDialerState({ ...state, leg: "team", team: held.id, back: null }),
+  }, toE164(item.phone));
+  if (moved.ok) return true;
+  await releaseHold(db, held.id);
+  return false;
+}
+
 /** A lead picked up and AMD heard a person: connect them, or abandon if the agent is busy. */
 async function connectLead(db: Db, ccid: string, state: DialerLegState) {
   const humanAt = new Date().toISOString();
@@ -392,6 +538,7 @@ async function connectLead(db: Db, ccid: string, state: DialerLegState) {
     console.error(`[dialer] transfer to agent failed ${moved.status}: ${JSON.stringify(moved.json).slice(0, 300)}`);
     await agentUnreachable(db, state.dialer);
   }
+  if (claimed !== true && (await spillToTeammate(db, ccid, state, session, item))) return;
   await abandonLead(db, ccid, state, session, { ...(item || {}), human_at: humanAt });
 }
 
@@ -410,6 +557,42 @@ export async function handleDialerEvent(db: Db, type: string, p: any, state: Dia
     if (type !== "call.hangup") return true;
     const { data: item } = await db.from("dialer_queue").select("status, call_control_id").eq("id", state.item).maybeSingle();
     if (item?.call_control_id && item.status !== "done") await hangup(item.call_control_id);
+    return true;
+  }
+
+  // ── A teammate's phone taking a lead ──
+  if (state.leg === "team") {
+    if (type === "call.answered" || type === "call.bridged") {
+      await db.from("dialer_queue").update({ team_answered_at: new Date().toISOString() }).eq("id", state.item);
+      return true;
+    }
+    if (type !== "call.hangup") return true;
+    // The teammate's dialer goes back to how it was, dialing again if it
+    // was waiting for a lead.
+    if ((await releaseHold(db, state.team)) === "ready" && state.team) await dialNext(db, state.team);
+    const { data: item } = await db.from("dialer_queue").select("*").eq("id", state.item).maybeSingle();
+    if (!item?.call_control_id || item.status === "done") return true;
+    // Answered: that conversation is over, so is the lead's leg.
+    if (item.team_answered_at) {
+      await hangup(item.call_control_id);
+      return true;
+    }
+    // Nobody picked up a hand-off: back to the sender if they're free.
+    if (state.back && (await returnToSender(db, state, item))) return true;
+    if (item.result === "connected") {
+      // The lead had been talking to us: say so rather than drop them.
+      const said = await telnyx(`/calls/${item.call_control_id}/actions/speak`, "POST", {
+        payload: "Sorry, no one is available to take your call right now. We'll call you right back. Goodbye.",
+        voice: ABANDON_VOICE,
+        language: "en-US",
+        client_state: encodeDialerState({ ...state, leg: "lead", stage: "bye" }),
+      });
+      if (!said.ok) await hangup(item.call_control_id);
+      return true;
+    }
+    // A spilled lead nobody took is an abandoned call, as it would have been.
+    const { data: session } = await db.from("dialer_sessions").select("*").eq("id", state.dialer).maybeSingle();
+    await abandonLead(db, item.call_control_id, { ...state, leg: "lead", team: null, back: null }, session, item);
     return true;
   }
 

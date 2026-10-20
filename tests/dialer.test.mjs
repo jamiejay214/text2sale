@@ -56,13 +56,14 @@ test('abandoned-call message names the caller and business, a callback number, a
 });
 
 // ── Call flow ──
-function setup({ claim = true, item = {}, session = {} } = {}) {
+function setup({ claim = true, item = {}, session = {}, extra = {}, lists = {}, routing = {} } = {}) {
   const writes = [];
   const telnyx = [];
   const rows = {
     dialer_sessions: { id: 's1', user_id: 'u1', status: 'active', agent_state: 'ready', sip_username: 'gencred123', agent_name: 'Sarah', business_name: 'Johnson Health Quotes', ...session },
     dialer_queue: { id: 'i1', status: 'dialing', result: null, phone: '+13055550199', from_number: '+19546761423', contact_id: 'c1', user_id: 'u1', call_control_id: 'lead-cc', ...item },
     calls: { id: 'row1', user_id: 'u1', answered_at: new Date().toISOString(), cost_per_min: 0.025, cost_charged: null },
+    ...extra,
   };
   const db = {
     rpc: async (name) => ({ data: name === 'dialer_claim_agent' ? claim : name === 'dialer_stats' ? {} : [], error: null }),
@@ -74,7 +75,7 @@ function setup({ claim = true, item = {}, session = {} } = {}) {
         insert: (payload) => { q.op = 'insert'; q.payload = payload; writes.push(q); return b; },
         maybeSingle: async () => ({ data: rows[table] || null, error: null }),
         single: async () => ({ data: rows[table] || null, error: null }),
-        then: (resolve) => resolve({ data: null, error: null }),
+        then: (resolve) => resolve({ data: lists[table] || null, error: null }),
       };
       return b;
     },
@@ -91,13 +92,14 @@ function setup({ claim = true, item = {}, session = {} } = {}) {
     if (name.includes('messaging-status')) return { isEntitled: () => true };
     if (name.includes('owner')) return { canUseCalling: () => true };
     if (name.includes('calling-access')) return { callingAccess: async (_db, user) => ({ userId: user.id, payer: { id: 'u1', wallet_balance: 100, paused: false }, sponsored: false }) };
+    if (name.includes('call-routing')) return routing;
     if (name.includes('telnyx-voice')) return { ensureCallControlApp: async () => ({ ok: true, id: 'app1' }) };
     return {};
   };
   const dialer = run('lib/dialer.ts', require, { fetch, Buffer, AbortSignal, Promise, Array, console: { error() {}, log() {} }, process: { env: { TELNYX_API_KEY: 'k' } } });
   const state = { v: 1, dialer: 's1', item: 'i1', callRowId: 'row1', leg: 'lead' };
   const handle = (type, payload, legState = state) => dialer.handleDialerEvent(db, type, { call_control_id: 'lead-cc', ...payload }, legState);
-  return { dialer, writes, telnyx, state, handle };
+  return { dialer, writes, telnyx, state, handle, dbRef: db };
 }
 const updatesTo = (writes, table) => writes.filter((w) => w.table === table && w.op === 'update').map((w) => plain(w.payload));
 
@@ -182,4 +184,80 @@ test('after a transfer to the cell, the browser dropping off keeps the call; the
   const cell = setup({ item: { result: 'connected', status: 'dialing', transferred_to: '+19548057882' } });
   assert.equal(await cell.handle('call.hangup', { call_control_id: 'cell-cc' }, { ...cell.state, leg: 'cell' }), true);
   assert.deepEqual(cell.telnyx.map((t) => t.path), ['/calls/lead-cc/actions/hangup']);
+});
+
+// ── Sharing calls between the owner and their agents ──
+const held = [];
+const released = [];
+const routing = (sip = 'mariaSIP') => ({
+  holdSession: async (_db, userId, hold) => (held.push([userId, plain(hold)]), { id: `held-${userId}`, sip_username: sip }),
+  releaseHold: async (_db, id) => (released.push(id), 'ready'),
+});
+
+test('a lead answers while the agent is busy and sharing is on: put through to a free teammate instead of abandoned', async () => {
+  held.length = 0;
+  const ctx = setup({
+    claim: false,
+    session: { user_id: 'maria' },
+    extra: { calling_sponsors: { sponsor_id: 'jamie', take_overflow: true } },
+    lists: { calling_sponsors: [{ agent_id: 'maria', take_overflow: true }] },
+    routing: routing('jamieSIP'),
+  });
+  await ctx.handle('call.machine.detection.ended', { result: 'human' });
+  assert.deepEqual(held[0][0], 'jamie');
+  assert.deepEqual(held[0][1].states, ['ready'], 'only a teammate waiting for a lead, never mid-call');
+  const transfer = ctx.telnyx.find((t) => t.path === '/calls/lead-cc/actions/transfer');
+  assert.equal(transfer.body.to, 'sip:jamieSIP@sip.telnyx.com');
+  assert.deepEqual(transfer.body.custom_headers, [{ name: 'X-Text2Sale-Route', value: 'autoanswer' }]);
+  assert.equal(decode(transfer.body.target_leg_client_state).leg, 'team');
+  assert.ok(!updatesTo(ctx.writes, 'dialer_queue').some((u) => u.result === 'abandoned'));
+  assert.ok(updatesTo(ctx.writes, 'dialer_queue').some((u) => u.transferred_to === 'team'), 'protected from the sender hanging up their leads');
+});
+
+test('sharing off: a busy agent\'s extra answer is abandoned as before', async () => {
+  held.length = 0;
+  const ctx = setup({
+    claim: false,
+    session: { user_id: 'maria' },
+    extra: { calling_sponsors: { sponsor_id: 'jamie', take_overflow: false } },
+    routing: routing(),
+  });
+  await ctx.handle('call.machine.detection.ended', { result: 'human' });
+  assert.equal(held.length, 0);
+  assert.ok(updatesTo(ctx.writes, 'dialer_queue').some((u) => u.result === 'abandoned'));
+});
+
+test('send to teammate: rings their browser for them to accept; the sender moves on to wrap-up', async () => {
+  held.length = 0;
+  const ctx = setup({
+    item: { result: 'connected', status: 'dialing', call_row_id: 'row1' },
+    session: { user_id: 'jamie', active_item: 'i1' },
+    extra: { profiles: { first_name: 'Maria', ai_call_transfer_number: null } },
+    lists: { calling_sponsors: [{ agent_id: 'maria', take_overflow: false }] },
+    routing: routing('mariaSIP'),
+  });
+  const session = { id: 's1', user_id: 'jamie', active_item: 'i1', agent_name: 'Jamie' };
+  assert.equal(await ctx.dialer.sendToTeammate(ctx.dbRef, session, 'maria'), null);
+  const transfer = ctx.telnyx.find((t) => t.path === '/calls/lead-cc/actions/transfer');
+  assert.equal(transfer.body.to, 'sip:mariaSIP@sip.telnyx.com');
+  assert.deepEqual(transfer.body.custom_headers, [{ name: 'X-Text2Sale-Route', value: 'overflow' }]);
+  assert.equal(decode(transfer.body.target_leg_client_state).back, 's1');
+  assert.ok(updatesTo(ctx.writes, 'dialer_sessions').some((u) => u.agent_state === 'wrap'));
+  assert.equal(await ctx.dialer.sendToTeammate(ctx.dbRef, session, 'stranger'), "You can't send calls to that person.");
+});
+
+test('teammate leg: answered then hung up ends the call; never answered comes back to the sender', async () => {
+  released.length = 0;
+  const done = setup({ item: { result: 'connected', status: 'dialing', team_answered_at: new Date().toISOString() }, routing: routing() });
+  await done.handle('call.hangup', { call_control_id: 'team-cc' }, { ...done.state, leg: 'team', team: 'held-maria', back: 's1' });
+  assert.deepEqual(released, ['held-maria']);
+  assert.ok(done.telnyx.some((t) => t.path === '/calls/lead-cc/actions/hangup'));
+
+  held.length = 0;
+  const missed = setup({ item: { result: 'connected', status: 'dialing', team_answered_at: null }, routing: routing('jamieSIP') });
+  await missed.handle('call.hangup', { call_control_id: 'team-cc' }, { ...missed.state, leg: 'team', team: 'held-maria', back: 's1' });
+  assert.equal(held[0][0], 'u1', 'the sender (session s1\'s user) is rung again');
+  const back = missed.telnyx.find((t) => t.path === '/calls/lead-cc/actions/transfer');
+  assert.equal(back.body.to, 'sip:jamieSIP@sip.telnyx.com');
+  assert.ok(!missed.telnyx.some((t) => t.path.endsWith('/hangup') && t.path.includes('lead-cc')));
 });

@@ -17,8 +17,9 @@ type Session = {
   max_lines: number;
   lines: number;
   pause_reason: string | null;
-  /** Set while a customer calling the owner's numbers rings this agent. */
+  /** Set while a call put through from outside this dialer is this agent's. */
   inbound_from?: string | null;
+  inbound_label?: string | null;
   business_name: string;
   agent_name: string;
   audience: string | null;
@@ -69,6 +70,8 @@ type Snapshot = {
   transferNumber?: string | null;
   /** Owner only: agents who take inbound calls while the owner dials. */
   overflowAgents?: Array<{ id: string; name: string; on: boolean }>;
+  /** People a live call can be passed to. */
+  teammates?: Array<{ id: string; name: string }>;
   error?: string;
 };
 
@@ -149,7 +152,7 @@ export default function PredictiveDialer({
     const response = await authFetch(`/api/dialer${withLists ? "?lists=1" : ""}`);
     const data = (await response.json().catch(() => ({}))) as Snapshot;
     if (!response.ok) { setNotice(data.error || "Could not load the dialer."); return; }
-    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents }));
+    setSnap((current) => ({ ...data, total: data.total ?? current?.total, lists: data.lists ?? current?.lists, uploads: data.uploads ?? current?.uploads, callerIds: data.callerIds ?? current?.callerIds, transferNumber: data.transferNumber ?? current?.transferNumber, overflowAgents: data.overflowAgents ?? current?.overflowAgents, teammates: data.teammates ?? current?.teammates }));
     if (data.callerIds) onCallerIds?.(data.callerIds);
   }, [onCallerIds]);
 
@@ -182,7 +185,7 @@ export default function PredictiveDialer({
       const response = await authFetch("/api/dialer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await response.json().catch(() => ({}))) as Snapshot;
       if (!response.ok) { setNotice(data.error || "Something went wrong. Please retry."); return false; }
-      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents }));
+      setSnap((current) => ({ ...data, total: current?.total, lists: current?.lists, uploads: current?.uploads, callerIds: current?.callerIds, transferNumber: current?.transferNumber, overflowAgents: current?.overflowAgents, teammates: current?.teammates }));
       return true;
     } finally {
       setBusy(false);
@@ -240,7 +243,7 @@ export default function PredictiveDialer({
       {snap.overflowAgents.map((agent) => (
         <label key={agent.id} className="v2-pd-force">
           <input type="checkbox" checked={agent.on} onChange={(event) => void setOverflow(agent.id, event.target.checked)} />
-          <span><b>Send my incoming calls to {agent.name} while I&apos;m dialing</b><small>While your dialer is running, customers calling your numbers ring {agent.name}&apos;s browser phone (unless {agent.name} is on a call). If {agent.name} doesn&apos;t answer in 20 seconds, your AI receptionist picks up. Billed to your wallet at the inbound rate.</small></span>
+          <span><b>Share calls with {agent.name}</b><small>While you&apos;re dialing, customers calling your numbers ring {agent.name}&apos;s browser phone (unless {agent.name} is on a call; after 20 seconds your AI receptionist picks up). And when a lead answers while one of you is busy, it goes to the other if they&apos;re waiting on the dialer instead of being dropped. Billed to your wallet.</small></span>
         </label>
       ))}
     </div>
@@ -284,7 +287,7 @@ export default function PredictiveDialer({
 
       {session!.inbound_from && (
         <div className="v2-pd-lead">
-          <div><small>Customer calling your business line</small><strong>{prettyPhone(session!.inbound_from)}</strong><span>Answer it on the phone above. Dialing resumes where you left off when the call ends.</span></div>
+          <div><small>{session!.inbound_label || "Customer calling your business line"}</small><strong>{prettyPhone(session!.inbound_from)}</strong><span>Answer it on the phone above if it&apos;s ringing. Dialing resumes where you left off when the call ends.</span></div>
         </div>
       )}
 
@@ -302,6 +305,7 @@ export default function PredictiveDialer({
           <textarea rows={2} value={notes} maxLength={2000} onChange={(event) => setNotes(event.target.value)} placeholder="Notes for this call" />
           <div className="v2-pd-actions">
             {session!.agent_state === "on_call" && <span className="v2-pd-transfer"><input aria-label="Your cell number" inputMode="tel" placeholder="Your cell" value={cell} onChange={(event) => setCell(event.target.value.replace(/[^0-9+() -]/g, ""))} /><button className="v2-btn" disabled={busy} onClick={transferToCell}><PhoneForwarded size={15} /> Transfer to my cell</button></span>}
+            {session!.agent_state === "on_call" && snap.teammates?.map((mate) => <button key={mate.id} className="v2-btn" disabled={busy} onClick={() => act({ action: "send", to: mate.id })}><PhoneForwarded size={15} /> Send to {mate.name}</button>)}
             {session!.agent_state === "on_call" && <button className="v2-btn" disabled={busy} onClick={hangUp}><PhoneOff size={15} /> Hang up</button>}
             <button className="v2-btn v2-btn-primary" disabled={busy} onClick={next}><PhoneCall size={15} /> {session!.agent_state === "on_call" ? "Hang up & dial next" : "Save & dial next"}</button>
             <button className="v2-btn" disabled={busy} onClick={() => act({ action: "stop" })}><Square size={14} /> Stop</button>
