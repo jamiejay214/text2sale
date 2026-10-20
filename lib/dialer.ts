@@ -7,7 +7,8 @@
 //     transfer the lead into the browser phone, which picks up on its own
 //   ...but the agent is already taken → abandoned: the lead hears who called,
 //     a callback number and "press 9" to opt out (FTC/FCC abandoned-call rules)
-//   AMD says machine → hang up, no charge (outcome voicemail)
+//   AMD says machine → hang up at once (outcome voicemail); the connected
+//     seconds bill as one started minute, like any answered call
 //   every lead leg that ends → dial the next lead if the agent is still ready
 //
 // Lines are paced from the live-answer rate (lib/dialer-pacing.ts) so the

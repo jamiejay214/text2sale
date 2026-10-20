@@ -596,9 +596,11 @@ async function handleEvent(payload: any, origin: string) {
       } else if (!state?.aiSessionId) {
         // Per started minute at the row's rate (outbound, inbound, or
         // forwarded), reconciled against what the meter already took.
-        // Calls answered by voicemail aren't billed.
+        // A call answered by voicemail connected, and the carrier bills it,
+        // so it's charged like any other: the dialer hangs up on machines
+        // within seconds, which makes it one started minute.
         const rate = Number(closed.cost_per_min) || (direction === "outbound" ? CALL_RATE_OUTBOUND_PER_MIN : CALL_RATE_INBOUND_PER_MIN);
-        const finalCharge = closed.outcome === "voicemail" ? 0 : +(minutesBilled(durationSec) * rate).toFixed(4);
+        const finalCharge = +(minutesBilled(durationSec) * rate).toFixed(4);
         await settleCallCharge(supabase, { id: rowId, user_id: existing.user_id }, finalCharge, Number(closed.cost_charged) || 0);
       }
 
