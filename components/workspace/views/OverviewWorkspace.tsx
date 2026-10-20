@@ -138,25 +138,10 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
         }
       />
 
-      <section className="t2s-sales-launchpad" aria-label="Start your sales day">
-        <div className="t2s-sales-launchpad-copy">
-          <span className="t2s-sales-kicker"><Phone size={14} /> SALES WORKSPACE</span>
-          <h2>Everything you need to close the next deal.</h2>
-          <p>Call your leads, manage follow-ups, and keep every appointment in one place.</p>
-          <div className="t2s-sales-launchpad-actions">
-            {canUseCalling(profile.email) ? (
-              <button className="t2s-sales-start" onClick={() => onNavigate("calls")}><Phone size={17} /> Open dialer <ArrowRight size={16} /></button>
-            ) : (
-              <button className="t2s-sales-start" onClick={() => onNavigate("contacts")}><Users size={17} /> Open leads <ArrowRight size={16} /></button>
-            )}
-            <button className="t2s-sales-secondary" onClick={() => onNavigate("appointments")}><CalendarDays size={17} /> Appointments</button>
-          </div>
-        </div>
-        <div className="t2s-sales-quicklinks" aria-label="Quick actions">
-          <button onClick={() => onNavigate("contacts")}><Users size={18} /><span><strong>My leads</strong><small>Find the next person to contact</small></span><ArrowRight size={16}/></button>
-          <button onClick={() => onNavigate("conversations")}><MessageSquare size={18}/><span><strong>Follow-ups</strong><small>Pick up recent conversations</small></span><ArrowRight size={16}/></button>
-          <button onClick={() => onNavigate("pipeline")}><CheckCircle2 size={18}/><span><strong>Sales pipeline</strong><small>Move opportunities forward</small></span><ArrowRight size={16}/></button>
-        </div>
+      <section className="emerald-overview-actions" aria-label="Quick actions">
+        <button onClick={() => onNavigate("contacts")}><Users size={21} /><span><strong>Your leads</strong><small>Find your next opportunity</small></span><ArrowRight size={16} /></button>
+        <button onClick={() => onNavigate("conversations")}><MessageSquare size={21} /><span><strong>Follow up</strong><small>Keep the conversation going</small></span><ArrowRight size={16} /></button>
+        <button onClick={() => onNavigate("campaigns")}><Sparkles size={21} /><span><strong>Automate outreach</strong><small>Build a campaign that works for you</small></span><ArrowRight size={16} /></button>
       </section>
 
       {error ? <div className="v2-inline-error">{error} <button onClick={load}>Retry</button></div> : null}

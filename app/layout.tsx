@@ -3,6 +3,7 @@ import Script from "next/script";
 import Tracker from "@/components/Tracker";
 import "./globals.css";
 import "./workspace-theme.css";
+import "./emerald-public.css";
 
 const META_PIXEL_ID = "959512910266492";
 

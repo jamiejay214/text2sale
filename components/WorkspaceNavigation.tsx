@@ -130,7 +130,7 @@ export default function WorkspaceNavigation(props: Props) {
             {props.name.charAt(0).toUpperCase()}
           </span>
           <div>
-            <strong>{props.name}&apos;s workspace</strong>
+            <strong>{props.name.split(" ")[0]}&apos;s workspace</strong>
             <small>Sales Command Center</small>
           </div>
         </div>

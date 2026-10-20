@@ -182,7 +182,7 @@ export default function LearnWorkspace({ profile, onNavigate }: WorkspaceViewPro
   const selected = GUIDES.find((guide) => guide.id === active) || GUIDES[0];
   return (
     <>
-      <PageHeader eyebrow="Text2Sale academy" title="Know exactly what to do next." description="A complete, plain-English guide to setup, texting, calling, AI, campaigns, imports, compliance, billing, and integrations." actions={<div className="v2-header-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tutorials…" /></div>} />
+      <PageHeader eyebrow="Text2Sale academy" title="Tutorials" description="A complete, plain-English guide to setup, texting, calling, AI, campaigns, imports, compliance, billing, and integrations." actions={<div className="v2-header-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tutorials…" /></div>} />
       <div className="v2-quickstart"><span><BookOpen size={20} /></span><div><p>Recommended starting path</p><h2>Go from new account to first live campaign</h2></div>{["Subscribe", "Register", "Connect number", "Import", "Launch"].map((label, index) => <div key={label}><span>{index + 1}</span><small>{label}</small></div>)}</div>
       <div className="v2-learn-layout">
         <Panel className="v2-guide-nav"><div className="v2-panel-head"><div><h2>Guides</h2><p>{filtered.length} topics</p></div></div><div>{filtered.map((guide) => <button className={guide.id === selected.id ? "is-active" : ""} key={guide.id} onClick={() => setActive(guide.id)}><span><guide.icon size={16} /></span><div><strong>{guide.title}</strong><small>{guide.description}</small></div><ChevronRight size={15} /></button>)}</div></Panel>

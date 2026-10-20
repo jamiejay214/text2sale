@@ -73,7 +73,7 @@ function Pipeline({ profile, onNavigate }: Props) {
   const visible = contacts.filter((contact) => fullName(contact).toLowerCase().includes(search.toLowerCase()) || contact.phone.includes(search));
   return (
     <>
-      <PageHeader eyebrow="Sales pipeline" title="See every deal—and what should happen next." description="Drag leads through the pipeline while texts, calls, campaigns, and AI stay connected to the same record." actions={<><div className="v2-header-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a lead…" /></div><button className="v2-btn v2-btn-primary" onClick={() => onNavigate("contacts")}><Plus size={15} /> Add lead</button></>} />
+      <PageHeader eyebrow="Sales pipeline" title="Sales pipeline" description="Drag leads through the pipeline while texts, calls, campaigns, and AI stay connected to the same record." actions={<><div className="v2-header-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Find a lead…" /></div><button className="v2-btn v2-btn-primary" onClick={() => onNavigate("contacts")}><Plus size={15} /> Add lead</button></>} />
       <div className="v2-pipeline-board">
         {STAGES.map((stage) => {
           const rows = visible.filter((contact) => (stages[contact.id] || "new") === stage.id);
@@ -122,7 +122,7 @@ function Appointments({ profile, onNavigate }: Props) {
   };
   return (
     <>
-      <PageHeader eyebrow="Calendar" title="A calendar your team and AI share." description="Manual bookings and AI-booked consultations appear together, with reminders and Google Calendar sync." actions={<><button className="v2-btn" onClick={() => onNavigate("settings", "integrations")}><CalendarDays size={15} /> Calendar connection</button><button className="v2-btn v2-btn-primary" onClick={() => setOpen(true)}><Plus size={15} /> New appointment</button></>} />
+      <PageHeader eyebrow="Calendar" title="Appointments" description="Manual bookings and AI-booked consultations appear together, with reminders and Google Calendar sync." actions={<><button className="v2-btn" onClick={() => onNavigate("settings", "integrations")}><CalendarDays size={15} /> Calendar connection</button><button className="v2-btn v2-btn-primary" onClick={() => setOpen(true)}><Plus size={15} /> New appointment</button></>} />
       {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       <div className="v2-calendar-strip"><div><span>{new Date().toLocaleDateString("en-US", { weekday: "long" })}</span><strong>{new Date().getDate()}</strong><small>{new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}</small></div><article><Sparkles size={18} /><div><strong>AI booking is connected to availability</strong><span>Your assistant only offers open time slots and avoids double booking.</span></div></article><div className="v2-calendar-metrics"><span><strong>{appointments.filter((item) => item.date === today && item.status === "confirmed").length}</strong> today</span><span><strong>{appointments.filter((item) => item.date >= today && item.status === "confirmed").length}</strong> upcoming</span></div></div>
       <div className="v2-segmented">{(["upcoming", "past", "cancelled"] as const).map((item) => <button className={filter === item ? "is-active" : ""} key={item} onClick={() => setFilter(item)}>{item}</button>)}</div>
@@ -150,7 +150,7 @@ function Templates({ profile, onNavigate }: Props) {
   const remove = async () => { if (!selectedId || !window.confirm("Delete this template?")) return; await deleteTemplate(selectedId); setSelectedId(null); setDraft({ name: "", body: "", category: "General" }); void load(); };
   return (
     <>
-      <PageHeader eyebrow="Message library" title="Write it once. Use it everywhere." description="Keep approved replies, follow-ups, and appointment messages ready for your team and AI." actions={<button className="v2-btn v2-btn-primary" onClick={() => { setSelectedId(null); setDraft({ name: "", body: "", category: "General" }); }}><Plus size={15} /> New template</button>} />
+      <PageHeader eyebrow="Message library" title="Message templates" description="Keep approved replies, follow-ups, and appointment messages ready for your team and AI." actions={<button className="v2-btn v2-btn-primary" onClick={() => { setSelectedId(null); setDraft({ name: "", body: "", category: "General" }); }}><Plus size={15} /> New template</button>} />
       {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}
       <div className="v2-template-layout">
         <Panel className="v2-template-list"><div className="v2-panel-head"><div><h2>Templates</h2><p>{templates.length} saved replies</p></div></div>{templates.length ? <div>{templates.map((template) => <button className={template.id === selectedId ? "is-active" : ""} key={template.id} onClick={() => choose(template)}><span><FileText size={15} /></span><div><strong>{template.name}</strong><small>{template.category} · {template.body}</small></div></button>)}</div> : <EmptyState title="No templates yet" description="Create reusable messages for your most common conversations." />}</Panel>
