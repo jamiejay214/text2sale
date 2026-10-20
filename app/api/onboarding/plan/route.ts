@@ -1,14 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate } from "@/lib/auth-guard";
-import { isPackageKey, planShape } from "@/lib/packages";
+import { planShape, toPlanKey } from "@/lib/packages";
 import { isIndustryId } from "@/lib/industries";
 
 // ── Record the plan chosen at signup ───────────────────────────────────────
 //
-// Text2Sale has ONE plan: $39.99/month with everything, AI included. The
-// "standard" and "ai" keys both resolve to it (see lib/packages.ts); they
-// survive only so old signup links and Stripe metadata keep working.
+// Text2Sale sells three plans (lib/plans.ts): Text, Dialer and Complete.
+// The legacy "standard" and "ai" keys resolve to Text (lib/packages.ts), so
+// old signup links and Stripe metadata keep working.
 //
 // This route only stores profiles.plan for checkout. AI features (ai_plan)
 // are switched on by the Stripe webhook once the subscription is active —
@@ -42,9 +42,10 @@ export async function POST(req: NextRequest) {
     ["active", "canceling", "past_due"].includes(String(profile.subscription_status));
 
   let planApplied: string | null = null;
-  if (isPackageKey(body.package) && !hasSubscription) {
-    // USHA partner accounts are pinned to Standard and never see AI.
-    const key = profile.is_usha ? "standard" : body.package;
+  const requested = toPlanKey(body.package);
+  if (requested && !hasSubscription) {
+    // USHA partner accounts are pinned to the texting plan.
+    const key = profile.is_usha ? "text" : requested;
     updates.plan = planShape(key);
     planApplied = key;
   }

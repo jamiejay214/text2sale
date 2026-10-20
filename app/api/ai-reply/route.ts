@@ -1,6 +1,7 @@
 import { authenticateWorkspaceOrInternal as authenticateOrInternal } from "@/lib/workspace-auth";
 import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canText } from "@/lib/entitlements";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
 import { createCalendarEvent, checkCalendarConflict, getCalendarBusy } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
@@ -146,6 +147,9 @@ export async function POST(req: NextRequest) {
         { error: "An active Text2Sale subscription is required for AI replies." },
         { status: 403 }
       );
+    }
+    if (!canText(profile)) {
+      return NextResponse.json({ error: "AI text replies come with Text2Sale Text or Complete.", upgrade: "texting" }, { status: 403 });
     }
 
     if (sendReply && contactRes.data?.dnc) {

@@ -72,7 +72,7 @@ export default function BulkSmsSoftwarePage() {
         },
         {
           question: "How much does bulk SMS cost with Text2Sale?",
-          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, or $0.0135 after a qualifying $500+ wallet purchase; incoming SMS is free. A standard segment holds 160 GSM-7 characters, or 70 with Unicode.",
+          answer: "Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, or $0.0135 after a qualifying $500+ wallet purchase; incoming SMS is free. A standard segment holds 160 GSM-7 characters, or 70 with Unicode.",
         },
         {
           question: "Can I upload a CSV of contacts?",

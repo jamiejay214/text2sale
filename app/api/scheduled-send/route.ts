@@ -8,6 +8,7 @@ import { renderCampaignMessage } from "@/lib/campaign-sequence";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 import { isEntitled } from "@/lib/messaging-status";
+import { canText } from "@/lib/entitlements";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";
@@ -160,10 +161,11 @@ export async function GET(req: NextRequest) {
       if (accountCache.has(userId)) return accountCache.get(userId)!;
       const { data } = await supabase
         .from("profiles")
-        .select("paused, subscription_status, free_subscription")
+        .select("paused, subscription_status, free_subscription, plan, email")
         .eq("id", userId)
         .maybeSingle();
-      const active = !!data && !data.paused && isEntitled(data);
+      // Texting stops (drips stay pending) on a plan without texting too.
+      const active = !!data && !data.paused && isEntitled(data) && canText(data);
       accountCache.set(userId, active);
       return active;
     };

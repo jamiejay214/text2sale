@@ -3,13 +3,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import ts from 'typescript';
+import { loadEntitlements } from './entitlements-helper.mjs';
+const entitlements = loadEntitlements();
 const transpile = (f) => ts.transpileModule(readFileSync(f, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
 const browser = {}; vm.runInNewContext(transpile('lib/browser-calls.ts'), { exports: browser, Date });
 const ownerLib = {}; vm.runInNewContext(transpile('lib/owner.ts'), { exports: ownerLib });
 
 function load(fetchImpl) {
   const exports = {};
-  const require = (name) => name.includes('browser-calls') ? browser : name.includes('owner') ? ownerLib : name.includes('call-pricing') ? { CALL_RATE_FORWARD_PER_MIN: 0.04, CALL_RATE_INBOUND_PER_MIN: 0.015 } : { isEntitled: (p) => p.subscription_status === 'active' };
+  const require = (name) => name.includes('browser-calls') ? browser : name.includes('entitlements') ? entitlements : name.includes('owner') ? ownerLib : name.includes('call-pricing') ? { CALL_RATE_FORWARD_PER_MIN: 0.04, CALL_RATE_INBOUND_PER_MIN: 0.015 } : { isEntitled: (p) => p.subscription_status === 'active' };
   vm.runInNewContext(transpile('lib/call-routing.ts'), { exports, require, fetch: fetchImpl, Buffer, JSON, AbortSignal, encodeURIComponent, console: { error() {} }, process: { env: { TELNYX_API_KEY: 'k' } } });
   return exports;
 }

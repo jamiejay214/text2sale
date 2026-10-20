@@ -19,8 +19,8 @@ import { abandonMessage, chooseLines, withinCallingHours } from "./dialer-pacing
 import { toE164 } from "./browser-calls";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "./call-pricing";
 import { chargeStartedMinutes } from "./call-metering";
-import { isEntitled } from "./messaging-status";
 import { callingAccess } from "./calling-access";
+import { canCall } from "./entitlements";
 import { ensureCallControlApp } from "./telnyx-voice";
 import { summarizeCallQuality } from "./call-quality";
 import { holdSession, releaseHold } from "./call-routing";
@@ -300,8 +300,8 @@ export async function dialNext(db: Db, sessionId: string, now: Date = new Date()
   const { data: caller } = await db.from("profiles").select("email, paused").eq("id", session.user_id).maybeSingle();
   const access = caller && !caller.paused ? await callingAccess(db, { id: session.user_id, email: caller.email }) : null;
   const profile = access?.payer;
-  if (!profile || profile.paused || !isEntitled(profile)) {
-    await pauseSession(db, sessionId, "Calling needs an active subscription.");
+  if (!profile || profile.paused || !canCall(profile)) {
+    await pauseSession(db, sessionId, "Calling needs an active Dialer or Complete plan.");
     return 0;
   }
 

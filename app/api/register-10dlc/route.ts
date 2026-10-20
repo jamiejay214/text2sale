@@ -3,6 +3,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { requireSameUser } from "@/lib/auth-guard";
 import { advanceUser, createServiceClient, PROFILE_COLUMNS, type ProfileRow, type Registration } from "@/lib/messaging-driver";
 import { validateBusinessDetails } from "@/lib/business-details";
+import { canText } from "@/lib/entitlements";
 import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 import { getUniqueSlug, toSlug } from "@/lib/business-site";
@@ -68,6 +69,16 @@ export async function POST(req: NextRequest) {
       // Telnyx account, so it only starts for an account that is paying.
       // The dashboard hides the button, but a hidden button isn't a gate —
       // the old wizard let anyone skip the subscription step and submit.
+      if (isEntitled(profile) && !canText(profile)) {
+        return NextResponse.json(
+          {
+            success: false,
+            upgrade: "texting",
+            error: "Your plan doesn't include texting. Upgrade to Text2Sale Complete (or Text) first, then register for texting.",
+          },
+          { status: 402 }
+        );
+      }
       if (!isEntitled(profile)) {
         return NextResponse.json(
           {

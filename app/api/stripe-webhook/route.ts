@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { planShape, toPlanKey } from "@/lib/packages";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import type { Db } from "@/lib/business-site";
@@ -291,13 +292,27 @@ export async function POST(req: NextRequest) {
         // don't want Stripe's "inactive" state to clobber the comp.
         const { data: current } = await supabase
           .from("profiles")
-          .select("free_subscription, free_ai_plan")
+          .select("free_subscription, free_ai_plan, plan")
           .eq("id", userId)
           .single();
         const update: Record<string, unknown> = {
           stripe_subscription_id: subscription.id,
         };
         if (!current?.free_subscription) update.subscription_status = subStatus;
+
+        // The plan paid for (Text, Dialer, Complete) is stamped on the
+        // subscription. A downgrade booked for renewal keeps today's plan
+        // until its date (see lib/entitlements.ts planKeyOf).
+        const paidPlan = toPlanKey(subscription.metadata?.package);
+        if (paidPlan && !current?.free_subscription) {
+          const plan = (current?.plan || {}) as Record<string, unknown>;
+          const pendingAt = typeof plan.pendingAt === "string" ? new Date(plan.pendingAt).getTime() : 0;
+          const downgradeBooked = plan.pendingKey === paidPlan && pendingAt > Date.now();
+          if (!downgradeBooked && plan.key !== paidPlan) {
+            const shape = planShape(paidPlan, Number(plan.messageCost) === 0.0135 ? 0.0135 : undefined);
+            update.plan = { ...plan, ...shape, pendingKey: null, pendingAt: null };
+          }
+        }
 
         // The AI features follow the package that is actually being paid for.
         // The package is stamped on the subscription at checkout (and by the
@@ -352,7 +367,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("usage_history, owned_numbers, wallet_balance, a2p_registration")
+            .select("usage_history, owned_numbers, wallet_balance, a2p_registration, plan")
             .eq("id", userId)
             .single();
 
@@ -360,13 +375,23 @@ export async function POST(req: NextRequest) {
             const now = new Date().toISOString();
             const entries = [];
 
+            // A downgrade booked for this renewal takes effect now.
+            const plan = (profile.plan || {}) as Record<string, unknown>;
+            const pendingKey = toPlanKey(plan.pendingKey);
+            if (pendingKey && typeof plan.pendingAt === "string" && new Date(plan.pendingAt).getTime() <= Date.now() + 60_000) {
+              await supabase
+                .from("profiles")
+                .update({ plan: { ...plan, ...planShape(pendingKey, Number(plan.messageCost) === 0.0135 ? 0.0135 : undefined), pendingKey: null, pendingAt: null } })
+                .eq("id", userId);
+            }
+
             // Log subscription charge (stable id keyed on the invoice so a
             // webhook retry can't create a duplicate audit entry).
             entries.push({
               id: `sub_${invoice.id}`,
               type: "charge",
               amount: (invoice.amount_paid || 0) / 100,
-              description: "Monthly subscription — Text2Sale Plan",
+              description: `Monthly subscription — ${typeof plan.name === "string" ? plan.name : "Text2Sale"}`,
               createdAt: now,
               status: "succeeded",
             });

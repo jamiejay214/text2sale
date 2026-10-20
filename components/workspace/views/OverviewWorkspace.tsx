@@ -7,7 +7,8 @@ import { supabase } from "@/lib/supabase";
 import type { Campaign, Contact, Conversation } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
-import { canUseCalling } from "@/lib/owner";
+import { canCall, canText, planKeyOf } from "@/lib/entitlements";
+import { PLANS } from "@/lib/plans";
 
 type Appointment = {
   id: string;
@@ -133,15 +134,22 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
         actions={
           <>
             <button className="v2-btn" onClick={() => onNavigate("upload")}>Import leads</button>
-            <button className="v2-btn v2-btn-primary" onClick={() => onNavigate(canUseCalling(profile.email) ? "calls" : "contacts")}>{canUseCalling(profile.email) ? "Open dialer" : "View leads"} <ArrowRight size={16} /></button>
+            <button className="v2-btn v2-btn-primary" onClick={() => onNavigate(canCall(profile) ? "calls" : "contacts")}>{canCall(profile) ? "Open dialer" : "View leads"} <ArrowRight size={16} /></button>
           </>
         }
       />
 
+      <SetupChecklist profile={profile} onNavigate={onNavigate} />
+
       <section className="emerald-overview-actions" aria-label="Quick actions">
         <button onClick={() => onNavigate("contacts")}><Users size={21} /><span><strong>Your leads</strong><small>Find your next opportunity</small></span><ArrowRight size={16} /></button>
-        <button onClick={() => onNavigate("conversations")}><MessageSquare size={21} /><span><strong>Follow up</strong><small>Keep the conversation going</small></span><ArrowRight size={16} /></button>
-        <button onClick={() => onNavigate("campaigns")}><Sparkles size={21} /><span><strong>Automate outreach</strong><small>Build a campaign that works for you</small></span><ArrowRight size={16} /></button>
+        {canText(profile) ? <>
+          <button onClick={() => onNavigate("conversations")}><MessageSquare size={21} /><span><strong>Follow up</strong><small>Keep the conversation going</small></span><ArrowRight size={16} /></button>
+          <button onClick={() => onNavigate("campaigns")}><Sparkles size={21} /><span><strong>Automate outreach</strong><small>Build a campaign that works for you</small></span><ArrowRight size={16} /></button>
+        </> : <>
+          <button onClick={() => onNavigate("calls")}><Phone size={21} /><span><strong>Start dialing</strong><small>Work a list with the predictive dialer</small></span><ArrowRight size={16} /></button>
+          <button onClick={() => onNavigate("aicalls")}><Sparkles size={21} /><span><strong>AI receptionist</strong><small>Answer callbacks while you dial</small></span><ArrowRight size={16} /></button>
+        </>}
       </section>
 
       {error ? <div className="v2-inline-error">{error} <button onClick={load}>Retry</button></div> : null}
@@ -219,7 +227,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
             {!snapshot.recentCampaigns.length && !loading ? <EmptyState title="Build your first campaign" description="Send one message or create a complete follow-up sequence." action={<button className="v2-btn v2-btn-primary" onClick={() => onNavigate("campaigns")}>Create campaign</button>} /> : null}
           </div>
         </Panel>
-        {canUseCalling(profile.email) ? (
+        {canCall(profile) ? (
           <Panel className="v2-call-card">
             <span><Phone size={22} /></span>
             <p>POWER CALLING</p>
@@ -229,5 +237,51 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
         ) : null}
       </section>
     </div>
+  );
+}
+
+type SetupStep = { label: string; detail: string; done: boolean; go: () => void };
+
+/**
+ * Plan-specific setup steps. Dialer accounts need a voice number, a working
+ * microphone and funds, and never the texting (10DLC) registration; texting
+ * plans register first. Complete shows both, and calling works while the
+ * texting registration is still in review.
+ */
+function SetupChecklist({ profile, onNavigate }: Pick<WorkspaceViewProps, "profile" | "onNavigate">) {
+  const plan = planKeyOf(profile);
+  const hasNumber = (profile.owned_numbers?.length || 0) > 0;
+  const funded = Number(profile.wallet_balance || 0) > 0;
+  const textingLive = profile.messaging_status === "ACTIVE";
+  const steps: SetupStep[] = [];
+  if (PLANS[plan].capabilities.includes("texting")) {
+    steps.push({ label: "Register your business for texting", detail: "EIN and business details for carrier (10DLC) approval. Registration fees apply.", done: textingLive, go: () => onNavigate("settings", "10dlc") });
+  }
+  steps.push({ label: "Get a phone number", detail: plan === "dialer" ? "A local number to call from. No texting registration needed." : "A local number for calls and texts.", done: hasNumber, go: () => onNavigate("settings", "numbers") });
+  steps.push({ label: "Add funds to your wallet", detail: "Calls, texts and AI minutes are paid from your prepaid wallet.", done: funded, go: () => onNavigate("settings", "billing") });
+  steps.push({ label: "Import your leads", detail: "Upload a CSV. Phone numbers are found in any column.", done: false, go: () => onNavigate("upload") });
+  if (PLANS[plan].capabilities.includes("calling")) {
+    steps.push({ label: "Test your microphone and make a first call", detail: "Open the dialer, allow the microphone, and call your own cell.", done: false, go: () => onNavigate("calls") });
+    steps.push({ label: "Set up the AI receptionist", detail: "Answers callbacks while you're on the phone. Billed per minute.", done: !!(profile as { ai_call_enabled?: boolean }).ai_call_enabled, go: () => onNavigate("aicalls") });
+  }
+  if (PLANS[plan].capabilities.includes("texting")) {
+    steps.push({ label: "Send your first campaign", detail: plan === "complete" ? "Available once texting registration is approved. You can call meanwhile." : "Available once texting registration is approved.", done: false, go: () => onNavigate("campaigns") });
+  }
+  const required = steps.filter((step) => step.label.startsWith("Register") || step.label.startsWith("Get a phone") || step.label.startsWith("Add funds"));
+  if (required.every((step) => step.done)) return null;
+  return (
+    <Panel className="v2-setup-checklist">
+      <div className="v2-panel-head"><div><h2>Set up {PLANS[plan].name}</h2><p>A few steps before your first {plan === "text" ? "campaign" : "call"}.</p></div></div>
+      <ol>
+        {steps.map((step) => (
+          <li key={step.label} className={step.done ? "is-done" : ""}>
+            <button onClick={step.go}>
+              <span>{step.done ? <CheckCircle2 size={16} /> : <ArrowRight size={16} />}</span>
+              <span><strong>{step.label}</strong><small>{step.detail}</small></span>
+            </button>
+          </li>
+        ))}
+      </ol>
+    </Panel>
   );
 }

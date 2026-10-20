@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PLAN_KEYS, PLANS } from "@/lib/plans";
 import HomeClient from "./HomeClient";
 import HomeFaq, { HOME_FAQ } from "@/components/HomeFaq";
 import SiteLinks from "@/components/SiteLinks";
@@ -55,22 +56,20 @@ const softwareApplicationSchema = {
   url: SITE_URL,
   image: `${SITE_URL}/opengraph-image`,
   publisher: { "@id": `${SITE_URL}/#organization` },
-  offers: [
-    {
-      "@type": "Offer",
-      name: "Text2Sale",
-      price: "39.99",
+  offers: PLAN_KEYS.map((key) => ({
+    "@type": "Offer",
+    name: PLANS[key].name,
+    price: PLANS[key].price.toFixed(2),
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price: PLANS[key].price.toFixed(2),
       priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: "39.99",
-        priceCurrency: "USD",
-        unitText: "MONTH",
-        billingDuration: "P1M",
-      },
+      unitText: "MONTH",
+      billingDuration: "P1M",
     },
-  ],
+  })),
   featureList: [
     "Unlimited contacts",
     "Mass SMS campaigns",

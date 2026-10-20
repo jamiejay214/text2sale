@@ -47,7 +47,7 @@ const content = {
     {
       "heading": "One workspace, transparent usage",
       "paragraphs": [
-        "Text2Sale is $39.99/month with AI appointment booking, CRM, campaign automation, and Google Calendar sync. Outbound SMS costs $0.015 per segment; AI replies cost $0.020 each plus SMS. Inbound SMS is free.",
+        "Text2Sale Text is $39.99/month with AI appointment booking, CRM, campaign automation, and Google Calendar sync. Outbound SMS costs $0.015 per segment; AI replies cost $0.020 each plus SMS. Inbound SMS is free.",
         "A $500+ wallet purchase unlocks the existing volume rate of $0.0135 per outbound SMS segment. Subscription and usage charges are separate. Sending requires completed messaging setup and registration approval."
       ]
     }
@@ -63,7 +63,7 @@ const content = {
     },
     {
       "question": "Is there a free trial?",
-      "answer": "No. Payment is required at signup. Text2Sale is $39.99/month, with messaging and AI usage charged separately."
+      "answer": "No. Payment is required at signup. Plans are $39.99/month (Text), $89.99 (Dialer) or $119.99 (Complete), with calling, messaging and AI usage charged separately."
     }
   ],
   "relatedPages": [

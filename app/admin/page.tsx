@@ -7,6 +7,8 @@ import { useRouter } from "next/navigation";
 import Logo from "@/components/Logo";
 import AdminAccess from "@/components/AdminAccess";
 import { isOwnerEmail } from "@/lib/owner";
+import { planKeyOf } from "@/lib/entitlements";
+import { PLAN_KEYS, PLANS, type PlanKey } from "@/lib/plans";
 import EINCertificateUpload from "@/components/EINCertificateUpload";
 import { authFetch } from "@/lib/auth-fetch";
 import { supabase } from "@/lib/supabase";
@@ -31,7 +33,7 @@ type AccountRecord = {
   paused: boolean;
   workflowNote?: string;
   usageHistory: UsageHistoryItem[];
-  plan: { name: string; price: number; messageCost: number };
+  plan: { name: string; price: number; messageCost: number; key?: string; pendingKey?: string | null; pendingAt?: string | null };
   createdAt: string;
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
@@ -850,22 +852,19 @@ function AdminConsole() {
     window.setTimeout(() => setMessage(""), 2500);
   };
 
-  // Swap a user between the legacy Standard and AI package keys (both $39.99 now).
-  // Updates plan shape + ai_plan flag in Supabase AND swaps their Stripe
-  // subscription line item to the matching recurring price (Stripe prorates
-  // the partial period automatically on the next invoice). No-op on
-  // comp'd accounts.
-  const switchPackage = async (id: string, pkg: "standard" | "ai") => {
+  // Move a user between Text, Dialer and Complete (lib/plans.ts). Updates
+  // profiles.plan AND swaps their Stripe subscription line item to that
+  // plan's price (Stripe prorates on the next invoice). Comp'd accounts only
+  // get the plan change; their billing isn't touched.
+  const switchPackage = async (id: string, pkg: PlanKey) => {
     const acct = accounts.find((a) => a.id === id);
     if (!acct) return;
-    const currentIsAi = !!acct.aiPlan;
-    const targetIsAi = pkg === "ai";
-    if (currentIsAi === targetIsAi) {
-      setMessage(`${acct.firstName} is already on the ${targetIsAi ? "AI" : "Standard"} package.`);
+    if (planKeyOf({ plan: acct.plan }) === pkg) {
+      setMessage(`${acct.firstName} is already on ${PLANS[pkg].name}.`);
       window.setTimeout(() => setMessage(""), 2500);
       return;
     }
-    const label = targetIsAi ? "AI ($39.99/mo)" : "Standard ($39.99/mo)";
+    const label = `${PLANS[pkg].name} ($${PLANS[pkg].price}/mo)`;
     if (!window.confirm(`Move ${acct.firstName} ${acct.lastName} to ${label}?\n\nStripe will prorate the partial period on their next invoice.`)) return;
 
     const { data: sessionData } = await supabase.auth.getSession();
@@ -1895,12 +1894,8 @@ function AdminConsole() {
                           {acct.freeSubscription && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE</span>}
                           {/* Package badge — makes the plan the user is on
                               obvious at a glance in the list. */}
-                          <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-medium ${
-                            acct.aiPlan
-                              ? "bg-cyan-900 text-cyan-300"
-                              : "bg-violet-900 text-violet-300"
-                          }`}>
-                            {acct.aiPlan ? "AI · $39.99" : "STANDARD · $39.99"}
+                          <span className="rounded-full bg-violet-900 px-2.5 py-0.5 text-[10px] font-medium text-violet-300">
+                            {PLANS[planKeyOf({ plan: acct.plan })].name.replace("Text2Sale ", "").toUpperCase()} · ${PLANS[planKeyOf({ plan: acct.plan })].price}
                           </span>
                           {acct.freeAiPlan && <span className="rounded-full bg-emerald-900 px-2.5 py-0.5 text-[10px] font-medium text-emerald-300">FREE AI</span>}
                           {acct.paused && <span className="rounded-full bg-red-900 px-2.5 py-0.5 text-[10px] font-medium text-red-300">PAUSED</span>}
@@ -2106,44 +2101,31 @@ function AdminConsole() {
                       <div>
                         <div className="text-sm font-medium text-white">
                           Package
-                          <span className={`ml-2 rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${
-                            selectedAccount.aiPlan
-                              ? "bg-cyan-900 text-cyan-300"
-                              : "bg-violet-900 text-violet-300"
-                          }`}>
-                            {selectedAccount.aiPlan ? "AI — $39.99/mo" : "STANDARD — $39.99/mo"}
+                          <span className="ml-2 rounded-full bg-violet-900 px-2.5 py-0.5 text-[10px] font-semibold text-violet-300">
+                            {PLANS[planKeyOf({ plan: selectedAccount.plan })].name} — ${PLANS[planKeyOf({ plan: selectedAccount.plan })].price}/mo
                           </span>
                         </div>
                         <div className="mt-1 text-xs text-zinc-400">
-                          {selectedAccount.freeAiPlan
-                            ? "User has a comp'd AI plan — switching packages won't affect billing."
-                            : "Swap packages here if they signed up for the wrong one. Stripe billing updates automatically and prorates the partial period."}
+                          {selectedAccount.freeSubscription
+                            ? "Comp'd account: switching changes features only, not billing."
+                            : "Text = texting, Dialer = calling + AI receptionist, Complete = both. Stripe billing updates and prorates the partial period."}
                         </div>
                       </div>
                     </div>
-                    <div className="mt-3 grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => switchPackage(selectedAccount.id, "standard")}
-                        disabled={!selectedAccount.aiPlan}
-                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                          !selectedAccount.aiPlan
-                            ? "bg-violet-600/30 text-violet-300 ring-1 ring-violet-500/50 cursor-default"
-                            : "bg-zinc-900 text-zinc-300 hover:bg-violet-600/20 hover:text-violet-300 ring-1 ring-zinc-700 hover:ring-violet-500/50"
-                        }`}
-                      >
-                        {!selectedAccount.aiPlan ? "✓ " : ""}Standard · $39.99
-                      </button>
-                      <button
-                        onClick={() => switchPackage(selectedAccount.id, "ai")}
-                        disabled={!!selectedAccount.aiPlan}
-                        className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${
-                          selectedAccount.aiPlan
-                            ? "bg-cyan-600/30 text-cyan-300 ring-1 ring-cyan-500/50 cursor-default"
-                            : "bg-zinc-900 text-zinc-300 hover:bg-cyan-600/20 hover:text-cyan-300 ring-1 ring-zinc-700 hover:ring-cyan-500/50"
-                        }`}
-                      >
-                        {selectedAccount.aiPlan ? "✓ " : ""}AI · $39.99
-                      </button>
+                    <div className="mt-3 grid grid-cols-3 gap-2">
+                      {PLAN_KEYS.map((key) => {
+                        const on = planKeyOf({ plan: selectedAccount.plan }) === key;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => switchPackage(selectedAccount.id, key)}
+                            disabled={on}
+                            className={`rounded-xl px-3 py-2 text-xs font-semibold transition ${on ? "bg-violet-600/30 text-violet-300 ring-1 ring-violet-500/50 cursor-default" : "bg-zinc-900 text-zinc-300 hover:bg-violet-600/20 hover:text-violet-300 ring-1 ring-zinc-700 hover:ring-violet-500/50"}`}
+                          >
+                            {on ? "✓ " : ""}{PLANS[key].name.replace("Text2Sale ", "")} · ${PLANS[key].price}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 

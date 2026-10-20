@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireAdmin } from "@/lib/auth-guard";
-import { PACKAGES, type PackageKey } from "@/lib/packages";
+import { planShape, toPlanKey } from "@/lib/packages";
+import { PLANS } from "@/lib/plans";
+import { ensurePlanPrice } from "@/lib/stripe-plans";
 
 // ─── Admin: swap a user's subscription package ────────────────────────────
 // The app ships two packages:
@@ -36,15 +38,17 @@ export async function POST(req: NextRequest) {
     const forbidden = await requireAdmin(auth.user);
     if (forbidden) return forbidden;
 
-    const { userId, pkg } = (await req.json()) as { userId?: string; pkg?: PackageKey };
-    if (!userId || !pkg || !(pkg in PACKAGES)) {
+    const { userId, pkg: requested } = (await req.json()) as { userId?: string; pkg?: string };
+    // Text, Dialer or Complete; legacy "standard" / "ai" mean Text.
+    const pkg = toPlanKey(requested);
+    if (!userId || !pkg) {
       return NextResponse.json(
-        { success: false, error: "userId and pkg ('standard' | 'ai') required" },
+        { success: false, error: "userId and pkg ('text' | 'dialer' | 'complete') required" },
         { status: 400 }
       );
     }
 
-    const target = PACKAGES[pkg];
+    const target = PLANS[pkg];
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -57,14 +61,11 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Step 1: update plan shape + ai_plan flag in Supabase ────────────
-    const nextPlan = {
-      name: target.name,
-      price: target.price,
-      messageCost: target.messageCost,
-    };
+    const currentPlan = (profile.plan || {}) as Record<string, unknown>;
+    const nextPlan = { ...currentPlan, ...planShape(pkg, Number(currentPlan.messageCost) === 0.0135 ? 0.0135 : undefined), pendingKey: null, pendingAt: null };
     await supabase
       .from("profiles")
-      .update({ plan: nextPlan, ai_plan: target.aiPlan })
+      .update({ plan: nextPlan })
       .eq("id", userId);
 
     // ── Step 2: sync Stripe subscription if one exists ──────────────────
@@ -80,35 +81,8 @@ export async function POST(req: NextRequest) {
         const sub = await stripe.subscriptions.retrieve(profile.stripe_subscription_id);
 
         // Find or create a Text2Sale product
-        const products = await stripe.products.list({ limit: 10, active: true });
-        let product = products.data.find((p) => p.name === "Text2Sale Monthly Plan");
-        if (!product) {
-          product = await stripe.products.create({
-            name: "Text2Sale Monthly Plan",
-            description: "Monthly subscription for Text2Sale CRM",
-          });
-        }
+        const price = await ensurePlanPrice(stripe, pkg);
 
-        // Find or create the matching recurring price
-        const planPriceCents = Math.round(target.price * 100);
-        const prices = await stripe.prices.list({ product: product.id, active: true, limit: 50 });
-        let price = prices.data.find(
-          (p) =>
-            p.unit_amount === planPriceCents &&
-            p.recurring?.interval === "month" &&
-            p.currency === "usd"
-        );
-        if (!price) {
-          price = await stripe.prices.create({
-            product: product.id,
-            unit_amount: planPriceCents,
-            currency: "usd",
-            recurring: { interval: "month" },
-          });
-        }
-
-        // Swap the subscription's line item. proration_behavior: 'create_prorations'
-        // is Stripe's default — users get a credit/charge for the partial period.
         const firstItem = sub.items.data[0];
         if (firstItem) {
           await stripe.subscriptions.update(profile.stripe_subscription_id, {
@@ -132,7 +106,6 @@ export async function POST(req: NextRequest) {
       success: true,
       pkg,
       plan: nextPlan,
-      aiPlan: target.aiPlan,
       stripeResult,
       stripeMessage,
     });

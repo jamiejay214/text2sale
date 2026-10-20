@@ -8,6 +8,7 @@ import { requireSameUser } from "@/lib/auth-guard";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
 import { spendableBalance } from "@/lib/call-metering";
 import { isEntitled } from "@/lib/messaging-status";
+import { canText } from "@/lib/entitlements";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -109,9 +110,12 @@ export async function POST(req: NextRequest) {
     {
       const { data: account } = await supabase
         .from("profiles")
-        .select("paused, subscription_status, free_subscription")
+        .select("paused, subscription_status, free_subscription, plan, email")
         .eq("id", userId)
         .maybeSingle();
+      if (account && !account.paused && isEntitled(account) && !canText(account)) {
+        return NextResponse.json({ success: false, upgrade: "texting", error: "Texting comes with Text2Sale Text or Complete. Upgrade your plan to send texts." }, { status: 403 });
+      }
       if (!account || account.paused || !isEntitled(account)) {
         return NextResponse.json(
           { success: false, error: "An active account and subscription are required." },

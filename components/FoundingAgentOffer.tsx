@@ -8,7 +8,7 @@ export default function FoundingAgentOffer() {
         <ul className="mt-6 grid gap-3 text-base sm:grid-cols-2">
           {["Text2Sale AI + appointment booking", "CRM + campaign automation", "Google Calendar integration", "Priority onboarding after confirmation"].map((feature) => <li key={feature}>✓ {feature}</li>)}
         </ul>
-        <p className="mt-6 text-base leading-7 text-emerald-100">$39.99/month. Messaging and AI usage are separate. A $500+ wallet purchase unlocks the existing reduced rate of $0.0135 per outbound SMS segment.</p>
+        <p className="mt-6 text-base leading-7 text-emerald-100">Text $39.99/month, Dialer $89.99/month, Complete $119.99/month. Calling, messaging and AI usage are separate. A $500+ wallet purchase unlocks the existing reduced rate of $0.0135 per outbound SMS segment.</p>
         <a href="mailto:support@text2sale.com?subject=Founding%20Agent%20Offer%20Request" className="mt-6 inline-block rounded-xl bg-lime-300 px-6 py-3 font-bold text-emerald-950">Request Founding Agent Onboarding</a>
         <p className="mt-4 text-sm leading-6 text-emerald-200">Support confirms availability and enrollment before priority onboarding is promised. This is a request, not an automatic reservation. There is no free trial.</p>
       </div>
