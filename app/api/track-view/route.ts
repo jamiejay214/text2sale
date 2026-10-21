@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { ALERT_EMAIL_FROM } from "@/lib/email-sender";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
 import { sendAdminAlertSMS } from "@/lib/admin-alert";
@@ -56,7 +57,7 @@ async function sendVisitorAlert(city: string, region: string, country: string, p
         Authorization: `Bearer ${resendApiKey}`,
       },
       body: JSON.stringify({
-        from: "Text2Sale Alerts <onboarding@resend.dev>",
+        from: ALERT_EMAIL_FROM,
         to: [ALERT_EMAIL],
         subject: `🔔 New Visitor — ${location}`,
         html: `
