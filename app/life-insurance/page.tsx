@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  "title": "Book more conversations from your life insurance leads. | Text2Sale AI",
+  "title": "AI Appointment Setter for Life Insurance Leads | Text2Sale",
   "description": "Give opted-in life insurance inquiries a consistent next step: a reply, a qualification question, and time on your calendar.",
   "alternates": {
     "canonical": "/life-insurance"

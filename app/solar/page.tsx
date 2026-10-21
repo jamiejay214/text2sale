@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  "title": "Turn solar inquiries into booked consultations. | Text2Sale AI",
+  "title": "AI Appointment Setter for Solar Leads | Text2Sale",
   "description": "Follow up with opted-in homeowners, qualify project interest, and help your team schedule the next conversation.",
   "alternates": {
     "canonical": "/solar"

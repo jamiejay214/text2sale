@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  "title": "Turn candidate interest into booked interviews. | Text2Sale AI",
+  "title": "AI Interview Scheduling by Text for Recruiters | Text2Sale",
   "description": "Follow up with opted-in candidates, qualify interest in the role, and move interview scheduling into one organized workflow.",
   "alternates": {
     "canonical": "/recruiters"

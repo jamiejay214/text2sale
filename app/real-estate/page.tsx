@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  "title": "Turn property inquiries into scheduled conversations. | Text2Sale AI",
+  "title": "AI Texting & Appointment Setter for Real Estate Leads | Text2Sale",
   "description": "Organize opted-in buyer and seller inquiries, follow up consistently, and schedule time with your agent.",
   "alternates": {
     "canonical": "/real-estate"
