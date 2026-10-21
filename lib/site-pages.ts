@@ -25,6 +25,7 @@ export type SitePage = {
 const REFRESH_2026_09 = "2026-09-28";
 
 export const SITE_PAGES: SitePage[] = [
+  { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-10-21" },
   { path: "/insurance-agents", label: "Insurance agent appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
