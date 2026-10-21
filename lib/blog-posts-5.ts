@@ -8,8 +8,8 @@ import type { BlogPost } from "./blog-posts";
 export const BLOG_POSTS_5: BlogPost[] = [
   {
     slug: "best-texting-crm-for-insurance-agents-2026",
-    metaTitle: "Best Texting CRM for Insurance Agents in 2026 | Text2Sale",
-    title: "How to choose the best texting CRM for insurance agents in 2026",
+    metaTitle: "How to Choose a Texting CRM for Insurance Agents (2026 Checklist) | Text2Sale",
+    title: "How to choose a texting CRM for insurance agents: 2026 buyer's checklist",
     description:
       "Compare the features insurance agents need in a texting CRM: fast lead response, calling, campaigns, compliance, calendar booking, and a shared inbox.",
     excerpt:
@@ -71,7 +71,6 @@ export const BLOG_POSTS_5: BlogPost[] = [
     ],
     relatedSlugs: ["how-fast-to-text-insurance-leads", "first-30-days-with-a-texting-crm", "sms-crm-integration"],
     relatedPages: [
-      { href: "/best-sms-crm-for-insurance-agents", label: "Explore the insurance CRM guide" },
       { href: "/sms-crm-for-insurance-agents", label: "See Text2Sale for insurance agents" },
     ],
   },

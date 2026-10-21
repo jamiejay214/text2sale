@@ -8,6 +8,20 @@ import type { NextConfig } from "next";
 // the routing logic and lib/custom-domains.ts for the launch-customer
 // static list.
 
-const nextConfig: NextConfig = {};
+const nextConfig: NextConfig = {
+  async redirects() {
+    return [
+      // Merged into the main insurance-agent page (same search intent).
+      { source: "/best-sms-crm-for-insurance-agents", destination: "/sms-crm-for-insurance-agents", permanent: true },
+      // Consumer health-insurance article: off-topic for a texting CRM; the same
+      // comparison lives on TrustedQuotes, where consumers can act on it.
+      {
+        source: "/private-health-insurance-vs-marketplace-insurance/:path*",
+        destination: "https://trustedquotes.org/private-health-insurance-vs-marketplace.html",
+        permanent: true,
+      },
+    ];
+  },
+};
 
 export default nextConfig;

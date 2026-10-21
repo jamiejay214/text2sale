@@ -48,7 +48,6 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/final-expense-texting-crm", label: "Final expense agents", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/medicare-agent-texting-crm", label: "Medicare agents", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/auto-insurance-texting-crm", label: "Auto insurance agents", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
-  { path: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/real-estate-texting-crm", label: "Real estate agents", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/mortgage-broker-texting-crm", label: "Mortgage brokers", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/solar-sales-texting-crm", label: "Solar sales teams", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
@@ -67,7 +66,6 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/best-twilio-alternative", label: "Twilio alternative", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
 
   { path: "/how-to-text-insurance-leads", label: "How to text insurance leads", group: "guide", priority: 0.78, updated: REFRESH_2026_09 },
-  { path: "/private-health-insurance-vs-marketplace-insurance", label: "Private vs Marketplace health insurance", group: "guide", priority: 0.78, updated: REFRESH_2026_09 },
 ];
 
 export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {

@@ -74,10 +74,6 @@ export default function Page() {
       ]}
       relatedPages={[
         {
-          href: "/private-health-insurance-vs-marketplace-insurance",
-          label: "Private vs Marketplace insurance",
-        },
-        {
           href: "/life-insurance-texting-crm",
           label: "Life insurance texting CRM",
         },

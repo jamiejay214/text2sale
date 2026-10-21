@@ -4454,7 +4454,7 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["insurance-referral-request-texts", "auto-insurance-renewal-texts", "what-to-text-a-lead-who-ghosted-you", "exclusive-vs-shared-insurance-leads"],
     relatedPages: [
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
+      { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
     ],
   },
 
@@ -4529,7 +4529,6 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["insurance-policy-review-texts", "insurance-cross-sell-texts"],
     relatedPages: [
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
     ],
   },
 
@@ -7229,7 +7228,7 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["double-opt-in-sms", "state-mini-tcpa-laws"],
     relatedPages: [
       { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
+      { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
     ],
   },
 

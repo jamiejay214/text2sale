@@ -86,10 +86,6 @@ export default function SmsCrmForInsuranceAgentsPage() {
       ]}
       relatedPages={[
         {
-          href: "/best-sms-crm-for-insurance-agents",
-          label: "Best SMS CRM for insurance agents",
-        },
-        {
           href: "/health-insurance-texting-crm",
           label: "Health insurance texting CRM",
         },

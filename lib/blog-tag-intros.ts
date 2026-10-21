@@ -6,6 +6,22 @@
 // slug (see tagSlug in lib/blog-posts.ts). The first sentence doubles as the
 // page's meta description, so keep it a complete, self-contained summary.
 
+import type { BlogTag } from "./blog-posts";
+
+/**
+ * Tag archives below this size keep their page (posts still link to them) but
+ * are marked noindex and left out of the sitemap: a handful of excerpts that
+ * also appear on /blog and other tags is thin, near-duplicate content.
+ */
+export const TAG_INDEX_MIN_POSTS = 6;
+
+/** Whether a tag archive should be offered to search engines. */
+export function isTagSearchIndexed(tag: BlogTag): boolean {
+  if (tag.count < TAG_INDEX_MIN_POSTS) return false;
+  // Without its own introduction a mid-sized archive is only a list of excerpts.
+  return Boolean(TAG_INTROS[tag.slug]) || tag.count >= 10;
+}
+
 export type TagIntro = {
   intro: string[];
   /** The landing page most relevant to readers of this topic. */
