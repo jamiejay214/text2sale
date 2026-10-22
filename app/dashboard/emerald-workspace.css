@@ -187,3 +187,9 @@
 .emerald-workspace .v2-pd-stats small,.emerald-workspace .v2-pd-dispositions button { font-size:12px; }
 @media(max-width:1100px) { .emerald-workspace .v2-pd-form { grid-template-columns:1fr 1fr; } }
 @media(max-width:640px) { .emerald-workspace .v2-pd-form { grid-template-columns:1fr; } .emerald-workspace .v2-pd-card { padding:16px; } }
+/* Dialer lead picker: compact checkbox rows, not form fields. */
+.emerald-workspace .v2-pd-form .v2-pd-picker-menu label,
+.v2-pd-form .v2-pd-picker-menu label { display:flex; align-items:center; justify-content:flex-start; gap:8px; text-align:left; font-size:12px; font-weight:500; color:var(--v2-ink); }
+.emerald-workspace .v2-pd-form .v2-pd-picker-menu input[type="checkbox"],
+.v2-pd-form .v2-pd-picker-menu input[type="checkbox"] { width:15px; height:15px; min-height:0; flex:0 0 15px; margin:0; padding:0; border-radius:4px; accent-color:var(--v2-green-2); }
+.v2-pd-picker-menu { min-width:min(380px, 92vw); }

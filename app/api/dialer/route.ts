@@ -155,7 +155,7 @@ async function snapshot(supabase: ReturnType<typeof db>, session: Record<string,
   if (session.active_item) {
     const { data: item } = await supabase
       .from("dialer_queue")
-      .select("id, phone, result, contact_id, human_at, from_number, callback_id")
+      .select("id, phone, result, contact_id, human_at, ended_at, from_number, callback_id")
       .eq("id", session.active_item)
       .maybeSingle();
     const { data: contact } = item?.contact_id

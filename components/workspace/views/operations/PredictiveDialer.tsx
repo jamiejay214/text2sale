@@ -49,6 +49,9 @@ type Lead = {
   from_number?: string | null;
   /** Set when this call is a scheduled callback. */
   callback_id?: string | null;
+  /** When the lead was heard saying hello, and when their call ended. */
+  human_at?: string | null;
+  ended_at?: string | null;
   contact: {
     first_name?: string | null;
     last_name?: string | null;
@@ -134,6 +137,17 @@ function prettyPhone(value: string) {
   return digits.length === 10 ? `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}` : value;
 }
 
+/** m:ss (or h:mm:ss) between two times. */
+function callDuration(fromIso: string | null | undefined, toMs: number): string {
+  const from = fromIso ? new Date(fromIso).getTime() : NaN;
+  if (!Number.isFinite(from)) return "";
+  const total = Math.max(0, Math.floor((toMs - from) / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = String(total % 60).padStart(2, "0");
+  return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
+}
+
 function stateLabel(session: Session) {
   if (session.inbound_from) return "Inbound call";
   if (session.status === "paused") return session.agent_state === "on_call" ? "On a call (paused)" : "Paused";
@@ -207,6 +221,15 @@ export default function PredictiveDialer({
     const timer = window.setInterval(() => void load(), 2000);
     return () => window.clearInterval(timer);
   }, [open, load]);
+
+  // Ticks the call timer once a second while a call is on the line.
+  const [clock, setClock] = useState(() => Date.now());
+  const onCall = session?.agent_state === "on_call";
+  useEffect(() => {
+    if (!onCall) return;
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [onCall]);
 
   const autoAnswer = open && (session?.agent_state === "ready" || session?.agent_state === "connecting");
   useEffect(() => { onAutoAnswerChange(!!autoAnswer); }, [autoAnswer, onAutoAnswerChange]);
@@ -421,7 +444,7 @@ export default function PredictiveDialer({
 
       {lead && !session!.inbound_from && (session!.agent_state === "connecting" || session!.agent_state === "on_call" || session!.agent_state === "wrap") && (
         <div className="v2-pd-lead">
-          <div><small>{session!.agent_state === "connecting" ? "Connecting…" : session!.agent_state === "on_call" ? "On the line" : "Last call"}</small><strong>{leadName}</strong><span>{prettyPhone(lead.phone)} · {[contact?.city, contact?.state, contact?.zip].filter(Boolean).join(", ") || "Location not added"}</span>{lead.from_number && <span className="v2-pd-from">Calling from <b>{prettyPhone(lead.from_number)}</b>{lead.callback_id ? " · scheduled callback" : ""}</span>}</div>
+          <div><small>{session!.agent_state === "connecting" ? "Connecting…" : session!.agent_state === "on_call" ? "On the line" : "Last call"}{lead.human_at && session!.agent_state !== "connecting" ? <b className="v2-pd-timer"> · {callDuration(lead.human_at, lead.ended_at ? new Date(lead.ended_at).getTime() : clock)}</b> : null}</small><strong>{leadName}</strong><span>{prettyPhone(lead.phone)} · {[contact?.city, contact?.state, contact?.zip].filter(Boolean).join(", ") || "Location not added"}</span>{lead.from_number && <span className="v2-pd-from">Calling from <b>{prettyPhone(lead.from_number)}</b>{lead.callback_id ? " · scheduled callback" : ""}</span>}</div>
           <dl>{contact?.age && <div><dt>Age</dt><dd>{contact.age}</dd></div>}{contact?.household_size && <div><dt>Household</dt><dd>{contact.household_size}</dd></div>}{contact?.quote && <div><dt>Quote</dt><dd>{contact.quote}</dd></div>}{contact?.lead_source && <div><dt>Source</dt><dd>{contact.lead_source}</dd></div>}</dl>
           {contact?.notes && <p>{contact.notes}</p>}
         </div>
