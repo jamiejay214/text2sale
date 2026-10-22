@@ -1154,3 +1154,4 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-pd-picker-menu label:hover { background:var(--v2-canvas); }
 .v2-pd-picker-menu p { margin:6px 6px 2px; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; }
 .v2-pd-picker-menu .v2-btn { justify-self:end; margin-top:4px; }
+.v2-pd-timer { font-variant-numeric:tabular-nums; color:var(--v2-green-2); }
