@@ -257,7 +257,7 @@ const ARTICLES: NewArticle[] = [
     faq: [
       {
         question: "Does importing leads cost anything?",
-        answer: "Importing leads into Text2Sale costs $0.015 per lead.",
+        answer: "No. Importing leads is free. Texts are charged when they send, and calls by the minute.",
       },
       {
         question: "Can I dial a list I imported for texting?",
