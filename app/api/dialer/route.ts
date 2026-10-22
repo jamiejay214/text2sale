@@ -121,10 +121,10 @@ async function leadLists(supabase: ReturnType<typeof db>, userId: string) {
     }
     if (!data || data.length < 1000) break;
   }
-  // Uploaded CSV files: dial exactly the leads in one file.
+  // Uploaded CSV files: dial the leads in one or more files.
   const { data: uploads } = await supabase
     .from("csv_uploads")
-    .select("id, file_name, uploaded_at, success")
+    .select("id, file_name, uploaded_at, success, total_rows")
     .eq("user_id", userId)
     .not("file_content", "is", null)
     .order("uploaded_at", { ascending: false })
@@ -383,27 +383,37 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
   }
   const maxLines = Math.min(3, Math.max(1, Math.floor(Number(input?.maxLines) || 1)));
   const forceLines = input?.forceLines === true && maxLines > 1;
-  const list = typeof input?.list === "string" ? input.list.trim() : "";
-  const uploadId = typeof input?.upload === "string" && /^[0-9a-f-]{36}$/i.test(input.upload) ? input.upload : "";
-  // A chosen CSV file limits the call list to the phone numbers in it.
+  // What to dial: any mix of uploaded CSV files and campaign lists (a lead
+  // in any of them is dialed once), or all leads when none is chosen. The
+  // single `list` / `upload` fields are still accepted from older tabs.
+  const asArray = (value: unknown) => (Array.isArray(value) ? value : typeof value === "string" && value ? [value] : []);
+  const lists = Array.from(new Set(asArray(input?.lists ?? input?.list).map((v) => String(v).trim()).filter(Boolean))).slice(0, 50);
+  const uploadIds = Array.from(new Set(asArray(input?.uploads ?? input?.upload).map(String).filter((v) => /^[0-9a-f-]{36}$/i.test(v)))).slice(0, 50);
+  // Chosen CSV files limit the call list to the phone numbers in them.
   let filePhones: Set<string> | null = null;
-  let fileName = "";
-  if (uploadId) {
-    const { data: upload } = await supabase
+  const fileNames: string[] = [];
+  if (uploadIds.length) {
+    const { data: uploads } = await supabase
       .from("csv_uploads")
-      .select("file_name, file_content")
-      .eq("id", uploadId)
-      .eq("user_id", userId)
-      .maybeSingle();
-    if (!upload?.file_content) {
-      return NextResponse.json({ error: "That CSV file isn't available anymore. Choose another list." }, { status: 404 });
+      .select("id, file_name, file_content")
+      .in("id", uploadIds)
+      .eq("user_id", userId);
+    const usable = ((uploads || []) as Array<{ file_name: string | null; file_content: string | null }>).filter((u) => u.file_content);
+    if (!usable.length) {
+      return NextResponse.json({ error: "Those CSV files aren't available anymore. Choose other lists." }, { status: 404 });
     }
-    filePhones = phonesFromCsv(upload.file_content);
-    fileName = String(upload.file_name || "CSV file");
+    filePhones = new Set<string>();
+    for (const upload of usable) {
+      for (const phone of phonesFromCsv(upload.file_content || "")) filePhones.add(phone);
+      fileNames.push(String(upload.file_name || "CSV file"));
+    }
     if (!filePhones.size) {
-      return NextResponse.json({ error: "Couldn't find phone numbers in that CSV file." }, { status: 400 });
+      return NextResponse.json({ error: "Couldn't find phone numbers in those CSV files." }, { status: 400 });
     }
   }
+  const listSet = new Set(lists);
+  const audienceNames = [...fileNames, ...lists];
+  const audience = audienceNames.length ? (audienceNames.length > 3 ? `${audienceNames.slice(0, 3).join(", ")} +${audienceNames.length - 3} more` : audienceNames.join(", ")).slice(0, 200) : null;
 
   const requested = (Array.isArray(input?.fromNumbers) ? input.fromNumbers : []).map(toE164).filter(Boolean) as string[];
   const ownedE164 = await callerIds(supabase, userId, payer.id);
@@ -441,25 +451,28 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
   for (let offset = 0; offset < 50_000; offset += 1000) {
     let query = supabase
       .from("contacts")
-      .select("id, phone")
+      .select("id, phone, campaign")
       .eq("user_id", userId)
       .eq("dnc", false)
       .order("created_at", { ascending: false })
       .order("id")
       .range(offset, offset + 999);
-    if (list && !filePhones) query = query.eq("campaign", list);
+    // Lists alone can be filtered in the query; with files, every contact
+    // is checked against the files' numbers and the lists.
+    if (lists.length && !filePhones) query = query.in("campaign", lists);
     const { data, error } = await query;
     if (error) return NextResponse.json({ error: "Could not load your leads. Please retry." }, { status: 503 });
     for (const row of data || []) {
       const phone = toE164(row.phone);
-      if (!phone || seen.has(phone) || recent.has(phone) || (filePhones && !filePhones.has(phone))) continue;
+      if (!phone || seen.has(phone) || recent.has(phone)) continue;
+      if (filePhones && !filePhones.has(phone) && !listSet.has(String(row.campaign || ""))) continue;
       seen.add(phone);
       leads.push({ contact_id: row.id, phone });
     }
     if (!data || data.length < 1000) break;
   }
   if (!leads.length) {
-    return NextResponse.json({ error: "No leads to dial in that list (leads called in the last 24 hours are skipped)." }, { status: 400 });
+    return NextResponse.json({ error: "No leads to dial in those lists (leads called in the last 24 hours are skipped)." }, { status: 400 });
   }
 
   const { data: session, error } = await supabase
@@ -475,7 +488,7 @@ async function start(supabase: ReturnType<typeof db>, userId: string, profile: a
       sip_username: sipUsername,
       business_name: businessName,
       agent_name: agentName,
-      audience: fileName || list || null,
+      audience,
     })
     .select("*")
     .single();

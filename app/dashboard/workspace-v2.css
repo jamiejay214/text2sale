@@ -1145,3 +1145,12 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-setup-checklist button small { display:block; font-size:.62rem; color:var(--v2-muted); }
 .v2-setup-checklist li.is-done button { opacity:.6; }
 .v2-setup-checklist li.is-done span:first-child { color:var(--v2-green-2); }
+
+.v2-pd-picker { position:relative; display:grid; gap:4px; font-size:.64rem; font-weight:800; color:var(--v2-muted); }
+.v2-pd-picker small { font-weight:500; }
+.v2-pd-picker-toggle { text-align:left; border:1px solid var(--v2-line); border-radius:9px; padding:8px 10px; background:var(--v2-panel); color:var(--v2-ink); font:inherit; font-size:.72rem; font-weight:600; cursor:pointer; }
+.v2-pd-picker-menu { position:absolute; z-index:20; top:100%; left:0; right:0; margin-top:4px; max-height:320px; overflow:auto; display:grid; gap:2px; padding:8px; border:1px solid var(--v2-line); border-radius:12px; background:var(--v2-panel); box-shadow:0 12px 30px rgba(0,0,0,.18); }
+.v2-pd-picker-menu label { display:flex; gap:8px; align-items:center; padding:5px 6px; border-radius:7px; font-size:.68rem; font-weight:500; color:var(--v2-ink); cursor:pointer; }
+.v2-pd-picker-menu label:hover { background:var(--v2-canvas); }
+.v2-pd-picker-menu p { margin:6px 6px 2px; font-size:.58rem; text-transform:uppercase; letter-spacing:.08em; }
+.v2-pd-picker-menu .v2-btn { justify-self:end; margin-top:4px; }

@@ -1,5 +1,6 @@
 "use client";
 
+import { primeConnectBeep } from "@/components/BrowserPhone";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarPlus, Check, Clock, Pause, PhoneCall, PhoneForwarded, PhoneOff, Play, Square, X, Zap } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
@@ -70,7 +71,7 @@ type Snapshot = {
   pacing?: { lines: number; abandonRate30d: number; cap: number };
   total?: number;
   lists?: Array<{ name: string; count: number }>;
-  uploads?: Array<{ id: string; file_name: string; uploaded_at: string; success: number }>;
+  uploads?: Array<{ id: string; file_name: string; uploaded_at: string; success: number; total_rows?: number | null }>;
   /** Business numbers calls go out from (the sponsor's, for an agent). */
   callerIds?: string[];
   /** The account's saved transfer number (owner only), to prefill the cell box. */
@@ -112,6 +113,8 @@ const DISPOSITIONS: Array<{ id: string; label: string }> = [
  * so without this the caller hears dead air.
  */
 async function microphoneReady(): Promise<boolean> {
+  // The same click unlocks the connect beep (see primeConnectBeep).
+  primeConnectBeep();
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream.getTracks().forEach((track) => track.stop());
@@ -160,7 +163,11 @@ export default function PredictiveDialer({
   const [snap, setSnap] = useState<Snapshot | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
-  const [list, setList] = useState("");
+  // Leads to call: any mix of uploaded files ("upload:<id>") and campaign
+  // lists ("list:<name>"). None chosen dials all leads.
+  const [picked, setPicked] = useState<string[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const togglePick = (key: string) => setPicked((current) => (current.includes(key) ? current.filter((k) => k !== key) : [...current, key]));
   const [maxLines, setMaxLines] = useState(3);
   // On by default for this account's callers (owner's choice).
   const [forceLines, setForceLines] = useState(true);
@@ -227,8 +234,11 @@ export default function PredictiveDialer({
     if (!phoneReady) { setNotice("Wait until the browser phone says Phone ready."); return; }
     if (!(await microphoneReady())) { setNotice(MIC_BLOCKED); return; }
     try { window.localStorage.setItem("t2s_dialer_names", JSON.stringify({ agentName, businessName })); } catch { /* optional */ }
-    // "upload:<id>" dials one CSV file's leads; "list:<name>" a campaign list.
-    const audience = list.startsWith("upload:") ? { upload: list.slice(7) } : list.startsWith("list:") ? { list: list.slice(5) } : {};
+    // Any mix of uploaded files and campaign lists; none means all leads.
+    const audience = {
+      uploads: picked.filter((key) => key.startsWith("upload:")).map((key) => key.slice(7)),
+      lists: picked.filter((key) => key.startsWith("list:")).map((key) => key.slice(5)),
+    };
     if (await act({ action: "start", ...audience, maxLines, forceLines, agentName, businessName, fromNumbers: numbers })) await act({ action: "ready" });
   };
 
@@ -354,7 +364,27 @@ export default function PredictiveDialer({
         <div className="v2-panel-head"><div><h2>Predictive dialer</h2><p>Dials several leads at once and puts the first person who answers through to you</p></div><Zap size={18} /></div>
         {notice && <div role="alert" className="v2-notice is-error">{notice}<button onClick={() => setNotice("")}>×</button></div>}
         <div className="v2-pd-form">
-          <label>Leads to call<select value={list} onChange={(event) => setList(event.target.value)}><option value="">All leads ({(snap.total || 0).toLocaleString()})</option>{snap.uploads?.length ? <optgroup label="Uploaded CSV files">{snap.uploads.map((item) => <option key={item.id} value={`upload:${item.id}`}>{item.file_name} · {Number(item.success || 0).toLocaleString()} leads · {new Date(item.uploaded_at).toLocaleDateString()}</option>)}</optgroup> : null}{snap.lists?.length ? <optgroup label="Campaign lists">{snap.lists.map((item) => <option key={item.name} value={`list:${item.name}`}>{item.name} ({item.count.toLocaleString()})</option>)}</optgroup> : null}</select></label>
+          <div className="v2-pd-picker">
+            <span>Leads to call</span>
+            <button type="button" className="v2-pd-picker-toggle" aria-expanded={pickerOpen} onClick={() => setPickerOpen((open) => !open)}>
+              {picked.length === 0 ? `All leads (${(snap.total || 0).toLocaleString()})` : `${picked.length} list${picked.length === 1 ? "" : "s"} selected`}
+            </button>
+            {pickerOpen && (
+              <div className="v2-pd-picker-menu" role="group" aria-label="Leads to call">
+                <label><input type="checkbox" checked={picked.length === 0} onChange={() => setPicked([])} /> All leads ({(snap.total || 0).toLocaleString()})</label>
+                {snap.uploads?.length ? <p>Uploaded CSV files</p> : null}
+                {snap.uploads?.map((item) => (
+                  <label key={item.id}><input type="checkbox" checked={picked.includes(`upload:${item.id}`)} onChange={() => togglePick(`upload:${item.id}`)} /> {item.file_name} · {Number(item.total_rows || item.success || 0).toLocaleString()} rows · {new Date(item.uploaded_at).toLocaleDateString()}</label>
+                ))}
+                {snap.lists?.length ? <p>Campaign lists</p> : null}
+                {snap.lists?.map((item) => (
+                  <label key={item.name}><input type="checkbox" checked={picked.includes(`list:${item.name}`)} onChange={() => togglePick(`list:${item.name}`)} /> {item.name} ({item.count.toLocaleString()})</label>
+                ))}
+                <button type="button" className="v2-btn" onClick={() => setPickerOpen(false)}>Done</button>
+              </div>
+            )}
+            <small>Pick as many as you like. A lead in more than one is called once.</small>
+          </div>
           <label>Lines at once<select value={maxLines} onChange={(event) => setMaxLines(Number(event.target.value))}><option value={1}>1 (power dialer, never abandons)</option><option value={2}>Up to 2</option><option value={3}>Up to 3</option></select></label>
           <label>Your name<input value={agentName} maxLength={40} onChange={(event) => setAgentName(event.target.value)} placeholder="Sarah" /></label>
           <label>Business name<input value={businessName} maxLength={60} onChange={(event) => setBusinessName(event.target.value)} placeholder="Johnson Health Quotes" /></label>
