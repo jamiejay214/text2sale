@@ -69,6 +69,21 @@ function startTone(onSeconds: number, offSeconds: number): () => void {
   }
 }
 
+// One audio context for the connect beep, unlocked by a click. Browsers
+// start an AudioContext created without a recent click "suspended", so a
+// beep made fresh when a lead connects (no click involved) could be silent.
+let beepContext: AudioContext | null = null;
+
+/** Call from a click handler (Start / Ready) so the connect beep can sound later. */
+export function primeConnectBeep() {
+  try {
+    if (!beepContext || beepContext.state === "closed") beepContext = new AudioContext();
+    void beepContext.resume().catch(() => undefined);
+  } catch {
+    // no audio available
+  }
+}
+
 /**
  * A short double beep through this computer's speakers when the dialer puts
  * a lead through. It plays locally, outside the call, so only the agent
@@ -76,20 +91,21 @@ function startTone(onSeconds: number, offSeconds: number): () => void {
  */
 function playConnectBeep() {
   try {
-    const context = new AudioContext();
+    if (!beepContext || beepContext.state === "closed") beepContext = new AudioContext();
+    const context = beepContext;
     void context.resume().catch(() => undefined);
     const gain = context.createGain();
     gain.connect(context.destination);
     const tone = context.createOscillator();
     tone.frequency.value = 880;
     tone.connect(gain);
-    const start = context.currentTime;
-    gain.gain.setValueAtTime(0, start);
+    const start = context.currentTime + 0.02;
+    gain.gain.setValueAtTime(0, context.currentTime);
     for (const offset of [0, 0.18]) {
-      gain.gain.setValueAtTime(0.12, start + offset);
+      gain.gain.setValueAtTime(0.25, start + offset);
       gain.gain.setValueAtTime(0, start + offset + 0.1);
     }
-    tone.onended = () => void context.close();
+    tone.onended = () => gain.disconnect();
     tone.start(start);
     tone.stop(start + 0.35);
   } catch {
@@ -135,6 +151,16 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
     const [muted, setMuted] = useState(false);
     const autoAnswerRef = useRef(autoAnswer);
     useEffect(() => { autoAnswerRef.current = autoAnswer; }, [autoAnswer]);
+    // Any click on the page unlocks the connect beep, so it also works after
+    // a reload in the middle of a dialer session.
+    useEffect(() => {
+      document.addEventListener("pointerdown", primeConnectBeep);
+      document.addEventListener("keydown", primeConnectBeep);
+      return () => {
+        document.removeEventListener("pointerdown", primeConnectBeep);
+        document.removeEventListener("keydown", primeConnectBeep);
+      };
+    }, []);
 
     const emit = (callState: BrowserCallState, extra?: Partial<BrowserPhoneStatus>) => {
       onStateChange?.({
