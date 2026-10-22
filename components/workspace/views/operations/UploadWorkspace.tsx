@@ -62,7 +62,7 @@ function normalizePhone(value: string) {
   return digits.length >= 10 ? digits.slice(-10) : "";
 }
 
-export default function UploadWorkspace({ profile, onProfile, onNavigate }: Props) {
+export default function UploadWorkspace({ profile, onNavigate }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [fileName, setFileName] = useState("");
@@ -162,7 +162,7 @@ export default function UploadWorkspace({ profile, onProfile, onNavigate }: Prop
         }
       }
       // The duplicate check used to fail silently (missing database
-      // function), so a re-uploaded list was imported, and charged, again.
+      // function), so a re-uploaded list was imported again.
       // Read the existing numbers directly instead; if that fails too, stop
       // before importing or charging anything.
       if (!checked) {
@@ -197,14 +197,9 @@ export default function UploadWorkspace({ profile, onProfile, onNavigate }: Prop
       imported += data?.length || 0;
       setProgress(25 + Math.round(((index + 1000) / Math.max(1, deduped.length)) * 55));
     }
-    let charge: number | null = null;
-    if (imported > 0) {
-      try {
-        const response = await authFetch("/api/charge-leads", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ userId: profile.id, count: imported }) });
-        const data = await response.json();
-        if (data.success) { charge = Number(data.charged || 0); if (typeof data.walletBalance === "number") onProfile({ ...profile, wallet_balance: data.walletBalance }); }
-      } catch { /* Contacts are already imported; preserve the audit record. */ }
-    }
+    // Importing leads is free; texts are charged per segment when they
+    // actually send (campaigns, drips, one-off texts).
+    const charge = 0;
     await supabase.from("csv_uploads").insert({
       user_id: profile.id, file_name: fileName, uploaded_at: importedSinceIso, total_rows: rows.length,
       success: imported, duplicates: duplicateCount, invalid: invalidCount, tcpa_violations: 0,
