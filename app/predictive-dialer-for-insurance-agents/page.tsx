@@ -41,6 +41,9 @@ export default function Page() {
         { href: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software" },
         { href: "/sms-crm-for-insurance-agents", label: "Insurance SMS CRM" },
         { href: "/ai-appointment-setter", label: "AI appointment setter" },
+        { href: "/power-dialer-vs-predictive-dialer", label: "Power dialer vs predictive dialer" },
+        { href: "/speed-to-lead-for-insurance-agents", label: "Speed to lead for insurance agents" },
+        { href: "/quiet-hours-checker", label: "Quiet hours checker" },
       ]}
     />
   );

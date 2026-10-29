@@ -7,7 +7,7 @@ const GSM_BASIC = new Set(
 );
 const GSM_EXTENDED = new Set("^{}\\[~]|€".split(""));
 
-function analyzeMessage(value: string) {
+export function analyzeMessage(value: string) {
   let gsmUnits = 0;
   let usesUnicode = false;
 

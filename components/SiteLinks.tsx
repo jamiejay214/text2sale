@@ -5,11 +5,11 @@ import { SITE_PAGES, SITE_PAGE_GROUP_LABELS, type SitePageGroup } from "@/lib/si
 // the most-linked URL on the site, so linking out from it is how search
 // engines discover the landing pages and judge them worth indexing.
 
-const GROUPS: SitePageGroup[] = ["product", "industry", "compare", "guide"];
+const GROUPS: SitePageGroup[] = ["product", "industry", "compare", "guide", "tool"];
 
 export default function SiteLinks() {
   return (
-    <div className="mx-auto grid max-w-6xl gap-8 border-b border-zinc-800 px-6 py-12 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="mx-auto grid max-w-6xl gap-8 border-b border-zinc-800 px-6 py-12 sm:grid-cols-2 lg:grid-cols-5">
       {GROUPS.map((group) => (
         <div key={group}>
           <h2 className="text-sm font-semibold uppercase tracking-wider text-zinc-300">

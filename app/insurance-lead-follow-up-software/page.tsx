@@ -41,6 +41,10 @@ export default function Page() {
         { href: "/predictive-dialer-for-insurance-agents", label: "Insurance predictive dialer" },
         { href: "/ai-appointment-setter", label: "AI appointment setter" },
         { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
+        { href: "/insurance-lead-follow-up-cadence", label: "Insurance lead follow-up cadence" },
+        { href: "/why-insurance-leads-stop-responding", label: "Why insurance leads stop responding" },
+        { href: "/best-crm-for-health-insurance-agents", label: "Best CRM for health insurance agents" },
+        { href: "/crm-for-aca-agents", label: "CRM for ACA agents" },
       ]}
     />
   );
