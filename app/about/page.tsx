@@ -58,7 +58,7 @@ export default function AboutPage() {
         <article className="mx-auto mt-16 max-w-3xl">
           <h2 className="text-3xl font-black">Who Text2Sale is built for</h2>
           <p className="mt-5 leading-8 text-zinc-300">
-            Text2Sale is designed for insurance agents, appointment setters, recruiters, real estate teams, solar teams, roofing companies, and other sales organizations that work lead lists and depend on fast follow-up.
+            Text2Sale is designed for independent sales professionals, sales teams, and business owners who need organized outreach and consistent follow-up. Use it for sales conversations, appointment setting, and customer inquiries across industries, including real estate, home services, recruiting, insurance, and business services.
           </p>
           <p className="mt-5 leading-8 text-zinc-300">
             The platform is especially focused on the gap between acquiring a lead and getting that person into a real conversation. Instead of separating texting, calling, contact history, AI replies, and scheduling across different tools, Text2Sale brings those workflows together.
