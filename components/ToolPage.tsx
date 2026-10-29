@@ -1,3 +1,4 @@
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import MarketingFooter from "@/components/MarketingFooter";
