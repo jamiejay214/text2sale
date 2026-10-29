@@ -1,31 +1,26 @@
-// ── Marketing page registry ────────────────────────────────────────────────
-// One list of the public, indexable marketing pages. The sitemap, the
-// homepage footer links and the IndexNow submission all read from here, so a
-// new landing page only has to be added once to be crawlable and linked.
-
 export const SITE_URL = "https://text2sale.com";
 
 export type SitePageGroup = "product" | "industry" | "compare" | "guide";
 
 export type SitePage = {
   path: string;
-  /** Short anchor text for internal links. */
   label: string;
   group: SitePageGroup;
   priority: number;
-  /**
-   * ISO date the page's content last changed. Search engines only trust
-   * sitemap lastmod values that track real edits, so bump this when the
-   * copy changes rather than stamping every page with the build date.
-   */
   updated: string;
 };
 
-// Content refresh that expanded the landing pages and added visible FAQs.
 const REFRESH_2026_09 = "2026-09-28";
+const SEO_EXPANSION_2026_10 = "2026-10-28";
 
 export const SITE_PAGES: SitePage[] = [
   { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-10-21" },
+  { path: "/ai-appointment-setter", label: "AI appointment setter", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
+  { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
+  { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: SEO_EXPANSION_2026_10 },
+  { path: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
+  { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: SEO_EXPANSION_2026_10 },
+
   { path: "/insurance-agents", label: "Insurance agent appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
@@ -75,5 +70,4 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
   guide: "Guides",
 };
 
-/** Date the homepage copy last changed (FAQ and footer links added). */
-export const HOME_UPDATED = "2026-10-07";
+export const HOME_UPDATED = "2026-10-28";
