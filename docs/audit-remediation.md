@@ -6,7 +6,8 @@ Public website fixes were released through PR #120. The calculator CTA follow-up
 The additive workspace migration was applied to production project `glwjupraijvbtqttsshv`
 on 29 October 2026 (Supabase migration version `20261029180847`). The repository filename
 matches the applied migration history. Existing RLS policies remain unchanged.
-The application release is pending signed-in browser validation; PR #122 remains draft.
+Signed-in browser release checks completed on the staged production build for commit `28abc5f`.
+PR #122 records the production deployment and final release status.
 
 The release candidate incorporates main through `160a31f`, preserving the newer comparison,
 free-tool and lead-magnet work.
@@ -45,14 +46,23 @@ free-tool and lead-magnet work.
 1. Completed: connected Supabase and inspected production columns, policies and triggers.
 2. Completed: no duplicate campaign name groups found; unique matches backfilled.
 3. Completed: applied additive migration and verified functions, ownership/RLS and grants.
-4. Test in a seeded account with no live outbound messages: >200 contacts, >50 conversations, two browser sessions, opt-out duplicates, campaign edits/timing, search deep links, import failures, calendar reschedule/conflict/error recovery, and plan entitlements.
-5. Merge/release only after those checks. A code rollback does not require dropping the additive columns.
+4. Completed release checks: signed-in dashboard/Today queue, campaign search deep link, pipeline page 3 (beyond 200 contacts), unsaved launch rejection, one-hour follow-up display, appointment history/edit dialog, suppression import control, working-hour settings, full-name inbox search and DNC composer disabled. Database writes were checked in rollback-only transactions. Failure/recovery paths were exercised by route tests.
+5. Release after successful tests/build and signed-in smoke checks. A code rollback does not require dropping the additive columns.
 
 ## Remaining audit recommendations (not claimed complete)
 
 - Original article screenshots/illustrations, expert source review across 377 articles, approved customer case studies and a real product walkthrough.
 - Search Console/Bing indexing and query-overlap investigation, measured mobile/Core Web Vitals, and evidence-led URL consolidation.
 - Rich event/branch automation, booking/won goal stops, per-lead execution history/retry UI, campaign/source revenue attribution, native CRM integrations and a dedicated mobile experience.
-- Signed-in browser checks, connected Google Calendar end-to-end checks and booking concurrency testing remain pending. Database access is resolved; browser sign-in is separate.
+- Live outbound SMS/calls, external Google Calendar mutations, two-browser write synchronization and simultaneous booking races were not exercised in the release smoke checks. Calendar recovery and suppression behavior are covered by controlled route tests; these are not claims of live provider testing.
 
 The new work does not fabricate testimonials, traffic, customer outcomes or rankings.
+
+## Deployment configuration finding
+
+The Preview environment does not have Supabase connection variables, so ordinary previews
+use the placeholder URL and cannot sign in. No production secrets were copied into Preview.
+Validation instead used a staged Production build with existing production configuration.
+Automatic custom-domain assignment was temporarily disabled during staging, restored afterward,
+and text2sale.com was verified unchanged before release. The staged build is
+`dpl_3Z8XBXLKaP6bvgMqTaV73oCTbCWD`. A separate staging database/environment remains recommended.
