@@ -14,6 +14,7 @@ const REFRESH_2026_09 = "2026-09-28";
 const SEO_EXPANSION_2026_10 = "2026-10-28";
 
 export const SITE_PAGES: SitePage[] = [
+  { path: "/about", label: "About Text2Sale", group: "guide", priority: 0.72, updated: "2026-10-28" },
   { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-10-21" },
   { path: "/ai-appointment-setter", label: "AI appointment setter", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
   { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
