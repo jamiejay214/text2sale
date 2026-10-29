@@ -55,7 +55,7 @@ test("workspace migration preserves membership, aggregates all records and enfor
     await db.exec(
       readFileSync(
         new URL(
-          "../supabase/migrations/20261029154503_audit_workspace_reliability.sql",
+          "../supabase/migrations/20261029180847_audit_workspace_reliability.sql",
           import.meta.url,
         ),
         "utf8",

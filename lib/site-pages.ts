@@ -51,11 +51,15 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/recruiting-texting-crm", label: "Recruiters", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
   { path: "/sales-team-texting-crm", label: "Sales teams", group: "industry", priority: 0.82, updated: REFRESH_2026_09 },
 
-  { path: "/text2sale-vs-onlysales", label: "Text2Sale vs OnlySales", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
-  { path: "/text2sale-vs-textdrip", label: "Text2Sale vs Textdrip", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
-  { path: "/text2sale-vs-salesmsg", label: "Text2Sale vs Salesmsg", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
-  { path: "/text2sale-vs-gohighlevel", label: "Text2Sale vs GoHighLevel", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
-  { path: "/text2sale-vs-twilio", label: "Text2Sale vs Twilio", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
+  { path: "/text2sale-vs-onlysales", label: "Text2Sale vs OnlySales", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-textdrip", label: "Text2Sale vs Textdrip", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-salesmsg", label: "Text2Sale vs Salesmsg", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-gohighlevel", label: "Text2Sale vs GoHighLevel", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-twilio", label: "Text2Sale vs Twilio", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-aloware", label: "Text2Sale vs Aloware", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-phoneburner", label: "Text2Sale vs PhoneBurner", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-kixie", label: "Text2Sale vs Kixie", group: "compare", priority: 0.8, updated: "2026-10-29" },
+  { path: "/text2sale-vs-close", label: "Text2Sale vs Close", group: "compare", priority: 0.8, updated: "2026-10-29" },
   { path: "/best-onlysales-alternative", label: "OnlySales alternative", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
   { path: "/best-textdrip-alternative", label: "Textdrip alternative", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
   { path: "/best-salesmsg-alternative", label: "Salesmsg alternative", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
@@ -74,10 +78,19 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/how-to-text-aged-leads", label: "How to text aged leads", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/reduce-insurance-appointment-no-shows", label: "Reduce appointment no-shows", group: "guide", priority: 0.78, updated: TOPIC_CLUSTER_2026_10 },
 
+  { path: "/insurance-follow-up-text-pack", label: "30 insurance follow-up texts", group: "guide", priority: 0.82, updated: "2026-10-29" },
+  { path: "/aged-lead-reactivation-playbook", label: "Aged lead reactivation playbook", group: "guide", priority: 0.82, updated: "2026-10-29" },
+
   { path: "/sms-character-counter", label: "SMS character counter", group: "tool", priority: 0.85, updated: "2026-10-04" },
   { path: "/sms-cost-calculator", label: "SMS cost calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/quiet-hours-checker", label: "Quiet hours checker", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/follow-up-cadence-generator", label: "Follow-up cadence generator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/insurance-text-templates", label: "Insurance text templates", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/speed-to-lead-calculator", label: "Speed-to-lead calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/dialer-calculator", label: "Dialer calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/appointment-no-show-calculator", label: "No-show cost calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/10dlc-readiness-checklist", label: "10DLC readiness checklist", group: "tool", priority: 0.82, updated: "2026-10-29" },
 ];
 
 export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
