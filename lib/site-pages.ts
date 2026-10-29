@@ -82,6 +82,12 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/sms-cost-calculator", label: "SMS cost calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/quiet-hours-checker", label: "Quiet hours checker", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/follow-up-cadence-generator", label: "Follow-up cadence generator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/insurance-text-templates", label: "Insurance text templates", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/speed-to-lead-calculator", label: "Speed-to-lead calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/dialer-calculator", label: "Dialer calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/appointment-no-show-calculator", label: "No-show cost calculator", group: "tool", priority: 0.82, updated: "2026-10-29" },
+  { path: "/10dlc-readiness-checklist", label: "10DLC readiness checklist", group: "tool", priority: 0.82, updated: "2026-10-29" },
 ];
 
 export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {

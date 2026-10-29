@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import MarketingFooter from "@/components/MarketingFooter";
+import MarketingHeader from "@/components/MarketingHeader";
 import { COMPETITORS, PRICING_CHECKED, type Competitor } from "@/lib/competitors";
 
 export function comparisonMetadata(competitor: Competitor): Metadata {
@@ -37,6 +38,7 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
+      <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }} />
 
       <section className="mx-auto max-w-5xl px-6 py-20">
