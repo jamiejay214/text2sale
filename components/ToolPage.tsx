@@ -2,6 +2,7 @@ import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import MarketingFooter from "@/components/MarketingFooter";
+import { NewsletterSignup } from "@/components/EmailCapture";
 
 type FaqItem = { question: string; answer: string };
 type RelatedPage = { href: string; label: string };
@@ -110,6 +111,10 @@ export default function ToolPage({
             ))}
           </div>
         </section>
+
+        <div className="mb-12">
+          <NewsletterSignup />
+        </div>
 
         <section className="mb-12 rounded-[2rem] border border-emerald-300/20 bg-emerald-300/10 p-8 text-center sm:p-12">
           <h2 className="text-3xl font-black text-white">{ctaTitle}</h2>

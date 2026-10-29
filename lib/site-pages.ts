@@ -78,6 +78,9 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/how-to-text-aged-leads", label: "How to text aged leads", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/reduce-insurance-appointment-no-shows", label: "Reduce appointment no-shows", group: "guide", priority: 0.78, updated: TOPIC_CLUSTER_2026_10 },
 
+  { path: "/insurance-follow-up-text-pack", label: "30 insurance follow-up texts", group: "guide", priority: 0.82, updated: "2026-10-29" },
+  { path: "/aged-lead-reactivation-playbook", label: "Aged lead reactivation playbook", group: "guide", priority: 0.82, updated: "2026-10-29" },
+
   { path: "/sms-character-counter", label: "SMS character counter", group: "tool", priority: 0.85, updated: "2026-10-04" },
   { path: "/sms-cost-calculator", label: "SMS cost calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
