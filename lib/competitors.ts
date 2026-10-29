@@ -247,7 +247,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs OnlySales compared for insurance agents: subscription price, per-text and per-minute costs, dialing, AI replies, AI receptionist and booking.",
     headline: "Text2Sale vs OnlySales: two agent-focused tools, compared honestly.",
     summary:
-      "OnlySales is a low-cost texting and calling platform for agents. Text2Sale adds predictive dialing, AI replies, an AI receptionist and appointment booking on top of texting and calling.",
+      "OnlySales is a low-cost texting, drip and calling platform with a pipeline for health advisors. Text2Sale adds predictive dialing, AI replies, an AI receptionist and appointment booking on top of texting and calling.",
     whatItIs:
       "OnlySales lists one subscription for agents at $35/month with unlimited lead uploads, SMS, calling and pipeline management. Usage is $0.012 per outbound segment, free inbound messages, $0.02 per call minute and $1/month per phone number.",
     rows: [
@@ -259,6 +259,7 @@ export const COMPETITORS: Competitor[] = [
       { label: "AI text replies", text2sale: T2S.aiText, competitor: "Not listed on pricing page" },
       { label: "AI receptionist", text2sale: T2S.aiVoice, competitor: "Not listed on pricing page" },
       { label: "Appointment booking", text2sale: T2S.booking, competitor: "Not listed on pricing page" },
+      { label: "Drip campaigns", text2sale: "Yes, stop on reply or opt-out", competitor: "Yes, SMS campaigns and drips" },
       { label: "Pipeline", text2sale: "Lead stages, tags and dispositions", competitor: "Pipeline management" },
       { label: "Built for", text2sale: "Agents who want AI and dialing automation", competitor: "Agents who want low-cost texting and calling" },
     ],
@@ -276,6 +277,7 @@ export const COMPETITORS: Competitor[] = [
       "Export your leads and pipeline stages from OnlySales as CSV.",
       "Import into Text2Sale and map stages to tags or dispositions.",
       "Register 10DLC, then turn on AI replies and the dialer.",
+      "Map suppression and consent data before enrolling contacts. Sending requires an eligible account, a funded wallet, a sending number and completed carrier registration.",
     ],
     faq: [
       { question: "Is OnlySales cheaper than Text2Sale?", answer: "Yes on the base price and per-message rates. Text2Sale costs more but includes predictive dialing, AI replies, an AI receptionist and booking." },

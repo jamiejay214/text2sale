@@ -1,3 +1,4 @@
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import type { BlogPost } from "@/lib/blog-posts";
 import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
@@ -79,6 +80,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
+      <MarketingHeader/>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(articleSchema) }} />
       {faqSchema && (
         <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(faqSchema) }} />
@@ -118,14 +120,16 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
           </p>
         </header>
 
+        <nav aria-label="In this guide" className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/40 p-6"><h2 className="font-bold text-emerald-200">In this guide</h2><ol className="mt-3 space-y-2">{post.sections.map((section,index)=><li key={section.heading}><a className="text-emerald-100 underline underline-offset-4" href={`#section-${index+1}`}>{section.heading}</a></li>)}</ol></nav>
+        <p className="mt-5 text-sm text-zinc-400">Published by <Link href="/about" className="underline">Text2Sale</Link> · Updated <time dateTime={post.dateModified}>{formatDate(post.dateModified)}</time>. Product questions or corrections: <a href="mailto:support@text2sale.com" className="underline">support@text2sale.com</a>.</p>
         <div className="mt-10 space-y-5">
           {post.intro.map((p, i) => (
             <p key={i} className="text-[17px] leading-8 text-zinc-200">{p}</p>
           ))}
         </div>
 
-        {post.sections.map((section) => (
-          <section key={section.heading} className="mt-12">
+        {post.sections.map((section,index) => (
+          <section id={`section-${index+1}`} key={section.heading} className="mt-12 scroll-mt-8">
             <h2 className="text-2xl font-black tracking-tight">{section.heading}</h2>
             <div className="mt-4 space-y-5">
               {section.paragraphs.map((p, i) => (
@@ -166,7 +170,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             Import leads, create follow-up campaigns, organize replies, and connect texting, calling, and appointments in one workspace.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Choose your plan</Link>
+            <Link href="/pricing" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Choose your plan</Link>
             <Link href={landing.href} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">{landing.label}</Link>
           </div>
         </section>
