@@ -22,8 +22,8 @@ export default function Page() {
         { title: "Simple growth path", body: "Start with mass texting, then add AI replies, appointment-setting flows, campaign tracking, and compliance-focused workflows as your team grows." }
       ]}
       bullets={["Mass texting campaigns", "CSV lead uploads", "AI reply assistance", "2-way inbox", "Opt-out handling", "Sales team workflow"]}
-      noteTitle="Bottom line"
-      noteBody="OnlySales may work for basic texting workflows, but Text2Sale is positioned for teams that want a modern mass texting CRM with AI support and insurance-sales-friendly follow-up tools."
+      noteTitle="Choose by workflow and total cost"
+      noteBody="OnlySales supports SMS campaigns, drips, calling and a pipeline for health advisors. Text2Sale combines texting, AI-assisted follow-up and appointment tools with separate Text, Dialer and Complete plans. Compare the actual workflow and total usage cost for your team; neither product is automatically the better fit."
       faq={[
         {
           question: "What is the difference between Text2Sale and OnlySales?",
@@ -39,7 +39,7 @@ export default function Page() {
         },
         {
           question: "Can I import my leads into Text2Sale from OnlySales?",
-          answer: "Yes. You can export your contacts as a CSV and import them directly into Text2Sale. The platform is designed for fast onboarding so you can launch your first campaign the same day."
+          answer: "Yes. You can export your contacts as a CSV and import them directly into Text2Sale. Map suppression and consent data before enrolling contacts. Sending also requires an eligible account, funded wallet, sending number and completed carrier registration."
         },
         {
           question: "How much does Text2Sale cost?",
@@ -47,6 +47,7 @@ export default function Page() {
         }
       ]}
       relatedPages={[
+        {href:"https://www.onlysales.io/pricing",label:"OnlySales official pricing and features · checked October 29, 2026"},
         { href: "/text2sale-vs-salesmsg", label: "Text2Sale vs Salesmsg" },
         { href: "/text2sale-vs-gohighlevel", label: "Text2Sale vs GoHighLevel" },
         { href: "/text2sale-vs-twilio", label: "Text2Sale vs Twilio" },

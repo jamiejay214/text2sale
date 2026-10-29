@@ -43,7 +43,7 @@ export default function HomeClient({
   const [signupStep, setSignupStep] = useState<1 | 2>(1);
   // The plan picked on the pricing cards rides through signup to checkout
   // (and survives an email-verification detour in localStorage).
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>("complete");
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>("text");
   // /pricing links here with ?signup=1&plan=<key>.
   useEffect(() => {
     const plan = new URLSearchParams(window.location.search).get("plan");
