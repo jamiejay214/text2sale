@@ -106,15 +106,14 @@ export async function GET(req: NextRequest) {
   const forbid = requireSameUser(auth.user.id, userId);
   if (forbid) return forbid;
 
-  const { data, error } = await supabase
-    .from("appointments")
-    .select("*, contacts(first_name, last_name, phone)")
-    .eq("user_id", auth.user.id)
-    .order("date", { ascending: true })
-    .order("time", { ascending: true });
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ appointments: data });
+  const appointments=[];
+  for(let offset=0;;offset+=1000){
+    const {data,error}=await supabase.from("appointments").select("*, contacts(first_name, last_name, phone)").eq("user_id",auth.user.id).order("date",{ascending:true}).order("time",{ascending:true}).order("id").range(offset,offset+999);
+    if(error)return NextResponse.json({error:error.message},{status:500});
+    appointments.push(...(data || []));
+    if(!data || data.length<1000)break;
+  }
+  return NextResponse.json({appointments});
 }
 
 // POST — create appointment. Public booking page calls this; we still force
@@ -212,6 +211,8 @@ export async function POST(req: NextRequest) {
     apt.google_event_id = googleEventId;
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
+    apt.calendar_sync_error = "Saved in Text2Sale. Google Calendar sync failed; reconnect or retry.";
+    await supabase.from("appointments").update({calendar_sync_error:apt.calendar_sync_error}).eq("id",apt.id);
     if (!message.includes("not connected")) console.error("[appointments] Google Calendar sync failed:", message);
   }
 
@@ -242,7 +243,7 @@ export async function PATCH(req: NextRequest) {
   // Verify the appointment belongs to the caller
   const { data: existing } = await supabase
     .from("appointments")
-    .select("user_id, google_event_id")
+    .select("*")
     .eq("id", id)
     .single();
   if (!existing || existing.user_id !== auth.user.id) {
@@ -250,7 +251,22 @@ export async function PATCH(req: NextRequest) {
   }
 
   const updates: Record<string, unknown> = {};
+  if(status && !["confirmed","completed","no_show","cancelled"].includes(status))return NextResponse.json({error:"Invalid appointment status."},{status:400});
   if (status) updates.status = status;
+  if(body.date!==undefined || body.time!==undefined){
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(body.date || "") || !/^([01]\d|2[0-3]):[0-5]\d(:00)?$/.test(body.time || ""))return NextResponse.json({error:"Choose a valid date and time."},{status:400});
+    const {data:owner}=await supabase.from("profiles").select("available_hours").eq("id",auth.user.id).single();
+    const zone=owner?.available_hours?.timezone || "America/New_York";
+    const duration=existing.duration_minutes || 30;
+    const {data:other,error:otherError}=await supabase.from("appointments").select("time,duration_minutes").eq("user_id",auth.user.id).eq("date",body.date).eq("status","confirmed").neq("id",id);
+    if(otherError)return NextResponse.json({error:"Could not verify availability."},{status:503});
+    const minute=(t:string)=>Number(t.slice(0,2))*60+Number(t.slice(3,5));
+    const start=minute(body.time);
+    if((other||[]).some(a=>minute(a.time)<start+duration && start<minute(a.time)+(a.duration_minutes||30)))return NextResponse.json({error:"That time overlaps another appointment."},{status:409});
+    try{if(await checkCalendarConflict(auth.user.id,body.date,body.time,duration,zone,existing.google_event_id))return NextResponse.json({error:"That time is busy in Google Calendar."},{status:409});}catch{return NextResponse.json({error:"Could not check your calendar. Retry before rescheduling."},{status:503});}
+    updates.date=body.date;updates.time=body.time;updates.status="confirmed";updates.reminder_sent=false;
+  }
+  if(typeof body.title==="string" && body.title.trim())updates.title=body.title.trim();
   if (notes !== undefined) updates.notes = notes;
 
   const { data, error } = await supabase
@@ -261,7 +277,18 @@ export async function PATCH(req: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (status === "cancelled") await removeFromGoogle(auth.user.id, existing.google_event_id);
+  if(data.status==="cancelled"){
+    try{if(existing.google_event_id)await deleteCalendarEvent(auth.user.id,existing.google_event_id);data.google_event_id=null;data.calendar_sync_error=null;}
+    catch{data.calendar_sync_error="Cancelled in Text2Sale. Google Calendar removal failed; retry sync.";}
+    await supabase.from("appointments").update({google_event_id:data.google_event_id,calendar_sync_error:data.calendar_sync_error}).eq("id",id);
+  }else if(body.date || body.retrySync){
+    const {data:owner}=await supabase.from("profiles").select("available_hours").eq("id",auth.user.id).single();
+    try{
+      const eventId=await createCalendarEvent(auth.user.id,{date:data.date,time:data.time,title:data.title,contactName:"Text2Sale contact",contactPhone:"",duration:data.duration_minutes||30,timeZone:owner?.available_hours?.timezone || "America/New_York"},existing.google_event_id || undefined);
+      data.google_event_id=eventId;data.calendar_sync_error=null;
+    }catch{data.calendar_sync_error="Saved in Text2Sale. Google Calendar sync failed; reconnect or retry.";}
+    await supabase.from("appointments").update({google_event_id:data.google_event_id,calendar_sync_error:data.calendar_sync_error}).eq("id",id);
+  }
   return NextResponse.json({ appointment: data });
 }
 

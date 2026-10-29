@@ -148,7 +148,7 @@ export async function fetchContactsPage(
   let query = supabase
     .from("contacts")
     .select(
-      "id,user_id,first_name,last_name,phone,email,city,state,tags,notes,dnc,campaign,address,zip,lead_source,quote,policy_id,timeline,household_size,date_of_birth,age,created_at",
+      "id,user_id,first_name,last_name,phone,email,city,state,pipeline_stage,campaign_id,consent_source,consent_at,follow_up_at,deal_value,tags,notes,dnc,campaign,address,zip,lead_source,quote,policy_id,timeline,household_size,date_of_birth,age,created_at",
       { count: "exact" },
     )
     .eq("user_id", userId)
@@ -296,26 +296,15 @@ const ARCHIVE_SCAN = 500;
 /** Paginated conversation summaries for one inbox tab. Message bodies are fetched on demand. */
 export async function fetchConversationsPage(
   userId: string,
-  options: { page?: number; pageSize?: number; filter?: InboxFilter; archivedIds?: readonly string[] } = {},
+  options: { page?: number; pageSize?: number; filter?: InboxFilter; search?: string; archivedIds?: readonly string[] } = {},
 ): Promise<PageResult<Conversation>> {
   const page = Math.max(0, options.page ?? 0);
   const pageSize = Math.min(100, Math.max(20, options.pageSize ?? 50));
-  const from = page * pageSize;
-  const to = from + pageSize - 1;
-  const plans = tabQueries(options.filter ?? "all", options.archivedIds ?? []);
-  if (plans.length === 1) {
-    const { data, error, count } = await conversationQuery(userId, plans[0]).range(from, to);
-    if (error) throw error;
-    const rows = (data || []) as unknown as Conversation[];
-    const total = count || 0;
-    return { rows, total, hasMore: from + rows.length < total };
-  }
-  const results = await Promise.all(plans.map((plan) => conversationQuery(userId, plan).range(0, ARCHIVE_SCAN - 1)));
-  const failed = results.find((result) => result.error);
-  if (failed?.error) throw failed.error;
-  const merged = mergeNewestFirst(results.map((result) => (result.data || []) as unknown as Conversation[]));
-  const rows = merged.slice(from, to + 1);
-  return { rows, total: merged.length, hasMore: to + 1 < merged.length };
+  const { data, error } = await supabase.rpc("workspace_inbox_page", { p_user_id: userId, p_search: options.search || "", p_filter: options.filter || "all", p_offset: page * pageSize, p_limit: pageSize });
+  if (error) throw error;
+  const rows = (data?.rows || []) as Conversation[];
+  const total = Number(data?.total || 0);
+  return { rows, total, hasMore: (page + 1) * pageSize < total };
 }
 
 /** Latest messages for one open thread, returned oldest-to-newest for chat. */

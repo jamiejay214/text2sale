@@ -204,6 +204,12 @@ export type OwnedNumber = {
 };
 
 export type Contact = {
+  pipeline_stage?: string;
+  campaign_id?: string | null;
+  consent_source?: string;
+  consent_at?: string | null;
+  follow_up_at?: string | null;
+  deal_value?: number;
   id: string;
   user_id: string;
   first_name: string;
@@ -266,6 +272,7 @@ export type CampaignLog = {
 };
 
 export type Conversation = {
+  archived?: boolean;
   id: string;
   user_id: string;
   contact_id: string;

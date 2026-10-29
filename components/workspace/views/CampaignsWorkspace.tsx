@@ -1,4 +1,6 @@
 "use client";
+import {useSearchParams} from "next/navigation";
+import { delayParts } from "@/lib/workspace-input";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -111,6 +113,7 @@ function sequenceDuration(steps: CampaignStep[]) {
 
 export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceViewProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const requestedCampaign=useSearchParams().get("campaign");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(blankDraft);
   const [activeStep, setActiveStep] = useState(0);
@@ -151,14 +154,14 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   }, []);
 
   useEffect(() => {
-    const requested = window.sessionStorage.getItem("t2s_campaign_id");
+    const requested = requestedCampaign || window.sessionStorage.getItem("t2s_campaign_id");
     if (requested && campaigns.some((campaign) => campaign.id === requested)) {
       const campaign = campaigns.find((item) => item.id === requested)!;
       setSelectedId(campaign.id);
       setDraft(campaignDraft(campaign));
       window.sessionStorage.removeItem("t2s_campaign_id");
     }
-  }, [campaigns]);
+  }, [campaigns,requestedCampaign]);
 
   const selected = useMemo(
     () => campaigns.find((campaign) => campaign.id === selectedId) || null,
@@ -256,7 +259,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     if (!selected && assignOnCreate && pendingContactIds.length) {
       const { error: assignmentError } = await supabase
         .from("contacts")
-        .update({ campaign: result.name })
+        .update({ campaign: result.name, campaign_id: result.id })
         .eq("user_id", profile.id)
         .in("id", pendingContactIds);
       if (assignmentError) {
@@ -278,6 +281,10 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       setNotice({ tone: "error", text: "Save the campaign before launching it." });
       return;
     }
+    if (JSON.stringify(draft) !== JSON.stringify(campaignDraft(selected))) {
+      setNotice({ tone: "error", text: "You have unsaved changes. Save this campaign, then review and launch the saved version." });
+      return;
+    }
     if (!selected.selected_numbers?.length && !ownedNumbers.length) {
       setNotice({ tone: "error", text: "Add a sending number before launching." });
       return;
@@ -292,10 +299,15 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     setLaunching(true);
     setNotice(null);
     try {
+      const reviewResponse=await authFetch("/api/campaigns/enroll",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({campaignId:selected.id,audience,dryRun:true})});
+      const review=await reviewResponse.json();
+      if(!reviewResponse.ok)throw new Error(review.error || "Could not review audience.");
+      if(!window.confirm(`Review saved campaign: ${selected.name}\n${review.recipients} eligible recipients · ${review.messages} messages · ${review.segments} estimated segments\nEstimated full-sequence SMS usage: $${Number(review.estimatedCost).toFixed(2)}\n\n${review.samples.map((s:{body:string;scheduledAt:string})=>`${new Date(s.scheduledAt).toLocaleString()}: ${s.body}`).join("\n\n")}\n\n${review.note}\n\nQueue this saved version?`))return;
       const response = await authFetch("/api/campaigns/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: review.revision,
           campaignId: selected.id,
           audience,
           resume: selected.status === "Paused",
@@ -332,7 +344,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     setNotice(null);
     const { error } = await supabase
       .from("contacts")
-      .update({ campaign: selected.name })
+      .update({ campaign: selected.name, campaign_id: selected.id })
       .eq("user_id", profile.id)
       .in("id", pendingContactIds);
     if (error) {
@@ -460,12 +472,8 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                   <div className="v2-field">
                     <label>Wait before this step</label>
                     <div className="v2-delay-control">
-                      <input type="number" min={0} value={active.delayMinutes} onChange={(event) => patchStep(activeStep, { delayMinutes: Math.max(0, Number(event.target.value)) })} />
-                      <select value={active.delayMinutes % 1440 === 0 && active.delayMinutes > 0 ? "days" : active.delayMinutes % 60 === 0 ? "hours" : "minutes"} onChange={(event) => {
-                        const unit = event.target.value;
-                        const current = unit === "days" ? Math.max(1, Math.round(active.delayMinutes / 1440)) * 1440 : unit === "hours" ? Math.max(1, Math.round(active.delayMinutes / 60)) * 60 : Math.max(1, active.delayMinutes);
-                        patchStep(activeStep, { delayMinutes: current });
-                      }}><option value="minutes">minutes</option><option value="hours">hours</option><option value="days">days</option></select>
+                      <input aria-label="Delay quantity" type="number" min={0} step={1} value={delayParts(active.delayMinutes).quantity} onChange={(event) => patchStep(activeStep, { delayMinutes: Math.max(0, Number(event.target.value)) * delayParts(active.delayMinutes).unit })} />
+                      <select aria-label="Delay unit" value={delayParts(active.delayMinutes).unit} onChange={(event) => patchStep(activeStep, { delayMinutes: delayParts(active.delayMinutes).quantity * Number(event.target.value) })}><option value={1}>minutes</option><option value={60}>hours</option><option value={1440}>days</option></select>
                     </div>
                     <div className="v2-delay-presets">
                       {[60, 1440, 4320, 10080].map((minutes) => <button key={minutes} onClick={() => patchStep(activeStep, { delayMinutes: minutes })}>{delayLabel(minutes)}</button>)}

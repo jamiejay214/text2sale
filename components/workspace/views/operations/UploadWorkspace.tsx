@@ -1,4 +1,5 @@
 "use client";
+import { normalizeImportPhone, importSuppressed } from "@/lib/workspace-input";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
@@ -39,12 +40,13 @@ type UploadRecord = {
 };
 
 const FIELDS = [
-  ["", "Do not import"], ["first_name", "First name"], ["last_name", "Last name"], ["phone", "Phone number"], ["email", "Email"], ["address", "Address"], ["city", "City"], ["state", "State"], ["zip", "ZIP code"], ["lead_source", "Lead source"], ["notes", "Notes"], ["quote", "Quote"], ["policy_id", "Policy ID"], ["timeline", "Timeline"], ["household_size", "Household size"], ["date_of_birth", "Date of birth"], ["age", "Age"],
+  ["", "Do not import"], ["dnc", "DNC / opted out"], ["tags", "Tags"], ["consent_source", "Consent source"], ["consent_at", "Consent date (ISO)"], ["first_name", "First name"], ["last_name", "Last name"], ["phone", "Phone number"], ["email", "Email"], ["address", "Address"], ["city", "City"], ["state", "State"], ["zip", "ZIP code"], ["lead_source", "Lead source"], ["notes", "Notes"], ["quote", "Quote"], ["policy_id", "Policy ID"], ["timeline", "Timeline"], ["household_size", "Household size"], ["date_of_birth", "Date of birth"], ["age", "Age"],
 ] as const;
 
 function guessField(header: string) {
   const normalized = header.toLowerCase().replace(/[^a-z0-9]/g, "");
   const matches: Record<string, string> = {
+    dnc: "dnc", optout: "dnc", unsubscribed: "dnc", tags:"tags", consentsource:"consent_source", consentdate:"consent_at",
     firstname: "first_name", fname: "first_name", first: "first_name",
     lastname: "last_name", lname: "last_name", last: "last_name",
     phone: "phone", phonenumber: "phone", mobile: "phone", cell: "phone",
@@ -57,10 +59,7 @@ function guessField(header: string) {
   return matches[normalized] || "";
 }
 
-function normalizePhone(value: string) {
-  const digits = String(value || "").replace(/\D/g, "");
-  return digits.length >= 10 ? digits.slice(-10) : "";
-}
+const normalizePhone = normalizeImportPhone;
 
 export default function UploadWorkspace({ profile, onNavigate }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -71,6 +70,7 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
   const [headers, setHeaders] = useState<string[]>([]);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [suppressionOnly,setSuppressionOnly]=useState(false);
   const [campaignId, setCampaignId] = useState("");
   const [history, setHistory] = useState<UploadRecord[]>([]);
   const [ignoreDuplicates, setIgnoreDuplicates] = useState(true);
@@ -121,7 +121,11 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
     setUploading(true); setProgress(5); setNotice(null);
     const mappedRows: Array<Omit<Contact, "id" | "created_at">> = rows.map((row) => {
       const values: Record<string, string> = {};
-      for (const header of headers) if (mapping[header]) values[mapping[header]] = String(row[header] || "").trim();
+      for (const header of headers) if (mapping[header]) {
+        const field=mapping[header], value=String(row[header] || "").trim();
+        if(field==="phone") {if(!normalizePhone(values.phone || "") && normalizePhone(value))values.phone=normalizePhone(value);}
+        else if(value) values[field]=value;
+      }
       return {
         user_id: profile.id,
         first_name: values.first_name || "",
@@ -140,16 +144,33 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
         household_size: values.household_size || "",
         date_of_birth: values.date_of_birth || "",
         age: values.age || "",
-        campaign: campaign?.name || "",
-        tags: [],
-        dnc: false,
+        campaign: suppressionOnly ? "" : campaign?.name || "",
+        campaign_id: suppressionOnly ? null : campaign?.id || null,
+        tags: (values.tags || "").split(/[,;|]/).map(t=>t.trim()).filter(Boolean),
+        consent_source: values.consent_source || "",
+        consent_at: values.consent_at && Number.isFinite(Date.parse(values.consent_at)) ? new Date(values.consent_at).toISOString() : null,
+        dnc: suppressionOnly || importSuppressed(values.dnc || ""),
       };
     });
     const valid = mappedRows.filter((row) => normalizePhone(row.phone));
     const invalidCount = mappedRows.length - valid.length;
     let deduped = valid;
     let duplicateCount = 0;
-    if (ignoreDuplicates) {
+    // Apply suppression to every existing variant before duplicate removal.
+    const blocked=new Set(valid.filter(r=>r.dnc).map(r=>r.phone));
+    for(const row of valid) if(blocked.has(row.phone)) row.dnc=true;
+    if(blocked.size) {
+      try {
+        for(let from=0;;from+=1000){
+          const {data,error}=await supabase.from("contacts").select("id,phone").eq("user_id",profile.id).order("id").range(from,from+999);
+          if(error)throw error;
+          const ids=(data || []).filter(r=>blocked.has(normalizePhone(r.phone))).map(r=>r.id);
+          if(ids.length){const {error}=await supabase.from("contacts").update({dnc:true}).eq("user_id",profile.id).in("id",ids);if(error)throw error;}
+          if(!data || data.length<1000)break;
+        }
+      } catch {setNotice({tone:"error",text:"Suppression could not be saved. Import stopped; no campaign launched."});setUploading(false);return;}
+    }
+    if (ignoreDuplicates || suppressionOnly) {
       const phones = [...new Set(valid.map((row) => normalizePhone(row.phone)))];
       const existing = new Set<string>();
       let checked = true;
@@ -193,7 +214,8 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
     let imported = 0;
     const importedSinceIso = new Date().toISOString();
     for (let index = 0; index < deduped.length; index += 1000) {
-      const { data } = await supabase.from("contacts").insert(deduped.slice(index, index + 1000)).select("id");
+      const { data, error } = await supabase.from("contacts").insert(deduped.slice(index, index + 1000)).select("id");
+      if(error){setNotice({tone:"error",text:`Import stopped after ${imported} saved contacts. ${deduped.length-index} contacts remain unimported. No campaign launched. Retry with duplicate checking enabled. ${error.message}`});setUploading(false);return;}
       imported += data?.length || 0;
       setProgress(25 + Math.round(((index + 1000) / Math.max(1, deduped.length)) * 55));
     }
@@ -205,14 +227,7 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
       success: imported, duplicates: duplicateCount, invalid: invalidCount, tcpa_violations: 0,
       dnc_complainers: 0, validation_used: "Internal DNC", charged: charge, file_content: rawText || null,
     });
-    if (campaign && imported > 0) {
-      try {
-        const response = await authFetch("/api/campaigns/enroll", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ campaignId: campaign.id, audience: "assigned", importedSinceIso }) });
-        const data = await response.json();
-        if (!response.ok) setNotice({ tone: "error", text: `Imported ${imported.toLocaleString()} leads, but the campaign was not queued: ${data.error || "Open the campaign to retry."}` });
-        else setNotice({ tone: "ok", text: `Imported ${imported.toLocaleString()} leads and queued ${Number(data.queued || 0).toLocaleString()} campaign messages.` });
-      } catch { setNotice({ tone: "error", text: `Imported ${imported.toLocaleString()} leads. Open the campaign to launch it.` }); }
-    } else setNotice({ tone: "ok", text: `Imported ${imported.toLocaleString()} leads. ${duplicateCount} duplicates and ${invalidCount} invalid rows were skipped.` });
+    setNotice({tone:"ok",text:`Imported ${imported.toLocaleString()} contacts; ${duplicateCount} duplicates and ${invalidCount} invalid rows skipped. ${suppressionOnly ? "Suppression saved. No messages queued." : campaign ? "Open Campaigns to review recipients and launch." : "No messages queued."}`});
     setProgress(100); setUploading(false); await loadHistory(); reset();
   };
 
@@ -251,6 +266,7 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
   return (
     <>
       <PageHeader eyebrow="Lead import" title="Import leads" description="Upload, map fields, clean duplicates, choose a campaign, and keep every prior list available for a future follow-up." />
+      <label className="v2-check-row"><input type="checkbox" checked={suppressionOnly} onChange={e=>setSuppressionOnly(e.target.checked)} disabled={uploading}/><span><b>Import an opt-out / DNC suppression list</b><small>Marks existing matches and new contacts as DNC. Never starts a campaign.</small></span></label>
       {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       <div className="v2-import-layout">
         <Panel className="v2-import-wizard">

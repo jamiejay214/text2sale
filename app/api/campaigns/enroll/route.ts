@@ -1,3 +1,7 @@
+import { createHash } from "node:crypto";
+import {countSegments} from "@/lib/sms-text";
+import {customerSmsRate} from "@/lib/sms-pricing";
+import {normalizeImportPhone} from "@/lib/workspace-input";
 import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -58,7 +62,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle(),
       db
         .from("profiles")
-        .select("paused, subscription_status, free_subscription, owned_numbers, opt_out_settings")
+        .select("paused, subscription_status, free_subscription, owned_numbers, opt_out_settings, plan")
         .eq("id", auth.user.id)
         .single(),
     ]);
@@ -82,6 +86,8 @@ export async function POST(req: NextRequest) {
         { error: "An active subscription is required." },
         { status: 403 },
       );
+    const revision=createHash("sha256").update(JSON.stringify({name:campaign.name,steps:campaign.steps,message:campaign.message,numbers:campaign.selected_numbers,quiet:campaign.quiet_hours_enabled})).digest("hex");
+    if(input.expectedRevision && input.expectedRevision!==revision)return NextResponse.json({error:"Campaign changed after review. Review it again before launching."},{status:409});
     let steps;
     try {
       steps = validateSequence(
@@ -138,7 +144,7 @@ export async function POST(req: NextRequest) {
         .order("id")
         .range(offset, offset + 999);
       if (input.audience === "assigned")
-        query = query.eq("campaign", campaign.name);
+        query = query.eq("campaign_id", campaign.id);
       if (input.importedSinceIso)
         query = query.gte("created_at", input.importedSinceIso);
       const { data, error } = await query;
@@ -160,10 +166,12 @@ export async function POST(req: NextRequest) {
     }
     // One sequence per phone number: the same person imported twice must
     // not be texted (and charged) twice.
+    const blockedPhones=new Set<string>();
+    for(let offset=0;;offset+=1000){const {data,error}=await db.from("contacts").select("phone").eq("user_id",auth.user.id).eq("dnc",true).order("id").range(offset,offset+999);if(error)return NextResponse.json({error:"Could not check suppression. Nothing queued."},{status:503});for(const c of data||[])blockedPhones.add(normalizeImportPhone(c.phone));if(!data||data.length<1000)break;}
     const seenPhones = new Set<string>();
     const uniqueContacts = contacts.filter((contact) => {
-      const phone = String(contact.phone || "").replace(/\D/g, "").slice(-10);
-      if (phone.length < 10 || seenPhones.has(phone)) return false;
+      const phone = normalizeImportPhone(String(contact.phone || ""));
+      if (phone.length < 10 || blockedPhones.has(phone) || seenPhones.has(phone)) return false;
       seenPhones.add(phone);
       return true;
     });
@@ -205,6 +213,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    if(rows.some(row=>/\{[^}]+\}/.test(row.body)))return NextResponse.json({error:"A message has an unresolved personalization field. Correct the template before launch."},{status:400});
     if (rows.some((row) => hasNonGsmChars(row.body)))
       return NextResponse.json(
         {
@@ -213,6 +222,10 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    if(input.dryRun===true){
+      const segments=rows.reduce((n,row)=>n+countSegments(row.body),0);
+      return NextResponse.json({revision,recipients:contacts.length,messages:rows.length,segments,estimatedCost:Number((segments*customerSmsRate(profile.plan)).toFixed(2)),samples:rows.slice(0,Math.min(steps.length,3)).map(r=>({body:r.body,scheduledAt:r.scheduled_at})),note:"Estimate uses rendered sample spin choices. Personalization, alternate spin text and replies can change actual usage. Quiet hours may delay sending; follow-ups stop on replies."});
+    }
     const queued = await enqueueSequence(db, {
       userId: auth.user.id,
       campaignId: campaign.id,
