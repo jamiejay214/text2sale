@@ -29,7 +29,7 @@ export default function PressPage() {
           <section>
             <h2 className="text-2xl font-bold">Short description</h2>
             <p className="mt-3 leading-7 text-zinc-300">
-              Text2Sale helps insurance agents and sales teams reactivate leads, run SMS campaigns, manage two-way conversations, call through lead lists, use AI to qualify replies, and book appointments from one CRM.
+              Text2Sale helps sales professionals, teams, and businesses reactivate leads, run SMS campaigns, manage two-way conversations, call through lead lists, use AI to qualify replies, and book appointments from one CRM.
             </p>
           </section>
 

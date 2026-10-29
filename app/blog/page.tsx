@@ -6,9 +6,9 @@ import MarketingFooter from "@/components/MarketingFooter";
 const SITE = "https://text2sale.com";
 
 export const metadata: Metadata = {
-  title: "Text2Sale Blog — Dialing, Texting & Compliance for Agents",
+  title: "Text2Sale Blog — Texting, Calling & Business Outreach",
   description:
-    "Guides on predictive dialing, calling and texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for insurance agents and sales teams.",
+    "Guides on predictive dialing, calling and texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for sales professionals, teams, and businesses.",
   alternates: {
     canonical: "/blog",
     types: { "application/rss+xml": `${SITE}/blog/rss.xml` },
@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Text2Sale Blog",
     description:
-      "Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for agents and sales teams.",
+      "Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for sales professionals, teams, and businesses.",
     url: `${SITE}/blog`,
     type: "website",
   },
@@ -59,7 +59,7 @@ export default function BlogIndexPage() {
         <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">← Back to Text2Sale</Link>
         <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Text2Sale Blog</p>
         <h1 className="mt-4 max-w-3xl text-5xl font-black tracking-tight md:text-6xl">
-          Texting playbooks for agents and sales teams
+          Outreach playbooks for sales teams and businesses
         </h1>
         <p className="mt-6 max-w-2xl text-lg leading-8 text-zinc-300">
           Practical guides on texting leads faster, following up smarter, staying compliant, and getting your messages delivered at scale.

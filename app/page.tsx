@@ -6,9 +6,9 @@ import SiteLinks from "@/components/SiteLinks";
 import { SITE_URL } from "@/lib/site-pages";
 
 export const metadata: Metadata = {
-  title: "AI Lead Follow-Up CRM & Appointment Setter | Text2Sale",
+  title: "AI Sales CRM for Texting, Calling & Outreach | Text2Sale",
   description:
-    "Text2Sale is an AI lead follow-up CRM for insurance agents and sales teams. Reactivate old leads, automate SMS follow-up, use a built-in dialer, and book appointments automatically.",
+    "AI texting, calling, and lead follow-up for sales professionals, teams, and businesses. Manage outreach, organize conversations, and book appointments with Text2Sale.",
   alternates: { canonical: "/" },
 };
 
@@ -21,7 +21,7 @@ const organizationSchema = {
   logo: `${SITE_URL}/logo.png`,
   sameAs: ["https://www.instagram.com/text2saleofficialcrm/"],
   description:
-    "AI lead follow-up, texting, dialing, and appointment booking for insurance agents and sales teams.",
+    "AI lead follow-up, texting, dialing, and appointment booking for sales professionals, teams, and businesses.",
   contactPoint: {
     "@type": "ContactPoint",
     email: "support@text2sale.com",

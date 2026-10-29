@@ -14,7 +14,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "What is Text2Sale?",
     answer:
-      "Text2Sale is a mass texting CRM for insurance agents, sales teams, and business owners. You upload lead lists, send SMS campaigns, manage two-way conversations in one inbox, and keep opt-in and opt-out records for TCPA and 10DLC compliance.",
+      "Text2Sale is a sales and business outreach CRM for independent sales professionals, teams, and business owners. You upload lead lists, send SMS campaigns, manage two-way conversations in one inbox, and keep opt-in and opt-out records for TCPA and 10DLC compliance.",
     link: { href: "/mass-texting-crm", label: "How the mass texting CRM works" },
   },
   {

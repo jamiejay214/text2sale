@@ -8,13 +8,13 @@ import "./emerald-public.css";
 const META_PIXEL_ID = "959512910266492";
 
 export const metadata: Metadata = {
-  title: "Text2Sale — Mass Texting CRM for Insurance Agents & Sales Teams",
-  description: "The #1 mass texting CRM for insurance agents, sales teams, and business owners. Upload CSV contact lists, build drip campaigns, manage 2-way conversations, and stay TCPA/10DLC compliant — all from one dashboard.",
+  title: "Text2Sale — AI Sales CRM for Texting, Calling & Business Outreach",
+  description: "AI texting, calling, and lead follow-up for sales professionals, teams, and businesses. Manage outreach, organize conversations, and book appointments with Text2Sale.",
   keywords: [
     "mass texting software",
     "SMS CRM",
-    "insurance agent CRM",
-    "mass texting for insurance",
+    "sales outreach CRM",
+    "business texting software",
     "TCPA compliant SMS",
     "10DLC texting",
     "bulk SMS software",
