@@ -8,6 +8,8 @@ import type { Campaign, Contact, Conversation } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
 import { canCall, canText, planKeyOf } from "@/lib/entitlements";
+import TodayQueue from "../TodayQueue";
+import { nowInTimezone } from "@/lib/availability";
 import { PLANS } from "@/lib/plans";
 
 type Appointment = {
@@ -61,6 +63,8 @@ function relativeTime(value: string) {
 }
 
 export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceViewProps) {
+  const [outcomes,setOutcomes]=useState({booked:0,attended:0,no_show:0,won:0,revenue:0});
+  const [hasCalled,setHasCalled]=useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot>(EMPTY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -69,14 +73,20 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
     setLoading(true);
     setError("");
     try {
-      const [contactCount, conversationCount, campaignsResult, recentConversations, appointmentResponse] = await Promise.all([
+      const [contactCount, conversationCount, campaignsResult, recentConversations, appointmentResponse, totalsResult, callsResult] = await Promise.all([
         supabase.from("contacts").select("id", { count: "exact", head: true }).eq("user_id", profile.id),
         supabase.from("conversations").select("id", { count: "exact", head: true }).eq("user_id", profile.id),
         supabase.from("campaigns").select("id,user_id,name,audience,sent,replies,failed,status,message,steps,selected_numbers,logs,created_at").eq("user_id", profile.id).order("created_at", { ascending: false }).limit(12),
         supabase.from("conversations").select("id,user_id,contact_id,preview,unread,last_message_at,starred,created_at,from_number,ai_enabled,agent_enabled,ai_skipped_reason").eq("user_id", profile.id).order("last_message_at", { ascending: false }).limit(6),
         authFetch(`/api/appointments?userId=${profile.id}`).then((response) => response.ok ? response.json() : null).catch(() => null),
+        supabase.rpc("workspace_totals",{p_user_id:profile.id}),
+        supabase.from("calls").select("id",{count:"exact",head:true}).eq("user_id",profile.id).gt("duration_seconds",0),
       ]);
 
+      if(totalsResult.error) throw totalsResult.error;
+      const totals=totalsResult.data;
+      setOutcomes(totals);setHasCalled(!callsResult.error && (callsResult.count||0)>0);
+      const now=nowInTimezone(String(profile.available_hours?.timezone || "America/New_York"));
       const convs = (recentConversations.data || []) as Conversation[];
       const contactIds = Array.from(new Set(convs.map((item) => item.contact_id).filter(Boolean)));
       const contactMap = new Map<string, Contact>();
@@ -93,14 +103,14 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
       setSnapshot({
         contacts: contactCount.count || 0,
         conversations: conversationCount.count || 0,
-        unread: convs.reduce((sum, item) => sum + Number(item.unread || 0), 0),
-        campaigns: campaigns.length,
-        sent: campaigns.reduce((sum, item) => sum + Number(item.sent || 0), 0),
-        replies: campaigns.reduce((sum, item) => sum + Number(item.replies || 0), 0),
+        unread: Number(totals.unread),
+        campaigns: Number(totals.campaigns),
+        sent: Number(totals.sent),
+        replies: Number(totals.replies),
         recentConversations: convs,
         recentCampaigns: campaigns.slice(0, 4),
         contactMap,
-        appointments: (appointmentResponse?.appointments || []).slice(0, 4),
+        appointments: (appointmentResponse?.appointments || []).filter((a:Appointment)=>a.status==="confirmed" && (a.date>now.date || (a.date===now.date && Number(a.time.slice(0,2))*60+Number(a.time.slice(3,5))>=now.minutes))).slice(0,4),
       });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not load this overview.");
@@ -119,7 +129,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
     () => [
       { label: "Leads", value: compactNumber(snapshot.contacts), note: "In your CRM", icon: Users },
       { label: "Conversations", value: compactNumber(snapshot.conversations), note: `${snapshot.unread} unread`, icon: MessageSquare },
-      { label: "Messages sent", value: compactNumber(snapshot.sent), note: `${responseRate.toFixed(1)}% reply rate`, icon: CheckCircle2 },
+      { label: "Campaign messages · all time", value: compactNumber(snapshot.sent), note: `${responseRate.toFixed(1)}% reply rate`, icon: CheckCircle2 },
       { label: "Available balance", value: `$${Number(profile.wallet_balance || 0).toFixed(2)}`, note: "Messaging wallet", icon: Sparkles },
     ],
     [profile.wallet_balance, responseRate, snapshot],
@@ -139,7 +149,9 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
         }
       />
 
-      <SetupChecklist profile={profile} onNavigate={onNavigate} />
+      <SetupChecklist profile={profile} onNavigate={onNavigate} hasLeads={snapshot.contacts>0} hasSent={snapshot.sent>0} hasCalled={hasCalled}/>
+      <TodayQueue profile={profile} onNavigate={onNavigate}/>
+      <section className="v2-panel"><div className="v2-panel-head"><div><h2>Appointment &amp; sales outcomes · all time</h2><p>Record appointment outcomes and pipeline wins to keep these totals accurate. These are workspace totals, not attributed campaign conversions.</p></div></div><div className="v2-toolbar"><span>{outcomes.booked} bookings</span><span>{outcomes.attended} attended</span><span>{outcomes.no_show} no-shows</span><span>{outcomes.won} won</span><span>${Number(outcomes.revenue).toLocaleString()} recorded sales value</span></div></section>
 
       <section className="emerald-overview-actions" aria-label="Quick actions">
         <button onClick={() => onNavigate("contacts")}><Users size={21} /><span><strong>Your leads</strong><small>Find your next opportunity</small></span><ArrowRight size={16} /></button>
@@ -179,7 +191,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
                 const contact = snapshot.contactMap.get(conversation.contact_id);
                 const name = [contact?.first_name, contact?.last_name].filter(Boolean).join(" ") || contact?.phone || "New lead";
                 return (
-                  <button key={conversation.id} onClick={() => onNavigate("conversations")}>
+                  <button key={conversation.id} onClick={() => {sessionStorage.setItem("t2s_contact_id",conversation.contact_id);onNavigate("conversations");}}>
                     <span className="v2-avatar">{name.split(" ").map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>
                     <span className="v2-preview-copy"><strong>{name}</strong><small>{conversation.preview || "Conversation started"}</small></span>
                     <span className="v2-preview-meta">{conversation.ai_enabled ? <StatusPill tone="info">AI on</StatusPill> : null}<small>{relativeTime(conversation.last_message_at)}</small></span>
@@ -219,7 +231,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
           <div className="v2-panel-head"><div><h3>Campaign pulse</h3><p>Your most recent follow-up workflows.</p></div><button className="v2-text-button" onClick={() => onNavigate("campaigns")}>Manage campaigns</button></div>
           <div className="v2-campaign-pulse">
             {snapshot.recentCampaigns.map((campaign) => (
-              <button key={campaign.id} onClick={() => onNavigate("campaigns")}>
+              <button key={campaign.id} onClick={() => {sessionStorage.setItem("t2s_campaign_id",campaign.id);onNavigate("campaigns");}}>
                 <span><strong>{campaign.name}</strong><small>{campaign.sent} sent · {campaign.replies} replies</small></span>
                 <StatusPill tone={campaign.status === "Completed" ? "success" : campaign.status === "Paused" ? "warning" : "info"}>{campaign.status}</StatusPill>
               </button>
@@ -248,7 +260,7 @@ type SetupStep = { label: string; detail: string; done: boolean; go: () => void 
  * plans register first. Complete shows both, and calling works while the
  * texting registration is still in review.
  */
-function SetupChecklist({ profile, onNavigate }: Pick<WorkspaceViewProps, "profile" | "onNavigate">) {
+function SetupChecklist({ profile, onNavigate,hasLeads,hasSent,hasCalled }: Pick<WorkspaceViewProps, "profile" | "onNavigate"> & {hasLeads:boolean;hasSent:boolean;hasCalled:boolean}) {
   const plan = planKeyOf(profile);
   const hasNumber = (profile.owned_numbers?.length || 0) > 0;
   const funded = Number(profile.wallet_balance || 0) > 0;
@@ -259,16 +271,16 @@ function SetupChecklist({ profile, onNavigate }: Pick<WorkspaceViewProps, "profi
   }
   steps.push({ label: "Get a phone number", detail: plan === "dialer" ? "A local number to call from. No texting registration needed." : "A local number for calls and texts.", done: hasNumber, go: () => onNavigate("settings", "numbers") });
   steps.push({ label: "Add funds to your wallet", detail: "Calls, texts and AI minutes are paid from your prepaid wallet.", done: funded, go: () => onNavigate("settings", "billing") });
-  steps.push({ label: "Import your leads", detail: "Upload a CSV. Phone numbers are found in any column.", done: false, go: () => onNavigate("upload") });
+  steps.push({ label: "Import your leads", detail: "Upload a CSV. Phone numbers are found in any column.", done: hasLeads, go: () => onNavigate("upload") });
   if (PLANS[plan].capabilities.includes("calling")) {
-    steps.push({ label: "Test your microphone and make a first call", detail: "Open the dialer, allow the microphone, and call your own cell.", done: false, go: () => onNavigate("calls") });
+    steps.push({ label: "Test your microphone and make a first call", detail: "Open the dialer, allow the microphone, and call your own cell.", done: hasCalled, go: () => onNavigate("calls") });
     steps.push({ label: "Set up the AI receptionist", detail: "Answers callbacks while you're on the phone. Billed per minute.", done: !!(profile as { ai_call_enabled?: boolean }).ai_call_enabled, go: () => onNavigate("aicalls") });
   }
   if (PLANS[plan].capabilities.includes("texting")) {
-    steps.push({ label: "Send your first campaign", detail: plan === "complete" ? "Available once texting registration is approved. You can call meanwhile." : "Available once texting registration is approved.", done: false, go: () => onNavigate("campaigns") });
+    steps.push({ label: "Send your first campaign", detail: plan === "complete" ? "Available once texting registration is approved. You can call meanwhile." : "Available once texting registration is approved.", done: hasSent, go: () => onNavigate("campaigns") });
   }
   const required = steps.filter((step) => step.label.startsWith("Register") || step.label.startsWith("Get a phone") || step.label.startsWith("Add funds"));
-  if (required.every((step) => step.done)) return null;
+  if (steps.every((step) => step.done)) return null;
   return (
     <Panel className="v2-setup-checklist">
       <div className="v2-panel-head"><div><h2>Set up {PLANS[plan].name}</h2><p>A few steps before your first {plan === "text" ? "campaign" : "call"}.</p></div></div>

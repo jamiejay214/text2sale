@@ -1,5 +1,6 @@
 "use client";
 
+import WorkspaceSearch from "./WorkspaceSearch";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -72,6 +73,7 @@ export default function WorkspaceApp() {
   const [unread, setUnread] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setSearchOpen(v=>!v);}if(e.key==="Escape")setSearchOpen(false);};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[]);
   const [viewerEmail, setViewerEmail] = useState("");
   const [impersonated, setImpersonated] = useState(false);
   const profileId = profile?.id;
@@ -234,8 +236,14 @@ export default function WorkspaceApp() {
       if (impersonateId) params.set("impersonate", impersonateId);
       if (destinationTab !== "overview") params.set("tab", destinationTab);
       if (destinationTab === "settings" && destinationSubtab) params.set("subtab", destinationSubtab);
+      const contact = sessionStorage.getItem("t2s_contact_id");
+      if(destinationTab === "conversations" && contact) params.set("contact",contact);
+      const campaign=sessionStorage.getItem("t2s_campaign_id");
+      if(destinationTab==="campaigns" && campaign)params.set("campaign",campaign);
+      const appointment=sessionStorage.getItem("t2s_appointment_id");
+      if(destinationTab==="appointments" && appointment)params.set("appointment",appointment);
       const query = params.toString();
-      router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
+      router.push(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
     [aiAccess, impersonateId, router],
   );
@@ -356,32 +364,7 @@ export default function WorkspaceApp() {
         )}
         {view}
       </section>
-      {searchOpen && (
-        <div className="v2-command-backdrop" onMouseDown={() => setSearchOpen(false)}>
-          <div className="v2-command" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="v2-command-input">
-              <Search size={18} />
-              <input autoFocus placeholder="Jump to a workspace…" aria-label="Search workspace" />
-              <button onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={18} /></button>
-            </div>
-            <div className="v2-command-links">
-              {[
-                ["conversations", "Open conversations"],
-                ["campaigns", "Build a campaign"],
-                ["contacts", "Find a contact"],
-                ...(callingEnabled ? [["calls", "Open the power dialer"]] : []),
-                ["website", "Edit your website"],
-                ["settings", "Manage phone numbers"],
-                ["learn", "Open tutorials"],
-              ].map(([tab, label]) => (
-                <button key={tab} onClick={() => { navigate(tab as WorkspaceTab, tab === "settings" ? "numbers" : undefined); setSearchOpen(false); }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {searchOpen && profile && <WorkspaceSearch userId={profile.id} onNavigate={navigate} onClose={()=>setSearchOpen(false)}/>}
     </main>
   );
 }

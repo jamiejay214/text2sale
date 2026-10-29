@@ -43,7 +43,7 @@ const GUIDES: Guide[] = [
     subtab: "10dlc",
     steps: [
       { title: "Activate your subscription", detail: "Open Billing & funds and complete the secure Stripe checkout. Your subscription unlocks sending, number purchases, calling, AI, imports, and integrations." },
-      { title: "Add usage funds", detail: "Add at least $20 to the wallet. Texts, calls, imported-lead charges, number activation, and AI calling draw from this balance. The live balance is always visible in the top bar.", tip: "Turn on auto recharge so a running campaign never stops for a low balance." },
+      { title: "Add usage funds", detail: "Add at least $20 to the wallet. Texts, calls, SMS usage charges, number activation, and AI calling draw from this balance. The live balance is always visible in the top bar.", tip: "Turn on auto recharge so a running campaign never stops for a low balance." },
       { title: "Complete messaging setup", detail: "Enter the exact legal business name, EIN, IRS address, website choice, contact details, and preferred area code. Text2Sale creates the required consent pages and submits the carrier registration." },
       { title: "Connect a number", detail: "Once messaging is approved, search by area code in Phone numbers and choose a local line. Delivery health appears on the same screen." },
     ],
@@ -83,7 +83,7 @@ const GUIDES: Guide[] = [
     icon: MessageSquare,
     tab: "conversations",
     steps: [
-      { title: "Filter the inbox", detail: "Use All, Unread, AI handled, and Archived to focus the queue. Search narrows the current page without loading every message in the account." },
+      { title: "Filter the inbox", detail: "Use All, Unread, AI handled, and Archived to focus the queue. Search checks the full account without loading every message in the account." },
       { title: "Open a lead", detail: "Select a conversation to load its thread and contact details. Older messages load only when requested, keeping the inbox fast." },
       { title: "Send or hand off", detail: "Write a reply and press Enter to send. The composer keeps its own state, so typing stays responsive even with a large database." },
       { title: "Control AI", detail: "The workspace switch turns AI texting on or off globally. The switch in a conversation overrides AI for that one lead, so a rep can take over immediately." },

@@ -134,7 +134,8 @@ export async function getGoogleClient(tokens: GoogleTokens) {
  */
 export async function createCalendarEvent(
   userId: string,
-  appointment: AppointmentInput
+  appointment: AppointmentInput,
+  existingEventId?: string
 ): Promise<string> {
   // Load tokens from profile
   const supabase = createClient(supabaseUrl, supabaseKey);
@@ -191,9 +192,9 @@ export async function createCalendarEvent(
   };
 
   const res = await fetch(
-    "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+    "https://www.googleapis.com/calendar/v3/calendars/primary/events" + (existingEventId ? `/${encodeURIComponent(existingEventId)}` : ""),
     {
-      method: "POST",
+      method: existingEventId ? "PATCH" : "POST",
       headers: authHeaders(tokens.access_token),
       body: JSON.stringify(event),
     }
@@ -339,13 +340,32 @@ export async function checkCalendarConflict(
   date: string,       // "YYYY-MM-DD"
   time: string,       // "HH:MM:SS"
   durationMinutes: number,
-  timeZone: string
+  timeZone: string,
+  ignoreEventId?: string
 ): Promise<boolean> {
   // The window used to be built from "2026-10-12T10:30:00 America/New_York",
   // which JavaScript can't parse. toISOString() then threw, the catch
   // reported "no conflict", and every booking ignored the calendar.
   const start = zonedTimeToUtc(date, time, timeZone);
   const end = new Date(start.getTime() + durationMinutes * 60_000);
+  if(ignoreEventId){
+    const db=createClient(supabaseUrl,supabaseKey);
+    const {data,error}=await db.from("profiles").select("google_calendar_tokens").eq("id",userId).single();
+    if(error)throw new Error("Calendar availability could not be checked.");
+    if(!data?.google_calendar_tokens)return false;
+    const tokens=await refreshTokensIfNeeded(userId,data.google_calendar_tokens);
+    let pageToken="";
+    do {
+      const params=new URLSearchParams({timeMin:start.toISOString(),timeMax:end.toISOString(),singleEvents:"true",maxResults:"250"});
+      if(pageToken)params.set("pageToken",pageToken);
+      const response=await fetch(`https://www.googleapis.com/calendar/v3/calendars/primary/events?${params}`,{headers:authHeaders(tokens.access_token)});
+      if(!response.ok)throw new Error("Could not verify calendar availability. Retry before rescheduling.");
+      const page=await response.json();
+      if((page.items || []).some((e:{id:string;status:string;transparency?:string})=>e.id!==ignoreEventId && e.status!=="cancelled" && e.transparency!=="transparent"))return true;
+      pageToken=page.nextPageToken || "";
+    }while(pageToken);
+    return false;
+  }
   const busy = await getCalendarBusy(userId, start, end);
   return busy.some((window) => window.start < end.getTime() && start.getTime() < window.end);
 }

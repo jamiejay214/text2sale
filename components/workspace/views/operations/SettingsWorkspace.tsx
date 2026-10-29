@@ -23,6 +23,7 @@ import {
   Webhook,
   X,
 } from "lucide-react";
+import AvailabilitySettings from "../../AvailabilitySettings";
 import SupportChat from "@/components/SupportChat";
 import ManagerTeam from "./ManagerTeam";
 import ActivationStatus from "@/components/ActivationStatus";
@@ -213,6 +214,7 @@ function Integrations({ profile, onProfile }: Props) {
   const disconnectGoogle = async () => { await authFetch("/api/google-calendar/disconnect", { method: "POST" }); const latest = await fetchProfile(profile.id); if (latest) onProfile(latest); };
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return <>
+    <AvailabilitySettings profile={profile} onProfile={onProfile}/>
     <SettingsHeader eyebrow="Integrations" title="Integrations" description="Sync Google Calendar and issue secure webhook keys so lead vendors can add contacts directly into a campaign." />
     {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}>×</button></div>}
     <div className="v2-integration-grid"><Panel className="v2-integration-card"><span className="v2-google-mark">G</span><div><StatusPill tone={profile.google_calendar_tokens ? "success" : "neutral"}>{profile.google_calendar_tokens ? "Connected" : "Not connected"}</StatusPill><h2>Google Calendar</h2><p>Put AI-booked appointments on your calendar and prevent double booking with your existing events.</p></div>{profile.google_calendar_tokens ? <button className="v2-btn" onClick={disconnectGoogle}>Disconnect</button> : <button className="v2-btn v2-btn-primary" onClick={connectGoogle}><CalendarDays size={15} /> Connect calendar</button>}</Panel><Panel className="v2-api-create"><div className="v2-panel-head"><div><h2>Create lead-vendor API key</h2><p>Each vendor gets its own secure webhook.</p></div><KeyRound size={17} /></div><div className="v2-modal-form"><label>Integration name<input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Health leads — Vendor A" /></label><label>Campaign for incoming leads<select value={form.campaign_id} onChange={(event) => setForm({ ...form, campaign_id: event.target.value })}><option value="">Add to contacts only</option>{campaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}</select></label><label className="v2-check-row"><input type="checkbox" checked={form.auto_sms} onChange={(event) => setForm({ ...form, auto_sms: event.target.checked })} /><span><b>Automatically start selected campaign</b><small>New valid leads begin the workflow as soon as the vendor sends them.</small></span></label><button className="v2-btn v2-btn-primary" disabled={!form.name.trim()} onClick={create}><Plus size={15} /> Create API key</button></div></Panel></div>

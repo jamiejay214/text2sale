@@ -1,4 +1,5 @@
 "use client";
+import {useSearchParams} from "next/navigation";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
@@ -372,6 +373,7 @@ function MessageComposer({ disabled, firstName, onSend }: { disabled: boolean; f
 }
 
 export default function ConversationsWorkspace({ profile, onProfile, onNavigate }: WorkspaceViewProps) {
+  const requestedContactId=useSearchParams().get("contact");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [contacts, setContacts] = useState<Map<string, Contact>>(new Map());
   const [messages, setMessages] = useState<Message[]>([]);
@@ -382,6 +384,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
   const [hasOlder, setHasOlder] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>("inbox");
   const [search, setSearch] = useState("");
+  const [serverSearch,setServerSearch]=useState("");
+  useEffect(()=>{const timer=setTimeout(()=>setServerSearch(search.trim()),250);return()=>clearTimeout(timer);},[search]);
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [error, setError] = useState("");
@@ -418,10 +422,25 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
       const result = await fetchConversationsPage(profile.id, {
         page: nextPage,
         pageSize: 50,
+        search: serverSearch,
         filter: options.filter ?? now.filter,
         archivedIds: [...now.archived],
       });
       let rows = result.rows;
+      const requestedContact = new URLSearchParams(window.location.search).get("contact") || sessionStorage.getItem("t2s_contact_id");
+      let requestedId = "";
+      if (requestedContact) {
+        const {data:contact,error:contactError}=await supabase.from("contacts").select("id").eq("id",requestedContact).eq("user_id",profile.id).single();
+        if(contactError || !contact) throw new Error("This contact could not be opened.");
+        const existing=await supabase.from("conversations").select("*").eq("user_id",profile.id).eq("contact_id",requestedContact).order("last_message_at",{ascending:false}).limit(1).maybeSingle();
+        if(existing.error) throw existing.error;
+        let target=existing.data;
+        if(!target) {const created=await supabase.from("conversations").insert({user_id:profile.id,contact_id:requestedContact,preview:"",unread:0}).select().single();if(created.error)throw created.error;target=created.data;}
+        requestedId=target.id;
+        if(!rows.some(r=>r.id===requestedId))rows=[target,...rows];
+        sessionStorage.removeItem("t2s_contact_id");
+      }
+      setArchived(new Set(rows.filter(r=>r.archived).map(r=>r.id)));
       const open = options.silent ? latest.current.conversations.find((item) => item.id === latest.current.selectedId) : undefined;
       if (open && !rows.some((item) => item.id === open.id)) rows = [...rows, open];
       const contactIds = Array.from(new Set(rows.map((item) => item.contact_id).filter(Boolean)));
@@ -441,24 +460,25 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
       setContacts(nextContacts);
       setTotal(result.total);
       setPage(nextPage);
-      if (!options.silent && !rows.some((item) => item.id === latest.current.selectedId)) setSelectedId(rows[0]?.id || "");
+      if(requestedId) setSelectedId(requestedId);
+      else if (!options.silent && !rows.some((item) => item.id === latest.current.selectedId)) setSelectedId(rows[0]?.id || "");
     } catch (reason) {
       if (!options.silent && request === loadRequest.current) setError(reason instanceof Error ? reason.message : "Could not load conversations.");
     } finally {
       if (!options.silent && request === loadRequest.current) setLoading(false);
     }
-  }, [profile.id]);
+  }, [profile.id,serverSearch,requestedContactId]);
 
   useEffect(() => {
-    let stored = new Set<string>();
-    try {
-      const raw = window.localStorage.getItem(`t2s_archived_convs_${profile.id}`);
-      if (raw) stored = new Set(JSON.parse(raw));
-    } catch {}
-    setArchived(stored);
-    latest.current = { ...latest.current, archived: stored };
-    void loadPage(0);
-  }, [loadPage, profile.id]);
+    const migrate = async () => {
+      const key=`t2s_archived_convs_${profile.id}`;
+      const ids=JSON.parse(localStorage.getItem(key) || "[]") as string[];
+      for(let i=0;i<ids.length;i+=100){const {error}=await supabase.from("conversations").update({archived:true}).eq("user_id",profile.id).in("id",ids.slice(i,i+100));if(error)throw error;}
+      localStorage.removeItem(key);
+      await loadPage(0);
+    };
+    void migrate().catch(e=>{setError(e.message || "Could not load inbox.");setLoading(false);});
+  },[loadPage,profile.id]);
 
   // Live updates refresh the list at most every 1.5 s, however many arrive.
   const refreshTimer = useRef<number | undefined>(undefined);
@@ -470,10 +490,6 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     }, 1_500);
   }, [loadPage]);
   useEffect(() => () => window.clearTimeout(refreshTimer.current), []);
-
-  useEffect(() => {
-    try { window.localStorage.setItem(`t2s_archived_convs_${profile.id}`, JSON.stringify([...archived])); } catch {}
-  }, [archived, profile.id]);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -538,13 +554,13 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
   }, [profile.id, refreshSoon]);
 
   const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+    const requested = new URLSearchParams(window.location.search).get("contact");
     return conversations.filter((conversation) => {
       const contact = contacts.get(conversation.contact_id);
       // "All texts" shows every conversation, archived and opted-out included.
+      if (requested === conversation.contact_id) return true;
       if (!belongsInTab(conversation, filter, archived.has(conversation.id) || !!contact?.dnc)) return false;
-      if (!needle) return true;
-      return `${contactName(contact)} ${contact?.phone || ""} ${conversation.preview || ""}`.toLowerCase().includes(needle);
+      return true;
     });
   }, [archived, contacts, conversations, filter, search]);
 
@@ -580,7 +596,9 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     onProfile(data as typeof profile);
   };
 
-  const archiveChecked = () => {
+  const archiveChecked = async () => {
+    const {error}=await supabase.from("conversations").update({archived:filter!=="archived"}).eq("user_id",profile.id).in("id",[...checked]);
+    if(error){setError("Could not save archive changes.");return;}
     const archivedIds = new Set(checked);
     const restoring = filter === "archived";
     setArchived((current) => {
@@ -597,7 +615,9 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     setChecked(new Set()); setSelectMode(false);
   };
 
-  const archiveConversation = (conversationId: string) => {
+  const archiveConversation = async (conversationId: string) => {
+    const {error}=await supabase.from("conversations").update({archived:true}).eq("id",conversationId).eq("user_id",profile.id);
+    if(error){setError("Could not archive this conversation.");return;}
     setArchived((current) => new Set(current).add(conversationId));
     if (conversationId === selectedId) {
       setSelectedId(
@@ -748,7 +768,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           ) : null}
           {loading ? <div className="v2-thread-loading"><Loader2 size={17} className="v2-spin" /> Loading inbox</div> : null}
           {!loading && visible.length === 0 ? <EmptyState title="Nothing here" description={filter === "archived" ? "Archived conversations will stay available here." : filter === "all" ? "Every text you send or receive will appear here." : "New replies will appear here as soon as they arrive."} /> : null}
-          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={(id) => { setSelectedId(id); setContactRailOpen(false); }} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
+          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={(id) => { const url=new URL(window.location.href);url.searchParams.delete("contact");window.history.replaceState(null,"",url);setSelectedId(id); setContactRailOpen(false); }} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
           <div className="v2-page-controls">
             <button disabled={page === 0} onClick={() => loadPage(page - 1)}><ChevronLeft size={15} /></button>
             <span>{total ? `${page * 50 + 1}–${Math.min(total, (page + 1) * 50)} of ${total}` : "0 conversations"}</span>
