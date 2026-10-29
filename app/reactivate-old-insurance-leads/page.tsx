@@ -41,6 +41,9 @@ export default function Page() {
         { href: "/ai-appointment-setter", label: "AI appointment setter" },
         { href: "/sms-crm-for-insurance-agents", label: "Insurance SMS CRM" },
         { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
+        { href: "/how-to-text-aged-leads", label: "How to text aged leads" },
+        { href: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator" },
+        { href: "/sms-cost-calculator", label: "SMS cost calculator" },
       ]}
     />
   );

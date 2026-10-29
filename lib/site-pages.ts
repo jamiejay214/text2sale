@@ -1,6 +1,6 @@
 export const SITE_URL = "https://text2sale.com";
 
-export type SitePageGroup = "product" | "industry" | "compare" | "guide";
+export type SitePageGroup = "product" | "industry" | "compare" | "guide" | "tool";
 
 export type SitePage = {
   path: string;
@@ -12,6 +12,7 @@ export type SitePage = {
 
 const REFRESH_2026_09 = "2026-09-28";
 const SEO_EXPANSION_2026_10 = "2026-10-28";
+const TOPIC_CLUSTER_2026_10 = "2026-10-29";
 
 export const SITE_PAGES: SitePage[] = [
   { path: "/about", label: "About Text2Sale", group: "guide", priority: 0.72, updated: "2026-10-28" },
@@ -32,7 +33,6 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/real-estate", label: "Real estate appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/roofing", label: "Roofing appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
 
-  { path: "/sms-character-counter", label: "Free SMS character counter", group: "guide", priority: 0.85, updated: "2026-10-04" },
   { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
   { path: "/ai-texting-crm", label: "AI texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
   { path: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
@@ -63,6 +63,21 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/best-twilio-alternative", label: "Twilio alternative", group: "compare", priority: 0.8, updated: REFRESH_2026_09 },
 
   { path: "/how-to-text-insurance-leads", label: "How to text insurance leads", group: "guide", priority: 0.78, updated: REFRESH_2026_09 },
+  { path: "/best-crm-for-health-insurance-agents", label: "Best CRM for health insurance agents", group: "guide", priority: 0.82, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/crm-for-aca-agents", label: "CRM for ACA agents", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/ai-for-insurance-agents", label: "AI for insurance agents", group: "guide", priority: 0.82, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/ai-appointment-setter-for-life-insurance", label: "AI appointment setter for life insurance", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/power-dialer-vs-predictive-dialer", label: "Power dialer vs predictive dialer", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/speed-to-lead-for-insurance-agents", label: "Speed to lead for insurance agents", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/insurance-lead-follow-up-cadence", label: "Insurance lead follow-up cadence", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/why-insurance-leads-stop-responding", label: "Why insurance leads stop responding", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/how-to-text-aged-leads", label: "How to text aged leads", group: "guide", priority: 0.8, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/reduce-insurance-appointment-no-shows", label: "Reduce appointment no-shows", group: "guide", priority: 0.78, updated: TOPIC_CLUSTER_2026_10 },
+
+  { path: "/sms-character-counter", label: "SMS character counter", group: "tool", priority: 0.85, updated: "2026-10-04" },
+  { path: "/sms-cost-calculator", label: "SMS cost calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
+  { path: "/quiet-hours-checker", label: "Quiet hours checker", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
 ];
 
 export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
@@ -70,6 +85,7 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
   industry: "Industries",
   compare: "Compare",
   guide: "Guides",
+  tool: "Free tools",
 };
 
-export const HOME_UPDATED = "2026-10-28";
+export const HOME_UPDATED = "2026-10-29";

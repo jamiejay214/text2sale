@@ -6,7 +6,7 @@ import { SITE_PAGES, SITE_PAGE_GROUP_LABELS, SITE_URL, type SitePageGroup } from
 // engines (https://llmstxt.org). Generated from the same page registry and
 // blog data as the sitemap, so it never drifts from what is published.
 
-const GROUPS: SitePageGroup[] = ["product", "industry", "compare", "guide"];
+const GROUPS: SitePageGroup[] = ["product", "industry", "compare", "guide", "tool"];
 
 export function GET(req: NextRequest) {
   // Middleware skips .txt paths, so this also answers on customer branded

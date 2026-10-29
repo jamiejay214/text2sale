@@ -41,6 +41,9 @@ export default function Page() {
         { href: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads" },
         { href: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software" },
         { href: "/ai-texting-crm", label: "AI texting CRM" },
+        { href: "/ai-appointment-setter-for-life-insurance", label: "AI appointment setter for life insurance" },
+        { href: "/ai-for-insurance-agents", label: "AI for insurance agents" },
+        { href: "/reduce-insurance-appointment-no-shows", label: "Reduce appointment no-shows" },
       ]}
     />
   );
