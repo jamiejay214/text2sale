@@ -19,6 +19,7 @@ const organizationSchema = {
   name: "Text2Sale",
   url: SITE_URL,
   logo: `${SITE_URL}/logo.png`,
+  sameAs: ["https://www.instagram.com/text2saleofficialcrm/"],
   description:
     "AI lead follow-up, texting, dialing, and appointment booking for insurance agents and sales teams.",
   contactPoint: {
