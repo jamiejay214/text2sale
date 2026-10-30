@@ -46,6 +46,9 @@ After a customer subscribes and submits their business details, the application 
 | `MESSAGING_AUTOBUY=true` | Allows the activation driver to purchase phone numbers. |
 | `VERCEL_API_TOKEN`, `VERCEL_PROJECT_ID`, `VERCEL_TEAM_ID` | Domain automation. |
 | `TELNYX_API_KEY`, `TELNYX_MESSAGING_PROFILE_ID` | Messaging and telephony. |
+| `TELNYX_EMAIL_ENABLED=true` | Turns on email campaigns (sent through Telnyx Email with the same API key). |
+| `TELNYX_EMAIL_MAX_PER_SECOND` | Optional email send pace; defaults to 10 per second. |
+| `EMAIL_UNSUBSCRIBE_SECRET` | Optional key for signing unsubscribe links; falls back to the Supabase service role key. |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Subscriptions and wallet payments. |
 
 ## Pay-first rules
