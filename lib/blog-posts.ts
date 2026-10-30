@@ -18,6 +18,9 @@ import { BLOG_POSTS_12 } from "./blog-posts-12";
 import { BLOG_POSTS_13 } from "./blog-posts-13";
 import { BLOG_POSTS_14 } from "./blog-posts-14";
 import { BLOG_POSTS_15 } from "./blog-posts-15";
+import { BLOG_POSTS_16 } from "./blog-posts-16";
+import { BLOG_POSTS_17 } from "./blog-posts-17";
+import { BLOG_POSTS_18 } from "./blog-posts-18";
 
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
@@ -8223,6 +8226,9 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_13,
   ...BLOG_POSTS_14,
   ...BLOG_POSTS_15,
+  ...BLOG_POSTS_16,
+  ...BLOG_POSTS_17,
+  ...BLOG_POSTS_18,
   ...BLOG_POSTS_6,
   ...BLOG_POSTS_5,
 ];
