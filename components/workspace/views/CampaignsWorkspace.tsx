@@ -36,6 +36,7 @@ import {
 import type { Campaign, CampaignStep } from "@/lib/types";
 import { normalizeOptOutSettings } from "@/lib/opt-out";
 import { checkSpam } from "@/lib/spam-check";
+import EmailCampaigns from "./EmailCampaigns";
 
 const TOKENS = ["{firstName}", "{lastName}", "{phone}", "{city}", "{state}"];
 
@@ -124,6 +125,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const [pendingContactIds, setPendingContactIds] = useState<string[]>([]);
   const [assignOnCreate, setAssignOnCreate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [channel, setChannel] = useState<"text" | "email">("text");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -383,11 +385,13 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
         description="One campaign can be a single text or a complete multi-step workflow with timing, spin text, and personalization."
         actions={
           <>
+            <div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : "Email"}</button>)}</div>
             <button className="v2-btn" onClick={() => onNavigate("upload")}><Users size={16} /> Import leads</button>
-            <button className="v2-btn v2-btn-primary" onClick={startNew}><Plus size={16} /> New campaign</button>
+            {channel === "text" && <button className="v2-btn v2-btn-primary" onClick={startNew}><Plus size={16} /> New campaign</button>}
           </>
         }
       />
+      {channel === "email" ? <EmailCampaigns campaignNames={campaigns.map((c) => c.name)} /> : <>
       {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       {pendingContactIds.length > 0 && (
         <div className="v2-campaign-handoff">
@@ -518,6 +522,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
           </div>
         </Panel>
       )}
+      </>}
     </>
   );
 }

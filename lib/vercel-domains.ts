@@ -422,6 +422,39 @@ export async function attachDomainToProject(
   }
 }
 
+// ── DNS records on a Vercel-registered domain ──────────────────────────
+// Used to publish email authentication records (DKIM, DMARC) on the
+// domains Text2Sale registers for customers. `name` is the full host; the
+// record is created relative to `domain`. An identical existing record
+// (409) counts as success.
+export async function listDnsRecords(domain: string): Promise<{ name: string; type: string; value: string }[]> {
+  const { token, teamId } = getAuth();
+  const res = await fetch(withTeam(`${VERCEL_API}/v4/domains/${encodeURIComponent(domain)}/records?limit=100`, teamId), {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`DNS list failed (${res.status})`);
+  const json = (await res.json().catch(() => ({}))) as { records?: { name: string; type: string; value: string }[] };
+  return json.records || [];
+}
+
+export async function addDnsRecord(
+  domain: string,
+  record: { type: "CNAME" | "TXT" | "MX"; name: string; value: string }
+): Promise<void> {
+  const { token, teamId } = getAuth();
+  const suffix = `.${domain}`;
+  const relative = record.name === domain ? "" : record.name.endsWith(suffix) ? record.name.slice(0, -suffix.length) : record.name;
+  const res = await fetch(withTeam(`${VERCEL_API}/v2/domains/${encodeURIComponent(domain)}/records`, teamId), {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ name: relative, type: record.type, value: record.value, ttl: 3600 }),
+  });
+  if (!res.ok && res.status !== 409) {
+    const json = (await res.json().catch(() => ({}))) as { error?: { message?: string } };
+    throw new Error(json.error?.message || `DNS record failed (${res.status})`);
+  }
+}
+
 // ── Convenience: slugify a business name into a domain candidate ────────
 // "Northern Legacy Insurance Agency LLC" → "northernlegacyins"
 // Keeps it to 15 chars max to stay under carrier brand-length limits and
