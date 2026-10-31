@@ -1256,3 +1256,9 @@ tr:hover .v2-row-actions { opacity:1; }
 .em-compose { display:grid; gap:18px; }
 /* The light theme forces white inputs (!important); the letter and title stay part of the page. */
 .em-compose :is(.em-title,.em-letter textarea,.em-signature,.em-cta-button input) { background-color:transparent !important; }
+/* Email replies in Conversations */
+.v2-message-channel { display:flex; align-items:center; gap:5px; margin:0 0 4px; color:var(--v2-muted); font-size:.68rem; font-weight:700; }
+.v2-message-row.is-outbound .v2-message-channel { justify-content:flex-end; }
+.v2-composer-channel { display:flex; gap:4px; margin-bottom:8px; }
+.v2-composer-channel button { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--v2-line); border-radius:999px; padding:4px 10px; background:transparent; color:var(--v2-muted); font:inherit; font-size:.72rem; font-weight:700; cursor:pointer; }
+.v2-composer-channel button.is-active { background:var(--v2-accent); color:var(--v2-ink); border-color:transparent; }

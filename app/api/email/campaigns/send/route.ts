@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       const agentName = String(campaign.design?.signature || sender.from_name || "").split("\n")[0].trim();
       const msg = buildEmail({ subject: `[Test] ${campaign.subject}`, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact: { first_name: "Alex", state: "FL", agent_name: agentName }, footer });
       const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;
-      await sendEmail({ from: `${sender.from_local}@${sender.domain}`, fromName, replyTo: sender.reply_to, to, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
+      await sendEmail({ from: `${sender.from_local}@${sender.domain}`, fromName, replyTo: sender.inbox_address || sender.reply_to, to, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
       return NextResponse.json({ ok: true, to });
     } catch (e) {
       console.error("[email/send test]", e);

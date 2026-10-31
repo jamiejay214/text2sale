@@ -49,6 +49,10 @@
     {
       "path": "/api/email/campaigns/run",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/email/inbox/poll",
+      "schedule": "* * * * *"
     }
   ]
 }

@@ -2,7 +2,7 @@
 import {useSearchParams} from "next/navigation";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
+import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Mail, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
@@ -330,6 +330,7 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
       {messages.map((message) => (
         <div key={message.id} className={`v2-message-row ${message.direction === "outbound" ? "is-outbound" : "is-inbound"}`}>
           <div>
+            {message.channel === "email" ? <b className="v2-message-channel"><Mail size={12} /> Email{message.email_subject ? ` · ${message.email_subject}` : ""}</b> : null}
             <p>{message.body}</p>
             <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{message.direction === "outbound" ? ` · ${message.status}` : ""}</span>
           </div>
@@ -339,32 +340,39 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
   );
 });
 
-function MessageComposer({ disabled, firstName, onSend }: { disabled: boolean; firstName: string; onSend: (body: string) => Promise<boolean> }) {
+function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, onSend }: { disabled: boolean; firstName: string; channel: "sms" | "email"; canEmail: boolean; onChannel: (channel: "sms" | "email") => void; onSend: (body: string, channel: "sms" | "email") => Promise<boolean> }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const sanitized = sanitizeForSms(body);
-  const unicode = hasNonGsmChars(sanitized);
-  const segments = body ? countSegments(sanitized) : 0;
+  const email = channel === "email";
+  const sanitized = email ? body : sanitizeForSms(body);
+  const unicode = !email && hasNonGsmChars(sanitized);
+  const segments = body && !email ? countSegments(sanitized) : 0;
   const send = async () => {
     if (!body.trim() || disabled || sending) return;
     if (unicode) { setError("Remove emojis or special characters before sending."); return; }
     setSending(true); setError("");
-    const sent = await onSend(sanitized.trim()).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
+    const sent = await onSend(sanitized.trim(), channel).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
     if (sent) setBody("");
     setSending(false);
   };
   return (
     <div className="v2-composer">
+      {canEmail ? (
+        <div className="v2-composer-channel" role="group" aria-label="Reply by">
+          <button className={!email ? "is-active" : ""} aria-pressed={!email} onClick={() => onChannel("sms")}><MessageSquare size={13} /> Text</button>
+          <button className={email ? "is-active" : ""} aria-pressed={email} onClick={() => onChannel("email")}><Mail size={13} /> Email</button>
+        </div>
+      ) : null}
       <textarea
         value={body}
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
-        placeholder={`Message ${firstName || "this contact"}…`}
+        placeholder={`${email ? "Email" : "Message"} ${firstName || "this contact"}…`}
         disabled={disabled}
       />
       <div>
-        <span className={unicode ? "is-error" : ""}>{body.length ? `${sanitized.length} characters · ${segments} segment${segments === 1 ? "" : "s"}` : "Enter to send · Shift+Enter for a new line"}</span>
+        <span className={unicode ? "is-error" : ""}>{email ? "Sent from your email domain, threaded under their last email · Shift+Enter for a new line" : body.length ? `${sanitized.length} characters · ${segments} segment${segments === 1 ? "" : "s"}` : "Enter to send · Shift+Enter for a new line"}</span>
         <button onClick={send} disabled={disabled || sending || !body.trim()}>{sending ? <Loader2 className="v2-spin" size={17} /> : <Send size={17} />} Send</button>
       </div>
       {error ? <p>{error}</p> : null}
@@ -405,6 +413,10 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
 
   const selected = conversations.find((item) => item.id === selectedId);
   const selectedContact = selected ? contacts.get(selected.contact_id) : undefined;
+  // Reply the way they last wrote: email after an email, otherwise text.
+  const [channelFor, setChannelFor] = useState<Record<string, "sms" | "email">>({});
+  const lastChannel = messages.length ? messages[messages.length - 1].channel : undefined;
+  const replyChannel: "sms" | "email" = !selectedContact?.email ? "sms" : selected && channelFor[selected.id] ? channelFor[selected.id] : lastChannel === "email" ? "email" : "sms";
   const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
 
   // What's on screen right now, for reloads that a live update schedules.
@@ -564,8 +576,18 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     });
   }, [archived, contacts, conversations, filter, search]);
 
-  const sendMessage = useCallback(async (body: string) => {
+  const sendMessage = useCallback(async (body: string, channel: "sms" | "email" = "sms") => {
     if (!selected || !selectedContact) return false;
+    if (channel === "email") {
+      const response = await authFetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: selected.id, body }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Email failed.");
+      const inserted = result.message as Message | undefined;
+      const now = new Date().toISOString();
+      if (inserted) setMessages((current) => current.some((item) => item.id === inserted.id) ? current : [...current, inserted]);
+      setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, preview: `Email: ${body}`.slice(0, 100), last_message_at: now, unread: 0 } : item));
+      return true;
+    }
     const from = selected.from_number || profile.owned_numbers?.[0]?.number;
     if (!from) throw new Error("Buy or connect a sending number before messaging.");
     const response = await authFetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: selectedContact.phone, from, body, conversationId: selected.id }) });
@@ -790,8 +812,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
                 </div>
               </header>
               <Thread messages={messages} loading={threadLoading} hasOlder={hasOlder} onOlder={() => loadThread(selected.id, messagePage + 1)} />
-              <MessageComposer disabled={!!selectedContact.dnc} firstName={selectedContact.first_name} onSend={sendMessage} />
-              {selectedContact.dnc ? <div className="v2-dnc-notice">This contact opted out. Sending is disabled.</div> : null}
+              <MessageComposer disabled={replyChannel === "sms" && !!selectedContact.dnc} firstName={selectedContact.first_name} channel={replyChannel} canEmail={!!selectedContact.email} onChannel={(channel) => setChannelFor((current) => ({ ...current, [selected.id]: channel }))} onSend={sendMessage} />
+              {selectedContact.dnc && replyChannel === "sms" ? <div className="v2-dnc-notice">This contact opted out of texts. Sending texts is disabled{selectedContact.email ? "; you can still reply by email" : ""}.</div> : null}
             </>
           ) : (
             <EmptyState title="Choose a conversation" description="Open a lead from the inbox to see their history and continue the conversation." action={<MessageSquare size={22} />} />

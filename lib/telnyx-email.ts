@@ -78,6 +78,8 @@ export async function sendEmail(args: {
   text: string;
   unsubscribeUrl: string;
   tag?: string;
+  /** Message-ID of the email this answers, so it threads in the recipient's inbox. */
+  inReplyTo?: string | null;
 }): Promise<string> {
   const out = await call<{ data: { id: string } }>("POST", "/email_messages", {
     from: args.fromName ? { email: args.from, name: args.fromName } : args.from,
@@ -87,8 +89,46 @@ export async function sendEmail(args: {
     html_body: args.html,
     text_body: args.text,
     // One-click unsubscribe (RFC 8058), required by Gmail and Yahoo for bulk senders.
-    headers: { "List-Unsubscribe": `<${args.unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    headers: {
+      "List-Unsubscribe": `<${args.unsubscribeUrl}>`,
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      ...(args.inReplyTo ? { "In-Reply-To": args.inReplyTo, References: args.inReplyTo } : {}),
+    },
     tags: args.tag ? [args.tag] : undefined,
   });
   return out.data?.id || "";
+}
+
+// ── Inboxes (replies) ───────────────────────────────────────────────────────
+// Each sender gets an inbox on Telnyx's shared inbound domain (no DNS), used
+// as the campaigns' Reply-To. lib/email-inbox.ts collects what arrives.
+
+export type InboxMessage = {
+  id: string;
+  message_id: string | null;
+  in_reply_to: string | null;
+  from: { email: string; name?: string | null } | null;
+  subject: string | null;
+  reply_text: string | null;
+  text_body_url: string | null;
+  received_at: string;
+};
+
+/** Create an inbox; returns its id and full address. */
+export async function createInbox(username: string): Promise<{ id: string; address: string }> {
+  const out = await call<{ data: { id: string; address: string } }>("POST", "/email_inboxes", { username });
+  return { id: out.data.id, address: out.data.address };
+}
+
+/** The newest messages in an inbox (newest first). */
+export async function listInboxMessages(inboxId: string, pageSize = 25): Promise<InboxMessage[]> {
+  const out = await call<{ data: InboxMessage[] }>("GET", `/email_inboxes/${encodeURIComponent(inboxId)}/messages?page[size]=${pageSize}`);
+  return out.data || [];
+}
+
+/** A stored message body (text_body_url), when a message has no extracted reply text. */
+export async function fetchInboxText(url: string): Promise<string> {
+  const res = await fetch(url, { headers: url.startsWith(API) ? { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } : {} });
+  if (!res.ok) return "";
+  return (await res.text()).slice(0, 20000);
 }

@@ -300,6 +300,9 @@ export type Message = {
   from_number?: string;
   /** Telnyx message id, so delivery receipts update this exact message. */
   telnyx_message_id?: string | null;
+  /** "email" for email replies in the thread; texts are "sms". */
+  channel?: "sms" | "email";
+  email_subject?: string | null;
 };
 
 // Conversation with messages and contact joined in
