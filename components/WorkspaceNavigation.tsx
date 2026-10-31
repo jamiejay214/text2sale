@@ -64,7 +64,8 @@ type Props = {
 
 const TEXTING_ITEMS = new Set(["conversations", "campaigns", "templates", "settings:ai", "settings:10dlc"]);
 
-// Calling-first navigation: keep daily sales tools prominent and move setup to Manage.
+// Calling-first navigation: daily sales tools stay prominent; setup lives
+// under one Settings item, with its sections in a tab bar (SettingsNav).
 const groups = [
   { label: "Sales workspace", items: [
     { tab: "overview", label: "Dashboard", icon: LayoutDashboard },
@@ -73,29 +74,64 @@ const groups = [
     { tab: "conversations", label: "Conversations", icon: MessageSquare },
     { tab: "appointments", label: "Appointments", icon: CalendarDays },
     { tab: "pipeline", label: "Pipeline", icon: Kanban },
+    { tab: "upload", label: "Import leads", icon: Upload },
   ] },
   { label: "Automation", items: [
     { tab: "campaigns", label: "Campaigns", icon: Megaphone },
     { tab: "settings", sub: "ai", label: "AI follow-up", icon: Sparkles, aiOnly: true },
     { tab: "aicalls", label: "AI receptionist", icon: Phone, aiOnly: true },
   ] },
-  { label: "Manage", items: [
-    { tab: "upload", label: "Import leads", icon: Upload },
-    { tab: "settings", sub: "numbers", label: "Phone numbers", icon: Phone },
-    { tab: "settings", sub: "billing", label: "Billing & funds", icon: Wallet },
-    { tab: "settings", sub: "10dlc", label: "Messaging setup", icon: ShieldCheck },
-    { tab: "settings", sub: "integrations", label: "Integrations", icon: Plug },
-    { tab: "settings", sub: "team", label: "Workspace & team", icon: Settings },
-    { tab: "website", label: "Website", icon: Globe2 },
-    { tab: "templates", label: "Templates", icon: FileText },
-    { tab: "settings", sub: "support", label: "Support", icon: MessageSquare },
-    { tab: "learn", label: "Tutorials", icon: BookOpen },
+  { label: "Account", items: [
+    { tab: "settings", label: "Settings", icon: Settings },
   ] },
 ] as const;
 
+/** The sections of Settings, shown as a tab bar at the top of each one. */
+export const SETTINGS_SECTIONS = [
+  { tab: "settings", sub: "numbers", label: "Phone numbers", icon: Phone },
+  { tab: "settings", sub: "billing", label: "Billing & funds", icon: Wallet },
+  { tab: "settings", sub: "10dlc", label: "Messaging setup", icon: ShieldCheck },
+  { tab: "settings", sub: "integrations", label: "Integrations", icon: Plug },
+  { tab: "settings", sub: "team", label: "Workspace & team", icon: Settings },
+  { tab: "website", label: "Website", icon: Globe2 },
+  { tab: "templates", label: "Templates", icon: FileText },
+  { tab: "settings", sub: "support", label: "Support", icon: MessageSquare },
+  { tab: "learn", label: "Tutorials", icon: BookOpen },
+] as const;
+
+/** The Settings section on screen, or undefined when the page isn't part of Settings. */
+export function settingsSection(activeTab: WorkspaceTab, settingsTab: string) {
+  if (activeTab === "settings" && (settingsTab === "ai" || settingsTab === "upgrade")) return undefined;
+  return SETTINGS_SECTIONS.find((s) => s.tab === activeTab && (!("sub" in s) || s.sub === settingsTab))
+    || (activeTab === "settings" ? SETTINGS_SECTIONS[0] : undefined);
+}
+
+/** The tab bar across the top of every Settings section. */
+export function SettingsNav({ activeTab, settingsTab, onNavigate, textingEnabled }: { activeTab: WorkspaceTab; settingsTab: string; onNavigate: (tab: WorkspaceTab, settingsTab?: string) => void; textingEnabled?: boolean }) {
+  const current = settingsSection(activeTab, settingsTab);
+  if (!current) return null;
+  return (
+    <nav className="v2-settings-nav" aria-label="Settings sections">
+      {SETTINGS_SECTIONS.map((section) => {
+        const sub = "sub" in section ? section.sub : undefined;
+        const locked = textingEnabled === false && TEXTING_ITEMS.has(sub ? `${section.tab}:${sub}` : section.tab);
+        const active = section === current;
+        return (
+          <button key={section.label} className={active ? "is-active" : ""} aria-current={active ? "page" : undefined} onClick={() => onNavigate(section.tab, sub)}>
+            <section.icon size={15} />
+            <span>{section.label}</span>
+            {locked && <LockKeyhole size={11} aria-label="Not on your plan" />}
+          </button>
+        );
+      })}
+    </nav>
+  );
+}
+
 export default function WorkspaceNavigation(props: Props) {
   const [open, setOpen] = useState(false);
-  const selected = groups
+  const section = settingsSection(props.activeTab, props.settingsTab);
+  const selected = section || groups
     .flatMap((g) => [...g.items])
     .find(
       (item) =>
@@ -150,9 +186,10 @@ export default function WorkspaceNavigation(props: Props) {
                   (item.tab === "aicalls" && !(props.aiCallingEnabled ?? props.callingEnabled)) ||
                   (props.textingEnabled === false && TEXTING_ITEMS.has(sub ? `${item.tab}:${sub}` : item.tab));
                 const locked = offPlan || ("aiOnly" in item && item.aiOnly && !props.aiAccess);
-                const active =
-                  props.activeTab === item.tab &&
-                  (!sub || props.settingsTab === sub);
+                // "Settings" stays lit on every Settings section (Website, Templates and Tutorials included).
+                const active = item.label === "Settings"
+                  ? Boolean(section)
+                  : props.activeTab === item.tab && (!sub || props.settingsTab === sub);
                 return (
                   <button
                     key={item.label}
@@ -191,7 +228,7 @@ export default function WorkspaceNavigation(props: Props) {
             <Menu size={22} />
           </button>
           <span>
-            Workspace <span className="workspace-divider">/</span>{" "}
+            {section ? "Settings" : "Workspace"} <span className="workspace-divider">/</span>{" "}
             <strong>{selected?.label || (props.settingsTab === "upgrade" ? "Upgrade to AI" : "Settings")}</strong>
           </span>
         </div>
