@@ -45,6 +45,10 @@
     {
       "path": "/api/calls/voice-setup",
       "schedule": "23 * * * *"
+    },
+    {
+      "path": "/api/email/campaigns/run",
+      "schedule": "* * * * *"
     }
   ]
 }

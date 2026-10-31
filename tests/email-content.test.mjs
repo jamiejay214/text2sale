@@ -92,3 +92,26 @@ test('designs drop unsafe links and colors', () => {
   assert.ok(!msg.html.includes('url(x)'));
   assert.match(msg.html, /#34d399/);
 });
+
+test('snake_case merge fields and {agent_name} fill in', () => {
+  assert.equal(personalize('Hi {first_name} {last_name} from {state}, {agent_name} here', { first_name: 'Maria', last_name: 'Diaz', state: 'FL', agent_name: 'Jamie' }), 'Hi Maria Diaz from FL, Jamie here');
+  assert.equal(personalize('Hi {first_name},', {}), 'Hi there,');
+});
+
+test('a personal email renders the letter, one button and the sign-off', () => {
+  const msg = buildEmail({
+    subject: 's', previewText: '', body: 'Hi {first_name},\n\nQuick note.', contact: { first_name: 'Maria' }, footer,
+    design: { style: 'personal', ctaText: 'Book my review', ctaUrl: 'https://cal.example.com', signature: 'Jamie', brandColor: '#34d399' },
+  });
+  assert.match(msg.html, /<p style="margin:0 0 16px">Hi Maria,<\/p>/);
+  assert.match(msg.html, /<a href="https:\/\/cal\.example\.com"[^>]*>Book my review<\/a>/);
+  assert.match(msg.html, />Jamie<\/p>/);
+  assert.ok(!msg.html.includes('Free 10-minute review'));
+  assert.match(msg.text, /Book my review: https:\/\/cal\.example\.com\n\nJamie/);
+});
+
+test('a personal email drops a button without an https link', () => {
+  const msg = buildEmail({ subject: 's', previewText: '', body: 'Hello', contact: {}, footer, design: { style: 'personal', ctaText: 'Go', ctaUrl: 'javascript:alert(1)' } });
+  assert.ok(!msg.html.includes('javascript:'));
+  assert.ok(!msg.html.includes('>Go</a>'));
+});

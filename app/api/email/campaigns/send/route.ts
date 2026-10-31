@@ -3,27 +3,19 @@ import { authenticateWorkspace } from "@/lib/workspace-auth";
 import { db, emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
 import { emailConfigured, sendEmail } from "@/lib/telnyx-email";
+import { processCampaign, queueCampaign } from "@/lib/email-queue";
 
-// Send one wave of an email campaign. The dashboard calls this repeatedly
-// with the returned `nextOffset` until `done`, so each call stays well
-// inside the function time limit.
-//
-// Pay first: each wave's full cost is taken from the wallet BEFORE anything
-// is handed to Telnyx; emails that fail to send are refunded. Unsubscribed,
-// bounced and complained addresses, DNC contacts and anyone this campaign
-// already reached are skipped and never charged.
-//
-// mode "test" sends the campaign once to the account's own reply-to
-// address (charged as one email) without touching the campaign's status.
+// Campaign actions:
+//   test      send it once to the account's reply-to address (charged as one email)
+//   schedule  queue every recipient for a time (now, a fixed time, or a local
+//             time in each contact's time zone); the cron sends them in hourly
+//             batches (lib/email-queue.ts), and anything due now starts at once
+//   resume    restart a campaign paused for funds or a sending-domain issue
+//   cancel    stop a scheduled or sending campaign; unsent emails are dropped
 
 export const maxDuration = 300;
 
-const WAVE = 300;
-const PER_SECOND = Math.max(1, Number(process.env.TELNYX_EMAIL_MAX_PER_SECOND) || 10);
-
-type Contact = { id: string; first_name: string | null; last_name: string | null; city: string | null; state: string | null; email: string | null };
-
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const LOCAL_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/;
 
 export async function POST(req: NextRequest) {
   const auth = await authenticateWorkspace(req);
@@ -32,9 +24,24 @@ export async function POST(req: NextRequest) {
   const userId = auth.user.id;
   const body = await req.json().catch(() => ({}));
   const campaignId = String(body.campaignId || "");
-  const offset = Math.max(0, Math.floor(Number(body.offset) || 0));
-  const test = body.mode === "test";
+  const action = String(body.mode || body.action || "");
   const database = db();
+
+  const { data: campaign } = await database.from("email_campaigns").select("*").eq("id", campaignId).eq("user_id", userId).maybeSingle();
+  if (!campaign) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
+
+  if (action === "cancel") {
+    const { data: stopped } = await database
+      .from("email_campaigns")
+      .update({ status: "Cancelled", updated_at: new Date().toISOString() })
+      .eq("id", campaignId)
+      .in("status", ["Scheduled", "Sending", "Paused"])
+      .select("id")
+      .maybeSingle();
+    if (!stopped) return NextResponse.json({ error: `This campaign is already ${campaign.status}.` }, { status: 409 });
+    await database.from("email_sends").delete().eq("campaign_id", campaignId).eq("status", "queued");
+    return NextResponse.json({ ok: true });
+  }
 
   const account = await emailAccount(database, userId);
   if (!account.ok) return NextResponse.json({ error: account.error }, { status: 412 });
@@ -42,22 +49,18 @@ export async function POST(req: NextRequest) {
   if (!sender || sender.status !== "verified") {
     return NextResponse.json({ error: "Verify your sending domain before sending." }, { status: 412 });
   }
-  const { data: campaign } = await database.from("email_campaigns").select("*").eq("id", campaignId).eq("user_id", userId).maybeSingle();
-  if (!campaign) return NextResponse.json({ error: "Campaign not found." }, { status: 404 });
 
-  const from = `${sender.from_local}@${sender.domain}`;
-  const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;
-  const footerFor = (email: string) => ({ businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, email) });
-
-  // ── Test send ────────────────────────────────────────────────────────────
-  if (test) {
+  if (action === "test") {
     const to = normalizeEmail(sender.reply_to || account.replyTo);
     if (!to) return NextResponse.json({ error: "Add a reply-to address to receive test emails." }, { status: 400 });
     const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(1) });
     if (bal === null || bal === undefined) return NextResponse.json({ error: "Add funds to your wallet to send.", outOfFunds: true }, { status: 402 });
     try {
-      const msg = buildEmail({ subject: `[Test] ${campaign.subject}`, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact: { first_name: "Alex" }, footer: footerFor(to) });
-      await sendEmail({ from, fromName, replyTo: sender.reply_to, to, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footerFor(to).unsubscribeUrl });
+      const footer = { businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, to) };
+      const agentName = String(campaign.design?.signature || sender.from_name || "").split("\n")[0].trim();
+      const msg = buildEmail({ subject: `[Test] ${campaign.subject}`, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact: { first_name: "Alex", state: "FL", agent_name: agentName }, footer });
+      const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;
+      await sendEmail({ from: `${sender.from_local}@${sender.domain}`, fromName, replyTo: sender.reply_to, to, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
       return NextResponse.json({ ok: true, to });
     } catch (e) {
       console.error("[email/send test]", e);
@@ -66,112 +69,51 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Lock on the first wave so a double click can't send twice ───────────
-  if (offset === 0) {
-    const { data: locked } = await database
+  if (action === "resume") {
+    const { data: resumed } = await database
       .from("email_campaigns")
-      .update({ status: "Sending", updated_at: new Date().toISOString() })
+      .update({ status: "Sending", locked_until: null, updated_at: new Date().toISOString() })
       .eq("id", campaignId)
-      .eq("user_id", userId)
-      .in("status", ["Draft", "Paused"])
+      .eq("status", "Paused")
       .select("id")
       .maybeSingle();
-    if (!locked) return NextResponse.json({ error: `This campaign is already ${campaign.status}.`, alreadySending: true }, { status: 409 });
-  } else if (campaign.status !== "Sending") {
-    return NextResponse.json({ error: "This campaign isn't sending.", alreadySending: true }, { status: 409 });
+    if (!resumed) return NextResponse.json({ error: `This campaign is ${campaign.status}.` }, { status: 409 });
+    const result = await processCampaign(database, campaignId);
+    return NextResponse.json({ ok: true, ...result });
   }
 
-  // ── Load this wave ───────────────────────────────────────────────────────
-  let q = database
-    .from("contacts")
-    .select("id, first_name, last_name, city, state, email")
-    .eq("user_id", userId)
-    .eq("dnc", false)
-    .like("email", "%@%")
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
-    .range(offset, offset + WAVE - 1);
-  if (campaign.audience_campaign) q = q.eq("campaign", campaign.audience_campaign);
-  const { data: rows, error: loadError } = await q;
-  if (loadError) return NextResponse.json({ error: "Couldn't load contacts." }, { status: 500 });
-  const wave = (rows || []) as Contact[];
+  if (action !== "schedule") return NextResponse.json({ error: "Unknown action." }, { status: 400 });
 
-  const seen = new Set<string>();
-  const candidates: { contact: Contact; email: string }[] = [];
-  for (const contact of wave) {
-    const email = normalizeEmail(contact.email);
-    if (!email || seen.has(email)) continue;
-    seen.add(email);
-    candidates.push({ contact, email });
-  }
-  const emails = candidates.map((c) => c.email);
-  const [{ data: suppressed }, { data: already }] = await Promise.all([
-    emails.length ? database.from("email_suppressions").select("email").eq("user_id", userId).in("email", emails) : Promise.resolve({ data: [] }),
-    emails.length ? database.from("email_sends").select("email").eq("campaign_id", campaignId).in("email", emails) : Promise.resolve({ data: [] }),
-  ]);
-  const skip = new Set([...(suppressed || []), ...(already || [])].map((r: { email: string }) => r.email));
-  const toSend = candidates.filter((c) => !skip.has(c.email));
-  const skipped = wave.length - toSend.length;
+  // ── Schedule (or send now) ───────────────────────────────────────────────
+  const localTime = typeof body.localTime === "string" && LOCAL_TIME.test(body.localTime) ? body.localTime : null;
+  const sendAt = !localTime && typeof body.sendAt === "string" && Number.isFinite(Date.parse(body.sendAt)) ? new Date(body.sendAt).toISOString() : null;
+  const hourlyLimit = Math.min(5000, Math.max(50, Math.floor(Number(body.hourlyLimit) || 500)));
 
-  // ── Pay first ────────────────────────────────────────────────────────────
-  let sent = 0;
-  let failed = 0;
-  let outOfFunds = false;
-  if (toSend.length) {
-    const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(toSend.length) });
-    if (bal === null || bal === undefined) {
-      outOfFunds = true;
-    } else {
-      const results: { contact_id: string; email: string; provider_message_id: string | null; status: "sent" | "failed"; error: string | null }[] = [];
-      for (let i = 0; i < toSend.length; i += PER_SECOND) {
-        const started = Date.now();
-        const batch = toSend.slice(i, i + PER_SECOND);
-        const out = await Promise.all(
-          batch.map(async ({ contact, email }) => {
-            try {
-              const footer = footerFor(email);
-              const msg = buildEmail({ subject: campaign.subject, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact, footer });
-              const id = await sendEmail({ from, fromName, replyTo: sender.reply_to, to: email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
-              return { contact_id: contact.id, email, provider_message_id: id || null, status: "sent" as const, error: null };
-            } catch (e) {
-              return { contact_id: contact.id, email, provider_message_id: null, status: "failed" as const, error: (e instanceof Error ? e.message : "send failed").slice(0, 300) };
-            }
-          }),
-        );
-        results.push(...out);
-        const wait = 1000 - (Date.now() - started);
-        if (wait > 0 && i + PER_SECOND < toSend.length) await sleep(wait);
-      }
-      sent = results.filter((r) => r.status === "sent").length;
-      failed = results.length - sent;
-      await database.from("email_sends").upsert(results.map((r) => ({ ...r, user_id: userId, campaign_id: campaignId })), { onConflict: "campaign_id,email", ignoreDuplicates: true });
-      if (failed > 0) {
-        await database.rpc("credit_wallet", {
-          p_user_id: userId,
-          p_amount: emailCost(failed),
-          p_idempotency_key: `email_refund_${campaignId}_${offset}`,
-          p_description: `Refund — ${failed} email(s) not sent`,
-        });
-      }
-    }
-  }
-
-  const done = !outOfFunds && wave.length < WAVE;
-  const nextOffset = outOfFunds ? offset : offset + wave.length;
-  await database
+  // Lock the draft first so a double click can't queue it twice.
+  const { data: locked } = await database
     .from("email_campaigns")
-    .update({
-      recipients: campaign.recipients + sent + failed,
-      sent: campaign.sent + sent,
-      failed: campaign.failed + failed,
-      skipped: campaign.skipped + skipped,
-      cost: Number((Number(campaign.cost) + emailCost(sent)).toFixed(4)),
-      status: outOfFunds ? "Paused" : done ? "Sent" : "Sending",
-      sent_at: done ? new Date().toISOString() : campaign.sent_at,
-      updated_at: new Date().toISOString(),
-    })
+    .update({ status: "Scheduled", local_time: localTime, scheduled_at: sendAt || new Date().toISOString(), hourly_limit: hourlyLimit, updated_at: new Date().toISOString() })
     .eq("id", campaignId)
-    .eq("user_id", userId);
+    .eq("user_id", userId)
+    .eq("status", "Draft")
+    .select("*")
+    .maybeSingle();
+  if (!locked) return NextResponse.json({ error: `This campaign is already ${campaign.status}.`, alreadySending: true }, { status: 409 });
 
-  return NextResponse.json({ sent, failed, skipped, nextOffset, done, outOfFunds });
+  try {
+    const queued = await queueCampaign(database, userId, locked);
+    if (!queued.queued) {
+      await database.from("email_campaigns").update({ status: "Draft", scheduled_at: null, local_time: null }).eq("id", campaignId);
+      return NextResponse.json({ error: "No one in this audience can be emailed (no email address, or unsubscribed or bounced)." }, { status: 400 });
+    }
+    await database.from("email_campaigns").update({ scheduled_at: queued.firstSendAt, skipped: queued.skipped }).eq("id", campaignId);
+    // Anything already due starts now; the cron keeps going from here.
+    const first = Date.parse(queued.firstSendAt) <= Date.now() ? await processCampaign(database, campaignId).catch(() => null) : null;
+    return NextResponse.json({ ok: true, queued: queued.queued, skipped: queued.skipped, firstSendAt: queued.firstSendAt, first });
+  } catch (e) {
+    console.error("[email/schedule]", e);
+    await database.from("email_sends").delete().eq("campaign_id", campaignId).eq("status", "queued");
+    await database.from("email_campaigns").update({ status: "Draft", scheduled_at: null, local_time: null }).eq("id", campaignId);
+    return NextResponse.json({ error: "Couldn't schedule the campaign. Please try again." }, { status: 500 });
+  }
 }

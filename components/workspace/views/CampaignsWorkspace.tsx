@@ -37,6 +37,7 @@ import type { Campaign, CampaignStep } from "@/lib/types";
 import { normalizeOptOutSettings } from "@/lib/opt-out";
 import { checkSpam } from "@/lib/spam-check";
 import EmailCampaigns from "./EmailCampaigns";
+import type { Channel } from "./email/types";
 
 const TOKENS = ["{firstName}", "{lastName}", "{phone}", "{city}", "{state}"];
 
@@ -125,7 +126,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const [pendingContactIds, setPendingContactIds] = useState<string[]>([]);
   const [assignOnCreate, setAssignOnCreate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
-  const [channel, setChannel] = useState<"text" | "email">("text");
+  const [channel, setChannel] = useState<Channel>("text");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -377,6 +378,20 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   };
 
   const active = draft.steps[activeStep];
+  if (channel === "email") return <EmailCampaigns onChannel={setChannel} />;
+  if (channel === "sequence") {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Follow-up sequence"
+          title="Text + email sequences"
+          description="One sequence that texts, emails and queues calls, and stops the moment a lead replies, books or unsubscribes."
+          actions={<div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email", "sequence"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : item === "email" ? "Email" : "Text + Email"}</button>)}</div>}
+        />
+        <Panel><EmptyState title="Text + email sequences are being built" description="Mix texts, emails and dialer tasks in one follow-up plan. Until it's ready, use a text campaign for the texts and an email campaign for the emails." /></Panel>
+      </>
+    );
+  }
   return (
     <>
       <PageHeader
@@ -385,13 +400,13 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
         description="One campaign can be a single text or a complete multi-step workflow with timing, spin text, and personalization."
         actions={
           <>
-            <div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : "Email"}</button>)}</div>
+            <div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email", "sequence"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : item === "email" ? "Email" : "Text + Email"}</button>)}</div>
             <button className="v2-btn" onClick={() => onNavigate("upload")}><Users size={16} /> Import leads</button>
-            {channel === "text" && <button className="v2-btn v2-btn-primary" onClick={startNew}><Plus size={16} /> New campaign</button>}
+            <button className="v2-btn v2-btn-primary" onClick={startNew}><Plus size={16} /> New campaign</button>
           </>
         }
       />
-      {channel === "email" ? <EmailCampaigns campaignNames={campaigns.map((c) => c.name)} /> : <>
+      <>
       {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       {pendingContactIds.length > 0 && (
         <div className="v2-campaign-handoff">
@@ -522,7 +537,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
           </div>
         </Panel>
       )}
-      </>}
+      </>
     </>
   );
 }
