@@ -11,6 +11,7 @@
 
 import { inferTimezone } from "@/lib/quiet-hours";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
+import { footerFor } from "@/lib/email-design";
 import { emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { sendEmail } from "@/lib/telnyx-email";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
@@ -209,7 +210,7 @@ export async function processCampaign(database: Db, campaignId: string): Promise
         batch.map(async (row) => {
           try {
             const contact = { ...((row.contact_id && byId.get(row.contact_id)) || {}), agent_name: agentName };
-            const footer = { businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, row.email) };
+            const footer = footerFor(account, campaign.design, unsubscribeUrl(userId, row.email));
             const msg = buildEmail({ subject: campaign.subject, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact, footer });
             const id = await sendEmail({ from, fromName, replyTo: sender.inbox_address || sender.reply_to, to: row.email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
             return { id: row.id, status: "sent" as const, provider_message_id: id || null, error: null };

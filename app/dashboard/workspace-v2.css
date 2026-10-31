@@ -1262,3 +1262,9 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-composer-channel { display:flex; gap:4px; margin-bottom:8px; }
 .v2-composer-channel button { display:inline-flex; align-items:center; gap:5px; border:1px solid var(--v2-line); border-radius:999px; padding:4px 10px; background:transparent; color:var(--v2-muted); font:inherit; font-size:.72rem; font-weight:700; cursor:pointer; }
 .v2-composer-channel button.is-active { background:var(--v2-accent); color:var(--v2-ink); border-color:transparent; }
+/* Email footer (composer) */
+.em-footer { display:grid; gap:8px; border-top:1px solid var(--v2-line); padding-top:14px; }
+.em-footer-head { display:flex; align-items:center; justify-content:space-between; color:var(--v2-ink); font-size:.88rem; }
+.em-footer-head .em-link { margin:0; }
+.em-footer-preview { border-radius:10px; background:#ffffff; border:1px solid var(--v2-line); padding:10px 12px; color:#4b5563; font-size:.8rem; line-height:1.5; }
+.em-footer-fields { display:grid; gap:10px; }

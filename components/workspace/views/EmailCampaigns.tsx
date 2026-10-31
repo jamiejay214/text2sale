@@ -128,6 +128,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
           info={info}
           rate={rate}
           initial={view.campaign}
+          footerDefaults={campaigns[0]?.design || null}
           channelSwitch={channelSwitch}
           onCancel={() => { setView({ mode: "list" }); load(); }}
           onDone={(text) => { setNotice({ tone: "ok", text }); setView({ mode: "list" }); load(); }}
