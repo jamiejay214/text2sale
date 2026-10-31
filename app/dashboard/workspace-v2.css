@@ -1281,3 +1281,10 @@ tr:hover .v2-row-actions { opacity:1; }
 .em-health > div.is-warning { border-color:#e0a14a; } .em-health > div.is-warning strong { color:#b45309; }
 .em-health > div.is-danger { border-color:#d4553b; } .em-health > div.is-danger strong { color:#c2410c; }
 @media (max-width:900px) { .em-health { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+/* Settings sections tab bar (Settings in the sidebar) */
+.v2-settings-nav { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 20px; padding:4px; border:1px solid var(--v2-line); border-radius:14px; background:var(--v2-panel); }
+@media (max-width:760px) { .v2-settings-nav { flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; } }
+.v2-settings-nav::-webkit-scrollbar { display:none; }
+.v2-settings-nav button { flex:none; display:inline-flex; align-items:center; gap:7px; border:0; border-radius:10px; padding:9px 13px; background:transparent; color:var(--v2-muted); font:inherit; font-size:.82rem; font-weight:700; white-space:nowrap; cursor:pointer; }
+.v2-settings-nav button:hover { color:var(--v2-ink); background:var(--v2-canvas); }
+.v2-settings-nav button.is-active { background:var(--v2-accent); color:var(--v2-ink); }

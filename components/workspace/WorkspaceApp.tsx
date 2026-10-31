@@ -4,7 +4,7 @@ import WorkspaceSearch from "./WorkspaceSearch";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
+import WorkspaceNavigation, { SettingsNav, type WorkspaceTab } from "@/components/WorkspaceNavigation";
 import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
@@ -362,6 +362,7 @@ export default function WorkspaceApp() {
             <button onClick={() => router.push(isOwnerEmail(viewerEmail) ? "/admin" : "/dashboard?tab=settings&subtab=team")}>Exit account</button>
           </div>
         )}
+        <SettingsNav activeTab={activeTab} settingsTab={settingsTab} onNavigate={navigate} textingEnabled={textingEnabled} />
         {view}
       </section>
       {searchOpen && profile && <WorkspaceSearch userId={profile.id} onNavigate={navigate} onClose={()=>setSearchOpen(false)}/>}
