@@ -19,7 +19,7 @@ export type SenderInfo = {
   dnsPlan: DnsPlan | null;
 };
 
-export type Audience = { lists: string[]; tags: string[] };
+export type Audience = { lists: string[]; tags: string[]; sources?: string[]; uploads?: string[] };
 
 export type EmailCampaign = {
   id: string;

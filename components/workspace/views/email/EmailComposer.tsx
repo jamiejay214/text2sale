@@ -11,7 +11,8 @@ import type { Audience, EmailCampaign, SenderInfo } from "./types";
 // cost and an inbox preview on the right. Personal letters (one button and a
 // sign-off) are the default; a branded card is available under Templates.
 
-type Groups = { lists: { name: string; count: number }[]; tags: { name: string; count: number }[] };
+type Group = { name: string; count: number };
+type Groups = { lists: Group[]; tags: Group[]; sources: Group[]; uploads: (Group & { id: string; uploadedAt: string })[] };
 type Summary = { willReceive: number; unsubscribed: number; bounced: number };
 type Field = "subject" | "preview" | "body";
 
@@ -91,6 +92,7 @@ export default function EmailComposer({
   const [groups, setGroups] = useState<Groups | null>(null);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [editingAudience, setEditingAudience] = useState(false);
+  const [groupSearch, setGroupSearch] = useState("");
 
   const [when, setWhen] = useState<"later" | "now">("later");
   const [sendDate, setSendDate] = useState(defaultSendDate);
@@ -112,7 +114,7 @@ export default function EmailComposer({
 
   useEffect(() => {
     let alive = true;
-    authFetch("/api/email/campaigns?groups=1").then((r) => json<Groups>(r)).then((g) => { if (alive) setGroups({ lists: g.lists || [], tags: g.tags || [] }); });
+    authFetch("/api/email/campaigns?groups=1").then((r) => json<Groups>(r)).then((g) => { if (alive) setGroups({ lists: g.lists || [], tags: g.tags || [], sources: g.sources || [], uploads: g.uploads || [] }); });
     return () => { alive = false; };
   }, []);
 
@@ -238,9 +240,26 @@ export default function EmailComposer({
     });
 
   const toggle = (kind: keyof Audience, value: string) =>
-    setAudience((a) => ({ ...a, [kind]: a[kind].includes(value) ? a[kind].filter((v) => v !== value) : [...a[kind], value] }));
+    setAudience((a) => {
+      const current = a[kind] || [];
+      return { ...a, [kind]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value] };
+    });
 
-  const audienceText = [...audience.lists.map((l) => l), ...audience.tags.map((t) => t)];
+  const fileName = (id: string) => groups?.uploads.find((u) => u.id === id)?.name || "Uploaded file";
+  const audienceText = [...(audience.uploads || []).map(fileName), ...(audience.sources || []), ...audience.lists, ...audience.tags];
+  const match = (name: string) => !groupSearch.trim() || name.toLowerCase().includes(groupSearch.trim().toLowerCase());
+  const chips = (kind: keyof Audience, items: Group[], key: (g: Group) => string = (g) => g.name, limit = 40) => {
+    const selected = audience[kind] || [];
+    const shown = items.filter((g) => selected.includes(key(g)) || match(g.name));
+    return (
+      <div className="em-chips">
+        {shown.slice(0, groupSearch.trim() ? 200 : limit).map((g) => (
+          <button key={key(g)} className={selected.includes(key(g)) ? "is-on" : ""} onClick={() => toggle(kind, key(g))}>{g.name} · {g.count.toLocaleString()}</button>
+        ))}
+        {!groupSearch.trim() && shown.length > limit ? <small className="em-more">+{(shown.length - limit).toLocaleString()} more, search to find them</small> : null}
+      </div>
+    );
+  };
   const when_ = new Date(`${sendDate}T${sendTime}`);
   const scheduleText =
     when === "now"
@@ -384,12 +403,16 @@ export default function EmailComposer({
         <aside className="em-side">
           <section className="em-card">
             <h3>Audience</h3>
-            <p className="em-line">{audienceText.length ? <>Tag: <b>{audienceText.join(" + ")}</b></> : <b>Everyone with an email address</b>} <button className="em-link" onClick={() => setEditingAudience((v) => !v)}>{editingAudience ? "Done" : "Change"}</button></p>
+            <p className="em-line">{audienceText.length ? <><b>{audienceText.slice(0, 4).join(" + ")}</b>{audienceText.length > 4 ? ` + ${audienceText.length - 4} more` : ""}</> : <b>Everyone with an email address</b>} <button className="em-link" onClick={() => setEditingAudience((v) => !v)}>{editingAudience ? "Done" : "Change"}</button></p>
             {editingAudience && (
               <div className="em-picker">
-                {!groups ? <small>Loading lists and tags…</small> : !groups.lists.length && !groups.tags.length ? <small>No lead lists or tags yet. Everyone with an email address is included.</small> : null}
-                {groups?.lists.length ? <><small>Lead lists</small><div className="em-chips">{groups.lists.map((g) => <button key={g.name} className={audience.lists.includes(g.name) ? "is-on" : ""} onClick={() => toggle("lists", g.name)}>{g.name} · {g.count.toLocaleString()}</button>)}</div></> : null}
-                {groups?.tags.length ? <><small>Tags</small><div className="em-chips">{groups.tags.map((g) => <button key={g.name} className={audience.tags.includes(g.name) ? "is-on" : ""} onClick={() => toggle("tags", g.name)}>{g.name} · {g.count.toLocaleString()}</button>)}</div></> : null}
+                {!groups ? <small>Loading your uploads, lead sources and lists…</small> : !groups.lists.length && !groups.tags.length && !groups.sources.length && !groups.uploads.length ? <small>No uploads, lead sources, lists or tags yet. Everyone with an email address is included.</small> : null}
+                {groups && (groups.sources.length + groups.uploads.length + groups.lists.length + groups.tags.length) > 12 ? <input className="em-search" value={groupSearch} onChange={(e) => setGroupSearch(e.target.value)} placeholder="Search files, sources, lists and tags" aria-label="Search audience groups" /> : null}
+                {groups?.uploads.length ? <><small>Uploaded files</small>{chips("uploads", groups.uploads, (g) => (g as Groups["uploads"][number]).id, 20)}</> : null}
+                {groups?.sources.length ? <><small>Lead sources</small>{chips("sources", groups.sources)}</> : null}
+                {groups?.lists.length ? <><small>Lead lists</small>{chips("lists", groups.lists)}</> : null}
+                {groups?.tags.length ? <><small>Tags</small>{chips("tags", groups.tags)}</> : null}
+                {audienceText.length ? <button className="em-link" style={{ justifySelf: "start", marginLeft: 0 }} onClick={() => setAudience({ lists: [], tags: [], sources: [], uploads: [] })}>Clear: send to everyone with an email</button> : null}
               </div>
             )}
             <div className="em-stats">

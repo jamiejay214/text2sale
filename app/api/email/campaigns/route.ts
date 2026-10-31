@@ -29,19 +29,29 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ willReceive: summary.receive.length, unsubscribed: summary.unsubscribed, bounced: summary.bounced, rate: EMAIL_RATE });
   }
   if (params.get("groups") !== null) {
-    // Lead lists and tags among contacts that have an email address.
+    // Lead lists, tags and lead sources among contacts that have an email
+    // address, plus uploaded files (matched to contacts by phone when used).
     const lists = new Map<string, number>();
     const tags = new Map<string, number>();
+    const sources = new Map<string, number>();
     for (let from = 0; ; from += 1000) {
-      const { data } = await database.from("contacts").select("campaign, tags").eq("user_id", userId).like("email", "%@%").range(from, from + 999);
+      const { data } = await database.from("contacts").select("campaign, tags, lead_source").eq("user_id", userId).like("email", "%@%").order("id", { ascending: true }).range(from, from + 999);
       for (const c of data || []) {
         if (c.campaign) lists.set(c.campaign, (lists.get(c.campaign) || 0) + 1);
+        const source = String(c.lead_source || "").trim();
+        if (source) sources.set(source, (sources.get(source) || 0) + 1);
         for (const t of Array.isArray(c.tags) ? c.tags : []) if (typeof t === "string" && t) tags.set(t, (tags.get(t) || 0) + 1);
       }
       if (!data || data.length < 1000) break;
     }
-    const sorted = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 100).map(([name, count]) => ({ name, count }));
-    return NextResponse.json({ lists: sorted(lists), tags: sorted(tags) });
+    const { data: files } = await database.from("csv_uploads").select("id, file_name, success, uploaded_at").eq("user_id", userId).order("uploaded_at", { ascending: false }).limit(100);
+    const sorted = (m: Map<string, number>, max = 100) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([name, count]) => ({ name, count }));
+    return NextResponse.json({
+      lists: sorted(lists),
+      tags: sorted(tags),
+      sources: sorted(sources, 300),
+      uploads: (files || []).map((f: { id: string; file_name: string; success: number; uploaded_at: string }) => ({ id: f.id, name: f.file_name, count: f.success || 0, uploadedAt: f.uploaded_at })),
+    });
   }
   const { data } = await database
     .from("email_campaigns")
