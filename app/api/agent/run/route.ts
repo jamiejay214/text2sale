@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
         // Fetch recent message history to build context
         const { data: msgs } = await supabase
           .from("messages")
-          .select("direction, body, created_at")
+          .select("direction, body, created_at, channel")
           .eq("conversation_id", conv.id)
           .order("created_at", { ascending: false })
           .limit(20);
@@ -225,6 +225,8 @@ export async function GET(req: NextRequest) {
         // Last message must be inbound (lead spoke last) — don't follow up if we already did
         const lastMsg = msgs[0];
         if (lastMsg.direction !== "inbound") continue;
+        // A lead who answered by email gets answered by a person, not an automatic text.
+        if (lastMsg.channel === "email") continue;
 
         // Context-aware decline filter. If the lead's FIRST reply was a bare
         // "No" / "Not interested", don't chase them. But if we're mid-convo

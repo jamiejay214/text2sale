@@ -211,7 +211,7 @@ export async function processCampaign(database: Db, campaignId: string): Promise
             const contact = { ...((row.contact_id && byId.get(row.contact_id)) || {}), agent_name: agentName };
             const footer = { businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, row.email) };
             const msg = buildEmail({ subject: campaign.subject, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact, footer });
-            const id = await sendEmail({ from, fromName, replyTo: sender.reply_to, to: row.email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
+            const id = await sendEmail({ from, fromName, replyTo: sender.inbox_address || sender.reply_to, to: row.email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
             return { id: row.id, status: "sent" as const, provider_message_id: id || null, error: null };
           } catch (e) {
             return { id: row.id, status: "failed" as const, provider_message_id: null, error: (e instanceof Error ? e.message : "send failed").slice(0, 300) };

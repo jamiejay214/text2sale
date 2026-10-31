@@ -318,7 +318,7 @@ export async function fetchMessagesPage(
   const to = from + pageSize - 1;
   const { data, error, count } = await supabase
     .from("messages")
-    .select("id,conversation_id,direction,body,status,created_at,from_number", {
+    .select("id,conversation_id,direction,body,status,created_at,from_number,channel,email_subject", {
       count: "exact",
     })
     .eq("conversation_id", conversationId)
