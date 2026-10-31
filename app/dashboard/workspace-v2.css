@@ -1269,3 +1269,6 @@ tr:hover .v2-row-actions { opacity:1; }
 .em-footer-preview { display:block; width:100%; text-align:left; cursor:pointer; font:inherit; border-radius:10px; background:#ffffff; border:1px solid var(--v2-line); padding:10px 12px; color:#4b5563; font-size:.8rem; line-height:1.5; }
 .em-footer-preview:hover { border-color:#94ae9c; }
 .em-footer-fields { display:grid; gap:10px; }
+.em-search { width:100%; border:1px solid var(--v2-line); border-radius:10px; outline:0; background:var(--v2-canvas); color:var(--v2-ink); padding:9px 12px; font:inherit; font-size:.85rem; }
+.em-more { align-self:center; color:var(--v2-muted); font-size:.75rem; }
+.em-picker .em-chips { max-height:220px; overflow:auto; }

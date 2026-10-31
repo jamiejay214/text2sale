@@ -15,11 +15,13 @@ import { footerFor } from "@/lib/email-design";
 import { emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { sendEmail } from "@/lib/telnyx-email";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
+import { uploadPhones } from "@/lib/upload-phones";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
 
-export type Audience = { lists: string[]; tags: string[] };
+/** Contacts in ANY of these lead lists, tags, lead sources or uploaded files; null = everyone with an email. */
+export type Audience = { lists: string[]; tags: string[]; sources?: string[]; uploads?: string[] };
 
 const PER_SECOND = Math.max(1, Number(process.env.TELNYX_EMAIL_MAX_PER_SECOND) || 10);
 /** Most emails one run sends for one campaign, to stay inside the function time limit. */
@@ -35,7 +37,9 @@ export function normalizeAudience(a: unknown): Audience | null {
   if (!a || typeof a !== "object") return null;
   const lists = strings((a as Audience).lists, 20);
   const tags = strings((a as Audience).tags, 20);
-  return lists.length || tags.length ? { lists, tags } : null;
+  const sources = strings((a as Audience).sources, 50);
+  const uploads = strings((a as Audience).uploads, 30).filter((id) => /^[0-9a-f-]{36}$/i.test(id));
+  return lists.length || tags.length || sources.length || uploads.length ? { lists, tags, sources, uploads } : null;
 }
 
 type AudienceRow = { id: string; email: string | null; state: string | null };
@@ -53,9 +57,20 @@ export async function audienceContacts(database: Db, userId: string, audience: A
     }
   };
   if (!audience) return all((q) => q);
+  // Uploaded files: match the file's phone numbers to contacts.
+  const phones: string[] = [];
+  if (audience.uploads?.length) {
+    const { data: files } = await database.from("csv_uploads").select("file_content").eq("user_id", userId).in("id", audience.uploads);
+    for (const f of files || []) if (f.file_content) phones.push(...uploadPhones(f.file_content));
+  }
+  const uniquePhones = [...new Set(phones)];
+  const phoneChunks: string[][] = [];
+  for (let i = 0; i < uniquePhones.length; i += 300) phoneChunks.push(uniquePhones.slice(i, i + 300));
   const groups = await Promise.all([
     audience.lists.length ? all((q) => q.in("campaign", audience.lists)) : Promise.resolve([]),
     ...audience.tags.map((tag) => all((q) => q.contains("tags", [tag]))),
+    audience.sources?.length ? all((q) => q.in("lead_source", audience.sources)) : Promise.resolve([]),
+    ...phoneChunks.map((chunk) => all((q) => q.in("phone", chunk))),
   ]);
   const byId = new Map<string, AudienceRow>();
   for (const row of groups.flat()) byId.set(row.id, row);
@@ -65,7 +80,7 @@ export async function audienceContacts(database: Db, userId: string, audience: A
 async function suppressionMap(database: Db, userId: string): Promise<Map<string, string>> {
   const out = new Map<string, string>();
   for (let from = 0; ; from += PAGE) {
-    const { data } = await database.from("email_suppressions").select("email, reason").eq("user_id", userId).range(from, from + PAGE - 1);
+    const { data } = await database.from("email_suppressions").select("email, reason").eq("user_id", userId).order("email", { ascending: true }).range(from, from + PAGE - 1);
     for (const r of data || []) out.set(r.email, r.reason);
     if (!data || data.length < PAGE) return out;
   }
