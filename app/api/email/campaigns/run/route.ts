@@ -7,7 +7,8 @@ import { processCampaign } from "@/lib/email-queue";
 // (lib/email-queue.ts). Each campaign sends at most its hourly limit.
 
 export const maxDuration = 300;
-const BUDGET_MS = 200_000;
+// No new campaign starts after this; one wave runs at most ~2 minutes (WAVE_BUDGET_MS).
+const BUDGET_MS = 100_000;
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET || "";

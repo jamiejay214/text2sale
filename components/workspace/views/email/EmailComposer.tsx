@@ -444,7 +444,7 @@ export default function EmailComposer({
                 <label className="em-field"><span>Batch size</span><select value={hourlyLimit} onChange={(e) => setHourlyLimit(Number(e.target.value))}>{[250, 500, 1000, 2000].map((n) => <option key={n} value={n}>{n.toLocaleString()} per hour</option>)}</select></label>
               </div>
             )}
-            <p className="em-note">Send in batches of {hourlyLimit.toLocaleString()} per hour to protect your sender reputation.</p>
+            <p className="em-note">Send in batches of {hourlyLimit.toLocaleString()} per hour to protect your sender reputation. A new sending domain starts at 250 emails a day and rises automatically (500, 1,000, 2,500 and up) as you send; anything over the day&apos;s limit continues after midnight UTC.</p>
           </section>
 
           <section className="em-card em-cost">
