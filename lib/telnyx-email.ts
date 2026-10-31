@@ -158,3 +158,36 @@ export async function listSentByTag(tag: string, maxPages = 100): Promise<{ id: 
   }
   return out;
 }
+
+// ── Delivery events ─────────────────────────────────────────────────────────
+
+export const TRACKED_EVENTS = ["email.delivered", "email.bounced", "email.complained", "email.unsubscribed", "email.opened", "email.clicked"];
+
+export type EmailEvent = {
+  id: string;
+  event_type: string;
+  canonical_event_type?: string;
+  occurred_at: string;
+  payload?: { id?: string; to?: { email?: string } | { email?: string }[]; status?: string };
+};
+
+/** Subscribe a sending domain's delivery events to our webhook. Returns the webhook id. */
+export async function createDomainWebhook(domainId: string, url: string): Promise<string> {
+  const out = await call<{ data: { id: string } }>("POST", `/email_domains/${encodeURIComponent(domainId)}/webhooks`, { url, events: TRACKED_EVENTS });
+  return out.data.id;
+}
+
+/** Account email events since a time (oldest first), to catch up on events from before the webhook existed. */
+export async function listEmailEvents(from: string, maxPages = 50): Promise<EmailEvent[]> {
+  const out: EmailEvent[] = [];
+  const types = TRACKED_EVENTS.map((t) => t.replace(/^email\./, "")).join(",");
+  let cursor = "";
+  for (let page = 0; page < maxPages; page++) {
+    const q = `from=${encodeURIComponent(from)}&event_type=${types}&page_size=100${cursor ? `&page[cursor]=${encodeURIComponent(cursor)}` : ""}`;
+    const res = await call<{ data: EmailEvent[]; meta?: { page_cursor?: string; next_cursor?: string } }>("GET", `/email_events?${q}`);
+    out.push(...(res.data || []));
+    cursor = res.meta?.page_cursor || res.meta?.next_cursor || "";
+    if (!cursor || !(res.data || []).length) break;
+  }
+  return out;
+}

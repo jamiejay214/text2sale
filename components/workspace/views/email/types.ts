@@ -30,6 +30,8 @@ export type EmailCampaign = {
   design: Partial<EmailDesign> | null;
   audience: Audience | null;
   status: "Draft" | "Scheduled" | "Sending" | "Sent" | "Paused" | "Cancelled";
+  pause_reason?: string | null;
+  results?: EmailResults;
   recipients: number;
   sent: number;
   failed: number;
@@ -43,3 +45,6 @@ export type EmailCampaign = {
 };
 
 export type Channel = "text" | "email" | "sequence";
+
+/** What happened to a campaign's emails, from Telnyx delivery events. */
+export type EmailResults = { sent: number; delivered: number; bounced: number; complained: number; opened: number; clicked: number };

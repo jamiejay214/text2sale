@@ -54,13 +54,27 @@ export async function GET(req: NextRequest) {
       uploads: (files || []).map((f: { id: string; file_name: string; total_rows: number; uploaded_at: string }) => ({ id: f.id, name: f.file_name, count: f.total_rows || 0, uploadedAt: f.uploaded_at })),
     });
   }
-  const { data } = await database
-    .from("email_campaigns")
-    .select("id, name, subject, preview_text, body, design, audience, status, recipients, sent, failed, skipped, cost, scheduled_at, local_time, hourly_limit, sent_at, created_at")
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false })
-    .limit(50);
-  return NextResponse.json({ campaigns: data || [], rate: EMAIL_RATE });
+  const [{ data }, { data: stats }] = await Promise.all([
+    database
+      .from("email_campaigns")
+      .select("id, name, subject, preview_text, body, design, audience, status, pause_reason, recipients, sent, failed, skipped, cost, scheduled_at, local_time, hourly_limit, sent_at, created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(50),
+    database.rpc("email_campaign_stats", { p_user_id: userId }),
+  ]);
+  // Delivery results per campaign (from Telnyx events), and the account's overall sender health.
+  type Stats = { campaign_id: string; sent: number; delivered: number; bounced: number; complained: number; opened: number; clicked: number };
+  const byCampaign = new Map<string, Stats>(((stats || []) as Stats[]).map((r) => [r.campaign_id, r]));
+  const empty = { sent: 0, delivered: 0, bounced: 0, complained: 0, opened: 0, clicked: 0 };
+  const results = (id: string) => {
+    const r = byCampaign.get(id);
+    return r ? { sent: Number(r.sent), delivered: Number(r.delivered), bounced: Number(r.bounced), complained: Number(r.complained), opened: Number(r.opened), clicked: Number(r.clicked) } : empty;
+  };
+  const health = [...byCampaign.keys()].map(results).reduce((a, r) => ({
+    sent: a.sent + r.sent, delivered: a.delivered + r.delivered, bounced: a.bounced + r.bounced, complained: a.complained + r.complained, opened: a.opened + r.opened, clicked: a.clicked + r.clicked,
+  }), empty);
+  return NextResponse.json({ campaigns: (data || []).map((c: { id: string }) => ({ ...c, results: results(c.id) })), health, rate: EMAIL_RATE });
 }
 
 export async function POST(req: NextRequest) {

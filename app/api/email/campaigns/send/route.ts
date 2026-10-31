@@ -73,7 +73,14 @@ export async function POST(req: NextRequest) {
   if (action === "resume") {
     const { data: resumed } = await database
       .from("email_campaigns")
-      .update({ status: "Sending", locked_until: null, updated_at: new Date().toISOString() })
+      .update({
+        status: "Sending",
+        locked_until: null,
+        pause_reason: null,
+        // Resuming a campaign that paused itself for bounces or complaints is the owner's call.
+        ...(String(campaign.pause_reason || "").startsWith("Paused automatically") ? { health_override: true } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq("id", campaignId)
       .eq("status", "Paused")
       .select("id")
