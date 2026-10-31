@@ -44,13 +44,14 @@ export async function GET(req: NextRequest) {
       }
       if (!data || data.length < 1000) break;
     }
-    const { data: files } = await database.from("csv_uploads").select("id, file_name, success, uploaded_at").eq("user_id", userId).order("uploaded_at", { ascending: false }).limit(100);
+    const { data: files } = await database.from("csv_uploads").select("id, file_name, total_rows, uploaded_at").eq("user_id", userId).order("uploaded_at", { ascending: false }).limit(100);
     const sorted = (m: Map<string, number>, max = 100) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, max).map(([name, count]) => ({ name, count }));
     return NextResponse.json({
       lists: sorted(lists),
       tags: sorted(tags),
       sources: sorted(sources, 300),
-      uploads: (files || []).map((f: { id: string; file_name: string; success: number; uploaded_at: string }) => ({ id: f.id, name: f.file_name, count: f.success || 0, uploadedAt: f.uploaded_at })),
+      // Rows in the file: duplicates of existing contacts still match, so "added" would undercount.
+      uploads: (files || []).map((f: { id: string; file_name: string; total_rows: number; uploaded_at: string }) => ({ id: f.id, name: f.file_name, count: f.total_rows || 0, uploadedAt: f.uploaded_at })),
     });
   }
   const { data } = await database
