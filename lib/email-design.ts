@@ -10,6 +10,10 @@ export type EmailDesign = {
   style?: "personal" | "card";
   /** Sign-off under a personal email, e.g. "Jamie". */
   signature?: string;
+  /** Footer overrides; blank uses the account's business details. */
+  footerName?: string;
+  footerAddress?: string;
+  footerNote?: string;
   theme: "dark" | "light";
   brandColor: string;
   logoUrl?: string | null;
@@ -41,7 +45,31 @@ export type Footer = {
   businessName: string;
   address: string;
   unsubscribeUrl: string;
+  /** Why they're getting this; defaults to "You're receiving this because you contacted <business>." */
+  note?: string;
 };
+
+const oneLine = (s: unknown, max: number) => String(s ?? "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+
+/** A mailing address must look real (CAN-SPAM): some length and a number (street, PO box or ZIP). */
+export const isMailingAddress = (s: string) => s.length >= 10 && /\d/.test(s);
+
+/**
+ * The footer for one email: the campaign's overrides where set, otherwise
+ * the account's business name and address. The unsubscribe link is always
+ * added and can't be removed.
+ */
+export function footerFor(account: { businessName: string; address: string }, design: Partial<EmailDesign> | null | undefined, unsubscribeUrl: string): Footer {
+  const name = oneLine(design?.footerName, 120);
+  const address = oneLine(design?.footerAddress, 200);
+  const note = oneLine(design?.footerNote, 200);
+  return {
+    businessName: name || account.businessName,
+    address: isMailingAddress(address) ? address : account.address,
+    note: note || undefined,
+    unsubscribeUrl,
+  };
+}
 
 export const escapeHtml = (s: string) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
@@ -76,6 +104,9 @@ export function normalizeDesign(d: Partial<EmailDesign>): EmailDesign {
   return {
     style: d.style === "personal" ? "personal" : "card",
     signature: (d.signature || "").slice(0, 120),
+    footerName: oneLine(d.footerName, 120),
+    footerAddress: oneLine(d.footerAddress, 200),
+    footerNote: oneLine(d.footerNote, 200),
     theme: d.theme === "light" ? "light" : "dark",
     brandColor: safeColor(d.brandColor || "", "#34d399"),
     logoUrl: safeUrl(d.logoUrl) || null,
@@ -209,8 +240,10 @@ export function bodyToHtml(text: string): string {
     .join("");
 }
 
+const footerNote = (f: Footer) => f.note || `You're receiving this because you contacted ${f.businessName}.`;
+
 export function footerText(f: Footer): string {
-  return `--\n${f.businessName} · ${f.address}\nYou're receiving this because you contacted ${f.businessName}. Unsubscribe: ${f.unsubscribeUrl}`;
+  return `--\n${f.businessName} · ${f.address}\n${footerNote(f)} Unsubscribe: ${f.unsubscribeUrl}`;
 }
 
 /**
@@ -238,7 +271,7 @@ export function buildEmail(args: {
     bodyToHtml(body) +
     (personal ? renderPersonal(args.design!, args.contact) : args.design ? renderDesign(args.design, args.contact, f.businessName) : "") +
     `<p style="margin:32px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escapeHtml(f.businessName)} · ${escapeHtml(f.address)}<br>` +
-    `You're receiving this because you contacted ${escapeHtml(f.businessName)}. <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">Unsubscribe</a></p>` +
+    `${escapeHtml(footerNote(f))} <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">Unsubscribe</a></p>` +
     `</div></body></html>`;
   const parts = [body.trim(), personal ? personalToText(args.design!, args.contact) : args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
   const text = `${parts.join("\n\n")}\n\n${footerText(f)}`;

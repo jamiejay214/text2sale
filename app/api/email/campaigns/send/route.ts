@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateWorkspace } from "@/lib/workspace-auth";
 import { db, emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
+import { footerFor } from "@/lib/email-design";
 import { emailConfigured, sendEmail } from "@/lib/telnyx-email";
 import { processCampaign, queueCampaign } from "@/lib/email-queue";
 
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
     const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(1) });
     if (bal === null || bal === undefined) return NextResponse.json({ error: "Add funds to your wallet to send.", outOfFunds: true }, { status: 402 });
     try {
-      const footer = { businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, to) };
+      const footer = footerFor(account, campaign.design, unsubscribeUrl(userId, to));
       const agentName = String(campaign.design?.signature || sender.from_name || "").split("\n")[0].trim();
       const msg = buildEmail({ subject: `[Test] ${campaign.subject}`, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact: { first_name: "Alex", state: "FL", agent_name: agentName }, footer });
       const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;

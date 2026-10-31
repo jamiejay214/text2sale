@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { authenticateWorkspace } from "@/lib/workspace-auth";
 import { db, emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
+import { footerFor } from "@/lib/email-design";
 import { emailConfigured, sendEmail } from "@/lib/telnyx-email";
 import { replySubject } from "@/lib/email-inbox";
 
@@ -44,13 +45,15 @@ export async function POST(req: NextRequest) {
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
-  const subject = replySubject(last?.email_subject, `Message from ${account.businessName}`);
+  // Same footer (and business name) as the account's latest campaign, so a custom name or address carries over.
+  const { data: latest } = await database.from("email_campaigns").select("design").eq("user_id", userId).order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const subject = replySubject(last?.email_subject, `Message from ${footerFor(account, latest?.design, "").businessName}`);
 
   const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(1) });
   if (bal === null || bal === undefined) return NextResponse.json({ error: "Add funds to your wallet to send email.", outOfFunds: true }, { status: 402 });
 
   try {
-    const footer = { businessName: account.businessName, address: account.address, unsubscribeUrl: unsubscribeUrl(userId, to) };
+    const footer = footerFor(account, latest?.design, unsubscribeUrl(userId, to));
     const msg = buildEmail({ subject, previewText: "", body, contact: contact || {}, footer });
     const id = await sendEmail({
       from: `${sender.from_local}@${sender.domain}`,

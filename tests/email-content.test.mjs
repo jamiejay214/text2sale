@@ -115,3 +115,27 @@ test('a personal email drops a button without an https link', () => {
   assert.ok(!msg.html.includes('javascript:'));
   assert.ok(!msg.html.includes('>Go</a>'));
 });
+
+test('a custom footer replaces the business name, address and note, and always keeps unsubscribe', () => {
+  const { footerFor } = design;
+  const account = { businessName: 'JJ JOHNSON HEALTH', address: '6080 SW 24th Pl Apt 306, Davie, FL 33314' };
+  const f = footerFor(account, { footerName: 'Sunrise Insurance', footerAddress: 'PO Box 123, Miami, FL 33101', footerNote: 'You asked us for a quote.' }, 'https://text2sale.com/u?t=1');
+  const msg = buildEmail({ subject: 's', previewText: '', body: 'Hi', contact: {}, footer: f, design: { style: 'personal' } });
+  for (const part of [msg.html, msg.text]) {
+    assert.match(part, /Sunrise Insurance · PO Box 123, Miami, FL 33101/);
+    assert.match(part, /You asked us for a quote\./);
+    assert.match(part, /text2sale\.com\/u\?t=1/);
+    assert.ok(!part.includes('JJ JOHNSON HEALTH'));
+  }
+});
+
+test('blank or fake footer values fall back to the account details', () => {
+  const { footerFor } = design;
+  const account = { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314' };
+  assert.deepEqual({ ...footerFor(account, {}, 'u') }, { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314', note: undefined, unsubscribeUrl: 'u' });
+  assert.equal(footerFor(account, { footerAddress: 'nowhere' }, 'u').address, '6080 SW 24th Pl, Davie, FL 33314');
+  const f = footerFor(account, { footerName: 'A\r\nBcc: x', footerNote: '<b>hi</b>' }, 'u');
+  assert.equal(f.businessName, 'A Bcc: x');
+  const msg = buildEmail({ subject: 's', previewText: '', body: 'x', contact: {}, footer: f });
+  assert.ok(!msg.html.includes('<b>hi</b>'));
+});

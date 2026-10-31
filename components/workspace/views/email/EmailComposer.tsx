@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Check, Plus, Sparkles, X } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
-import { buildEmail, personalize, type EmailDesign } from "@/lib/email-design";
+import { buildEmail, footerFor, isMailingAddress, personalize, type EmailDesign } from "@/lib/email-design";
 import { ideasFor, type EmailIdea } from "@/lib/email-ideas";
 import type { Audience, EmailCampaign, SenderInfo } from "./types";
 
@@ -48,6 +48,7 @@ export default function EmailComposer({
   info,
   rate,
   initial,
+  footerDefaults,
   channelSwitch,
   onDone,
   onCancel,
@@ -55,6 +56,8 @@ export default function EmailComposer({
   info: SenderInfo;
   rate: number;
   initial: EmailCampaign | null;
+  /** The footer the account used last, so a custom name or address carries over to new campaigns. */
+  footerDefaults?: Pick<EmailDesign, "footerName" | "footerAddress" | "footerNote"> | null;
   channelSwitch: ReactNode;
   onDone: (message: string) => void;
   onCancel: () => void;
@@ -78,6 +81,10 @@ export default function EmailComposer({
   const [card, setCard] = useState<EmailDesign>(() => ({ ...blankCard(), ...(d && d.style !== "personal" ? d : {}), bullets: [...(d?.bullets || []), "", "", ""].slice(0, 3) }));
   const [useLogo, setUseLogo] = useState(true);
   const [brandColor, setBrandColor] = useState(d?.brandColor || "#34d399");
+  const [footerName, setFooterName] = useState((d || footerDefaults)?.footerName || "");
+  const [footerAddress, setFooterAddress] = useState((d || footerDefaults)?.footerAddress || "");
+  const [footerNote, setFooterNote] = useState((d || footerDefaults)?.footerNote || "");
+  const [editingFooter, setEditingFooter] = useState(false);
 
   const [audience, setAudience] = useState<Audience>(initial?.audience || { lists: [], tags: [] });
   const [groups, setGroups] = useState<Groups | null>(null);
@@ -121,14 +128,17 @@ export default function EmailComposer({
   const design = useMemo<Partial<EmailDesign>>(
     () =>
       look === "personal"
-        ? { style: "personal", ctaText, ctaUrl, signature, brandColor }
-        : { ...card, style: "card", signature, brandColor, ctaText: card.ctaText || ctaText, ctaUrl: card.ctaUrl || ctaUrl, logoUrl: useLogo ? logoUrl : null, bullets: card.bullets.filter((b) => b.trim()) },
-    [look, ctaText, ctaUrl, signature, brandColor, card, useLogo, logoUrl],
+        ? { style: "personal", ctaText, ctaUrl, signature, brandColor, footerName, footerAddress, footerNote }
+        : { ...card, style: "card", signature, brandColor, footerName, footerAddress, footerNote, ctaText: card.ctaText || ctaText, ctaUrl: card.ctaUrl || ctaUrl, logoUrl: useLogo ? logoUrl : null, bullets: card.bullets.filter((b) => b.trim()) },
+    [look, ctaText, ctaUrl, signature, brandColor, card, useLogo, logoUrl, footerName, footerAddress, footerNote],
   );
+  const accountFooter = { businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]" };
+  const footer = footerFor(accountFooter, design, "https://text2sale.com");
+  const addressRejected = footerAddress.trim() !== "" && !isMailingAddress(footerAddress.trim());
   const cardPreview = useMemo(
     () =>
       look === "card"
-        ? buildEmail({ subject, previewText, body: "", design, contact: { ...SAMPLE, agent_name: signature }, footer: { businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]", unsubscribeUrl: "https://text2sale.com" } }).html
+        ? buildEmail({ subject, previewText, body: "", design, contact: { ...SAMPLE, agent_name: signature }, footer: footerFor({ businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]" }, design, "https://text2sale.com") }).html
         : "",
     [look, subject, previewText, design, signature, info.account],
   );
@@ -335,6 +345,7 @@ export default function EmailComposer({
           {look === "card" && (
             <details className="em-card-fields" open>
               <summary>Branded card</summary>
+              <label className="em-field"><span>Brand name at the top{useLogo && logoUrl ? " (shown when the logo is off)" : ""}</span><input value={card.eyebrow} onChange={(e) => setCard({ ...card, eyebrow: e.target.value })} placeholder={(footer.businessName || "Your business").toUpperCase()} maxLength={60} /></label>
               <div className="em-row">
                 <label className="em-field"><span>Background</span><select value={card.theme} onChange={(e) => setCard({ ...card, theme: e.target.value as EmailDesign["theme"] })}><option value="dark">Dark</option><option value="light">Light</option></select></label>
                 <label className="em-field"><span>Logo</span><select value={useLogo && logoUrl ? "yes" : "no"} disabled={!logoUrl} onChange={(e) => setUseLogo(e.target.value === "yes")}><option value="yes">Show my logo</option><option value="no">No logo</option></select></label>
@@ -347,7 +358,25 @@ export default function EmailComposer({
               </div>
             </details>
           )}
-          <p className="em-foot">Every email automatically includes your business address and a one-click unsubscribe link.</p>
+          <div className="em-footer">
+            <div className="em-footer-head">
+              <b>Email footer</b>
+              <button className="em-link" onClick={() => setEditingFooter((v) => !v)}>{editingFooter ? "Done" : "Edit"}</button>
+            </div>
+            <div className="em-footer-preview">
+              {footer.businessName} · {footer.address}<br />
+              {footer.note || `You're receiving this because you contacted ${footer.businessName}.`} <u>Unsubscribe</u>
+            </div>
+            {editingFooter && (
+              <div className="em-footer-fields">
+                <label className="em-field"><span>Business name</span><input value={footerName} onChange={(e) => setFooterName(e.target.value)} placeholder={info.account.businessName || "Your business"} maxLength={120} /></label>
+                <label className="em-field"><span>Mailing address</span><input value={footerAddress} onChange={(e) => setFooterAddress(e.target.value)} placeholder={info.account.address || "Street or PO box, city, state, ZIP"} maxLength={200} /></label>
+                {addressRejected && <small className="em-warn">Enter a full mailing address (street or PO box, city, state and ZIP). Until then your registered address is used.</small>}
+                <label className="em-field"><span>Why they&apos;re getting this</span><input value={footerNote} onChange={(e) => setFooterNote(e.target.value)} placeholder={`You're receiving this because you contacted ${footer.businessName}.`} maxLength={200} /></label>
+                <small className="em-note">Leave a field blank to use your business details. A mailing address and the unsubscribe link are required by law, so the unsubscribe link is always added.</small>
+              </div>
+            )}
+          </div>
         </section>
 
         <aside className="em-side">
