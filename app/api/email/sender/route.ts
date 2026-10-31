@@ -1,24 +1,35 @@
 import { NextRequest, NextResponse } from "next/server";
 import { authenticateWorkspace } from "@/lib/workspace-auth";
 import { db, emailAccount } from "@/lib/email-campaigns";
-import { createEmailDomain, emailConfigured, verifyEmailDomain, type DnsRecord } from "@/lib/telnyx-email";
+import { createEmailDomain, deleteEmailDomain, emailConfigured, verifyEmailDomain, type DnsRecord } from "@/lib/telnyx-email";
+import { inspectDns } from "@/lib/email-dns";
 import { addDnsRecord, listDnsRecords } from "@/lib/vercel-domains";
 
 // The customer's sending domain, registered with Telnyx Email. On a domain
-// Text2Sale registered for them (profiles.custom_domain) we publish the DNS
-// records ourselves; on any other domain we show the records to add.
+// Text2Sale registered for them (profiles.custom_domain), or a subdomain of
+// it, we publish the DNS records ourselves; on any other domain we look up
+// what it already has and show each record as a step (lib/email-dns.ts).
 
 const DOMAIN_RE = /^(?!-)[a-z0-9-]{1,63}(\.[a-z0-9-]{1,63})*\.[a-z]{2,}$/;
 
-/** Publish records on a Vercel-managed domain. Skips SPF when one exists: two SPF records break both. */
-async function publishRecords(domain: string, records: DnsRecord[]) {
-  const existing = await listDnsRecords(domain);
-  const apexSpf = existing.some((r) => r.type === "TXT" && (r.name === "" || r.name === "@") && r.value.startsWith("v=spf1"));
+/** Publish records on a Vercel-managed zone. Skips SPF where one exists: two SPF records break both. */
+async function publishRecords(zone: string, records: DnsRecord[]) {
+  const existing = await listDnsRecords(zone);
+  const host = (name: string) => (name === zone ? "" : name.endsWith(`.${zone}`) ? name.slice(0, -(zone.length + 1)) : name);
   for (const record of records) {
-    if (record.type === "TXT" && record.value.startsWith("v=spf1") && apexSpf) continue;
-    await addDnsRecord(domain, record);
+    const spfTaken = record.value.startsWith("v=spf1") && existing.some((r) => r.type === "TXT" && (r.name === "@" ? "" : r.name) === host(record.name) && r.value.startsWith("v=spf1"));
+    if (spfTaken) continue;
+    await addDnsRecord(zone, record);
   }
 }
+
+/** The Text2Sale-managed zone a sending domain belongs to, if any. */
+const managedZone = (domain: string, customDomain: string | null) =>
+  customDomain && (domain === customDomain || domain.endsWith(`.${customDomain}`)) ? customDomain : null;
+
+/** The step-by-step DNS guide, only while the domain still needs records. */
+const guideFor = (sender: { domain: string; status: string; dns_records: DnsRecord[] } | null) =>
+  sender && sender.status !== "verified" ? inspectDns(sender.domain, sender.dns_records || []) : Promise.resolve(null);
 
 export async function GET(req: NextRequest) {
   const auth = await authenticateWorkspace(req);
@@ -31,6 +42,7 @@ export async function GET(req: NextRequest) {
     account: { ok: account.ok, error: account.error || null, businessName: account.businessName, address: account.address, replyTo: account.replyTo, logoUrl: account.logoUrl, industry: account.industry },
     suggestedDomain: account.customDomain,
     sender: sender || null,
+    dnsPlan: await guideFor(sender),
   });
 }
 
@@ -60,7 +72,7 @@ export async function POST(req: NextRequest) {
         .eq("user_id", userId)
         .select("*")
         .single();
-      return NextResponse.json({ sender: data });
+      return NextResponse.json({ sender: data, dnsPlan: await guideFor(data) });
     }
 
     const domain = String(body.domain || account.customDomain || "").trim().toLowerCase().replace(/^www\./, "");
@@ -84,9 +96,14 @@ export async function POST(req: NextRequest) {
       providerId = created.id;
       records = created.records;
       verified = created.verified;
-      if (domain === account.customDomain) {
+      // Switching domains: drop the old one from Telnyx (best effort).
+      if (current?.provider_domain_id && current.domain !== domain) {
+        await deleteEmailDomain(current.provider_domain_id).catch((e) => console.warn("[email/sender] old domain not removed", e));
+      }
+      const zone = managedZone(domain, account.customDomain);
+      if (zone) {
         try {
-          await publishRecords(domain, records);
+          await publishRecords(zone, records);
           dnsManaged = true;
         } catch {
           dnsManaged = false; // fall back to showing the records
@@ -115,7 +132,7 @@ export async function POST(req: NextRequest) {
       .select("*")
       .single();
     if (error) throw error;
-    return NextResponse.json({ sender: data });
+    return NextResponse.json({ sender: data, dnsPlan: await guideFor(data) });
   } catch (e) {
     console.error("[email/sender]", e);
     return NextResponse.json({ error: "Couldn't set up the sending domain. Please try again." }, { status: 502 });

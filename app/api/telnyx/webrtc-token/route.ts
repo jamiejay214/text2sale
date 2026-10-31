@@ -75,11 +75,16 @@ export async function GET(req: NextRequest) {
     if (!numbers.length) return NextResponse.json({ error: "Connect a business number before calling." }, { status: 409 });
     const media = await ensureWebrtcMedia();
     if (!media.ok) return NextResponse.json({ error: media.error }, { status: 503 });
+    // One number that can't be routed (released, or not listed yet) must not
+    // block calling on the others: fail only when none of them can call.
+    const routingErrors: string[] = [];
     for (const number of numbers) {
       const digits = String(number.number || "").replace(/\D/g, "");
       const routing = await ensureVoiceRouting(`+${digits.length === 10 ? "1" : ""}${digits}`);
-      if (!routing.ok) return NextResponse.json({ error: routing.error }, { status: 503 });
+      if (!routing.ok) routingErrors.push(routing.error || "Calling is not configured.");
     }
+    if (routingErrors.length === numbers.length) return NextResponse.json({ error: routingErrors[0] }, { status: 503 });
+    if (routingErrors.length) console.warn("[webrtc-token] numbers skipped for calling:", routingErrors);
 
     let credentialId = profile?.telnyx_credential_id as string | null;
 
@@ -149,7 +154,7 @@ export async function GET(req: NextRequest) {
 
     // Telnyx returns the raw JWT string (not JSON)
     const token = await tokenRes.text();
-    return NextResponse.json({ token: token.replace(/^"|"$/g, "") });
+    return NextResponse.json({ token: token.replace(/^"|"$/g, ""), warning: routingErrors[0] || null });
   } catch (err) {
     console.error("[webrtc-token] unexpected error:", err);
     return NextResponse.json({ error: "Internal error" }, { status: 500 });

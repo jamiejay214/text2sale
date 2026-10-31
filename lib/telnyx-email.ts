@@ -62,6 +62,11 @@ export async function verifyEmailDomain(domainId: string): Promise<EmailDomain> 
   return toDomain(out.data);
 }
 
+/** Remove a sending domain the customer replaced. */
+export async function deleteEmailDomain(domainId: string): Promise<void> {
+  await call("DELETE", `/email_domains/${encodeURIComponent(domainId)}`);
+}
+
 /** Send one email. Returns the Telnyx message id. */
 export async function sendEmail(args: {
   from: string;
