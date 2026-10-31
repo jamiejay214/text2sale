@@ -20,3 +20,17 @@ export function uploadPhones(csv: string): string[] {
   }
   return [...phones];
 }
+
+/** Every email address in an uploaded CSV (its email columns), trimmed; matched case-insensitively. */
+export function uploadEmails(csv: string): string[] {
+  const parsed = Papa.parse<Record<string, string>>(csv, { header: true, skipEmptyLines: true, transformHeader: (h) => h.trim() });
+  const headers = (parsed.meta.fields || []).filter((h) => /e-?mail/i.test(h));
+  const emails = new Set<string>();
+  for (const row of parsed.data) {
+    for (const h of headers) {
+      const email = String(row[h] || "").trim();
+      if (/^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(email)) emails.add(email);
+    }
+  }
+  return [...emails];
+}

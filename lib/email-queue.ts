@@ -15,7 +15,7 @@ import { footerFor } from "@/lib/email-design";
 import { emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
 import { sendEmail } from "@/lib/telnyx-email";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
-import { uploadPhones } from "@/lib/upload-phones";
+import { uploadEmails, uploadPhones } from "@/lib/upload-phones";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -57,20 +57,32 @@ export async function audienceContacts(database: Db, userId: string, audience: A
     }
   };
   if (!audience) return all((q) => q);
-  // Uploaded files: match the file's phone numbers to contacts.
+  // Uploaded files: match the file's phone numbers and email addresses to contacts.
   const phones: string[] = [];
+  const emails: string[] = [];
   if (audience.uploads?.length) {
     const { data: files } = await database.from("csv_uploads").select("file_content").eq("user_id", userId).in("id", audience.uploads);
-    for (const f of files || []) if (f.file_content) phones.push(...uploadPhones(f.file_content));
+    for (const f of files || []) {
+      if (!f.file_content) continue;
+      phones.push(...uploadPhones(f.file_content));
+      // Emails as written and lowercased (contacts keep the case they were imported with).
+      for (const e of uploadEmails(f.file_content)) emails.push(e, e.toLowerCase());
+    }
   }
-  const uniquePhones = [...new Set(phones)];
-  const phoneChunks: string[][] = [];
-  for (let i = 0; i < uniquePhones.length; i += 300) phoneChunks.push(uniquePhones.slice(i, i + 300));
+  const chunk = (values: string[]) => {
+    const unique = [...new Set(values)];
+    const out: string[][] = [];
+    for (let i = 0; i < unique.length; i += 300) out.push(unique.slice(i, i + 300));
+    return out;
+  };
+  const phoneChunks = chunk(phones);
+  const emailChunks = chunk(emails);
   const groups = await Promise.all([
     audience.lists.length ? all((q) => q.in("campaign", audience.lists)) : Promise.resolve([]),
     ...audience.tags.map((tag) => all((q) => q.contains("tags", [tag]))),
     audience.sources?.length ? all((q) => q.in("lead_source", audience.sources)) : Promise.resolve([]),
-    ...phoneChunks.map((chunk) => all((q) => q.in("phone", chunk))),
+    ...phoneChunks.map((part) => all((q) => q.in("phone", part))),
+    ...emailChunks.map((part) => all((q) => q.in("email", part))),
   ]);
   const byId = new Map<string, AudienceRow>();
   for (const row of groups.flat()) byId.set(row.id, row);
