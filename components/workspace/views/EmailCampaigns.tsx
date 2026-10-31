@@ -1,10 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, Lightbulb, Mail, RefreshCw, Send, Sparkles, X } from "lucide-react";
+import { Check, Copy, ExternalLink, Lightbulb, Mail, RefreshCw, Send, Sparkles, X } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { buildEmail, type EmailDesign } from "@/lib/email-design";
 import { ideasFor, type EmailIdea } from "@/lib/email-ideas";
+import type { DnsPlan, RecordAction } from "@/lib/email-dns";
 import { EmptyState, Panel, StatusPill } from "../WorkspacePrimitives";
 
 // Email campaigns (Telnyx Email): sending domain setup, campaign ideas, AI
@@ -26,6 +27,14 @@ type SenderInfo = {
   account: { ok: boolean; error: string | null; businessName: string; address: string; replyTo: string | null; logoUrl: string | null; industry: string | null };
   suggestedDomain: string | null;
   sender: Sender | null;
+  dnsPlan: DnsPlan | null;
+};
+
+const STEP_LABEL: Record<RecordAction, { text: string; tone: "info" | "warning" | "neutral" | "success" }> = {
+  add: { text: "Add new", tone: "info" },
+  edit: { text: "Edit existing", tone: "warning" },
+  keep: { text: "Keep yours", tone: "neutral" },
+  done: { text: "Found", tone: "success" },
 };
 
 type EmailCampaign = {
@@ -78,6 +87,7 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
   const [fromName, setFromName] = useState("");
   const [fromLocal, setFromLocal] = useState("hello");
   const [replyTo, setReplyTo] = useState("");
+  const [changingDomain, setChangingDomain] = useState(false);
 
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
@@ -181,10 +191,11 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
     setBusy(true);
     setNotice(null);
     const res = await authFetch("/api/email/sender", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
-    const out = await json<{ sender: Sender }>(res);
+    const out = await json<{ sender: Sender; dnsPlan: DnsPlan | null }>(res);
     setBusy(false);
     if (!res.ok) return setNotice({ tone: "error", text: out.error || "Something went wrong." });
-    setInfo((cur) => (cur ? { ...cur, sender: out.sender } : cur));
+    setInfo((cur) => (cur ? { ...cur, sender: out.sender, dnsPlan: out.dnsPlan ?? null } : cur));
+    setChangingDomain(false);
     if (payload.action === "refresh") setNotice(out.sender.status === "verified" ? { tone: "ok", text: "Your domain is verified. You can send email campaigns." } : { tone: "ok", text: "Not verified yet. DNS changes can take up to a few hours." });
   };
 
@@ -262,6 +273,20 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
 
   const sender = info.sender;
   const verified = sender?.status === "verified";
+  const plan = info.dnsPlan;
+  const planOpen = plan ? plan.steps.some((st) => st.action === "add" || st.action === "edit") : false;
+  const copy = (text: string) => {
+    navigator.clipboard?.writeText(text).then(() => setNotice({ tone: "ok", text: "Copied." }), () => undefined);
+  };
+  const startChange = () => {
+    if (sender) {
+      setDomain(sender.domain);
+      setFromName(sender.from_name);
+      setFromLocal(sender.from_local);
+      setReplyTo(sender.reply_to || "");
+    }
+    setChangingDomain(true);
+  };
   const hasContent = style === "designed" ? Boolean(design.headline.trim()) : Boolean(body.trim());
   const ready = verified && info.account.ok && name.trim() && subject.trim() && hasContent;
   const field = (id: string, label: string, value: string, onChange: (v: string) => void, placeholder = "") => (
@@ -275,27 +300,69 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
 
       <Panel>
         <div className="v2-panel-head"><h2>Sending domain</h2>{sender && <StatusPill tone={verified ? "success" : "warning"}>{verified ? "Verified" : "Waiting for DNS"}</StatusPill>}</div>
-        {!sender ? (
-          <div style={{ display: "grid", gap: 12, padding: "4px 0" }}>
-            <p style={{ margin: 0 }}>Emails go out from your own domain so they land in the inbox and replies come to you.{info.suggestedDomain ? " We'll add the DNS records to your Text2Sale domain for you." : " We'll show you the DNS records to add."}</p>
+        {!sender || changingDomain ? (
+          <div className="v2-panel-body" style={{ display: "grid", gap: 12 }}>
+            <p style={{ margin: 0 }}>Emails go out from your own domain so they land in the inbox and replies come to you.{info.suggestedDomain ? " We'll add the DNS records to your Text2Sale domain for you." : " We'll walk you through the DNS records to add."}</p>
             <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
-              {field("email-domain", "Domain", domain, setDomain, "yourbusiness.com")}
+              <div className="v2-field"><label htmlFor="email-domain">Domain</label><input id="email-domain" value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="news.yourbusiness.com" /><small>Already use this domain for email (Google, Outlook, GoDaddy)? Use a subdomain like news.yourbusiness.com. Your inbox stays untouched and campaigns get their own reputation.</small></div>
               {field("email-from-name", "From name", fromName, setFromName)}
               <div className="v2-field"><label htmlFor="email-from-local">From address</label><input id="email-from-local" value={fromLocal} onChange={(e) => setFromLocal(e.target.value)} /><small>{fromLocal || "hello"}@{domain || "yourbusiness.com"}</small></div>
               <div className="v2-field"><label htmlFor="email-reply-to">Replies go to</label><input id="email-reply-to" type="email" value={replyTo} onChange={(e) => setReplyTo(e.target.value)} /></div>
             </div>
-            <div><button className="v2-btn v2-btn-primary" disabled={busy || !domain} onClick={() => senderAction({ domain, fromName, fromLocal, replyTo })}><Mail size={15} /> Set up sending domain</button></div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button className="v2-btn v2-btn-primary" disabled={busy || !domain} onClick={() => senderAction({ domain, fromName, fromLocal, replyTo })}><Mail size={15} /> {sender ? "Save sending domain" : "Set up sending domain"}</button>
+              {sender && <button className="v2-btn" disabled={busy} onClick={() => setChangingDomain(false)}>Cancel</button>}
+            </div>
           </div>
         ) : (
-          <div style={{ display: "grid", gap: 10, padding: "4px 0" }}>
-            <p style={{ margin: 0 }}>Sending as <strong>{sender.from_name} &lt;{sender.from_local}@{sender.domain}&gt;</strong>{sender.reply_to ? <> · replies to <strong>{sender.reply_to}</strong></> : null}</p>
-            {!verified && (
+          <div className="v2-panel-body" style={{ display: "grid", gap: 10 }}>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" }}>
+              <p style={{ margin: 0 }}>Sending as <strong>{sender.from_name} &lt;{sender.from_local}@{sender.domain}&gt;</strong>{sender.reply_to ? <> · replies to <strong>{sender.reply_to}</strong></> : null}</p>
+              <button className="v2-btn" disabled={busy} onClick={startChange}>Change domain</button>
+            </div>
+            {!verified && plan && (
               <>
-                <p style={{ margin: 0 }}>{sender.dns_managed ? "We added these records to your domain. Verification usually finishes within an hour." : "Add these records where your domain's DNS is managed, then check verification."}</p>
+                {plan.suggestSubdomain && planOpen && (
+                  <div className="v2-notice is-ok" style={{ display: "grid", gap: 8 }}>
+                    <span><strong>{sender.domain}</strong> already handles your email. The simplest setup is to send campaigns from <strong>{plan.suggestSubdomain}</strong>: nothing about your inbox changes, there are no records to edit, and campaign reputation stays separate from your everyday mail.</span>
+                    <div><button className="v2-btn v2-btn-primary" disabled={busy} onClick={() => senderAction({ domain: plan.suggestSubdomain, fromName: sender.from_name, fromLocal: sender.from_local, replyTo: sender.reply_to })}>Use {plan.suggestSubdomain} instead</button></div>
+                  </div>
+                )}
+                <p style={{ margin: 0 }}>
+                  {sender.dns_managed ? "We added these records to your domain. Verification usually finishes within an hour." : planOpen ? <>Make these changes where <strong>{plan.zone}</strong>&apos;s DNS is managed{plan.provider ? <> (<strong>{plan.provider.name}</strong>)</> : null}, then check verification.</> : "All records are in place. Check verification. It can take a few minutes after DNS updates."}
+                  {plan.provider && planOpen && <> <a href={plan.provider.url} target="_blank" rel="noreferrer">Open {plan.provider.name} <ExternalLink size={12} /></a></>}
+                </p>
+                {plan.provider?.tip && planOpen && <small style={{ opacity: 0.8 }}>{plan.provider.tip}</small>}
+                <div style={{ overflowX: "auto" }}>
+                  <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
+                    <thead><tr><th style={{ textAlign: "left", padding: 6 }}>Step</th><th style={{ textAlign: "left", padding: 6 }}>Type</th><th style={{ textAlign: "left", padding: 6 }}>Host</th><th style={{ textAlign: "left", padding: 6 }}>Value</th></tr></thead>
+                    <tbody>
+                      {plan.steps.map((st) => (
+                        <tr key={`${st.name}${st.value}`} style={{ verticalAlign: "top" }}>
+                          <td style={{ padding: 6, whiteSpace: "nowrap" }}><StatusPill tone={STEP_LABEL[st.action].tone}>{STEP_LABEL[st.action].text}</StatusPill></td>
+                          <td style={{ padding: 6 }}>{st.type}</td>
+                          <td style={{ padding: 6, minWidth: 150 }}><code style={{ whiteSpace: "nowrap" }}>{st.host}</code><br /><small style={{ opacity: 0.7, wordBreak: "break-all" }}>{st.name}</small></td>
+                          <td style={{ padding: 6, wordBreak: "break-all" }}>
+                            {st.action === "edit" && <small style={{ display: "block", opacity: 0.8 }}>Don&apos;t add a second SPF record. Change your existing one from <code>{st.current}</code> to:</small>}
+                            {st.action === "keep" && <small style={{ display: "block", opacity: 0.8 }}>You already have a DMARC record. Keep it; nothing to add.</small>}
+                            <code>{st.value}</code>
+                            {(st.action === "add" || st.action === "edit") && <button className="v2-btn" style={{ marginLeft: 6, padding: "2px 6px" }} aria-label="Copy value" onClick={() => copy(st.value)}><Copy size={12} /></button>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                <div><button className="v2-btn" disabled={busy} onClick={() => senderAction({ action: "refresh" })}><RefreshCw size={15} /> Check verification</button></div>
+              </>
+            )}
+            {!verified && !plan && (
+              <>
+                <p style={{ margin: 0 }}>{sender.dns_managed ? "We added these records to your domain. Verification usually finishes within an hour." : "Add these records where your domain's DNS is managed, then check verification. If your domain already has an SPF record (v=spf1 ...), add the include to it instead of adding a second one."}</p>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
                     <thead><tr><th style={{ textAlign: "left", padding: 6 }}>Type</th><th style={{ textAlign: "left", padding: 6 }}>Name</th><th style={{ textAlign: "left", padding: 6 }}>Value</th></tr></thead>
-                    <tbody>{sender.dns_records.map((r) => <tr key={`${r.name}${r.value}`}><td style={{ padding: 6 }}>{r.type}</td><td style={{ padding: 6, wordBreak: "break-all" }}>{r.name}</td><td style={{ padding: 6, wordBreak: "break-all" }}>{r.value}</td></tr>)}</tbody>
+                    <tbody>{sender.dns_records.map((r) => <tr key={`${r.name}${r.value}`}><td style={{ padding: 6 }}>{r.type}</td><td style={{ padding: 6, minWidth: 150, wordBreak: "break-all" }}>{r.name}</td><td style={{ padding: 6, wordBreak: "break-all" }}>{r.value}</td></tr>)}</tbody>
                   </table>
                 </div>
                 <div><button className="v2-btn" disabled={busy} onClick={() => senderAction({ action: "refresh" })}><RefreshCw size={15} /> Check verification</button></div>
@@ -307,7 +374,7 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
 
       <Panel>
         <div className="v2-panel-head"><h2>Campaign ideas</h2><button className="v2-btn" onClick={() => setShowIdeas((s) => !s)}><Lightbulb size={15} /> {showIdeas ? "Hide ideas" : "Show ideas"}</button></div>
-        <div style={{ display: "grid", gap: 10 }}>
+        <div className="v2-panel-body" style={{ display: "grid", gap: 10 }}>
           <div className="v2-field">
             <label htmlFor="email-goal">Or describe your goal and let AI write it</label>
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -334,7 +401,7 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
       <div style={{ display: "grid", gap: 16, gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", alignItems: "start" }}>
         <Panel>
           <div className="v2-panel-head"><h2>Compose</h2><div className="v2-segmented" role="group" aria-label="Email style">{(["designed", "plain"] as const).map((s) => <button key={s} className={style === s ? "is-active" : ""} aria-pressed={style === s} onClick={() => setStyle(s)}>{s === "designed" ? "Designed" : "Plain text"}</button>)}</div></div>
-          <div style={{ display: "grid", gap: 12 }}>
+          <div className="v2-panel-body" style={{ display: "grid", gap: 12 }}>
             {field("email-name", "Campaign name", name, setName, "Open enrollment check-in")}
             <div className="v2-field">
               <label htmlFor="email-subject">Subject line</label>
@@ -404,11 +471,13 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
 
         <Panel>
           <div className="v2-panel-head"><h2>Preview</h2><small>As Maria Diaz will see it</small></div>
+          <div className="v2-panel-body">
           <div style={{ display: "grid", gap: 6, marginBottom: 10 }}>
             <small><b>{sender?.from_name || info.account.businessName || "Your business"}</b></small>
             <small>{subject.replace(/\{firstName\}/gi, "Maria") || "Subject line"} — {previewText.replace(/\{firstName\}/gi, "Maria")}</small>
           </div>
           <iframe title="Email preview" srcDoc={previewHtml} sandbox="" style={{ width: "100%", height: 760, border: "1px solid rgba(127,127,127,.25)", borderRadius: 12, background: "#fff" }} />
+          </div>
         </Panel>
       </div>
 
@@ -417,7 +486,7 @@ export default function EmailCampaigns({ campaignNames }: { campaignNames: strin
         {campaigns.length === 0 ? (
           <EmptyState title="No email campaigns yet" description="Your sent campaigns and their results will appear here." />
         ) : (
-          <div style={{ overflowX: "auto" }}>
+          <div className="v2-panel-body" style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", fontSize: 14, borderCollapse: "collapse" }}>
               <thead><tr>{["Campaign", "Status", "Sent", "Failed", "Skipped", "Cost", ""].map((h) => <th key={h} style={{ textAlign: "left", padding: 8 }}>{h}</th>)}</tr></thead>
               <tbody>{campaigns.map((c) => (

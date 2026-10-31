@@ -230,7 +230,7 @@ function Dialer({ profile, onNavigate }: Props) {
         window.sessionStorage.removeItem("t2s_call_lead");
       }
     });
-    if (CALLING_ENABLED) authFetch("/api/telnyx/webrtc-token").then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => response.ok ? setToken(data.token) : setNotice(data.error || "Browser calling is unavailable."));
+    if (CALLING_ENABLED) authFetch("/api/telnyx/webrtc-token").then(async (response) => ({ response, data: await response.json() })).then(({ response, data }) => { if (!response.ok) return setNotice(data.error || "Browser calling is unavailable."); setToken(data.token); if (data.warning) setNotice(data.warning); });
   }, [profile.id]);
 
   const append = useCallback((key: string) => setNumber((current) => key === "+" && current ? current : `${current}${key}`.slice(0, 18)), []);

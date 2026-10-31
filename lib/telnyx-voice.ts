@@ -127,7 +127,10 @@ export async function ensureVoiceRouting(e164: string): Promise<{ ok: boolean; e
   const app = await ensureCallControlApp().catch(() => ({ ok: false as const, error: "" }));
   const lookup = await telnyxRequest(`/v2/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`);
   const number = lookup.json?.data?.find((row: { phone_number?: string }) => row.phone_number === e164);
-  if (!lookup.ok || !number?.id) return { ok: false, error: "Business number is still provisioning. Please retry." };
+  const pretty = `(${e164.slice(2, 5)}) ${e164.slice(5, 8)}-${e164.slice(8)}`;
+  if (!lookup.ok) return { ok: false, error: `Couldn't reach the phone carrier to check ${pretty}. Please retry.` };
+  // Not on the account: either just bought and not listed yet, or released.
+  if (!number?.id) return { ok: false, error: `${pretty} isn't active with the phone carrier. If you just added it, retry in a minute; otherwise remove it from your numbers.` };
 
   const target = app.ok ? app.id : number.connection_id ? "" : credentialConnectionId();
   if (!app.ok && !target) {
