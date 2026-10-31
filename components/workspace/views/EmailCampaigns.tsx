@@ -6,7 +6,7 @@ import { authFetch } from "@/lib/auth-fetch";
 import { EmptyState, Panel, StatusPill } from "../WorkspacePrimitives";
 import EmailComposer from "./email/EmailComposer";
 import EmailDomainPanel from "./email/EmailDomainPanel";
-import type { Channel, EmailCampaign, Sender, SenderInfo } from "./email/types";
+import type { Channel, EmailCampaign, EmailResults, Sender, SenderInfo } from "./email/types";
 import type { DnsPlan } from "@/lib/email-dns";
 
 // Email campaigns (Telnyx Email): the sending domain, the campaign list with
@@ -15,6 +15,18 @@ import type { DnsPlan } from "@/lib/email-dns";
 
 const money = (n: number) => n.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const tone = (s: EmailCampaign["status"]) => (s === "Sent" ? "success" : s === "Sending" || s === "Scheduled" ? "info" : s === "Paused" ? "warning" : "neutral");
+
+const pct = (part: number, whole: number) => (whole ? `${((part / whole) * 100).toFixed(part && part / whole < 0.01 ? 2 : 1)}%` : "0%");
+
+/** Spam complaints: Gmail and Yahoo expect bulk senders under 0.1% and block above 0.3%. */
+function spamTone(complained: number, sent: number): "success" | "warning" | "danger" {
+  const rate = sent ? complained / sent : 0;
+  return rate > 0.003 ? "danger" : rate > 0.001 ? "warning" : "success";
+}
+function bounceTone(bounced: number, sent: number): "success" | "warning" | "danger" {
+  const rate = sent ? bounced / sent : 0;
+  return rate > 0.05 ? "danger" : rate > 0.02 ? "warning" : "success";
+}
 
 async function json<T>(res: Response): Promise<T & { error?: string }> {
   return (await res.json().catch(() => ({}))) as T & { error?: string };
@@ -36,6 +48,7 @@ function when(c: EmailCampaign): string {
 export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Channel) => void }) {
   const [info, setInfo] = useState<SenderInfo | null>(null);
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
+  const [health, setHealth] = useState<EmailResults | null>(null);
   const [rate, setRate] = useState(0);
   const [view, setView] = useState<{ mode: "list" } | { mode: "compose"; campaign: EmailCampaign | null }>({ mode: "list" });
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
@@ -44,7 +57,8 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
   const load = useCallback(async () => {
     const [s, c] = await Promise.all([authFetch("/api/email/sender"), authFetch("/api/email/campaigns")]);
     const senderInfo = await json<SenderInfo>(s);
-    const list = await json<{ campaigns: EmailCampaign[]; rate: number }>(c);
+    const list = await json<{ campaigns: EmailCampaign[]; rate: number; health: EmailResults }>(c);
+    setHealth(list.health || null);
     setInfo(senderInfo);
     setCampaigns(list.campaigns || []);
     setRate(list.rate || 0);
@@ -137,6 +151,22 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
           onDone={(text) => { setNotice({ tone: "ok", text }); setView({ mode: "list" }); load(); }}
         />
       ) : (
+        <>
+        {health && health.sent > 0 && (
+          <Panel>
+            <div className="v2-panel-head"><h2>Sender health</h2><small>All campaigns, from Telnyx delivery reports</small></div>
+            <div className="v2-panel-body">
+              <div className="em-health">
+                <div><strong>{health.sent.toLocaleString()}</strong><span>Sent</span></div>
+                <div><strong>{pct(health.delivered, health.sent)}</strong><span>Delivered ({health.delivered.toLocaleString()})</span></div>
+                <div className={`is-${bounceTone(health.bounced, health.sent)}`}><strong>{pct(health.bounced, health.sent)}</strong><span>Bounce rate ({health.bounced.toLocaleString()})</span></div>
+                <div className={`is-${spamTone(health.complained, health.sent)}`}><strong>{pct(health.complained, health.sent)}</strong><span>Spam rate ({health.complained.toLocaleString()} complaints)</span></div>
+                <div><strong>{pct(health.opened, health.delivered || health.sent)}</strong><span>Opened ({health.opened.toLocaleString()})</span></div>
+              </div>
+              <p className="em-note">Keep spam complaints under 0.1% (Gmail and Yahoo start blocking bulk senders at 0.3%) and bounces under 2%. Campaigns pause themselves if complaints pass 0.3% or bounces pass 5%. Bounced and complaining addresses are never emailed again. Delivery reports can take a few minutes; complaints can arrive days later.</p>
+            </div>
+          </Panel>
+        )}
         <Panel>
           <div className="v2-panel-head"><h2>Campaigns</h2></div>
           {campaigns.length === 0 ? (
@@ -144,15 +174,17 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
           ) : (
             <div className="v2-panel-body" style={{ overflowX: "auto" }}>
               <table className="em-table">
-                <thead><tr>{["Campaign", "Status", "When", "Sent", "Failed", "Skipped", "Cost", ""].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <thead><tr>{["Campaign", "Status", "When", "Sent", "Delivered", "Bounced", "Spam", "Opened", "Cost", ""].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                 <tbody>{campaigns.map((c) => (
                   <tr key={c.id}>
                     <td><strong>{c.name}</strong><br /><small>{c.subject}</small></td>
-                    <td><StatusPill tone={tone(c.status)}>{c.status}</StatusPill></td>
+                    <td><StatusPill tone={tone(c.status)}>{c.status}</StatusPill>{c.status === "Paused" && c.pause_reason ? <><br /><small className="em-warn">{c.pause_reason}</small></> : null}</td>
                     <td><small>{when(c)}</small></td>
-                    <td>{c.sent.toLocaleString()}</td>
-                    <td>{c.failed.toLocaleString()}</td>
-                    <td>{c.skipped.toLocaleString()}</td>
+                    <td>{c.sent.toLocaleString()}{c.failed ? <><br /><small>{c.failed.toLocaleString()} failed</small></> : null}</td>
+                    <td>{(c.results?.delivered || 0).toLocaleString()}<br /><small>{pct(c.results?.delivered || 0, c.results?.sent || 0)}</small></td>
+                    <td>{(c.results?.bounced || 0).toLocaleString()}<br /><small>{pct(c.results?.bounced || 0, c.results?.sent || 0)}</small></td>
+                    <td>{(c.results?.complained || 0).toLocaleString()}<br /><small>{pct(c.results?.complained || 0, c.results?.sent || 0)}</small></td>
+                    <td>{(c.results?.opened || 0).toLocaleString()}<br /><small>{pct(c.results?.opened || 0, c.results?.delivered || c.results?.sent || 0)}</small></td>
                     <td>{money(Number(c.cost))}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {c.status === "Draft" && <button className="v2-btn" onClick={() => setView({ mode: "compose", campaign: c })}>Edit</button>}
@@ -165,6 +197,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
             </div>
           )}
         </Panel>
+        </>
       )}
     </div>
   );

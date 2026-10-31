@@ -1272,3 +1272,12 @@ tr:hover .v2-row-actions { opacity:1; }
 .em-search { width:100%; border:1px solid var(--v2-line); border-radius:10px; outline:0; background:var(--v2-canvas); color:var(--v2-ink); padding:9px 12px; font:inherit; font-size:.85rem; }
 .em-more { align-self:center; color:var(--v2-muted); font-size:.75rem; }
 .em-picker .em-chips { max-height:220px; overflow:auto; }
+/* Sender health */
+.em-health { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+.em-health > div { border:1px solid var(--v2-line); border-radius:12px; padding:12px 14px; }
+.em-health strong { display:block; color:var(--v2-ink); font-size:1.35rem; font-weight:800; letter-spacing:-.02em; }
+.em-health span { display:block; margin-top:2px; color:var(--v2-muted); font-size:.75rem; }
+.em-health > div.is-success strong { color:#1f8a5f; }
+.em-health > div.is-warning { border-color:#e0a14a; } .em-health > div.is-warning strong { color:#b45309; }
+.em-health > div.is-danger { border-color:#d4553b; } .em-health > div.is-danger strong { color:#c2410c; }
+@media (max-width:900px) { .em-health { grid-template-columns:repeat(2,minmax(0,1fr)); } }
