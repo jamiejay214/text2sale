@@ -6,6 +6,10 @@
 // live preview and the sender produce the same HTML.
 
 export type EmailDesign = {
+  /** "personal": a plain letter with one button and a signature. "card" (default): the branded card. */
+  style?: "personal" | "card";
+  /** Sign-off under a personal email, e.g. "Jamie". */
+  signature?: string;
   theme: "dark" | "light";
   brandColor: string;
   logoUrl?: string | null;
@@ -29,6 +33,8 @@ export type MergeContact = {
   last_name?: string | null;
   city?: string | null;
   state?: string | null;
+  /** The sender's name, for {agent_name}. */
+  agent_name?: string | null;
 };
 
 export type Footer = {
@@ -40,13 +46,18 @@ export type Footer = {
 export const escapeHtml = (s: string) =>
   String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
-/** Replace {firstName}, {lastName}, {city}, {state}. Missing values become "" (first name falls back to "there"). */
+/**
+ * Replace {first_name}, {last_name}, {city}, {state}, {agent_name} (and the
+ * older {firstName} / {lastName}). Missing values become "" (first name falls
+ * back to "there").
+ */
 export function personalize(template: string, contact: MergeContact): string {
   return String(template ?? "")
-    .replace(/\{firstName\}/gi, (contact.first_name || "").trim() || "there")
-    .replace(/\{lastName\}/gi, (contact.last_name || "").trim())
+    .replace(/\{first_?name\}/gi, (contact.first_name || "").trim() || "there")
+    .replace(/\{last_?name\}/gi, (contact.last_name || "").trim())
     .replace(/\{city\}/gi, (contact.city || "").trim())
-    .replace(/\{state\}/gi, (contact.state || "").trim());
+    .replace(/\{state\}/gi, (contact.state || "").trim())
+    .replace(/\{agent_?name\}/gi, (contact.agent_name || "").trim());
 }
 
 const HEX = /^#[0-9a-f]{6}$/i;
@@ -63,6 +74,8 @@ function shade(hex: string, amount: number): string {
 /** Fill any blanks so a half-edited design still renders. */
 export function normalizeDesign(d: Partial<EmailDesign>): EmailDesign {
   return {
+    style: d.style === "personal" ? "personal" : "card",
+    signature: (d.signature || "").slice(0, 120),
     theme: d.theme === "light" ? "light" : "dark",
     brandColor: safeColor(d.brandColor || "", "#34d399"),
     logoUrl: safeUrl(d.logoUrl) || null,
@@ -139,6 +152,29 @@ export function renderDesign(input: Partial<EmailDesign>, contact: MergeContact,
   );
 }
 
+/** Button text color: a deep shade of a light brand color, white on a dark one. */
+function buttonText(hex: string): string {
+  const n = parseInt(hex.slice(1), 16);
+  const lum = (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
+  return lum > 0.6 ? shade(hex, 0.82) : "#ffffff";
+}
+
+/** A personal email's button and sign-off (HTML), under the letter body. */
+export function renderPersonal(input: Partial<EmailDesign>, contact: MergeContact): string {
+  const d = normalizeDesign(input);
+  const button = d.ctaText && d.ctaUrl
+    ? `<table role="presentation" cellpadding="0" cellspacing="0" style="margin:8px 0 20px"><tr><td bgcolor="${d.brandColor}" style="background-color:${d.brandColor};border-radius:8px">` +
+      `<a href="${escapeHtml(d.ctaUrl)}" style="display:inline-block;padding:12px 20px;font-family:Helvetica,Arial,sans-serif;font-size:16px;font-weight:bold;color:${buttonText(d.brandColor)};text-decoration:none">${escapeHtml(personalize(d.ctaText, contact))}</a></td></tr></table>`
+    : "";
+  const signature = d.signature ? `<p style="margin:0 0 16px">${escapeHtml(personalize(d.signature, contact)).replace(/\n/g, "<br>")}</p>` : "";
+  return button + signature;
+}
+
+export function personalToText(input: Partial<EmailDesign>, contact: MergeContact): string {
+  const d = normalizeDesign(input);
+  return [d.ctaText && d.ctaUrl ? `${personalize(d.ctaText, contact)}: ${d.ctaUrl}` : "", personalize(d.signature || "", contact)].filter(Boolean).join("\n\n");
+}
+
 /** Plain-text version of a designed email, for the text/plain part. */
 export function designToText(input: Partial<EmailDesign>, contact: MergeContact): string {
   const d = normalizeDesign(input);
@@ -194,16 +230,17 @@ export function buildEmail(args: {
   const body = personalize(args.body, args.contact);
   const preview = personalize(args.previewText, args.contact);
   const f = args.footer;
+  const personal = args.design?.style === "personal";
   const html =
     `<!doctype html><html><body style="margin:0;padding:24px;background:#ffffff">` +
     (preview ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preview)}</div>` : "") +
     `<div style="max-width:600px;margin:0 auto;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#1f2937">` +
     bodyToHtml(body) +
-    (args.design ? renderDesign(args.design, args.contact, f.businessName) : "") +
+    (personal ? renderPersonal(args.design!, args.contact) : args.design ? renderDesign(args.design, args.contact, f.businessName) : "") +
     `<p style="margin:32px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escapeHtml(f.businessName)} · ${escapeHtml(f.address)}<br>` +
     `You're receiving this because you contacted ${escapeHtml(f.businessName)}. <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">Unsubscribe</a></p>` +
     `</div></body></html>`;
-  const parts = [body.trim(), args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
+  const parts = [body.trim(), personal ? personalToText(args.design!, args.contact) : args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
   const text = `${parts.join("\n\n")}\n\n${footerText(f)}`;
   return { subject, html, text };
 }
