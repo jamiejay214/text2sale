@@ -13,7 +13,7 @@ import { inferTimezone } from "@/lib/quiet-hours";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
 import { footerFor } from "@/lib/email-design";
 import { emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
-import { sendEmail } from "@/lib/telnyx-email";
+import { isDailyLimit, listSentByTag, sendEmail } from "@/lib/telnyx-email";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
 import { uploadEmails, uploadPhones } from "@/lib/upload-phones";
 
@@ -26,7 +26,15 @@ export type Audience = { lists: string[]; tags: string[]; sources?: string[]; up
 const PER_SECOND = Math.max(1, Number(process.env.TELNYX_EMAIL_MAX_PER_SECOND) || 10);
 /** Most emails one run sends for one campaign, to stay inside the function time limit. */
 export const MAX_WAVE = 600;
-const LEASE_MS = 4 * 60 * 1000;
+/** Longer than any request that runs a wave (maxDuration 300s), so a lease never lapses mid-send. */
+const LEASE_MS = 6 * 60 * 1000;
+/** A wave stops starting new batches after this; whatever is left stays queued for the next run. */
+const WAVE_BUDGET_MS = 120_000;
+
+/** Daily limits reset at midnight UTC; resume a few minutes after. */
+export function nextDailyReset(from = new Date()): Date {
+  return new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth(), from.getUTCDate() + 1, 0, 5));
+}
 const PAGE = 1000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -149,6 +157,9 @@ type QueuedRow = { id: string; contact_id: string | null; email: string };
  */
 export async function processCampaign(database: Db, campaignId: string): Promise<{ sent: number; failed: number; skipped: number; outOfFunds?: boolean; done?: boolean }> {
   const now = new Date();
+  const { data: before } = await database.from("email_campaigns").select("locked_until").eq("id", campaignId).maybeSingle();
+  // A lease that was never released means the last run was cut off mid-send.
+  const interrupted = Boolean(before?.locked_until);
   const { data: campaign } = await database
     .from("email_campaigns")
     .update({ locked_until: new Date(now.getTime() + LEASE_MS).toISOString() })
@@ -171,6 +182,21 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     if (!account.ok || !sender || sender.status !== "verified") {
       await finish({ status: "Paused" });
       return { sent: 0, failed: 0, skipped: 0 };
+    }
+
+    // After a cut-off run, mark whatever Telnyx already accepted as sent before
+    // anything else goes out, so nobody gets the same email twice. A run sends
+    // at most one wave, so the newest 1,000 accepted messages cover it.
+    if (interrupted) {
+      const accepted = await listSentByTag(`campaign:${campaignId}`, 10);
+      const byEmail = new Map<string, string>();
+      for (const m of accepted) for (const to of m.to) byEmail.set(to, m.id);
+      const emails = [...byEmail.keys()];
+      const at = new Date().toISOString();
+      for (let i = 0; i < emails.length; i += 200) {
+        const { data: rows } = await database.from("email_sends").select("id, email").eq("campaign_id", campaignId).eq("status", "queued").in("email", emails.slice(i, i + 200));
+        await Promise.all((rows || []).map((r: { id: string; email: string }) => database.from("email_sends").update({ status: "sent", provider_message_id: byEmail.get(r.email), sent_at: at }).eq("id", r.id).eq("status", "queued")));
+      }
     }
 
     const hourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
@@ -213,14 +239,11 @@ export async function processCampaign(database: Db, campaignId: string): Promise
       return { sent: 0, failed: 0, skipped: skipRows.length };
     }
 
-    const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(sendRows.length) });
-    if (bal === null || bal === undefined) {
-      await finish({ status: "Paused", skipped: campaign.skipped + skipRows.length });
-      return { sent: 0, failed: 0, skipped: skipRows.length, outOfFunds: true };
-    }
     if (campaign.status === "Scheduled") await database.from("email_campaigns").update({ status: "Sending" }).eq("id", campaignId).eq("status", "Scheduled");
 
-    const ids = sendRows.map((r) => r.contact_id).filter(Boolean);
+    const toSend = sendRows;
+
+    const ids = toSend.map((r) => r.contact_id).filter(Boolean);
     const { data: contacts } = ids.length
       ? await database.from("contacts").select("id, first_name, last_name, city, state").in("id", ids)
       : { data: [] };
@@ -229,10 +252,20 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;
     const agentName = String(campaign.design?.signature || sender.from_name || "").split("\n")[0].trim();
 
-    const results: { id: string; status: "sent" | "failed"; provider_message_id: string | null; error: string | null }[] = [];
-    for (let i = 0; i < sendRows.length; i += PER_SECOND) {
+    // Pay for each small batch before sending it, and save its results right
+    // away: a run cut off mid-wave loses at most the batch in flight.
+    const waveStarted = Date.now();
+    let outOfFunds = false;
+    let limitedUntil: string | null = null;
+    for (let i = 0; i < toSend.length; i += PER_SECOND) {
+      if (Date.now() - waveStarted > WAVE_BUDGET_MS) break;
       const started = Date.now();
-      const batch = sendRows.slice(i, i + PER_SECOND);
+      const batch = toSend.slice(i, i + PER_SECOND);
+      const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(batch.length) });
+      if (bal === null || bal === undefined) {
+        outOfFunds = true;
+        break;
+      }
       const out = await Promise.all(
         batch.map(async (row) => {
           try {
@@ -242,39 +275,59 @@ export async function processCampaign(database: Db, campaignId: string): Promise
             const id = await sendEmail({ from, fromName, replyTo: sender.inbox_address || sender.reply_to, to: row.email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
             return { id: row.id, status: "sent" as const, provider_message_id: id || null, error: null };
           } catch (e) {
-            return { id: row.id, status: "failed" as const, provider_message_id: null, error: (e instanceof Error ? e.message : "send failed").slice(0, 300) };
+            const error = (e instanceof Error ? e.message : "send failed").slice(0, 300);
+            // Daily limit (new-domain warm-up or account quota): keep it queued for after the reset.
+            if (isDailyLimit(e)) return { id: row.id, status: "deferred" as const, provider_message_id: null, error };
+            return { id: row.id, status: "failed" as const, provider_message_id: null, error };
           }
         }),
       );
-      results.push(...out);
+      const at = new Date().toISOString();
+      const resume = nextDailyReset().toISOString();
+      await Promise.all(
+        out.map((r) =>
+          r.status === "deferred"
+            ? database.from("email_sends").update({ send_after: resume, error: r.error }).eq("id", r.id)
+            : database.from("email_sends").update({ status: r.status, provider_message_id: r.provider_message_id, error: r.error, sent_at: at }).eq("id", r.id),
+        ),
+      );
+      const notSent = out.filter((r) => r.status !== "sent").length;
+      if (notSent) {
+        await database.rpc("credit_wallet", {
+          p_user_id: userId,
+          p_amount: emailCost(notSent),
+          p_idempotency_key: `email_refund_${campaignId}_${batch[0].id}`,
+          p_description: `Refund — ${notSent} email(s) not sent`,
+        });
+      }
+      if (out.some((r) => r.status === "deferred")) {
+        // Everything else due now waits for the reset too.
+        limitedUntil = resume;
+        const rest = toSend.slice(i + PER_SECOND).map((r) => r.id);
+        for (let j = 0; j < rest.length; j += 200) await database.from("email_sends").update({ send_after: resume }).in("id", rest.slice(j, j + 200));
+        break;
+      }
       const wait = 1000 - (Date.now() - started);
-      if (wait > 0 && i + PER_SECOND < sendRows.length) await sleep(wait);
+      if (wait > 0 && i + PER_SECOND < toSend.length) await sleep(wait);
     }
 
-    const sentAt = new Date().toISOString();
-    for (let i = 0; i < results.length; i += 50) {
-      await Promise.all(results.slice(i, i + 50).map((r) => database.from("email_sends").update({ status: r.status, provider_message_id: r.provider_message_id, error: r.error, sent_at: sentAt }).eq("id", r.id)));
-    }
-    const sent = results.filter((r) => r.status === "sent").length;
-    const failed = results.length - sent;
-    if (failed) {
-      await database.rpc("credit_wallet", {
-        p_user_id: userId,
-        p_amount: emailCost(failed),
-        p_idempotency_key: `email_refund_${campaignId}_${results[0].id}`,
-        p_description: `Refund — ${failed} email(s) not sent`,
-      });
-    }
-    const { count: left } = await database.from("email_sends").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("status", "queued");
+    // Totals come from the rows themselves, so they stay right even after a cut-off run.
+    const count = async (status: string) =>
+      (await database.from("email_sends").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("status", status)).count || 0;
+    const [sentTotal, failedTotal, skippedRows, left] = await Promise.all([count("sent"), count("failed"), count("skipped"), count("queued")]);
+    const sent = Math.max(0, sentTotal - campaign.sent);
+    const failed = Math.max(0, failedTotal - campaign.failed);
     await finish({
-      status: left ? "Sending" : "Sent",
-      recipients: campaign.recipients + sent + failed,
-      sent: campaign.sent + sent,
-      failed: campaign.failed + failed,
-      skipped: campaign.skipped + skipRows.length,
-      cost: Number((Number(campaign.cost) + emailCost(sent)).toFixed(4)),
-      sent_at: left ? campaign.sent_at : sentAt,
+      status: outOfFunds ? "Paused" : left ? "Sending" : "Sent",
+      ...(limitedUntil ? { scheduled_at: limitedUntil } : {}),
+      recipients: sentTotal + failedTotal,
+      sent: sentTotal,
+      failed: failedTotal,
+      skipped: Math.max(campaign.skipped + skipRows.length, skippedRows),
+      cost: Number(emailCost(sentTotal).toFixed(4)),
+      sent_at: left ? campaign.sent_at : new Date().toISOString(),
     });
+    if (outOfFunds) return { sent, failed, skipped: skipRows.length, outOfFunds: true };
     return { sent, failed, skipped: skipRows.length, done: !left };
   } catch (e) {
     console.error("[email-queue]", campaignId, e);

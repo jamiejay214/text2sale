@@ -18,16 +18,28 @@ export function emailConfigured(): boolean {
   return process.env.TELNYX_EMAIL_ENABLED === "true" && Boolean(process.env.TELNYX_API_KEY);
 }
 
+/** A Telnyx error with its code, e.g. "domain_graduation_limit_exceeded". */
+export class TelnyxEmailError extends Error {
+  constructor(message: string, readonly code: string, readonly status: number) {
+    super(message);
+  }
+}
+
+/** The new-domain warm-up cap or the account's daily quota: retry after midnight UTC, not a failure. */
+export const isDailyLimit = (e: unknown) => e instanceof TelnyxEmailError && (e.code === "domain_graduation_limit_exceeded" || e.code === "10011");
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     method,
     headers: { Authorization: `Bearer ${process.env.TELNYX_API_KEY}`, "Content-Type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
+    // A hung request must not stall a whole send wave past the function's time limit.
+    signal: AbortSignal.timeout(20_000),
   });
   const json = (await res.json().catch(() => ({}))) as { data?: unknown; errors?: { detail?: string; title?: string; code?: string }[] };
   if (!res.ok) {
     const err = json.errors?.[0];
-    throw new Error(err?.detail || err?.title || `Telnyx email request failed (${res.status})`);
+    throw new TelnyxEmailError(err?.detail || err?.title || `Telnyx email request failed (${res.status})`, String(err?.code || ""), res.status);
   }
   return json as T;
 }
@@ -122,7 +134,7 @@ export async function createInbox(username: string): Promise<{ id: string; addre
 
 /** The newest messages in an inbox (newest first). */
 export async function listInboxMessages(inboxId: string, pageSize = 25): Promise<InboxMessage[]> {
-  const out = await call<{ data: InboxMessage[] }>("GET", `/email_inboxes/${encodeURIComponent(inboxId)}/messages?page[size]=${pageSize}`);
+  const out = await call<{ data: InboxMessage[] }>("GET", `/email_inboxes/${encodeURIComponent(inboxId)}/messages?page_size=${pageSize}`);
   return out.data || [];
 }
 
@@ -131,4 +143,18 @@ export async function fetchInboxText(url: string): Promise<string> {
   const res = await fetch(url, { headers: url.startsWith(API) ? { Authorization: `Bearer ${process.env.TELNYX_API_KEY}` } : {} });
   if (!res.ok) return "";
   return (await res.text()).slice(0, 20000);
+}
+
+/** Messages already accepted by Telnyx with this tag: their ids and recipient addresses. */
+export async function listSentByTag(tag: string, maxPages = 100): Promise<{ id: string; to: string[] }[]> {
+  const out: { id: string; to: string[] }[] = [];
+  let cursor = "";
+  for (let page = 0; page < maxPages; page++) {
+    const q = `filter[tags]=${encodeURIComponent(tag)}&page_size=100${cursor ? `&page_cursor=${encodeURIComponent(cursor)}` : ""}`;
+    const res = await call<{ data: { id: string; to?: { email: string }[] }[]; meta?: { page_cursor?: string } }>("GET", `/email_messages?${q}`);
+    for (const m of res.data || []) out.push({ id: m.id, to: (m.to || []).map((t) => String(t.email || "").toLowerCase()) });
+    cursor = res.meta?.page_cursor || "";
+    if (!cursor || !(res.data || []).length) break;
+  }
+  return out;
 }
