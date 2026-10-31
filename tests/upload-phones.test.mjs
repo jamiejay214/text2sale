@@ -25,3 +25,10 @@ test('other export layouts work too', () => {
   assert.deepEqual([...uploadPhones('First name,Phone number\nAl,786.555.0143\n')], ['7865550143']);
   assert.deepEqual([...uploadPhones('Name,Email\nAl,al@x.com\n')], []);
 });
+
+test('email-only files are matched by their email addresses', () => {
+  const { uploadEmails } = load('lib/upload-phones.ts', (id) => (id === '@/lib/workspace-input' ? input : nodeRequire(id)));
+  const csv = 'Name,Email,Work E-mail\nAna,Ana@Example.com, ana@work.co \nBo,not-an-email,\nCy,,cy@x.org\n';
+  assert.deepEqual([...uploadEmails(csv)].sort(), ['Ana@Example.com', 'ana@work.co', 'cy@x.org']);
+  assert.deepEqual([...uploadEmails('First,Phone\nA,9545550123\n')], []);
+});

@@ -113,11 +113,14 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
   };
 
   const mappedPhone = useMemo(() => Object.values(mapping).includes("phone"), [mapping]);
+  const mappedEmail = useMemo(() => Object.values(mapping).includes("email"), [mapping]);
+  // Email-only lists (for email campaigns) are fine; an opt-out list needs phones.
+  const canContinue = suppressionOnly ? mappedPhone : mappedPhone || mappedEmail;
   const mappedFields = useMemo(() => Object.values(mapping).filter(Boolean).length, [mapping]);
   const campaign = campaigns.find((item) => item.id === campaignId);
 
   const importContacts = async () => {
-    if (!mappedPhone) { setNotice({ tone: "error", text: "Map one CSV column to Phone number before importing." }); return; }
+    if (!canContinue) { setNotice({ tone: "error", text: suppressionOnly ? "Map one CSV column to Phone number before importing an opt-out list." : "Map a CSV column to Phone number or Email before importing." }); return; }
     setUploading(true); setProgress(5); setNotice(null);
     const mappedRows: Array<Omit<Contact, "id" | "created_at">> = rows.map((row) => {
       const values: Record<string, string> = {};
@@ -144,16 +147,22 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
         household_size: values.household_size || "",
         date_of_birth: values.date_of_birth || "",
         age: values.age || "",
-        campaign: suppressionOnly ? "" : campaign?.name || "",
-        campaign_id: suppressionOnly ? null : campaign?.id || null,
+        // A text campaign only takes contacts with a phone number.
+        campaign: suppressionOnly || !values.phone ? "" : campaign?.name || "",
+        campaign_id: suppressionOnly || !values.phone ? null : campaign?.id || null,
         tags: (values.tags || "").split(/[,;|]/).map(t=>t.trim()).filter(Boolean),
         consent_source: values.consent_source || "",
         consent_at: values.consent_at && Number.isFinite(Date.parse(values.consent_at)) ? new Date(values.consent_at).toISOString() : null,
         dnc: suppressionOnly || importSuppressed(values.dnc || ""),
       };
     });
-    const valid = mappedRows.filter((row) => normalizePhone(row.phone));
-    const invalidCount = mappedRows.length - valid.length;
+    const validEmail = (value: string | null | undefined) => /^[^\s@,;]+@[^\s@,;]+\.[a-z]{2,}$/i.test(String(value || "").trim());
+    for (const row of mappedRows) row.email = String(row.email || "").trim();
+    // Rows need a phone; outside an opt-out list, an email alone is enough (email campaigns).
+    const phoneRows = mappedRows.filter((row) => normalizePhone(row.phone));
+    const emailOnlyRows = suppressionOnly ? [] : mappedRows.filter((row) => !normalizePhone(row.phone) && validEmail(row.email));
+    const valid = phoneRows;
+    const invalidCount = mappedRows.length - phoneRows.length - emailOnlyRows.length;
     let deduped = valid;
     let duplicateCount = 0;
     // Apply suppression to every existing variant before duplicate removal.
@@ -210,6 +219,30 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
         seen.add(phone); return true;
       });
     }
+    // Email-only rows: skip addresses already in this file or in your contacts.
+    let emailOnly = emailOnlyRows;
+    if (emailOnlyRows.length && (ignoreDuplicates || suppressionOnly)) {
+      const existingEmails = new Set<string>();
+      try {
+        for (let from = 0; ; from += 1000) {
+          const { data, error } = await supabase.from("contacts").select("email").eq("user_id", profile.id).like("email", "%@%").order("id").range(from, from + 999);
+          if (error) throw error;
+          for (const row of (data || []) as Array<{ email: string | null }>) existingEmails.add(String(row.email || "").trim().toLowerCase());
+          if (!data || data.length < 1000) break;
+        }
+      } catch {
+        setNotice({ tone: "error", text: "Could not check your existing contacts for duplicate emails, so nothing was imported. Please try again." });
+        setUploading(false); setProgress(0);
+        return;
+      }
+      for (const row of deduped) existingEmails.add(String(row.email || "").trim().toLowerCase());
+      emailOnly = emailOnlyRows.filter((row) => {
+        const key = String(row.email).trim().toLowerCase();
+        if (existingEmails.has(key)) { duplicateCount += 1; return false; }
+        existingEmails.add(key); return true;
+      });
+    }
+    deduped = [...deduped, ...emailOnly];
     setProgress(25);
     let imported = 0;
     const importedSinceIso = new Date().toISOString();
@@ -227,7 +260,8 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
       success: imported, duplicates: duplicateCount, invalid: invalidCount, tcpa_violations: 0,
       dnc_complainers: 0, validation_used: "Internal DNC", charged: charge, file_content: rawText || null,
     });
-    setNotice({tone:"ok",text:`Imported ${imported.toLocaleString()} contacts; ${duplicateCount} duplicates and ${invalidCount} invalid rows skipped. ${suppressionOnly ? "Suppression saved. No messages queued." : campaign ? "Open Campaigns to review recipients and launch." : "No messages queued."}`});
+    const emailNote = emailOnly.length ? ` ${emailOnly.length.toLocaleString()} have an email but no phone: they're ready for email campaigns${campaign ? " and weren't added to the text campaign" : ""}.` : "";
+    setNotice({tone:"ok",text:`Imported ${imported.toLocaleString()} contacts; ${duplicateCount} duplicates and ${invalidCount} invalid rows skipped.${emailNote} ${suppressionOnly ? "Suppression saved. No messages queued." : campaign ? "Open Campaigns to review recipients and launch." : "No messages queued."}`});
     setProgress(100); setUploading(false); await loadHistory(); reset();
   };
 
@@ -272,11 +306,11 @@ export default function UploadWorkspace({ profile, onNavigate }: Props) {
         <Panel className="v2-import-wizard">
           <div className="v2-import-steps">{([[1, "Choose file"], [2, "Map fields"], [3, "Campaign & import"]] as const).map(([number, label]) => <div className={step >= number ? "is-active" : ""} key={number}><span>{step > number ? <Check size={13} /> : number}</span><strong>{label}</strong></div>)}</div>
           {step === 1 && <div className="v2-upload-drop" onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file) void parseFile(file); }}><span><UploadCloud size={27} /></span><h2>Drop your CSV here</h2><p>or browse from your computer. Your first row should contain column names.</p><button className="v2-btn v2-btn-primary" onClick={() => inputRef.current?.click()}>Choose CSV file</button><input ref={inputRef} type="file" accept=".csv,text/csv" hidden onChange={(event) => { const file = event.target.files?.[0]; if (file) void parseFile(file); }} /><small>CSV up to 5 MB is retained for future downloads</small></div>}
-          {step === 2 && <div className="v2-mapping-screen"><div className="v2-import-file"><FileSpreadsheet size={19} /><div><strong>{fileName}</strong><small>{rows.length.toLocaleString()} rows · {headers.length} columns</small></div><button onClick={reset}>Change file</button></div><div className="v2-mapping-head"><span>CSV column</span><span>Maps to Text2Sale field</span><span>Preview</span></div><div className="v2-mapping-list">{headers.map((header) => <div key={header}><strong>{header}</strong><label><select value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>{FIELDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><ChevronDown size={13} /></label><span>{rows.slice(0, 2).map((row) => row[header]).filter(Boolean).join(" · ") || "No preview"}</span></div>)}</div><footer><div><ShieldCheck size={16} /><span><strong>{mappedFields} fields mapped</strong><small>Phone is required</small></span></div><button className="v2-btn v2-btn-primary" disabled={!mappedPhone} onClick={() => setStep(3)}>Continue <ArrowRight size={15} /></button></footer></div>}
+          {step === 2 && <div className="v2-mapping-screen"><div className="v2-import-file"><FileSpreadsheet size={19} /><div><strong>{fileName}</strong><small>{rows.length.toLocaleString()} rows · {headers.length} columns</small></div><button onClick={reset}>Change file</button></div><div className="v2-mapping-head"><span>CSV column</span><span>Maps to Text2Sale field</span><span>Preview</span></div><div className="v2-mapping-list">{headers.map((header) => <div key={header}><strong>{header}</strong><label><select value={mapping[header] || ""} onChange={(event) => setMapping((current) => ({ ...current, [header]: event.target.value }))}>{FIELDS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><ChevronDown size={13} /></label><span>{rows.slice(0, 2).map((row) => row[header]).filter(Boolean).join(" · ") || "No preview"}</span></div>)}</div><footer><div><ShieldCheck size={16} /><span><strong>{mappedFields} fields mapped</strong><small>{suppressionOnly ? "Phone is required for an opt-out list" : mappedPhone ? "Phone mapped · email optional" : mappedEmail ? "Email-only list: ready for email campaigns" : "Map a phone number or an email column"}</small></span></div><button className="v2-btn v2-btn-primary" disabled={!canContinue} onClick={() => setStep(3)}>Continue <ArrowRight size={15} /></button></footer></div>}
           {step === 3 && <div className="v2-import-review"><div className="v2-review-hero"><span><CheckCircle2 size={24} /></span><div><p>Ready to import</p><h2>{rows.length.toLocaleString()} leads from {fileName}</h2><small>{mappedFields} mapped fields will be added to each contact.</small></div></div><div className="v2-review-options"><label><span>Campaign after import<small>Choose a saved campaign to start its texts immediately.</small></span><select value={campaignId} onChange={(event) => setCampaignId(event.target.value)}><option value="">Import only — no campaign</option>{campaigns.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.steps?.length || 1} steps</option>)}</select></label><label className="v2-check-row"><input type="checkbox" checked={ignoreDuplicates} onChange={(event) => setIgnoreDuplicates(event.target.checked)} /><span><b>Skip duplicate phone numbers</b><small>Checks both this file and your existing contact database.</small></span></label></div>{uploading && <div className="v2-import-progress"><span><i style={{ width: `${progress}%` }} /></span><small>Importing and preparing your leads… {progress}%</small></div>}<footer><button className="v2-btn" onClick={() => setStep(2)} disabled={uploading}>Back</button><button className="v2-btn v2-btn-accent" onClick={importContacts} disabled={uploading}>{uploading ? "Importing…" : campaignId ? "Import & start campaign" : "Import leads"}</button></footer></div>}
         </Panel>
 
-        <aside className="v2-import-aside"><Panel><div className="v2-panel-head"><div><h2>Import checklist</h2><p>For the cleanest results</p></div><Info size={16} /></div><ol><li><span>1</span><div><strong>Keep one lead per row</strong><small>Use column headers in row one.</small></div></li><li><span>2</span><div><strong>Include a phone number</strong><small>We normalize common US formats.</small></div></li><li><span>3</span><div><strong>Map before importing</strong><small>You control where every column lands.</small></div></li><li><span>4</span><div><strong>Choose an optional campaign</strong><small>Its full follow-up workflow is queued.</small></div></li></ol></Panel><Panel className="v2-csv-sample"><FileSpreadsheet size={19} /><div><strong>Need a sample format?</strong><small>Download a clean template with every supported field.</small></div><button onClick={() => { const content = "First Name,Last Name,Phone,Email,City,State,ZIP,Lead Source\nAlex,Morgan,9545550123,alex@example.com,Fort Lauderdale,FL,33301,Website"; const url = URL.createObjectURL(new Blob([content], { type: "text/csv" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "text2sale-import-template.csv"; anchor.click(); URL.revokeObjectURL(url); }}><Download size={14} /> Download</button></Panel></aside>
+        <aside className="v2-import-aside"><Panel><div className="v2-panel-head"><div><h2>Import checklist</h2><p>For the cleanest results</p></div><Info size={16} /></div><ol><li><span>1</span><div><strong>Keep one lead per row</strong><small>Use column headers in row one.</small></div></li><li><span>2</span><div><strong>Include a phone or an email</strong><small>Phone for texting and calling; an email-only list works for email campaigns.</small></div></li><li><span>3</span><div><strong>Map before importing</strong><small>You control where every column lands.</small></div></li><li><span>4</span><div><strong>Choose an optional campaign</strong><small>Its full follow-up workflow is queued.</small></div></li></ol></Panel><Panel className="v2-csv-sample"><FileSpreadsheet size={19} /><div><strong>Need a sample format?</strong><small>Download a clean template with every supported field.</small></div><button onClick={() => { const content = "First Name,Last Name,Phone,Email,City,State,ZIP,Lead Source\nAlex,Morgan,9545550123,alex@example.com,Fort Lauderdale,FL,33301,Website"; const url = URL.createObjectURL(new Blob([content], { type: "text/csv" })); const anchor = document.createElement("a"); anchor.href = url; anchor.download = "text2sale-import-template.csv"; anchor.click(); URL.revokeObjectURL(url); }}><Download size={14} /> Download</button></Panel></aside>
       </div>
 
       <Panel className="v2-upload-history"><div className="v2-panel-head"><div><h2>Uploaded lead lists</h2><p>Download, audit, or put an earlier list into another campaign.</p></div><History size={18} /></div>{history.length ? <div className="v2-upload-table"><table><thead><tr><th>File</th><th>Imported</th><th>Rows</th><th>Clean-up</th><th>Charge</th><th>Retext with campaign</th><th /></tr></thead><tbody>{history.map((record) => <tr key={record.id}><td><span className="v2-file-icon"><FileSpreadsheet size={15} /></span><span><strong>{record.file_name}</strong><small>{new Date(record.uploaded_at).toLocaleString()}</small></span></td><td><StatusPill tone="success">{record.success.toLocaleString()} added</StatusPill></td><td>{record.total_rows.toLocaleString()}</td><td><span>{record.duplicates} duplicates</span><small>{record.invalid} invalid</small></td><td>{record.charged == null ? "—" : `$${Number(record.charged).toFixed(2)}`}</td><td><div className="v2-reuse-campaign"><select value={historyCampaign[record.id] || ""} onChange={(event) => setHistoryCampaign((current) => ({ ...current, [record.id]: event.target.value }))}><option value="">Choose campaign…</option>{campaigns.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select><button disabled={!historyCampaign[record.id]} onClick={() => reuse(record)}><RefreshCw size={13} /> Assign & open</button></div></td><td><button title="Download original" onClick={() => download(record)}><Download size={14} /></button><button title="Remove history record" onClick={() => removeHistory(record)}><Trash2 size={14} /></button></td></tr>)}</tbody></table></div> : <EmptyState title="No CSV uploads yet" description="Your imported files and clean-up results will stay available here." />}</Panel>
