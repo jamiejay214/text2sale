@@ -14,6 +14,8 @@ export type EmailDesign = {
   footerName?: string;
   footerAddress?: string;
   footerNote?: string;
+  /** Wording of the unsubscribe link; one of UNSUBSCRIBE_LABELS. */
+  footerUnsubscribe?: string;
   theme: "dark" | "light";
   brandColor: string;
   logoUrl?: string | null;
@@ -47,7 +49,12 @@ export type Footer = {
   unsubscribeUrl: string;
   /** Why they're getting this; defaults to "You're receiving this because you contacted <business>." */
   note?: string;
+  /** The unsubscribe link's wording; defaults to "Unsubscribe". */
+  unsubscribeLabel?: string;
 };
+
+/** Opt-out wordings a footer may use. Each plainly says what the link does (CAN-SPAM wants it clear). */
+export const UNSUBSCRIBE_LABELS = ["Unsubscribe", "Opt out", "Unsubscribe from these emails", "Stop getting these emails", "Remove me from this list"] as const;
 
 const oneLine = (s: unknown, max: number) => String(s ?? "").replace(/[\r\n]+/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 
@@ -67,6 +74,7 @@ export function footerFor(account: { businessName: string; address: string }, de
     businessName: name || account.businessName,
     address: isMailingAddress(address) ? address : account.address,
     note: note || undefined,
+    unsubscribeLabel: (UNSUBSCRIBE_LABELS as readonly string[]).includes(design?.footerUnsubscribe || "") ? design!.footerUnsubscribe : undefined,
     unsubscribeUrl,
   };
 }
@@ -107,6 +115,7 @@ export function normalizeDesign(d: Partial<EmailDesign>): EmailDesign {
     footerName: oneLine(d.footerName, 120),
     footerAddress: oneLine(d.footerAddress, 200),
     footerNote: oneLine(d.footerNote, 200),
+    footerUnsubscribe: (UNSUBSCRIBE_LABELS as readonly string[]).includes(d.footerUnsubscribe || "") ? d.footerUnsubscribe : "",
     theme: d.theme === "light" ? "light" : "dark",
     brandColor: safeColor(d.brandColor || "", "#34d399"),
     logoUrl: safeUrl(d.logoUrl) || null,
@@ -243,7 +252,7 @@ export function bodyToHtml(text: string): string {
 const footerNote = (f: Footer) => f.note || `You're receiving this because you contacted ${f.businessName}.`;
 
 export function footerText(f: Footer): string {
-  return `--\n${f.businessName} · ${f.address}\n${footerNote(f)} Unsubscribe: ${f.unsubscribeUrl}`;
+  return `--\n${f.businessName} · ${f.address}\n${footerNote(f)} ${f.unsubscribeLabel || "Unsubscribe"}: ${f.unsubscribeUrl}`;
 }
 
 /**
@@ -271,7 +280,7 @@ export function buildEmail(args: {
     bodyToHtml(body) +
     (personal ? renderPersonal(args.design!, args.contact) : args.design ? renderDesign(args.design, args.contact, f.businessName) : "") +
     `<p style="margin:32px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escapeHtml(f.businessName)} · ${escapeHtml(f.address)}<br>` +
-    `${escapeHtml(footerNote(f))} <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">Unsubscribe</a></p>` +
+    `${escapeHtml(footerNote(f))} <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">${escapeHtml(f.unsubscribeLabel || "Unsubscribe")}</a></p>` +
     `</div></body></html>`;
   const parts = [body.trim(), personal ? personalToText(args.design!, args.contact) : args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
   const text = `${parts.join("\n\n")}\n\n${footerText(f)}`;

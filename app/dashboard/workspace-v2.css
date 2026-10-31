@@ -1266,5 +1266,6 @@ tr:hover .v2-row-actions { opacity:1; }
 .em-footer { display:grid; gap:8px; border-top:1px solid var(--v2-line); padding-top:14px; }
 .em-footer-head { display:flex; align-items:center; justify-content:space-between; color:var(--v2-ink); font-size:.88rem; }
 .em-footer-head .em-link { margin:0; }
-.em-footer-preview { border-radius:10px; background:#ffffff; border:1px solid var(--v2-line); padding:10px 12px; color:#4b5563; font-size:.8rem; line-height:1.5; }
+.em-footer-preview { display:block; width:100%; text-align:left; cursor:pointer; font:inherit; border-radius:10px; background:#ffffff; border:1px solid var(--v2-line); padding:10px 12px; color:#4b5563; font-size:.8rem; line-height:1.5; }
+.em-footer-preview:hover { border-color:#94ae9c; }
 .em-footer-fields { display:grid; gap:10px; }

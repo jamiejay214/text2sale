@@ -132,10 +132,21 @@ test('a custom footer replaces the business name, address and note, and always k
 test('blank or fake footer values fall back to the account details', () => {
   const { footerFor } = design;
   const account = { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314' };
-  assert.deepEqual({ ...footerFor(account, {}, 'u') }, { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314', note: undefined, unsubscribeUrl: 'u' });
+  assert.deepEqual({ ...footerFor(account, {}, 'u') }, { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314', note: undefined, unsubscribeLabel: undefined, unsubscribeUrl: 'u' });
   assert.equal(footerFor(account, { footerAddress: 'nowhere' }, 'u').address, '6080 SW 24th Pl, Davie, FL 33314');
   const f = footerFor(account, { footerName: 'A\r\nBcc: x', footerNote: '<b>hi</b>' }, 'u');
   assert.equal(f.businessName, 'A Bcc: x');
   const msg = buildEmail({ subject: 's', previewText: '', body: 'x', contact: {}, footer: f });
   assert.ok(!msg.html.includes('<b>hi</b>'));
+});
+
+test('the unsubscribe link wording can be one of the clear options, never anything else', () => {
+  const { footerFor } = design;
+  const account = { businessName: 'JJ Johnson Health', address: '6080 SW 24th Pl, Davie, FL 33314' };
+  const ok = footerFor(account, { footerUnsubscribe: 'Stop getting these emails' }, 'https://t2s.test/u');
+  const msg = buildEmail({ subject: 's', previewText: '', body: 'x', contact: {}, footer: ok });
+  assert.match(msg.html, /<a href="https:\/\/t2s\.test\/u"[^>]*>Stop getting these emails<\/a>/);
+  assert.match(msg.text, /Stop getting these emails: https:\/\/t2s\.test\/u/);
+  const sneaky = footerFor(account, { footerUnsubscribe: 'View our latest offers' }, 'https://t2s.test/u');
+  assert.match(buildEmail({ subject: 's', previewText: '', body: 'x', contact: {}, footer: sneaky }).html, />Unsubscribe<\/a>/);
 });
