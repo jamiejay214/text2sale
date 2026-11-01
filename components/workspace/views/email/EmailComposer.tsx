@@ -107,7 +107,10 @@ export default function EmailComposer({
   const [busy, setBusy] = useState(false);
   const [writing, setWriting] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const isCopy = Boolean(initial && !initial.id);
+  const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(
+    isCopy ? { tone: "ok", text: "This is a copy of your earlier campaign, with the same audience. Change anything you like, then send. Anyone who bounced or unsubscribed is skipped automatically." } : null,
+  );
 
   const refs = { subject: useRef<HTMLInputElement>(null), preview: useRef<HTMLInputElement>(null), body: useRef<HTMLTextAreaElement>(null) };
   const lastField = useRef<Field>("body");
@@ -274,7 +277,7 @@ export default function EmailComposer({
     <div className="em-compose">
       <header className="em-head">
         <div>
-          <p className="em-eyebrow">{initial ? "Edit campaign" : "New campaign"}</p>
+          <p className="em-eyebrow">{isCopy ? "Send again" : initial ? "Edit campaign" : "New campaign"}</p>
           <input className="em-title" value={name} onChange={(e) => setName(e.target.value)} placeholder="Name this campaign" aria-label="Campaign name" />
         </div>
         <div className="em-head-actions">
