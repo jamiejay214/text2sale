@@ -299,8 +299,17 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     let outOfFunds = false;
     let limitedUntil: string | null = null;
     let accountError: string | null = null;
+    let stopped = false;
     for (let i = 0; i < toSend.length; i += PER_SECOND) {
       if (Date.now() - waveStarted > WAVE_BUDGET_MS) break;
+      // Cancel or pause takes effect before the next batch, not after the whole wave.
+      if (i > 0) {
+        const { data: live } = await database.from("email_campaigns").select("status").eq("id", campaignId).maybeSingle();
+        if (live && live.status !== "Scheduled" && live.status !== "Sending") {
+          stopped = true;
+          break;
+        }
+      }
       const started = Date.now();
       const batch = toSend.slice(i, i + PER_SECOND);
       const { data: bal } = await database.rpc("decrement_wallet", { p_user_id: userId, p_amount: emailCost(batch.length) });
@@ -367,7 +376,8 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     const failed = Math.max(0, failedTotal - campaign.failed);
     await finish({
       status: outOfFunds ? "Paused" : left ? "Sending" : "Sent",
-      pause_reason: outOfFunds ? "Paused: add funds to your wallet, then resume." : accountError ? BLOCKED_NOTE : null,
+      // A campaign cancelled or paused mid-wave keeps whatever reason it was given.
+      ...(stopped ? {} : { pause_reason: outOfFunds ? "Paused: add funds to your wallet, then resume." : accountError ? BLOCKED_NOTE : null }),
       ...(limitedUntil ? { scheduled_at: limitedUntil } : {}),
       recipients: sentTotal + failedTotal,
       sent: sentTotal,
