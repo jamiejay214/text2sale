@@ -47,6 +47,11 @@ function when(c: EmailCampaign): string {
   return new Date(c.created_at).toLocaleDateString();
 }
 
+/** A new draft with the same content and audience: the composer saves it as a new campaign. */
+function sendAgain(c: EmailCampaign): EmailCampaign {
+  return { ...c, id: "", name: `${c.name} (resend)`.slice(0, 120), status: "Draft", recipients: 0, sent: 0, failed: 0, skipped: 0, cost: 0, scheduled_at: null, local_time: null, sent_at: null, pause_reason: null };
+}
+
 export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Channel) => void }) {
   const [info, setInfo] = useState<SenderInfo | null>(null);
   const [campaigns, setCampaigns] = useState<EmailCampaign[]>([]);
@@ -190,6 +195,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
                     <td>{money(Number(c.cost))}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {c.status === "Draft" && <button className="v2-btn" onClick={() => setView({ mode: "compose", campaign: c })}>Edit</button>}
+                      {c.status !== "Draft" && <button className="v2-btn" title="Open a copy with everything you wrote, then edit and send it" onClick={() => setView({ mode: "compose", campaign: sendAgain(c) })}>Send again</button>}
                       {c.status === "Paused" && <button className="v2-btn" disabled={busy} onClick={() => campaignAction(c.id, "resume")}>Resume</button>}
                       {(c.status === "Scheduled" || c.status === "Sending" || c.status === "Paused") && <button className="v2-btn" disabled={busy} onClick={() => campaignAction(c.id, "cancel")}>Cancel</button>}
                     </td>
