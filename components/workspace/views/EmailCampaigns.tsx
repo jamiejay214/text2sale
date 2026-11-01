@@ -169,6 +169,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
                 <div className={`is-${bounceTone(health.bounced, health.sent)}`}><strong>{pct(health.bounced, health.sent)}</strong><span>Bounce rate ({health.bounced.toLocaleString()})</span></div>
                 <div className={`is-${spamTone(health.complained, health.sent)}`}><strong>{pct(health.complained, health.sent)}</strong><span>Spam rate ({health.complained.toLocaleString()} complaints)</span></div>
                 <div><strong>{pct(health.opened, health.delivered || health.sent)}</strong><span>Opened ({health.opened.toLocaleString()})</span></div>
+                <div><strong>{pct(health.clicked, health.delivered || health.sent)}</strong><span>Clicked ({health.clicked.toLocaleString()})</span></div>
               </div>
               <p className="em-note">Keep spam complaints under 0.1% (Gmail and Yahoo start blocking bulk senders at 0.3%) and bounces under 2%. Campaigns pause themselves if complaints pass 0.3% or bounces pass 5%. Bounced and complaining addresses are never emailed again. Delivery reports can take a few minutes; complaints can arrive days later.</p>
             </div>
@@ -181,7 +182,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
           ) : (
             <div className="v2-panel-body" style={{ overflowX: "auto" }}>
               <table className="em-table">
-                <thead><tr>{["Campaign", "Status", "When", "Sent", "Delivered", "Bounced", "Spam", "Opened", "Cost", ""].map((h) => <th key={h}>{h}</th>)}</tr></thead>
+                <thead><tr>{["Campaign", "Status", "When", "Sent", "Delivered", "Bounced", "Spam", "Opened", "Clicked", "Cost", ""].map((h) => <th key={h}>{h}</th>)}</tr></thead>
                 <tbody>{campaigns.map((c) => (
                   <tr key={c.id}>
                     <td><strong>{c.name}</strong><br /><small>{c.subject}</small></td>
@@ -192,6 +193,7 @@ export default function EmailCampaigns({ onChannel }: { onChannel: (channel: Cha
                     <td>{(c.results?.bounced || 0).toLocaleString()}<br /><small>{pct(c.results?.bounced || 0, c.results?.sent || 0)}</small></td>
                     <td>{(c.results?.complained || 0).toLocaleString()}<br /><small>{pct(c.results?.complained || 0, c.results?.sent || 0)}</small></td>
                     <td>{(c.results?.opened || 0).toLocaleString()}<br /><small>{pct(c.results?.opened || 0, c.results?.delivered || c.results?.sent || 0)}</small></td>
+                    <td>{(c.results?.clicked || 0).toLocaleString()}<br /><small>{pct(c.results?.clicked || 0, c.results?.delivered || c.results?.sent || 0)}</small></td>
                     <td>{money(Number(c.cost))}</td>
                     <td style={{ whiteSpace: "nowrap" }}>
                       {c.status === "Draft" && <button className="v2-btn" onClick={() => setView({ mode: "compose", campaign: c })}>Edit</button>}

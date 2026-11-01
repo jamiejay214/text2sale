@@ -19,6 +19,7 @@ import { OWNER_EMAIL } from "@/lib/owner";
 import { shouldPause } from "@/lib/email-events";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
 import { uploadEmails, uploadPhones } from "@/lib/upload-phones";
+import { addTracking, clickUrl, openUrl, trackingBase, trackingSecret, withUtm } from "@/lib/email-tracking";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -292,6 +293,8 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     const from = `${sender.from_local}@${sender.domain}`;
     const fromName = String(sender.from_name || "").replace(/[\r\n]/g, " ").trim() || null;
     const agentName = String(campaign.design?.signature || sender.from_name || "").split("\n")[0].trim();
+    const trackBase = trackingBase();
+    const trackSecret = trackingSecret();
 
     // Pay for each small batch before sending it, and save its results right
     // away: a run cut off mid-wave loses at most the batch in flight.
@@ -322,7 +325,16 @@ export async function processCampaign(database: Db, campaignId: string): Promise
           try {
             const contact = { ...((row.contact_id && byId.get(row.contact_id)) || {}), agent_name: agentName };
             const footer = footerFor(account, campaign.design, unsubscribeUrl(userId, row.email));
-            const msg = buildEmail({ subject: campaign.subject, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact, footer });
+            const built = buildEmail({ subject: campaign.subject, previewText: campaign.preview_text, body: campaign.body, design: campaign.design, contact, footer });
+            // Opens and clicks are tracked per email (lib/email-tracking.ts); links also carry UTM tags.
+            const msg = {
+              ...built,
+              html: addTracking(built.html, {
+                open: openUrl(trackBase, row.id, trackSecret),
+                click: (url) => clickUrl(trackBase, row.id, withUtm(url, campaign.name || campaign.subject || ""), trackSecret),
+                skip: [footer.unsubscribeUrl],
+              }),
+            };
             const id = await sendEmail({ from, fromName, replyTo: sender.inbox_address || sender.reply_to, to: row.email, tag: `campaign:${campaignId}`, subject: msg.subject, html: msg.html, text: msg.text, unsubscribeUrl: footer.unsubscribeUrl });
             return { id: row.id, status: "sent" as const, provider_message_id: id || null, error: null };
           } catch (e) {
