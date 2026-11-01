@@ -28,6 +28,15 @@ export class TelnyxEmailError extends Error {
 /** The new-domain warm-up cap or the account's daily quota: retry after midnight UTC, not a failure. */
 export const isDailyLimit = (e: unknown) => e instanceof TelnyxEmailError && (e.code === "domain_graduation_limit_exceeded" || e.code === "10011");
 
+/**
+ * The Telnyx account itself can't send right now (deactivated, out of funds,
+ * bad key). Nothing is wrong with the email or the recipient, so it should
+ * wait and retry, not fail.
+ */
+export const isAccountBlocked = (e: unknown) =>
+  e instanceof TelnyxEmailError &&
+  (e.status === 401 || e.status === 402 || /deactivated|out of funds|insufficient (funds|balance)|account (is |has been )?(inactive|suspended|disabled)/i.test(e.message));
+
 async function call<T>(method: string, path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${API}${path}`, {
     method,
