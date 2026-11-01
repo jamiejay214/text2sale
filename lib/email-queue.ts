@@ -13,7 +13,9 @@ import { inferTimezone } from "@/lib/quiet-hours";
 import { buildEmail, emailCost, normalizeEmail } from "@/lib/email-content";
 import { footerFor } from "@/lib/email-design";
 import { emailAccount, unsubscribeUrl } from "@/lib/email-campaigns";
-import { isDailyLimit, listSentByTag, sendEmail } from "@/lib/telnyx-email";
+import { isAccountBlocked, isDailyLimit, listSentByTag, sendEmail } from "@/lib/telnyx-email";
+import { EMAIL_FROM, SUPPORT_EMAIL } from "@/lib/email-sender";
+import { OWNER_EMAIL } from "@/lib/owner";
 import { shouldPause } from "@/lib/email-events";
 import { zonedTimeToUtc } from "@/lib/email-schedule";
 import { uploadEmails, uploadPhones } from "@/lib/upload-phones";
@@ -27,6 +29,11 @@ export type Audience = { lists: string[]; tags: string[]; sources?: string[]; up
 const PER_SECOND = Math.max(1, Number(process.env.TELNYX_EMAIL_MAX_PER_SECOND) || 10);
 /** Most emails one run sends for one campaign, to stay inside the function time limit. */
 export const MAX_WAVE = 600;
+/** Rows that reached Telnyx; delivery events later move "sent" on to the other three. */
+export const SENT_STATUSES = ["sent", "delivered", "bounced", "complained"];
+/** How soon emails held by a Telnyx account problem are tried again. */
+export const BLOCKED_RETRY_MS = 15 * 60_000;
+export const BLOCKED_NOTE = "Email sending is temporarily unavailable. Your emails are held and retried automatically every 15 minutes; you aren't charged until they send.";
 /** Longer than any request that runs a wave (maxDuration 300s), so a lease never lapses mid-send. */
 const LEASE_MS = 6 * 60 * 1000;
 /** A wave stops starting new batches after this; whatever is left stays queued for the next run. */
@@ -153,6 +160,29 @@ export async function queueCampaign(
 type QueuedRow = { id: string; contact_id: string | null; email: string };
 
 /**
+ * Tell the platform owner the Telnyx account can't send. It stops email (and
+ * texting) for every customer, so it's worth an email, at most one every 6
+ * hours (Resend drops repeats of the same idempotency key).
+ */
+async function alertOwnerBlocked(error: string) {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return;
+  const window = Math.floor(Date.now() / (6 * 3_600_000));
+  await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": `telnyx-account-blocked-${window}` },
+    body: JSON.stringify({
+      from: EMAIL_FROM,
+      reply_to: SUPPORT_EMAIL,
+      to: [OWNER_EMAIL],
+      subject: "Action needed: Telnyx can't send for Text2Sale",
+      text: `Telnyx rejected an email campaign send with:\n\n${error}\n\nThis usually means the Telnyx account balance ran out, and it affects texting and calls for every customer too. Add funds in the Telnyx portal (Billing). Queued campaign emails are held and retry every 15 minutes; customers aren't charged until they send.\n\n— Text2Sale`,
+    }),
+    signal: AbortSignal.timeout(10000),
+  }).catch(() => undefined);
+}
+
+/**
  * Send the campaign's due emails, up to its hourly limit. Safe to call from
  * overlapping cron runs: a short lease on the campaign lets only one send.
  */
@@ -203,7 +233,7 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     // Stop a campaign whose bounces or spam complaints are climbing (lib/email-events.ts).
     const tally = async (statuses: string[]) =>
       (await database.from("email_sends").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).in("status", statuses)).count || 0;
-    const [sentSoFar, bouncedSoFar, complainedSoFar] = await Promise.all([tally(["sent", "delivered", "bounced", "complained"]), tally(["bounced"]), tally(["complained"])]);
+    const [sentSoFar, bouncedSoFar, complainedSoFar] = await Promise.all([tally(SENT_STATUSES), tally(["bounced"]), tally(["complained"])]);
     const healthPause = campaign.health_override ? null : shouldPause({ sent: sentSoFar, bounced: bouncedSoFar, complained: complainedSoFar });
     if (healthPause) {
       await finish({ status: "Paused", pause_reason: healthPause });
@@ -268,6 +298,7 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     const waveStarted = Date.now();
     let outOfFunds = false;
     let limitedUntil: string | null = null;
+    let accountError: string | null = null;
     for (let i = 0; i < toSend.length; i += PER_SECOND) {
       if (Date.now() - waveStarted > WAVE_BUDGET_MS) break;
       const started = Date.now();
@@ -289,16 +320,19 @@ export async function processCampaign(database: Db, campaignId: string): Promise
             const error = (e instanceof Error ? e.message : "send failed").slice(0, 300);
             // Daily limit (new-domain warm-up or account quota): keep it queued for after the reset.
             if (isDailyLimit(e)) return { id: row.id, status: "deferred" as const, provider_message_id: null, error };
+            // The Telnyx account can't send (deactivated, out of funds): hold it and retry soon.
+            if (isAccountBlocked(e)) return { id: row.id, status: "held" as const, provider_message_id: null, error };
             return { id: row.id, status: "failed" as const, provider_message_id: null, error };
           }
         }),
       );
       const at = new Date().toISOString();
-      const resume = nextDailyReset().toISOString();
+      const held = out.some((r) => r.status === "held");
+      const resume = held ? new Date(Date.now() + BLOCKED_RETRY_MS).toISOString() : nextDailyReset().toISOString();
       await Promise.all(
         out.map((r) =>
-          r.status === "deferred"
-            ? database.from("email_sends").update({ send_after: resume, error: r.error }).eq("id", r.id)
+          r.status === "deferred" || r.status === "held"
+            ? database.from("email_sends").update({ send_after: r.status === "held" ? resume : nextDailyReset().toISOString(), error: r.error }).eq("id", r.id)
             : database.from("email_sends").update({ status: r.status, provider_message_id: r.provider_message_id, error: r.error, sent_at: at }).eq("id", r.id),
         ),
       );
@@ -307,12 +341,14 @@ export async function processCampaign(database: Db, campaignId: string): Promise
         await database.rpc("credit_wallet", {
           p_user_id: userId,
           p_amount: emailCost(notSent),
-          p_idempotency_key: `email_refund_${campaignId}_${batch[0].id}`,
+          // Unique per attempt: a row that is held or deferred and fails again later gets its own refund.
+          p_idempotency_key: `email_refund_${campaignId}_${batch[0].id}_${started}`,
           p_description: `Refund — ${notSent} email(s) not sent`,
         });
       }
-      if (out.some((r) => r.status === "deferred")) {
-        // Everything else due now waits for the reset too.
+      if (held) accountError = out.find((r) => r.status === "held")?.error || "Telnyx account can't send";
+      if (held || out.some((r) => r.status === "deferred")) {
+        // Everything else due now waits too: until the daily reset, or the next retry.
         limitedUntil = resume;
         const rest = toSend.slice(i + PER_SECOND).map((r) => r.id);
         for (let j = 0; j < rest.length; j += 200) await database.from("email_sends").update({ send_after: resume }).in("id", rest.slice(j, j + 200));
@@ -323,14 +359,15 @@ export async function processCampaign(database: Db, campaignId: string): Promise
     }
 
     // Totals come from the rows themselves, so they stay right even after a cut-off run.
-    const count = async (status: string) =>
-      (await database.from("email_sends").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).eq("status", status)).count || 0;
-    const [sentTotal, failedTotal, skippedRows, left] = await Promise.all([count("sent"), count("failed"), count("skipped"), count("queued")]);
+    const count = async (statuses: string[]) =>
+      (await database.from("email_sends").select("id", { count: "exact", head: true }).eq("campaign_id", campaignId).in("status", statuses)).count || 0;
+    // Delivery events move sent rows on to delivered / bounced / complained; they still count as sent.
+    const [sentTotal, failedTotal, skippedRows, left] = await Promise.all([count(SENT_STATUSES), count(["failed"]), count(["skipped"]), count(["queued"])]);
     const sent = Math.max(0, sentTotal - campaign.sent);
     const failed = Math.max(0, failedTotal - campaign.failed);
     await finish({
       status: outOfFunds ? "Paused" : left ? "Sending" : "Sent",
-      ...(outOfFunds ? { pause_reason: "Paused: add funds to your wallet, then resume." } : {}),
+      pause_reason: outOfFunds ? "Paused: add funds to your wallet, then resume." : accountError ? BLOCKED_NOTE : null,
       ...(limitedUntil ? { scheduled_at: limitedUntil } : {}),
       recipients: sentTotal + failedTotal,
       sent: sentTotal,
@@ -339,6 +376,7 @@ export async function processCampaign(database: Db, campaignId: string): Promise
       cost: Number(emailCost(sentTotal).toFixed(4)),
       sent_at: left ? campaign.sent_at : new Date().toISOString(),
     });
+    if (accountError) await alertOwnerBlocked(accountError);
     if (outOfFunds) return { sent, failed, skipped: skipRows.length, outOfFunds: true };
     return { sent, failed, skipped: skipRows.length, done: !left };
   } catch (e) {

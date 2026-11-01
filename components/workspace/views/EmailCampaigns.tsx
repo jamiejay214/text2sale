@@ -40,7 +40,9 @@ function when(c: EmailCampaign): string {
   }
   const fmt = (iso: string) => new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
   // A sending campaign whose next batch is in the future hit the daily sending limit.
-  if (c.status === "Sending" && c.scheduled_at && Date.parse(c.scheduled_at) > Date.now()) return `${c.sent.toLocaleString()} sent so far · the rest continue ${fmt(c.scheduled_at)} (daily sending limit)`;
+  if (c.status === "Sending" && c.scheduled_at && Date.parse(c.scheduled_at) > Date.now()) {
+    return `${c.sent.toLocaleString()} sent so far · the rest continue ${fmt(c.scheduled_at)}${c.pause_reason ? `. ${c.pause_reason}` : " (daily sending limit)"}`;
+  }
   if (c.scheduled_at && (c.status === "Scheduled" || c.status === "Sending")) return `From ${fmt(c.scheduled_at)}`;
   return new Date(c.created_at).toLocaleDateString();
 }
