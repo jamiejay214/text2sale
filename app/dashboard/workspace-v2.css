@@ -1115,6 +1115,11 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-forwarding-note { margin:10px 4px 0; color:var(--v2-muted); font-size:.68rem; line-height:1.5; }
 .v2-forwarding-note.is-success { color:#2e704e; }
 .v2-forwarding-note.is-error { color:#a33a2c; }
+.v2-number-ai { margin:16px 4px 0; padding-top:14px; border-top:1px solid var(--v2-line); }
+.v2-number-ai h3 { margin:0; font-size:.82rem; }
+.v2-number-ai-row { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 0; border-bottom:1px solid var(--v2-line); }
+.v2-number-ai-row:last-child { border-bottom:0; }
+.v2-number-ai-row small { display:block; color:var(--v2-muted); font-size:.7rem; }
 @media (max-width: 640px) { .v2-forwarding-row { flex-wrap:wrap; } .v2-forwarding-row button { width:100%; } .v2-incoming-call { flex-wrap:wrap; } }
 
 /* ── Plans (components/workspace/PlanPicker.tsx) ── */

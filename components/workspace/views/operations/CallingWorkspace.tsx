@@ -344,7 +344,7 @@ function Dialer({ profile, onNavigate }: Props) {
   );
 }
 
-type ForwardingState = { available: boolean; enabled: boolean; number: string; ratePerMinute?: number; error?: string };
+type ForwardingState = { available: boolean; enabled: boolean; number: string; ratePerMinute?: number; error?: string; numbers?: { number: string; alias: string; aiAnswers: boolean }[] };
 
 /** Ring your cell for inbound calls the AI receptionist isn't taking. */
 function CallForwarding() {
@@ -360,16 +360,21 @@ function CallForwarding() {
       .catch(() => setState({ available: false, enabled: false, number: "", error: "Could not load call forwarding." }));
   }, []);
 
-  const save = async (patch: { enabled?: boolean; number?: string }) => {
+  const save = async (patch: { enabled?: boolean; number?: string; aiAnswers?: { number: string; on: boolean } }) => {
     setSaving(true);
     setMessage(null);
     try {
       const response = await authFetch("/api/call-forwarding", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(patch) });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) { setMessage({ tone: "error", text: data.error || "Could not save call forwarding." }); return; }
-      setState((current) => ({ ...(current || { available: true }), available: true, enabled: data.enabled, number: data.number, ratePerMinute: data.ratePerMinute }));
+      setState((current) => ({ ...(current || { available: true }), available: true, enabled: data.enabled, number: data.number, ratePerMinute: data.ratePerMinute, numbers: data.numbers || current?.numbers }));
       setNumber(prettyPhone(data.number || ""));
-      setMessage({ tone: "success", text: data.enabled ? `Calls now forward to ${prettyPhone(data.number)}.` : "Saved." });
+      if (patch.aiAnswers) {
+        const which = prettyPhone(patch.aiAnswers.number);
+        setMessage({ tone: "success", text: patch.aiAnswers.on ? `The AI receptionist answers ${which} again.` : `The AI won't answer ${which}. Its calls ${data.enabled ? `forward to ${prettyPhone(data.number)}` : "ring your browser (turn on forwarding to ring your cell)"}.` });
+      } else {
+        setMessage({ tone: "success", text: data.enabled ? `Calls now forward to ${prettyPhone(data.number)}.` : "Saved." });
+      }
     } finally {
       setSaving(false);
     }
@@ -389,6 +394,18 @@ function CallForwarding() {
           <button className="v2-btn" disabled={saving || number === savedNumber} onClick={() => void save({ number })}>{saving ? "Saving…" : "Save number"}</button>
         </div>
         <p className="v2-forwarding-note">When on, calls the AI receptionist isn&apos;t answering ring this phone instead of your browser. Forwarded calls are ${(state.ratePerMinute || 0.04).toFixed(3)}/minute (the incoming minute plus the forwarded minute), charged from your wallet.</p>
+        {!!state.numbers?.length && (
+          <div className="v2-number-ai">
+            <h3>AI receptionist by number</h3>
+            <p className="v2-forwarding-note">Turn the AI off for a number to send its calls straight to you, with no AI talking.</p>
+            {state.numbers.map((n) => (
+              <div key={n.number} className="v2-number-ai-row">
+                <div><strong>{prettyPhone(n.number)}</strong>{n.alias ? <small>{n.alias}</small> : null}</div>
+                <label className="v2-compact-switch">{n.aiAnswers ? "AI answers" : "Rings you"}<input type="checkbox" checked={n.aiAnswers} disabled={saving} onChange={(event) => void save({ aiAnswers: { number: n.number, on: event.target.checked } })} /><i /></label>
+              </div>
+            ))}
+          </div>
+        )}
       </>}
       {message && <p className={`v2-forwarding-note is-${message.tone}`}>{message.text}</p>}
     </Panel>

@@ -4,7 +4,7 @@ import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify
 import { CALL_RATE_INBOUND_PER_MIN, CALL_RATE_OUTBOUND_PER_MIN, minutesBilled } from "@/lib/call-pricing";
 import { bindBrowserCall, toE164 as toE164Number } from "@/lib/browser-calls";
 import { chargeStartedMinutes, settleCallCharge } from "@/lib/call-metering";
-import { findCallOwner, hangupLeg, releaseOverflow, routeInboundCall, routeOverflow, type OverflowState } from "@/lib/call-routing";
+import { aiOffFor, findCallOwner, hangupLeg, releaseOverflow, routeInboundCall, routeOverflow, type OverflowState } from "@/lib/call-routing";
 import { canCall } from "@/lib/entitlements";
 import { dialNext, handleDialerEvent, type DialerLegState } from "@/lib/dialer";
 import {
@@ -32,7 +32,7 @@ export const maxDuration = 60;
 // Everything the assistant needs off the profile row. Kept as one literal
 // (not a concatenation) so supabase-js can still infer the row type.
 const AI_PROFILE_COLUMNS =
-  "first_name, last_name, email, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, plan, subscription_status, free_subscription, paused, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes";
+  "first_name, last_name, email, industry, a2p_registration, available_hours, ai_plan, free_ai_plan, plan, subscription_status, free_subscription, paused, ai_call_enabled, ai_call_greeting, ai_call_instructions, ai_call_voice, ai_call_transfer_number, ai_call_after_hours_only, ai_call_max_minutes, owned_numbers";
 
 const apiKey = process.env.TELNYX_API_KEY!;
 // Business numbers live on the "Text2Sale inbound calls" Voice API app
@@ -175,6 +175,8 @@ async function answerWithAi(supabase: Db, call: InboundCall): Promise<boolean> {
   const settings = settingsFromProfile(profile);
   const hours = (profile?.available_hours as AvailableHours) || DEFAULT_AVAILABLE_HOURS;
   const inHours = isWithinBusinessHours(hours);
+  // The owner can keep the AI off one number (say, one forwarded to their cell).
+  if (profile && aiOffFor(profile.owned_numbers, call.to)) return false;
   const shouldAnswer =
     !!profile &&
     canCall(profile) &&

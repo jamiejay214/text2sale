@@ -38,6 +38,15 @@ test('forwarding target: off, missing, or one of the account\'s own numbers mean
   assert.equal(forwardingTarget(null, '+19545550100'), null);
 });
 
+test('AI off for one number: only that number skips the receptionist', () => {
+  const { aiOffFor } = load(async () => ok());
+  const numbers = [{ number: '(954) 555-0100', aiOff: true }, { number: '(954) 555-0200' }];
+  assert.equal(aiOffFor(numbers, '+19545550100'), true);
+  assert.equal(aiOffFor(numbers, '+19545550200'), false);
+  assert.equal(aiOffFor(numbers, '+17865550000'), false);
+  assert.equal(aiOffFor(null, '+19545550100'), false);
+});
+
 test('forwarding on: transfers the call to the cell showing the caller, billed at the forward rate', async () => {
   const calls = [];
   const { routeInboundCall } = load(async (url, init) => (calls.push([url, init && init.body && JSON.parse(init.body)]), ok()));

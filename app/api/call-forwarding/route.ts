@@ -6,8 +6,10 @@ import { CALL_RATE_FORWARD_PER_MIN } from "@/lib/call-pricing";
 import type { OwnedNumber } from "@/lib/types";
 
 // ─── /api/call-forwarding ─────────────────────────────────────────────────
-// GET   → { available, enabled, number, ratePerMinute }
-// PATCH → { enabled?, number? }
+// GET   → { available, enabled, number, ratePerMinute, numbers: [{ number, aiAnswers }] }
+// PATCH → { enabled?, number?, aiAnswers?: { number, on } }
+// aiAnswers switches the AI receptionist off (or back on) for one business
+// number, so that number's calls go straight to forwarding.
 // When on, inbound calls the AI receptionist isn't taking ring this cell
 // instead of the browser (lib/call-routing.ts). The setting is stored on
 // each of the account's numbers in profiles.owned_numbers, so it needs no
@@ -18,7 +20,11 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function current(numbers: OwnedNumber[]) {
   const withSetting = numbers.find((n) => n.forwardTo) || numbers[0];
-  return { enabled: numbers.some((n) => n.forwardEnabled), number: withSetting?.forwardTo || "" };
+  return {
+    enabled: numbers.some((n) => n.forwardEnabled),
+    number: withSetting?.forwardTo || "",
+    numbers: numbers.map((n) => ({ number: n.number, alias: n.alias || "", aiAnswers: !n.aiOff })),
+  };
 }
 
 async function load(userId: string) {
@@ -69,14 +75,28 @@ export async function PATCH(req: NextRequest) {
     if (typeof body.enabled !== "boolean") return NextResponse.json({ error: "Invalid setting value." }, { status: 400 });
     enabled = body.enabled;
   }
+  let aiToggle: { number: string; on: boolean } | null = null;
+  if ("aiAnswers" in body) {
+    const a = body.aiAnswers as { number?: unknown; on?: unknown } | null;
+    const target = toE164(String(a?.number || ""));
+    if (!target || typeof a?.on !== "boolean" || !numbers.some((n) => toE164(n.number) === target)) {
+      return NextResponse.json({ error: "Pick one of your business numbers." }, { status: 400 });
+    }
+    aiToggle = { number: target, on: a.on };
+  }
   if (!number) enabled = false;
   if ("enabled" in body && body.enabled && !number) {
     return NextResponse.json({ error: "Add the number to forward calls to first." }, { status: 400 });
   }
 
   // Apply to every business number on the account.
-  const updated = numbers.map((n) => ({ ...n, forwardEnabled: enabled, forwardTo: number }));
+  const updated = numbers.map((n) => ({
+    ...n,
+    forwardEnabled: enabled,
+    forwardTo: number,
+    ...(aiToggle && toE164(n.number) === aiToggle.number ? { aiOff: !aiToggle.on } : {}),
+  }));
   const { error: saveError } = await db.from("profiles").update({ owned_numbers: updated }).eq("id", auth.user.id);
   if (saveError) return NextResponse.json({ error: "Could not save call forwarding." }, { status: 500 });
-  return NextResponse.json({ enabled, number: number || "", ratePerMinute: CALL_RATE_FORWARD_PER_MIN });
+  return NextResponse.json({ ...current(updated), enabled, number: number || "", ratePerMinute: CALL_RATE_FORWARD_PER_MIN });
 }
