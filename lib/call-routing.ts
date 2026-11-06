@@ -33,7 +33,14 @@ async function telnyx(path: string, method: "GET" | "POST", body?: Record<string
   return { ok: res.ok, status: res.status, json };
 }
 
-type ForwardingEntry = { number?: string | null; forwardEnabled?: boolean | null; forwardTo?: string | null };
+type ForwardingEntry = { number?: string | null; forwardEnabled?: boolean | null; forwardTo?: string | null; aiOff?: boolean | null };
+
+/** True when the owner switched the AI receptionist off for this business number. */
+export function aiOffFor(ownedNumbers: unknown, businessNumber: string): boolean {
+  const business = toE164(businessNumber);
+  const entries = Array.isArray(ownedNumbers) ? (ownedNumbers as ForwardingEntry[]) : [];
+  return Boolean(business && entries.some((n) => n && n.aiOff && toE164(n.number) === business));
+}
 
 /**
  * The forwarding number for a call to `businessNumber`, or null when

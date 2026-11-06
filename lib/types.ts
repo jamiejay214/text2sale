@@ -201,6 +201,8 @@ export type OwnedNumber = {
   /** Call forwarding: ring this cell for calls the AI receptionist isn't taking. */
   forwardEnabled?: boolean;
   forwardTo?: string | null;
+  /** The AI receptionist never answers this number: its calls go straight to forwarding or the browser. */
+  aiOff?: boolean;
 };
 
 export type Contact = {
