@@ -53,6 +53,10 @@
     {
       "path": "/api/email/inbox/poll",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/track/abandoned-signups",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
