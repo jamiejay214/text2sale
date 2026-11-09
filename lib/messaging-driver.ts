@@ -59,6 +59,7 @@ import { ensureDomainAttached, purchaseDomainForUser } from "./domain-purchase";
 import { sendAdminAlertSMS } from "./admin-alert";
 import { sendCustomerEmail } from "./customer-email-send";
 import { messagingApprovedEmail } from "./customer-emails";
+import { notifyCommand } from "./command-notify";
 
 /**
  * Auto-purchase kill switch for phone numbers.
@@ -235,10 +236,22 @@ export async function setStatus(db: Db, profile: ProfileRow, status: MessagingSt
   if (notifyText) notifyAdmin(notifyText);
   if (changed && status === "REJECTED") {
     notifyAdmin(`❌ Text2Sale registration rejected\n${businessLabel(profile)}\n${opts.error || "No reason given"}`);
+    await notifyCommand(db, {
+      eventKey: `rejected:${profile.id}:${now.slice(0, 10)}`,
+      kind: "rejected",
+      title: "⚠️ Messaging registration rejected",
+      body: `${businessLabel(profile)} — ${opts.error || "no reason given"}. Needs your attention.`,
+    }).catch(() => {});
   }
   if (changed && status === "ACTIVE" && wasStatus !== "ACTIVE") {
     notifyAdmin(`✅ Text2Sale texting is live\n${businessLabel(profile)}`);
     await notifyCustomerApproved(db, profile).catch(() => {});
+    await notifyCommand(db, {
+      eventKey: `approved:${profile.id}`,
+      kind: "approved",
+      title: "✅ Customer texting is live",
+      body: `${businessLabel(profile)} is approved and ready to send.`,
+    }).catch(() => {});
   }
 }
 

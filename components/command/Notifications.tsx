@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Bell, CheckCheck, ChevronDown, Globe, UserPlus } from "lucide-react";
+import { AlertTriangle, Bell, CheckCheck, ChevronDown, CheckCircle2, DollarSign, Globe, UserPlus, Wallet, XCircle } from "lucide-react";
+
+type NoticeKind = "visit" | "signup" | "support" | "test" | "low_balance" | "payment" | "approved" | "rejected" | "platform";
 
 type Notice = {
   id: string;
-  kind: "visit" | "signup" | "support" | "test";
+  kind: NoticeKind;
   title: string;
   body: string;
   url: string;
@@ -13,6 +15,17 @@ type Notice = {
   read_at: string | null;
   push_status: "pending" | "queued" | "sent" | "failed";
 };
+
+function NoticeIcon({ kind }: { kind: NoticeKind }) {
+  const cls = "h-4 w-4";
+  if (kind === "signup") return <UserPlus className={cls} />;
+  if (kind === "payment") return <DollarSign className={cls} />;
+  if (kind === "low_balance") return <Wallet className={cls} />;
+  if (kind === "approved") return <CheckCircle2 className={cls} />;
+  if (kind === "rejected") return <XCircle className={cls} />;
+  if (kind === "platform") return <AlertTriangle className={cls} />;
+  return <Globe className={cls} />;
+}
 
 export default function Notifications({ token, demo }: { token: string | null; demo: boolean }) {
   const [items, setItems] = useState<Notice[]>([]);
@@ -110,7 +123,7 @@ export default function Notifications({ token, demo }: { token: string | null; d
             {visible.map((item) => (
               <article key={item.id} className={`rounded-xl border p-3 ${item.read_at ? "border-white/5 bg-white/[0.02]" : "border-emerald-400/25 bg-emerald-400/5"}`}>
                 <div className="flex items-start gap-2.5">
-                  <span className="mt-0.5 text-emerald-300">{item.kind === "signup" ? <UserPlus className="h-4 w-4" /> : <Globe className="h-4 w-4" />}</span>
+                  <span className="mt-0.5 text-emerald-300"><NoticeIcon kind={item.kind} /></span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-white">{item.title}</p>
                     {item.kind === "support" && <a className="mt-1 block text-xs text-emerald-200 underline" href={item.url}>Open chat & reply</a>}

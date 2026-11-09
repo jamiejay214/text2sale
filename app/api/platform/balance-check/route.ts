@@ -4,6 +4,7 @@ import { ALERT_EMAIL_FROM, SUPPORT_EMAIL } from "@/lib/email-sender";
 import { OWNER_EMAIL } from "@/lib/owner";
 import { sendAdminAlertSMS } from "@/lib/admin-alert";
 import { balanceAlert, balanceLevel, getTelnyxBalance, shouldAlert, type BalanceLevel } from "@/lib/telnyx-balance";
+import { notifyCommand } from "@/lib/command-notify";
 
 // Cron (every 15 min): watch the master Telnyx account balance and warn the
 // owner before the platform can go dark. Gated by CRON_SECRET.
@@ -73,6 +74,14 @@ export async function GET(req: NextRequest) {
     const sentEmail = await emailOwner(subject, text);
     // SMS may fail if the account is already out — that's fine, email is primary.
     await sendAdminAlertSMS(`${level === "critical" ? "⛔" : level === "low" ? "⚠️" : "✅"} Telnyx balance ${balance.currency} ${balance.available.toFixed(2)} (${level}).`).catch(() => {});
+    if (level !== "ok") {
+      await notifyCommand(db, {
+        eventKey: `platform:telnyx:${level}:${new Date(now).toISOString().slice(0, 10)}`,
+        kind: "platform",
+        title: level === "critical" ? "⛔ Platform sending funds critical" : "⚠️ Platform sending funds low",
+        body: `Account balance ${balance.currency} ${balance.available.toFixed(2)} — tops up everyone's texting, calling and AI. Add funds.`,
+      });
+    }
     alerted = sentEmail;
   }
 
