@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { isEntitled } from "@/lib/messaging-status";
 import { lowBalanceEmail } from "@/lib/customer-emails";
 import { sendCustomerEmail } from "@/lib/customer-email-send";
+import { notifyCommand } from "@/lib/command-notify";
 
 // Cron (hourly): email active customers once when their wallet gets low, so
 // their texts and calls don't quietly stop. Gated by CRON_SECRET.
@@ -66,6 +67,12 @@ export async function GET(req: NextRequest) {
     const balance = Number(p.wallet_balance) || 0;
     const sent = await sendCustomerEmail(email, lowBalanceEmail(String(p.first_name || ""), balance));
     if (!sent) continue;
+    await notifyCommand(db, {
+      eventKey: `low_balance:${id}:${new Date().toISOString().slice(0, 10)}`,
+      kind: "low_balance",
+      title: "Customer balance low",
+      body: `${String(p.first_name || email)} is down to $${balance.toFixed(2)} — may stop sending soon.`,
+    });
     await db.from("platform_health").upsert({
       id: key(id),
       level: "low",

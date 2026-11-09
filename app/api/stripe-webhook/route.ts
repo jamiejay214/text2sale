@@ -7,6 +7,7 @@ import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms
 import { NUMBER_MONTHLY_FEE, TEN_DLC_MIXED_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
 import { receiptEmail } from "@/lib/customer-emails";
 import { sendCustomerEmail } from "@/lib/customer-email-send";
+import { notifyCommand } from "@/lib/command-notify";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -193,6 +194,13 @@ export async function POST(req: NextRequest) {
               }),
               `receipt-${event.id}`,
             ).catch(() => {});
+
+            await notifyCommand(supabase, {
+              eventKey: `payment:${event.id}`,
+              kind: "payment",
+              title: `💵 Funds added — $${amount.toFixed(2)}`,
+              body: `${`${profile.first_name || ""} ${profile.last_name || ""}`.trim() || profile.email || "A customer"} topped up their balance.`,
+            });
 
             // ── Referral bonus — atomic flag flip gates the payout ──────
             // Before: check `!referral_rewarded`, then separately write
@@ -466,6 +474,12 @@ export async function POST(req: NextRequest) {
                 }),
                 `receipt-${event.id}`,
               ).catch(() => {});
+              await notifyCommand(supabase, {
+                eventKey: `payment:${event.id}`,
+                kind: "payment",
+                title: `💵 Subscription payment — $${subAmount.toFixed(2)}`,
+                body: `${typeof plan.name === "string" ? plan.name : "Text2Sale"} · ${profile.email || ""}`,
+              });
             }
           }
         }
