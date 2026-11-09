@@ -5,6 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import type { Db } from "@/lib/business-site";
 import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
 import { NUMBER_MONTHLY_FEE, TEN_DLC_MIXED_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
+import { receiptEmail } from "@/lib/customer-emails";
+import { sendCustomerEmail } from "@/lib/customer-email-send";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -134,7 +136,7 @@ export async function POST(req: NextRequest) {
           // itself is already settled atomically above.
           const { data: profile } = await supabase
             .from("profiles")
-            .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name, plan")
+            .select("email, wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name, plan")
             .eq("id", userId)
             .single();
 
@@ -178,6 +180,19 @@ export async function POST(req: NextRequest) {
                 usage_history: [entry, ...(profile.usage_history || [])],
               })
               .eq("id", userId);
+
+            // Email the customer a receipt for the funds they just added.
+            await sendCustomerEmail(
+              profile.email,
+              receiptEmail({
+                name: `${profile.first_name || ""} ${profile.last_name || ""}`.trim(),
+                kind: "funds",
+                items: [{ description: "Funds added to your Text2Sale balance", amount }],
+                total: amount,
+                receiptId: `T2S-${event.id.slice(-8).toUpperCase()}`,
+              }),
+              `receipt-${event.id}`,
+            ).catch(() => {});
 
             // ── Referral bonus — atomic flag flip gates the payout ──────
             // Before: check `!referral_rewarded`, then separately write
@@ -367,7 +382,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("usage_history, owned_numbers, wallet_balance, a2p_registration, plan")
+            .select("email, first_name, usage_history, owned_numbers, wallet_balance, a2p_registration, plan")
             .eq("id", userId)
             .single();
 
@@ -436,6 +451,22 @@ export async function POST(req: NextRequest) {
               .from("profiles")
               .update({ usage_history: updatedHistory })
               .eq("id", userId);
+
+            // Email the customer a receipt for the subscription charge (card).
+            const subAmount = (invoice.amount_paid || 0) / 100;
+            if (subAmount > 0) {
+              await sendCustomerEmail(
+                profile.email,
+                receiptEmail({
+                  name: profile.first_name || "",
+                  kind: "subscription",
+                  items: [{ description: `${typeof plan.name === "string" ? plan.name : "Text2Sale"} — monthly subscription`, amount: subAmount }],
+                  total: subAmount,
+                  receiptId: invoice.number || `T2S-${event.id.slice(-8).toUpperCase()}`,
+                }),
+                `receipt-${event.id}`,
+              ).catch(() => {});
+            }
           }
         }
       }
