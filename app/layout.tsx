@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Script from "next/script";
 import Tracker from "@/components/Tracker";
+import ExitIntentOffer from "@/components/ExitIntentOffer";
 import "./globals.css";
 import "./workspace-theme.css";
 import "./emerald-public.css";
@@ -92,6 +93,7 @@ fbq('track', 'PageView');
       <body className="min-h-full bg-background text-foreground">
         <Tracker />
         {children}
+        <ExitIntentOffer />
       </body>
     </html>
   );

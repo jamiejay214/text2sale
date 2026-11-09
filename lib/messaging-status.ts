@@ -320,7 +320,8 @@ export function isEntitled(profile: {
 }): boolean {
   if (profile.free_subscription) return true;
   const s = profile.subscription_status;
-  return s === "active" || s === "canceling";
+  // A 7-day trial is a paid plan on a free runway — entitled like active.
+  return s === "active" || s === "canceling" || s === "trialing";
 }
 
 /**

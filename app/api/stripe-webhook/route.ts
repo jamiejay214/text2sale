@@ -307,9 +307,11 @@ export async function POST(req: NextRequest) {
           ? "canceling"
           : status === "active"
             ? "active"
-            : status === "past_due"
-              ? "past_due"
-              : "inactive";
+            : status === "trialing"
+              ? "trialing"
+              : status === "past_due"
+                ? "past_due"
+                : "inactive";
 
         // Skip status override if admin has granted a free subscription — we
         // don't want Stripe's "inactive" state to clobber the comp.

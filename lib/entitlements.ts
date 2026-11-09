@@ -36,7 +36,10 @@ export function planKeyOf(profile: PlanProfile | null | undefined, now: Date = n
 export function isActiveSubscriber(profile: PlanProfile | null | undefined): boolean {
   if (!profile) return false;
   if (profile.free_subscription) return true;
-  return profile.subscription_status === "active" || profile.subscription_status === "canceling";
+  const s = profile.subscription_status;
+  // "trialing" is a paid plan on a free runway — full access, card on file,
+  // auto-charges when the trial ends.
+  return s === "active" || s === "canceling" || s === "trialing";
 }
 
 export function can(profile: PlanProfile | null | undefined, capability: Capability, now: Date = new Date()): boolean {
