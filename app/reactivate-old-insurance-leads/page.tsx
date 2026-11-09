@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "How to Reactivate Old Insurance Leads with SMS & AI | Text2Sale",
+  title: "How to Reactivate Old Insurance Leads: Text Scripts & Workflow",
   description:
-    "A practical workflow for reactivating old insurance leads with compliant SMS, AI follow-up, segmentation, calling, and appointment booking.",
+    "Use three sample follow-up texts for old insurance leads, a list-cleaning checklist, and a worked example to measure cost per booked appointment.",
   alternates: { canonical: "/reactivate-old-insurance-leads" },
 };
 
@@ -13,7 +13,7 @@ export default function Page() {
     <SeoLandingPage
       blogTags={["Insurance", "Reactivation", "SMS follow-up", "AI"]}
       eyebrow="Old Insurance Lead Reactivation"
-      title="Turn old insurance inquiries back into live conversations."
+      title="How to reactivate old insurance leads by text"
       description="Older leads are not automatically dead. Segment contacts whose permission still covers your follow-up, reopen the conversation with a simple question, and use Text2Sale to manage replies, calls, and appointment booking."
       secondaryCta="See insurance follow-up software"
       secondaryHref="/insurance-lead-follow-up-software"
@@ -29,6 +29,19 @@ export default function Page() {
         { heading: "Step 1: decide who is actually eligible to contact", paragraphs: ["Lead age does not determine consent. Before messaging an old list, confirm the permission you collected or received from the lead source still covers texts from your business, then remove contacts who opted out or should otherwise be suppressed.", "This list-cleaning step is more important than any script. Better targeting protects deliverability and keeps your team focused on people you can legitimately follow up with."] },
         { heading: "Step 2: reopen the conversation instead of pretending it is new", paragraphs: ["Aged leads usually remember requesting information vaguely, if at all. Give enough context to make the message understandable, identify the business, and ask whether they still want help."], bullets: ["Keep the first message short", "Reference the original type of inquiry when appropriate", "Ask one question", "Do not manufacture urgency", "Stop automation immediately on an opt-out"] },
         { heading: "Step 3: work replies fast", paragraphs: ["The value of reactivation comes after the response. Route interested replies to the inbox immediately, let AI cover routine qualification when appropriate, and offer a call time while the prospect is engaged.", "Track reply rate, positive-interest rate, appointments, opt-outs, and completed sales. Those numbers tell you whether the list and message are worth scaling."] },
+        {
+          heading: "Three follow-up texts for different kinds of old insurance leads",
+          paragraphs: ["Use these examples only when the contact agreed to texts from your agency. Replace the placeholders and use the wording that matches the actual inquiry."],
+          bullets: [
+            "Quote requested: Hi [Name], this is [Agent] at [Agency]. You asked us about coverage a while back. Are you still comparing plans? Reply STOP to opt out.",
+            "Quote already sent: Hi [Name], [Agent] with [Agency] here. Did you find coverage after we sent your quote, or would an updated estimate help? Reply STOP to opt out.",
+            "Callback requested: Hi [Name], this is [Agent] at [Agency]. You asked me to check back this month. Is there a good time to call? Reply STOP to opt out.",
+          ],
+        },
+        {
+          heading: "Worked example: what did each booked appointment cost?",
+          paragraphs: ["Suppose a campaign costs $24, reaches 160 people, gets 12 replies and books 3 calls. That is a 7.5% reply rate (12 ÷ 160) and $8 per booked call ($24 ÷ 3). These are example figures. Use your actual campaign costs, including lead acquisition if you want the full cost per booking.", "Keep separate counts for delivered contacts, replies, bookings and calls attended. If only two of those three people attend, the cost per attended call rises to $12."],
+        },
       ]}
       faq={[
         { question: "Can old insurance leads still convert?", answer: "Yes. Some prospects were simply not ready when they first requested information. Reactivation can reopen those conversations, but results depend heavily on list quality, consent, product timing, and follow-up." },

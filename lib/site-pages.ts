@@ -22,7 +22,7 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
   { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: SEO_EXPANSION_2026_10 },
   { path: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
-  { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: SEO_EXPANSION_2026_10 },
+  { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: "2026-11-09" },
 
   { path: "/insurance-agents", label: "Insurance agent appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
