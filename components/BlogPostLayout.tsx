@@ -1,5 +1,6 @@
 import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
+import Image from "next/image";
 import type { BlogPost } from "@/lib/blog-posts";
 import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
@@ -119,6 +120,12 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             {post.readMinutes} min read
           </p>
         </header>
+
+        {post.illustration && (
+          <figure className="mt-8">
+            <Image src={post.illustration.src} alt={post.illustration.alt} width={920} height={320} unoptimized className="h-auto w-full rounded-2xl" />
+          </figure>
+        )}
 
         <nav aria-label="In this guide" className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/40 p-6"><h2 className="font-bold text-emerald-200">In this guide</h2><ol className="mt-3 space-y-2">{post.sections.map((section,index)=><li key={section.heading}><a className="text-emerald-100 underline underline-offset-4" href={`#section-${index+1}`}>{section.heading}</a></li>)}</ol></nav>
         <p className="mt-5 text-sm text-zinc-400">Published by <Link href="/about" className="underline">Text2Sale</Link> · Updated <time dateTime={post.dateModified}>{formatDate(post.dateModified)}</time>. Product questions or corrections: <a href="mailto:support@text2sale.com" className="underline">support@text2sale.com</a>.</p>
