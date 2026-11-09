@@ -22,6 +22,13 @@ import { BLOG_POSTS_16 } from "./blog-posts-16";
 import { BLOG_POSTS_17 } from "./blog-posts-17";
 import { BLOG_POSTS_18 } from "./blog-posts-18";
 
+import { FIELD_GUIDES_1 } from "./field-guides/proof-approvals";
+import { FIELD_GUIDES_2 } from "./field-guides/rental-and-site-quotes";
+import { FIELD_GUIDES_3 } from "./field-guides/proposal-scope";
+import { FIELD_GUIDES_4 } from "./field-guides/recurring-orders";
+import { FIELD_GUIDES_5 } from "./field-guides/sample-decisions";
+import { FIELD_GUIDES_6 } from "./field-guides/change-orders";
+
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
 
@@ -41,6 +48,7 @@ export type BlogPost = {
   faq: BlogFaq[];
   relatedSlugs?: string[];
   relatedPages?: { href: string; label: string }[];
+  illustration?: { src: string; alt: string; caption: string };
   sources?: { href: string; label: string }[];
 };
 
@@ -8229,6 +8237,12 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_16,
   ...BLOG_POSTS_17,
   ...BLOG_POSTS_18,
+  ...FIELD_GUIDES_1,
+  ...FIELD_GUIDES_2,
+  ...FIELD_GUIDES_3,
+  ...FIELD_GUIDES_4,
+  ...FIELD_GUIDES_5,
+  ...FIELD_GUIDES_6,
   ...BLOG_POSTS_6,
   ...BLOG_POSTS_5,
 ];
