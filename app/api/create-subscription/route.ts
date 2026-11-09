@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const stripe = getStripe();
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { userId: bodyUserId, userEmail, package: requestedPackage } = await req.json();
+    const { userId: bodyUserId, userEmail, package: requestedPackage, trial: trialRequested } = await req.json();
 
     if (!bodyUserId || !userEmail) {
       return NextResponse.json(
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     // Get user's profile including their plan price
     const { data: profile } = await supabase
       .from("profiles")
-      .select("stripe_customer_id, subscription_status, plan")
+      .select("stripe_customer_id, subscription_status, stripe_subscription_id, plan")
       .eq("id", userId)
       .single();
 
@@ -60,6 +60,16 @@ export async function POST(req: NextRequest) {
     // checkout, else the one chosen at signup, else Text. Prices always come
     // from lib/plans.ts, never from a price stored on the profile.
     const pkg = toPlanKey(requestedPackage) || toPlanKey(profile?.plan?.key) || "text";
+
+    // 7-day free trial: calling plans only (no 10DLC wait), and only for a
+    // first-ever subscription — never a second trial. The card is still
+    // collected and auto-charges when the trial ends; usage (calls, the
+    // number, etc.) is paid from the wallet throughout, as always.
+    const trial =
+      trialRequested === true &&
+      (pkg === "dialer" || pkg === "complete") &&
+      !profile?.stripe_subscription_id &&
+      !profile?.subscription_status;
     const messageCost = Number(profile?.plan?.messageCost) === 0.0135 ? 0.0135 : undefined;
 
     let customerId = profile?.stripe_customer_id;
@@ -91,7 +101,10 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       line_items: [{ price: price.id, quantity: 1 }],
       mode: "subscription",
-      success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}&plan=${pkg}`,
+      // A trial has $0 due now, so Stripe would skip the card unless we force
+      // it — we need the card on file to auto-charge when the trial ends.
+      ...(trial ? { payment_method_collection: "always" as const } : {}),
+      success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}&plan=${pkg}${trial ? "&trial=1" : ""}`,
       cancel_url: `${appUrl}/dashboard?subscription=cancelled`,
       metadata: {
         userId,
@@ -103,10 +116,17 @@ export async function POST(req: NextRequest) {
           userId,
           package: pkg,
         },
+        ...(trial
+          ? {
+              trial_period_days: 7,
+              // No card by trial's end → cancel instead of leaving it unpaid.
+              trial_settings: { end_behavior: { missing_payment_method: "cancel" as const } },
+            }
+          : {}),
       },
     });
 
-    return NextResponse.json({ success: true, url: session.url });
+    return NextResponse.json({ success: true, url: session.url, trial });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Stripe subscription error:", errMsg);

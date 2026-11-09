@@ -169,6 +169,9 @@ export default function PricingPage() {
                   {money(plan.price)}
                   <span className="text-base font-bold text-zinc-400"> /user/month</span>
                 </p>
+                <p className="mt-2 text-sm font-semibold text-emerald-300">
+                  ≈ {money(plan.price / 30)}/day — one new client covers it many times over
+                </p>
                 <ul className="mt-6 flex-1 space-y-2 text-sm leading-6 text-zinc-200">
                   {plan.includes.map((item) => (
                     <li key={item} className="flex gap-2"><span className="text-emerald-300" aria-hidden>✓</span>{item}</li>

@@ -44,10 +44,19 @@ export default function HomeClient({
   // The plan picked on the pricing cards rides through signup to checkout
   // (and survives an email-verification detour in localStorage).
   const [selectedPlan, setSelectedPlan] = useState<PlanKey>("text");
-  // /pricing links here with ?signup=1&plan=<key>.
+  // The 7-day free calling trial (?trial=1): calling plans only, so default
+  // to Dialer when a trial is requested without a specific calling plan.
+  const [wantsTrial, setWantsTrial] = useState(false);
+  // /pricing links here with ?signup=1&plan=<key>; the exit offer adds ?trial=1.
   useEffect(() => {
-    const plan = new URLSearchParams(window.location.search).get("plan");
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get("plan");
+    const trial = params.get("trial") === "1";
     if (isPlanKey(plan)) setSelectedPlan(plan);
+    if (trial) {
+      setWantsTrial(true);
+      if (!isPlanKey(plan) || (plan !== "dialer" && plan !== "complete")) setSelectedPlan("dialer");
+    }
   }, []);
   const [followup, setFollowup] = useState(false);
   const savedContact = useRef("");
@@ -191,7 +200,7 @@ export default function HomeClient({
       const checkoutResponse = await authFetch("/api/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: result.user?.id, userEmail: signupEmail.trim().toLowerCase(), package: selectedPlan }),
+        body: JSON.stringify({ userId: result.user?.id, userEmail: signupEmail.trim().toLowerCase(), package: selectedPlan, trial: wantsTrial }),
       });
       const checkout = await checkoutResponse.json().catch(() => ({}));
       if (!checkoutResponse.ok || !checkout.url) {
@@ -362,7 +371,7 @@ export default function HomeClient({
                           {PLAN_KEYS.map((key) => <option key={key} value={key}>{PLANS[key].name} · ${PLANS[key].price}/month</option>)}
                         </select>
                       </label>
-                      <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. Payment is required right after account creation; there is no free trial.{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
+                      <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. {wantsTrial && (selectedPlan === "dialer" || selectedPlan === "complete") ? "Your first 7 days of the plan are free — add a card now and it's charged only if you keep going. You still pay for your calls, number and usage from your wallet during the trial." : "Payment is required right after account creation; there is no free trial."}{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
                     </div>
 
                     <p className="text-sm text-lime-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>
