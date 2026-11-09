@@ -57,6 +57,8 @@ import {
 import { MAIN_SITE, getUniqueSlug, probeComplianceSite, probeSite, siteBase, siteUrls, toSlug, type Db } from "./business-site";
 import { ensureDomainAttached, purchaseDomainForUser } from "./domain-purchase";
 import { sendAdminAlertSMS } from "./admin-alert";
+import { sendCustomerEmail } from "./customer-email-send";
+import { messagingApprovedEmail } from "./customer-emails";
 
 /**
  * Auto-purchase kill switch for phone numbers.
@@ -107,6 +109,15 @@ export type StepResult = { userId: string; from: MessagingStatus; to: MessagingS
 
 const hoursSince = (iso: string | null | undefined) =>
   iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / 3_600_000) : 0;
+
+async function notifyCustomerApproved(db: Db, profile: ProfileRow) {
+  // One "you're approved" email per account, the first time texting goes live.
+  if (!profile.email || !isEntitled(profile)) return;
+  const reg = (profile.a2p_registration || {}) as Record<string, unknown>;
+  if (reg.approvedEmailAt) return;
+  const ok = await sendCustomerEmail(profile.email, messagingApprovedEmail(profile.first_name || ""), `approved-${profile.id}`);
+  if (ok) await db.from("profiles").update({ a2p_registration: { ...reg, approvedEmailAt: new Date().toISOString() } }).eq("id", profile.id);
+}
 
 function notifyAdmin(text: string) {
   void sendAdminAlertSMS(text).catch(() => {});
@@ -227,6 +238,7 @@ export async function setStatus(db: Db, profile: ProfileRow, status: MessagingSt
   }
   if (changed && status === "ACTIVE" && wasStatus !== "ACTIVE") {
     notifyAdmin(`✅ Text2Sale texting is live\n${businessLabel(profile)}`);
+    await notifyCustomerApproved(db, profile).catch(() => {});
   }
 }
 

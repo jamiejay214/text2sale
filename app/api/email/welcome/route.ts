@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { EMAIL_FROM, SUPPORT_EMAIL } from "@/lib/email-sender";
 import { teamDatabase } from "@/lib/workspace-auth";
-import { welcomeEmail } from "@/lib/welcome-email";
+import { accountCreatedEmail } from "@/lib/customer-emails";
 export const maxDuration=60;
 export async function GET(req:NextRequest){
  const secret=process.env.CRON_SECRET;
@@ -19,7 +19,7 @@ export async function GET(req:NextRequest){
   if(job.first_attempt_at&&Date.now()-Date.parse(job.first_attempt_at)>23*3600000){await db.from("welcome_email_jobs").update({status:"failed",last_error:"Delivery requires review before retrying"}).eq("user_id",job.user_id);continue;}
   const {data:profile}=await db.from("profiles").select("first_name").eq("id",job.user_id).single();
   const attempts=job.attempts+1;
-  const payload=job.payload||{from:EMAIL_FROM,reply_to:SUPPORT_EMAIL,to:[auth.user.email],...welcomeEmail(profile?.first_name||"there")};
+  const payload=job.payload||{from:EMAIL_FROM,reply_to:SUPPORT_EMAIL,to:[auth.user.email],...accountCreatedEmail(profile?.first_name||"")};
   const {error:claimError}=await db.from("welcome_email_jobs").update({payload,attempts,first_attempt_at:job.first_attempt_at||new Date().toISOString()}).eq("user_id",job.user_id);
   if(claimError)continue;
   try{
