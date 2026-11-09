@@ -126,3 +126,63 @@ export function lowBalanceEmail(name: string, balance: number): Email {
   });
   return { subject, html, text };
 }
+
+export type ReceiptItem = { description: string; amount: number };
+
+/**
+ * 4 · Receipt — sent whenever the customer's card is charged (a subscription
+ * renewal or funds added to their balance). Itemized, vendor-neutral.
+ */
+export function receiptEmail(opts: {
+  name: string;
+  items: ReceiptItem[];
+  total: number;
+  date?: Date;
+  kind?: "subscription" | "funds" | "purchase";
+  cardLast4?: string | null;
+  receiptId?: string | null;
+}): Email {
+  const who = opts.name?.trim() || "there";
+  const fn = firstName(opts.name);
+  const when = (opts.date || new Date()).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const total = money(opts.total);
+  const paidWith = opts.cardLast4 ? `Card ending ${esc(String(opts.cardLast4))}` : "Card on file";
+  const headline =
+    opts.kind === "funds" ? "Thanks — funds added to your balance" : opts.kind === "subscription" ? "Thanks for your payment" : "Your receipt";
+
+  const subject = `Your Text2Sale receipt — ${total}`;
+
+  const rows = opts.items
+    .map(
+      (it) =>
+        `<tr><td style="padding:10px 0;border-bottom:1px solid #29504c;color:#cfe3de">${esc(it.description)}</td>` +
+        `<td style="padding:10px 0;border-bottom:1px solid #29504c;text-align:right;color:#fff;white-space:nowrap">${money(it.amount)}</td></tr>`,
+    )
+    .join("");
+
+  const bodyHtml =
+    `<table style="width:100%;border-collapse:collapse;margin:6px 0 4px">${rows}` +
+    `<tr><td style="padding:14px 0 0;font-weight:bold;color:#fff">Total</td>` +
+    `<td style="padding:14px 0 0;text-align:right;font-weight:bold;color:#6ee7b7;white-space:nowrap">${total}</td></tr></table>` +
+    `<p style="color:#9fb6b1;font-size:13px;line-height:1.7;margin:16px 0 0">` +
+    `${esc(when)} · ${esc(paidWith)}${opts.receiptId ? ` · Receipt ${esc(opts.receiptId)}` : ""}` +
+    `${opts.kind === "subscription" ? "<br>This is a recurring monthly charge for your plan." : ""}</p>`;
+
+  const text =
+    `Hi ${who},\n\n` +
+    `${headline}.\n\n` +
+    opts.items.map((it) => `- ${it.description}: ${money(it.amount)}`).join("\n") +
+    `\n\nTotal: ${total}\n${when} · ${paidWith}${opts.receiptId ? ` · Receipt ${opts.receiptId}` : ""}\n` +
+    (opts.kind === "subscription" ? `\nThis is a recurring monthly charge for your plan.\n` : "") +
+    `\nSee your billing history anytime: ${APP}/dashboard\n\n` +
+    `Questions about this charge? Just reply to this email.`;
+
+  const html = shell({
+    heading: `${headline}, ${esc(who)}.`,
+    intro: fn ? `Here's your receipt, ${esc(fn)} — thanks for using Text2Sale.` : "Here's your receipt — thanks for using Text2Sale.",
+    bodyHtml,
+    ctaText: "View billing history",
+    ctaHref: `${APP}/dashboard`,
+  });
+  return { subject, html, text };
+}
