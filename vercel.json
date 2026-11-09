@@ -28,7 +28,7 @@
     },
     {
       "path": "/api/indexnow",
-      "schedule": "23 14 * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/email/welcome",
