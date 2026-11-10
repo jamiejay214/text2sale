@@ -293,6 +293,7 @@ export type Conversation = {
 };
 
 export type Message = {
+  picture_path?: string | null;
   id: string;
   conversation_id: string;
   direction: "inbound" | "outbound";
