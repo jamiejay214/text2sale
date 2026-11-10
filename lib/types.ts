@@ -243,6 +243,7 @@ export type CampaignStep = {
 };
 
 export type Campaign = {
+  omit_first_opt_out?: boolean;
   id: string;
   user_id: string;
   name: string;
@@ -293,6 +294,7 @@ export type Conversation = {
 };
 
 export type Message = {
+  picture_path?: string | null;
   id: string;
   conversation_id: string;
   direction: "inbound" | "outbound";

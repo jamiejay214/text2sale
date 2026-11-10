@@ -110,3 +110,22 @@ export function withFirstMessageOptOut(
   if (hasOptOutInstruction(message, settings.keywords)) return message;
   return `${message}${message ? " " : ""}${trigger}`;
 }
+
+/** Campaign setup requires an explicit suffix unless the owner opts out of adding it. */
+export function hasCampaignOptOutSuffix(body: string, settingsValue: unknown): boolean {
+  const settings = normalizeOptOutSettings(settingsValue);
+  const text = normalizeForMatch(body);
+  return settings.keywords.some(keyword => {
+    const key = normalizeForMatch(keyword);
+    return text === key || text.endsWith(` ${key}`) ||
+      ["REPLY", "TEXT", "SEND"].some(verb =>
+        ["TO OPT OUT", "TO UNSUBSCRIBE"].some(end => text.endsWith(`${verb} ${key} ${end}`)));
+  });
+}
+
+export function campaignFirstMessage(body: string, settingsValue: unknown, omit: boolean): string {
+  if (!omit && !hasCampaignOptOutSuffix(body,settingsValue)) {
+    throw new Error("Add an opt-out at the end of the first message, such as Reply STOP to opt out, or explicitly remove the opt-out requirement in campaign setup.");
+  }
+  return body;
+}

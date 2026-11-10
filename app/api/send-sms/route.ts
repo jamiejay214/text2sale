@@ -4,6 +4,7 @@ import { canText } from "@/lib/entitlements";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
+import { MMS_PRICE, MMS_BUCKET, ownsPicture } from "@/lib/mms";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { withFirstMessageOptOut } from "@/lib/opt-out";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
@@ -50,13 +51,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const { to, body, from, conversationId } = await req.json();
+    const { to, body, from, conversationId, picturePath } = await req.json();
 
-    if (typeof to !== "string" || typeof body !== "string" || !body.trim() || body.length > 5000 || typeof from !== "string") {
+    if (typeof to !== "string" || typeof body !== "string" || (!body.trim() && !picturePath) || body.length > 5000 || typeof from !== "string") {
       return NextResponse.json(
         { success: false, error: "Missing required fields: to, body, from" },
         { status: 400 }
       );
+    }
+
+    const isMms = picturePath !== undefined && picturePath !== null;
+    let mediaUrl: string | undefined;
+    if (isMms) {
+      if (!ownsPicture(picturePath, userId) || typeof conversationId !== "string" || !conversationId) {
+        return NextResponse.json({success:false,error:"Invalid picture or conversation."},{status:400});
+      }
+      const { data: picture, error } = await adminSupabase.storage.from(MMS_BUCKET).download(picturePath);
+      if (error || !picture) return NextResponse.json({success:false,error:"Picture is unavailable. Upload it again."},{status:400});
+      const { data: signed, error: signError } = await adminSupabase.storage.from(MMS_BUCKET).createSignedUrl(picturePath,86400);
+      if (signError || !signed) return NextResponse.json({success:false,error:"Could not prepare picture."},{status:503});
+      mediaUrl = signed.signedUrl;
     }
 
     // Normalize to E.164 format (+1XXXXXXXXXX)
@@ -194,11 +208,12 @@ export async function POST(req: NextRequest) {
 
     // Build Telnyx payload — include messaging_profile_id when available
     // so messages route through the correct 10DLC campaign.
-    const telnyxPayload: Record<string, string> = {
+    const telnyxPayload: Record<string, unknown> = {
       from: fromE164,
       to: toE164,
       text: sanitizedBody,
-      type: "SMS",
+      type: isMms ? "MMS" : "SMS",
+      ...(mediaUrl ? {media_urls: [mediaUrl]} : {}),
     };
     if (messagingProfileId) {
       telnyxPayload.messaging_profile_id = messagingProfileId;
@@ -206,7 +221,7 @@ export async function POST(req: NextRequest) {
 
     // Reserve funds before contacting the provider. A zero balance never sends.
     const messageCost = customerSmsRate(profileCfg.plan);
-    const totalCost=Number((messageCost*Math.max(1,countSegments(sanitizedBody))).toFixed(4));
+    const totalCost=isMms ? MMS_PRICE : Number((messageCost*Math.max(1,countSegments(sanitizedBody))).toFixed(4));
     const {data:newBalance,error:debitError}=await adminSupabase.rpc("decrement_wallet",{p_user_id:userId,p_amount:totalCost});
     if (debitError) return NextResponse.json({success:false,error:"Could not reserve funds. Message not sent."},{status:503});
     if (newBalance === null) return NextResponse.json({success:false,error:"Insufficient funds. Add funds before sending."},{status:402});
@@ -236,7 +251,21 @@ export async function POST(req: NextRequest) {
 
     console.log("Telnyx send OK:", data.data?.id, "from:", fromE164, "to:", toE164);
 
+    let savedMessage = null;
+    if (isMms) {
+      const {data: saved, error: saveError} = await adminSupabase.from("messages").insert({
+        conversation_id: conversationId, direction: "outbound", body: sanitizedBody,
+        status: "sent", from_number: fromE164, telnyx_message_id: data.data?.id || null,
+        picture_path: picturePath,
+      }).select().single();
+      if (saveError) console.error("MMS accepted but history save failed", attemptId);
+      savedMessage = saved;
+      await adminSupabase.from("conversations").update({preview: `Picture: ${sanitizedBody}`.slice(0,100),last_message_at:new Date().toISOString(),unread:0}).eq("id",conversationId).eq("user_id",userId);
+    }
     return NextResponse.json({
+      message: savedMessage,
+      picturePath: isMms ? picturePath : null,
+      charged: totalCost,
       success: true,
       sid: data.data?.id || "",
       status: "sent",

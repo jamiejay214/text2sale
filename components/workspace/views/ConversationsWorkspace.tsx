@@ -3,6 +3,7 @@ import {useSearchParams} from "next/navigation";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Mail, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
+import { MMS_PRICE, MMS_MAX_BYTES } from "@/lib/mms";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
@@ -317,6 +318,12 @@ const ConversationList = memo(function ConversationList({
   );
 });
 
+function Picture({ path }: { path: string }) {
+  const [url,setUrl] = useState("");
+  useEffect(() => { let active=true; authFetch(`/api/message-pictures?path=${encodeURIComponent(path)}`).then(r=>r.json()).then(r=>{if(active)setUrl(r.url || "");}).catch(()=>{}); return()=>{active=false;}; },[path]);
+  return url ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Message attachment" style={{maxWidth:240,maxHeight:240,borderRadius:12,objectFit:"contain"}} /></a> : <span>Picture unavailable</span>;
+}
+
 const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { messages: Message[]; loading: boolean; hasOlder: boolean; onOlder: () => void }) {
   // Scroll only the thread's own box. scrollIntoView also scrolls every
   // ancestor, which pushed the whole inbox panel up and hid the search bar.
@@ -331,6 +338,7 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
         <div key={message.id} className={`v2-message-row ${message.direction === "outbound" ? "is-outbound" : "is-inbound"}`}>
           <div>
             {message.channel === "email" ? <b className="v2-message-channel"><Mail size={12} /> Email{message.email_subject ? ` · ${message.email_subject}` : ""}</b> : null}
+            {message.picture_path ? <Picture path={message.picture_path} /> : null}
             <p>{message.body}</p>
             <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{message.direction === "outbound" ? ` · ${message.status}` : ""}</span>
           </div>
@@ -340,20 +348,48 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
   );
 });
 
-function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, onSend }: { disabled: boolean; firstName: string; channel: "sms" | "email"; canEmail: boolean; onChannel: (channel: "sms" | "email") => void; onSend: (body: string, channel: "sms" | "email") => Promise<boolean> }) {
+function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, onSend }: { disabled: boolean; firstName: string; channel: "sms" | "email"; canEmail: boolean; onChannel: (channel: "sms" | "email") => void; onSend: (body: string, channel: "sms" | "email", picturePath?: string) => Promise<boolean> }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [picturePath,setPicturePath] = useState<string | undefined>();
+  const [uploading,setUploading] = useState(false);
+  const pictureInput = useRef<HTMLInputElement>(null);
   const email = channel === "email";
+  const attach = async (file?: File) => {
+    if (!file) return;
+    setUploading(true); setError("");
+    try {
+      if (!["image/jpeg","image/png","image/gif"].includes(file.type) || file.size > 15_000_000) throw new Error("Choose a JPG, PNG or GIF under 15 MB.");
+      let picture: Blob = file;
+      if (file.type !== "image/gif") {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1,1200/Math.max(bitmap.width,bitmap.height));
+        const canvas = document.createElement("canvas"); canvas.width=Math.max(1,Math.round(bitmap.width*scale)); canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+        const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Could not prepare picture.");
+        ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+        for (const quality of [0.85,0.65,0.45,0.25]) {
+          picture=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Could not prepare picture.")),"image/jpeg",quality));
+          if(picture.size<=MMS_MAX_BYTES) break;
+        }
+      }
+      if(picture.size>MMS_MAX_BYTES) throw new Error("This picture is too large for MMS. Choose a smaller picture or GIF under 300 KB.");
+      const form=new FormData();form.append("picture",picture,"picture");
+      const response=await authFetch("/api/message-pictures",{method:"POST",body:form});const result=await response.json();
+      if(!response.ok) throw new Error(result.error || "Upload failed.");
+      setPicturePath(result.path);
+    } catch(reason) {setError(reason instanceof Error ? reason.message : "Upload failed.");}
+    finally {setUploading(false);if(pictureInput.current)pictureInput.current.value="";}
+  };
   const sanitized = email ? body : sanitizeForSms(body);
   const unicode = !email && hasNonGsmChars(sanitized);
   const segments = body && !email ? countSegments(sanitized) : 0;
   const send = async () => {
-    if (!body.trim() || disabled || sending) return;
+    if ((!body.trim() && (email || !picturePath)) || disabled || sending || uploading) return;
     if (unicode) { setError("Remove emojis or special characters before sending."); return; }
     setSending(true); setError("");
-    const sent = await onSend(sanitized.trim(), channel).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
-    if (sent) setBody("");
+    const sent = await onSend(sanitized.trim(), channel, email ? undefined : picturePath).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
+    if (sent) {setBody("");setPicturePath(undefined);}
     setSending(false);
   };
   return (
@@ -364,6 +400,12 @@ function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, on
           <button className={email ? "is-active" : ""} aria-pressed={email} onClick={() => onChannel("email")}><Mail size={13} /> Email</button>
         </div>
       ) : null}
+      {!email ? <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+        <input ref={pictureInput} type="file" accept="image/jpeg,image/png,image/gif" hidden onChange={e=>void attach(e.target.files?.[0])} />
+        <button type="button" disabled={disabled || sending || uploading} onClick={()=>pictureInput.current?.click()}>{uploading ? "Preparing picture…" : "Attach picture"}</button>
+        <span>Picture message · ${MMS_PRICE.toFixed(2)} each</span>
+      </div> : null}
+      {!email && picturePath ? <div style={{marginBottom:8,flexWrap:"wrap"}}><Picture path={picturePath} /><button type="button" disabled={sending} onClick={()=>setPicturePath(undefined)}>Remove picture</button><p>Optional caption below. Sending charges $0.35 total.</p></div> : null}
       <textarea
         value={body}
         onChange={(event) => setBody(event.target.value)}
@@ -373,7 +415,7 @@ function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, on
       />
       <div>
         <span className={unicode ? "is-error" : ""}>{email ? "Sent from your email domain, threaded under their last email · Shift+Enter for a new line" : body.length ? `${sanitized.length} characters · ${segments} segment${segments === 1 ? "" : "s"}` : "Enter to send · Shift+Enter for a new line"}</span>
-        <button onClick={send} disabled={disabled || sending || !body.trim()}>{sending ? <Loader2 className="v2-spin" size={17} /> : <Send size={17} />} Send</button>
+        <button onClick={send} disabled={disabled || sending || uploading || (!body.trim() && (email || !picturePath))}>{sending ? <Loader2 className="v2-spin" size={17} /> : <Send size={17} />} Send</button>
       </div>
       {error ? <p>{error}</p> : null}
     </div>
@@ -576,7 +618,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     });
   }, [archived, contacts, conversations, filter, search]);
 
-  const sendMessage = useCallback(async (body: string, channel: "sms" | "email" = "sms") => {
+  const sendMessage = useCallback(async (body: string, channel: "sms" | "email" = "sms", picturePath?: string) => {
     if (!selected || !selectedContact) return false;
     if (channel === "email") {
       const response = await authFetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: selected.id, body }) });
@@ -590,11 +632,11 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     }
     const from = selected.from_number || profile.owned_numbers?.[0]?.number;
     if (!from) throw new Error("Buy or connect a sending number before messaging.");
-    const response = await authFetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: selectedContact.phone, from, body, conversationId: selected.id }) });
+    const response = await authFetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: selectedContact.phone, from, body, conversationId: selected.id, ...(picturePath ? {picturePath} : {}) }) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Message failed.");
     const sentBody = typeof result.body === "string" ? result.body : body;
-    const inserted = await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from, telnyx_message_id: typeof result.sid === "string" && result.sid ? result.sid : null });
+    const inserted = picturePath ? result.message as Message | null : await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from, telnyx_message_id: typeof result.sid === "string" && result.sid ? result.sid : null });
     const now = new Date().toISOString();
     if (inserted) setMessages((current) => current.some((item) => item.id === inserted.id) ? current : [...current, inserted]);
     await updateConversation(selected.id, { preview: sentBody, last_message_at: now, unread: 0 });
@@ -812,7 +854,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
                 </div>
               </header>
               <Thread messages={messages} loading={threadLoading} hasOlder={hasOlder} onOlder={() => loadThread(selected.id, messagePage + 1)} />
-              <MessageComposer disabled={replyChannel === "sms" && !!selectedContact.dnc} firstName={selectedContact.first_name} channel={replyChannel} canEmail={!!selectedContact.email} onChannel={(channel) => setChannelFor((current) => ({ ...current, [selected.id]: channel }))} onSend={sendMessage} />
+              <MessageComposer key={selected.id} disabled={replyChannel === "sms" && !!selectedContact.dnc} firstName={selectedContact.first_name} channel={replyChannel} canEmail={!!selectedContact.email} onChannel={(channel) => setChannelFor((current) => ({ ...current, [selected.id]: channel }))} onSend={sendMessage} />
               {selectedContact.dnc && replyChannel === "sms" ? <div className="v2-dnc-notice">This contact opted out of texts. Sending texts is disabled{selectedContact.email ? "; you can still reply by email" : ""}.</div> : null}
             </>
           ) : (
