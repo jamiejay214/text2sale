@@ -63,6 +63,11 @@ export function hasNonGsmChars(body: string): boolean {
   return /[^\x00-\x7F]/.test(body);
 }
 
+/** Number of GSM-7 septets for an ASCII campaign message. */
+export function smsUnits(body: string): number {
+  return body.length + (body.match(/[\f^{}\\\[\]~|]/g)?.length || 0);
+}
+
 /**
  * Count SMS segments for billing. Mirrors how Telnyx (and every carrier)
  * splits a message:
@@ -86,8 +91,10 @@ export function countSegments(body: string): number {
     if (len <= 70) return 1;
     return Math.ceil(len / 67);
   }
-  if (len <= 160) return 1;
-  return Math.ceil(len / 153);
+  // GSM extension characters use an escape septet before the character itself.
+  const units = smsUnits(body);
+  if (units <= 160) return 1;
+  return Math.ceil(units / 153);
 }
 
 // ------------------------------------------------------------
