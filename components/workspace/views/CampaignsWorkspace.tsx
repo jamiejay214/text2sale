@@ -1,5 +1,6 @@
 "use client";
 import {useSearchParams} from "next/navigation";
+import { campaignSegmentPreview } from "@/lib/campaign-segment-preview";
 import { delayParts } from "@/lib/workspace-input";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -121,6 +122,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const requestedCampaign=useSearchParams().get("campaign");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(blankDraft);
+  const [previewName, setPreviewName] = useState("");
   const [activeStep, setActiveStep] = useState(0);
   const [audience, setAudience] = useState<"assigned" | "all">("assigned");
   const [loading, setLoading] = useState(true);
@@ -389,6 +391,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   };
 
   const active = draft.steps[activeStep];
+  const preview = campaignSegmentPreview(active?.message || "", previewName);
   if (channel === "email") return <EmailCampaigns onChannel={setChannel} />;
   if (channel === "sequence") {
     return (
@@ -408,7 +411,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       <PageHeader
         eyebrow="Campaign studio"
         title="Campaigns"
-        description="One campaign can be a single text or a complete multi-step workflow with timing, spin text, and personalization."
+        description="Build and save your texts and follow-ups here. To send them to a new CSV list, choose this campaign in Import leads."
         actions={
           <>
             <div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email", "sequence"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : item === "email" ? "Email" : "Text + Email"}</button>)}</div>
@@ -513,7 +516,10 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                 <div className="v2-field">
                   <label htmlFor="campaign-message">Message</label>
                   <textarea aria-invalid={activeStep === 0 && !draft.omitOptOut && !firstOptOutPresent} aria-describedby={activeStep === 0 ? "campaign-optout-guide" : undefined} id="campaign-message" value={active.message} onChange={(event) => patchStep(activeStep, { message: event.target.value })} placeholder="Hi {firstName}, thanks for requesting information…" rows={8} />
-                  <div className="v2-message-meta"><span>{active.message.length} characters</span><span>Personalize:</span></div>
+                  <div className="v2-message-meta"><span>{preview.length}{preview.maxLength !== preview.length ? `–${preview.maxLength}` : ""} characters · <strong aria-live="polite" aria-atomic="true">{preview.segments}{preview.maxSegments !== preview.segments ? `–${preview.maxSegments}` : ""} SMS segment{preview.maxSegments === 1 ? "" : "s"}</strong>{preview.estimated ? " (estimate)" : ""}</span></div>
+                  {preview.estimated && <small>Estimate uses spin choices and sample contact details. Names are estimated at 1–16 letters until you upload leads.</small>}
+                  {active.message.includes("{firstName}") && <div className="v2-field"><label htmlFor="campaign-preview-name">Preview first name (optional)</label><input id="campaign-preview-name" value={previewName} onChange={e=>setPreviewName(e.target.value)} placeholder="Try a name" maxLength={100} /><small>Preview only. Each lead receives their own name.</small></div>}
+                  <div className="v2-message-meta"><span>Personalize:</span></div>
                   <div className="v2-token-row">{TOKENS.map((token) => <button key={token} onClick={() => patchStep(activeStep, { message: `${active.message}${active.message && !active.message.endsWith(" ") ? " " : ""}${token}` })}>{token}</button>)}</div>
                 </div>
                 {active.message.trim() ? <SpamCheckPanel message={active.message} /> : null}

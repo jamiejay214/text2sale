@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import {campaignSegmentPreview} from "@/lib/campaign-segment-preview";
 import {countSegments} from "@/lib/sms-text";
 import {customerSmsRate} from "@/lib/sms-pricing";
 import {normalizeImportPhone} from "@/lib/workspace-input";
@@ -25,14 +26,15 @@ export async function POST(req: NextRequest) {
     const input = await req.json();
     if (
       typeof input.campaignId !== "string" ||
-      !["assigned", "all"].includes(input.audience)
+      !["assigned", "all", "upload"].includes(input.audience) ||
+      (input.audience === "upload" && (typeof input.uploadId !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.uploadId)))
     ) {
       return NextResponse.json(
         { error: "Choose a campaign and audience." },
         { status: 400 },
       );
     }
-    const startsAt = input.startsAt ? Date.parse(input.startsAt) : Date.now();
+    let startsAt = input.startsAt ? Date.parse(input.startsAt) : Date.now();
     if (!Number.isFinite(startsAt) || startsAt < Date.now() - 60_000)
       return NextResponse.json(
         { error: "Choose a valid start time." },
@@ -86,7 +88,12 @@ export async function POST(req: NextRequest) {
         { error: "An active subscription is required." },
         { status: 403 },
       );
-    const revision=createHash("sha256").update(JSON.stringify({name:campaign.name,steps:campaign.steps,message:campaign.message,numbers:campaign.selected_numbers,quiet:campaign.quiet_hours_enabled})).digest("hex");
+    if (input.audience === "upload") {
+      const { data: batch, error } = await db.from("csv_uploads").select("id").eq("id",input.uploadId).eq("user_id",auth.user.id).eq("campaign_ready",true).maybeSingle();
+      if (error || !batch) return NextResponse.json({error:"This CSV is unavailable for campaign sending."},{status:error ? 503 : 404});
+      if (campaign.status === "Scheduled" && campaign.scheduled_at) startsAt = Math.max(startsAt, Date.parse(campaign.scheduled_at));
+    }
+    const revision=createHash("sha256").update(JSON.stringify({name:campaign.name,steps:campaign.steps,message:campaign.message,numbers:campaign.selected_numbers,quiet:campaign.quiet_hours_enabled,omit:campaign.omit_first_opt_out,...(input.audience==="upload"?{upload:input.uploadId,status:campaign.status,at:campaign.scheduled_at}:{})})).digest("hex");
     if(input.expectedRevision && input.expectedRevision!==revision)return NextResponse.json({error:"Campaign changed after review. Review it again before launching."},{status:409});
     let steps;
     try {
@@ -145,6 +152,7 @@ export async function POST(req: NextRequest) {
         .range(offset, offset + 999);
       if (input.audience === "assigned")
         query = query.eq("campaign_id", campaign.id);
+      if (input.audience === "upload") query = query.eq("upload_batch_id",input.uploadId);
       if (input.importedSinceIso)
         query = query.gte("created_at", input.importedSinceIso);
       const { data, error } = await query;
@@ -224,7 +232,21 @@ export async function POST(req: NextRequest) {
       );
     if(input.dryRun===true){
       const segments=rows.reduce((n,row)=>n+countSegments(row.body),0);
-      return NextResponse.json({revision,recipients:contacts.length,messages:rows.length,segments,estimatedCost:Number((segments*customerSmsRate(profile.plan)).toFixed(2)),samples:rows.slice(0,Math.min(steps.length,3)).map(r=>({body:r.body,scheduledAt:r.scheduled_at})),note:"Estimate uses rendered sample spin choices. Personalization, alternate spin text and replies can change actual usage. Quiet hours may delay sending; follow-ups stop on replies."});
+      let minSegments = Infinity, maxSegments = 0;
+      if(input.audience === "upload") {
+        for(const contact of contacts) for(const step of steps) {
+          const estimate=campaignSegmentPreview(step.message,"",contact);
+          minSegments=Math.min(minSegments,estimate.segments);
+          maxSegments=Math.max(maxSegments,estimate.maxSegments);
+        }
+      }
+      return NextResponse.json({...(input.audience==="upload"?{minSegments,maxSegments}:{}),revision,paused:campaign.status==="Paused",recipients:contacts.length,messages:rows.length,segments,estimatedCost:Number((segments*customerSmsRate(profile.plan)).toFixed(2)),samples:rows.slice(0,Math.min(steps.length,3)).map(r=>({body:r.body,scheduledAt:r.scheduled_at})),note:"Estimate uses rendered sample spin choices. Personalization, alternate spin text and replies can change actual usage. Quiet hours may delay sending; follow-ups stop on replies."});
+    }
+    if (input.audience === "upload") {
+      if (input.expectedRevision !== revision) return NextResponse.json({error:"Review this upload before queueing."},{status:409});
+      const {data,error}=await db.rpc("queue_csv_campaign",{p_user:auth.user.id,p_campaign:campaign.id,p_upload:input.uploadId,p_rows:rows});
+      if (error) return NextResponse.json({error:error.code==="P0001"?error.message:"Could not confirm the queue. Check this upload before trying again."},{status:error.code==="P0001"?409:503});
+      return NextResponse.json(data);
     }
     const queued = await enqueueSequence(db, {
       userId: auth.user.id,
