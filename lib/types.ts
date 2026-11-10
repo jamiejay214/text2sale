@@ -243,6 +243,7 @@ export type CampaignStep = {
 };
 
 export type Campaign = {
+  omit_first_opt_out?: boolean;
   id: string;
   user_id: string;
   name: string;

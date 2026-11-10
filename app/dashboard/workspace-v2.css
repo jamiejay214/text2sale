@@ -1293,3 +1293,6 @@ tr:hover .v2-row-actions { opacity:1; }
 .v2-settings-nav button { flex:none; display:inline-flex; align-items:center; gap:7px; border:0; border-radius:10px; padding:9px 13px; background:transparent; color:var(--v2-muted); font:inherit; font-size:.82rem; font-weight:700; white-space:nowrap; cursor:pointer; }
 .v2-settings-nav button:hover { color:var(--v2-ink); background:var(--v2-canvas); }
 .v2-settings-nav button.is-active { background:var(--v2-accent); color:var(--v2-ink); }
+
+.v2-first-optout p.v2-optout-missing { color:#a52a22; font-weight:700; }
+.t2s-dark .v2-first-optout p.v2-optout-missing { color:#ffb8af; }

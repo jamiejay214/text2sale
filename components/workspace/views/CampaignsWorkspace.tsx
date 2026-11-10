@@ -34,7 +34,7 @@ import {
   updateCampaign,
 } from "@/lib/supabase-data";
 import type { Campaign, CampaignStep } from "@/lib/types";
-import { normalizeOptOutSettings } from "@/lib/opt-out";
+import { normalizeOptOutSettings, hasCampaignOptOutSuffix } from "@/lib/opt-out";
 import { checkSpam } from "@/lib/spam-check";
 import EmailCampaigns from "./EmailCampaigns";
 import type { Channel } from "./email/types";
@@ -57,6 +57,7 @@ function SpamCheckPanel({ message }: { message: string }) {
 }
 
 type Draft = {
+  omitOptOut: boolean;
   name: string;
   steps: CampaignStep[];
   selectedNumbers: string[];
@@ -65,11 +66,12 @@ type Draft = {
 
 const newStep = (delayMinutes = 60): CampaignStep => ({
   id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-  message: "",
+  message: delayMinutes === 0 ? "Reply STOP to opt out." : "",
   delayMinutes,
 });
 
 const blankDraft = (): Draft => ({
+  omitOptOut: false,
   name: "",
   steps: [newStep(0)],
   selectedNumbers: [],
@@ -78,6 +80,7 @@ const blankDraft = (): Draft => ({
 
 function campaignDraft(campaign: Campaign): Draft {
   return {
+    omitOptOut: campaign.omit_first_opt_out === true,
     name: campaign.name,
     steps:
       campaign.steps?.length > 0
@@ -174,6 +177,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const validSteps = draft.steps.filter((step) => step.message.trim());
   const optOutSettings = normalizeOptOutSettings(profile.opt_out_settings);
   const firstMessageOptOut = optOutSettings.firstMessageText;
+  const firstOptOutPresent = hasCampaignOptOutSuffix(draft.steps[0]?.message || "", optOutSettings);
   const allNumbersSelected = ownedNumbers.length > 0 && ownedNumbers.every((number) => draft.selectedNumbers.includes(number.number));
 
   const chooseCampaign = (campaign: Campaign) => {
@@ -224,11 +228,15 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       setNotice({ tone: "error", text: "Every workflow step needs a message." });
       return;
     }
+    if (!draft.omitOptOut && !firstOptOutPresent) {
+      setActiveStep(0); setNotice({tone:"error",text:"The first message needs an opt-out at the end. Add one using the examples, or choose Remove opt-out."}); return;
+    }
     setSaving(true);
     setNotice(null);
     const quietHoursEnabled =
       draft.quietHours === "inherit" ? null : draft.quietHours === "on";
     const values = {
+      omit_first_opt_out: draft.omitOptOut,
       name: draft.name.trim(),
       message: draft.steps[0].message.trim(),
       steps: draft.steps.map((step) => ({ ...step, message: step.message.trim() })),
@@ -291,6 +299,9 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     if (!selected.selected_numbers?.length && !ownedNumbers.length) {
       setNotice({ tone: "error", text: "Add a sending number before launching." });
       return;
+    }
+    if (!selected.omit_first_opt_out && !hasCampaignOptOutSuffix(selected.steps?.[0]?.message || selected.message || "", profile.opt_out_settings)) {
+      setActiveStep(0);setNotice({tone:"error",text:"Add opt-out wording to the first message and save before launching."});return;
     }
     const firstCheck = checkSpam(selected.steps?.[0]?.message || selected.message || "");
     if (
@@ -501,12 +512,26 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                 )}
                 <div className="v2-field">
                   <label htmlFor="campaign-message">Message</label>
-                  <textarea id="campaign-message" value={active.message} onChange={(event) => patchStep(activeStep, { message: event.target.value })} placeholder="Hi {firstName}, thanks for requesting information…" rows={8} />
+                  <textarea aria-invalid={activeStep === 0 && !draft.omitOptOut && !firstOptOutPresent} aria-describedby={activeStep === 0 ? "campaign-optout-guide" : undefined} id="campaign-message" value={active.message} onChange={(event) => patchStep(activeStep, { message: event.target.value })} placeholder="Hi {firstName}, thanks for requesting information…" rows={8} />
                   <div className="v2-message-meta"><span>{active.message.length} characters</span><span>Personalize:</span></div>
                   <div className="v2-token-row">{TOKENS.map((token) => <button key={token} onClick={() => patchStep(activeStep, { message: `${active.message}${active.message && !active.message.endsWith(" ") ? " " : ""}${token}` })}>{token}</button>)}</div>
                 </div>
                 {active.message.trim() ? <SpamCheckPanel message={active.message} /> : null}
-                {activeStep === 0 ? <div className="v2-first-optout"><ShieldCheck size={16} /><div><strong>First-message opt-out</strong><p><b>{firstMessageOptOut}</b> is added automatically when this campaign starts, unless your message already says how to opt out. Follow-up steps do not repeat it.</p></div><button onClick={() => onNavigate("settings", "team")}>Edit</button></div> : null}
+                {activeStep === 0 ? <aside id="campaign-optout-guide" className="v2-first-optout" aria-label="First-message opt-out">
+                  <ShieldCheck size={16} /><div>
+                    <strong>First message · Opt-out</strong>
+                    <p>Included by default. Follow-up steps do not need to repeat it. STOP replies always unsubscribe.</p>
+                    {draft.omitOptOut ? <p role="status">Opt-out text removed for this campaign. This does not waive carrier requirements.</p> : <>
+                      <p role="status" className={firstOptOutPresent ? "" : "v2-optout-missing"}>{firstOptOutPresent?"Opt-out detected at the end.":"Missing opt-out: add one before saving or launching."}</p>
+                      <p>Examples · click to add:</p><button type="button" onClick={()=>onNavigate("settings","team")}>Choose a custom trigger</button>
+                      {["Reply STOP to opt out.",`Reply ${firstMessageOptOut} to opt out.`,firstMessageOptOut].filter((x,i,a)=>a.indexOf(x)===i).map(example=><button type="button" key={example} style={{margin:"5px 5px 0 0"}} onClick={()=>patchStep(0,{message:`${draft.steps[0].message.trim()} ${example}`.trim()})}>{example}</button>)}
+                    </>}
+                  </div>
+                  <button type="button" onClick={()=>{
+                    if (!draft.omitOptOut && !window.confirm("Remove opt-out text from this campaign? Recipients will have less guidance on unsubscribing. Carrier requirements still apply, and STOP handling stays on.")) return;
+                    setDraft(current=>({...current,omitOptOut:!current.omitOptOut,steps:current.steps.map((step,i)=>i!==0?step:{...step,message:current.omitOptOut?`${step.message.trim()} Reply STOP to opt out.`.trim():step.message.replace(/\s*(?:reply|text|send)\s+(?:stop|end|quit|cancel|unsubscribe|[a-z])\s+to\s+(?:opt\s+out|unsubscribe)[.!?\s]*$/i,"").replace(/\s+(?:STOP|END|QUIT|CANCEL|UNSUBSCRIBE|[A-Z])[.!?\s]*$/i,"").trim()})}));
+                  }}>{draft.omitOptOut?"Include opt-out":"Remove opt-out"}</button>
+                </aside> : null}
                 <div className="v2-spin-help">
                   <Sparkles size={16} />
                   <div><strong>Spin text</strong><p>Use braces and pipes to rotate wording: <code>{"{Hi|Hey|Hello}"}</code>. Each lead receives one variation.</p></div>

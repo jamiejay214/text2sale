@@ -13,7 +13,7 @@ import {
   waveStart,
 } from "@/lib/campaign-sequence";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
-import { withFirstMessageOptOut } from "@/lib/opt-out";
+import { campaignFirstMessage } from "@/lib/opt-out";
 import { enqueueSequence } from "@/lib/campaign-enqueue";
 
 export const maxDuration = 300;
@@ -192,7 +192,7 @@ export async function POST(req: NextRequest) {
             contact_id: contact.id,
             body: sanitizeForSms(
               stepIndex === 0
-                ? withFirstMessageOptOut(rendered, profile.opt_out_settings)
+                ? campaignFirstMessage(rendered, profile.opt_out_settings, campaign.omit_first_opt_out === true)
                 : rendered,
             ),
             from_number: numbers[index % numbers.length],
