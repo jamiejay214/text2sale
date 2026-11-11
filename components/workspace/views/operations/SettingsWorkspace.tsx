@@ -13,7 +13,6 @@ import {
   Link2,
   Phone,
   Plus,
-  RefreshCw,
   Search,
   ShieldCheck,
   Sparkles,
@@ -44,7 +43,6 @@ import { EmptyState, PageHeader, Panel, StatusPill } from "../../WorkspacePrimit
 
 type Props = WorkspaceViewProps & { settingsTab: string };
 type AvailableNumber = { raw: string; display: string; locality: string; region: string };
-type Delivery = { total: number; delivered: number; failed: number; pending: number };
 type Integration = { id: string; name: string; token: string; campaign_id: string | null; auto_sms: boolean; created_at: string; campaigns?: { name: string } | null };
 
 function isTextingApproved(profile: Profile) {
@@ -58,22 +56,9 @@ function SettingsHeader({ eyebrow, title, description }: { eyebrow: string; titl
 function Numbers({ profile, onProfile, onNavigate }: Props) {
   const [areaCode, setAreaCode] = useState("");
   const [available, setAvailable] = useState<AvailableNumber[]>([]);
-  const [deliverability, setDeliverability] = useState<Record<string, Delivery>>({});
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const approved = isTextingApproved(profile);
-
-  const refreshDelivery = useCallback(async () => {
-    const { data } = await supabase.rpc("deliverability_stats", { p_user_id: profile.id, p_days: 30 });
-    const next: Record<string, Delivery> = {};
-    for (const row of (data || []) as Array<{ digits: string; total: number; delivered: number; failed: number; pending: number }>) next[row.digits] = { total: Number(row.total), delivered: Number(row.delivered), failed: Number(row.failed), pending: Number(row.pending || 0) };
-    setDeliverability(next);
-  }, [profile.id]);
-  useEffect(() => {
-    const timer = window.setTimeout(() => void refreshDelivery(), 0);
-    const channel = supabase.channel(`v2-delivery-${profile.id}`).on("postgres_changes", { event: "UPDATE", schema: "public", table: "messages" }, refreshDelivery).subscribe();
-    return () => { window.clearTimeout(timer); void supabase.removeChannel(channel); };
-  }, [profile.id, refreshDelivery]);
 
   const search = async () => {
     setBusy("search"); setNotice(null);
@@ -101,11 +86,11 @@ function Numbers({ profile, onProfile, onNavigate }: Props) {
     const latest = await fetchProfile(profile.id); if (latest) onProfile(latest);
   };
   return <>
-    <SettingsHeader eyebrow="Phone numbers" title="Your numbers, reputation, and reach." description="Buy or replace local numbers and see 30-day deliverability before a problem becomes a campaign failure." />
+    <SettingsHeader eyebrow="Phone numbers" title="Your numbers, reputation, and reach." description="Buy or replace the local numbers your customers see." />
     {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
     <div className="v2-number-layout">
       <Panel className="v2-number-search-card"><div className="v2-panel-head"><div><h2>Find a business number</h2><p>$1.50/month · no activation fee</p></div><Phone size={18} /></div><div className="v2-number-search-body">{!approved && <button className="v2-setup-warning" onClick={() => onNavigate("settings", "10dlc")}><ShieldCheck size={17} /><span><strong>Messaging registration required</strong><small>Finish the guided carrier setup before buying a number.</small></span><ArrowRight size={15} /></button>}<label>Preferred area code<div><input inputMode="numeric" maxLength={3} value={areaCode} onChange={(event) => setAreaCode(event.target.value.replace(/\D/g, ""))} placeholder="954" onKeyDown={(event) => event.key === "Enter" && void search()} /><button onClick={search} disabled={busy === "search"}><Search size={15} />{busy === "search" ? "Searching…" : "Search"}</button></div></label><div className="v2-available-numbers">{available.map((number) => <button key={number.raw} onClick={() => buy(number)} disabled={busy === number.raw || !approved}><span><strong>{number.display}</strong><small>{[number.locality, number.region].filter(Boolean).join(", ") || "United States"}</small></span><span><i>SMS</i><i>Voice</i></span><b>{busy === number.raw ? "Connecting…" : "$1.50/mo"}</b></button>)}</div></div></Panel>
-      <Panel className="v2-owned-numbers"><div className="v2-panel-head"><div><h2>Connected numbers</h2><p>{profile.owned_numbers?.length || 0} active lines · delivery health updates live</p></div><button className="v2-icon-btn" onClick={refreshDelivery}><RefreshCw size={15} /></button></div>{profile.owned_numbers?.length ? <div className="v2-number-cards">{profile.owned_numbers.map((number) => { const digits = number.number.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, ""); const stats = deliverability[digits]; const receipts = (stats?.delivered || 0) + (stats?.failed || 0); const rate = receipts ? Math.round((stats.delivered / receipts) * 1000) / 10 : null; const tone = rate === null ? "neutral" : rate >= 90 ? "success" : rate >= 70 ? "warning" : "danger"; return <article key={number.id}><header><span className="v2-number-icon"><Phone size={16} /></span><div><small>{number.alias || "Business line"}</small><strong>{number.number}</strong></div><button onClick={() => release(number)} disabled={busy === number.id}><Trash2 size={14} /></button></header><div className="v2-delivery-row"><StatusPill tone={tone}>{rate === null ? stats?.total ? "Awaiting receipts" : "No sends yet" : `${rate}% delivered`}</StatusPill><span>{stats?.total?.toLocaleString() || 0} sent in 30 days</span></div><div className="v2-delivery-bar"><span style={{ width: `${rate ?? 0}%` }} /></div><footer><span>{stats?.delivered || 0} delivered</span><span>{stats?.failed || 0} failed</span><span>{stats?.pending || 0} pending</span></footer></article>; })}</div> : <EmptyState title="No phone numbers yet" description="Complete messaging registration, then search for the local number you want customers to see." />}</Panel>
+      <Panel className="v2-owned-numbers"><div className="v2-panel-head"><div><h2>Connected numbers</h2><p>{profile.owned_numbers?.length || 0} active lines</p></div></div>{profile.owned_numbers?.length ? <div className="v2-number-cards">{profile.owned_numbers.map((number) => <article key={number.id}><header><span className="v2-number-icon"><Phone size={16} /></span><div><small>{number.alias || "Business line"}</small><strong>{number.number}</strong></div><button onClick={() => release(number)} disabled={busy === number.id}><Trash2 size={14} /></button></header></article>)}</div> : <EmptyState title="No phone numbers yet" description="Complete messaging registration, then search for the local number you want customers to see." />}</Panel>
     </div>
   </>;
 }
