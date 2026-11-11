@@ -90,7 +90,13 @@ export async function POST(req: NextRequest) {
     audience: normalizeAudience(body.audience),
     design: body.design && typeof body.design === "object" ? normalizeDesign(body.design) : null,
   };
-  if (!row.name || !row.subject || (!row.body && !row.design?.headline)) {
+  if (row.design?.pictureUrl) {
+    const prefix = db().storage.from("email-campaign-images").getPublicUrl(auth.user.id + "/").data.publicUrl;
+    if (!row.design.pictureUrl.startsWith(prefix) || !/^[0-9a-f-]{36}\.jpg$/i.test(row.design.pictureUrl.slice(prefix.length))) {
+      return NextResponse.json({error:"Upload the picture in this workspace before saving."},{status:400});
+    }
+  }
+  if (!row.name || !row.subject || (!row.body && !row.design?.headline && !row.design?.pictureUrl)) {
     return NextResponse.json({ error: "Add a campaign name, subject and message." }, { status: 400 });
   }
   const id = text(body.id, 64);

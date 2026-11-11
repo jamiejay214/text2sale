@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Check, Plus, Sparkles, X } from "lucide-react";
+import { Check, Plus, Sparkles, X, ImagePlus, Eye, Save } from "lucide-react";
 import { authFetch } from "@/lib/auth-fetch";
 import { UNSUBSCRIBE_LABELS, buildEmail, footerFor, isMailingAddress, personalize, type EmailDesign } from "@/lib/email-design";
+import { preparePicture } from "./prepare-picture";
 import { ideasFor, type EmailIdea } from "@/lib/email-ideas";
 import type { Audience, EmailCampaign, SenderInfo } from "./types";
 
@@ -78,8 +79,16 @@ export default function EmailComposer({
   const [ctaText, setCtaText] = useState(d?.ctaText || "");
   const [ctaUrl, setCtaUrl] = useState(d?.ctaUrl || "");
   const [signature, setSignature] = useState(d?.signature || (sender?.from_name || "").split(" at ")[0]);
-  const [look, setLook] = useState<"personal" | "card">(d && d.style !== "personal" && d.headline ? "card" : "personal");
+  const [look, setLook] = useState<"personal" | "card">(d && (d.style === "card" || (d.style !== "personal" && d.headline)) ? "card" : "personal");
   const [card, setCard] = useState<EmailDesign>(() => ({ ...blankCard(), ...(d && d.style !== "personal" ? d : {}), bullets: [...(d?.bullets || []), "", "", ""].slice(0, 3) }));
+  const [pictureUrl,setPictureUrl] = useState(d?.pictureUrl || "");
+  const [pictureAlt,setPictureAlt] = useState(d?.pictureAlt || "");
+  const [pictureCaption,setPictureCaption] = useState(d?.pictureCaption || "");
+  const [picturePosition,setPicturePosition] = useState<"above"|"below">(d?.picturePosition || "below");
+  const [uploading,setUploading] = useState(false);
+  const uploadLock = useRef(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [previewMode,setPreviewMode] = useState<"desktop"|"phone"|null>(null);
   const [useLogo, setUseLogo] = useState(true);
   const [brandColor, setBrandColor] = useState(d?.brandColor || "#34d399");
   const [footerName, setFooterName] = useState((d || footerDefaults)?.footerName || "");
@@ -134,9 +143,9 @@ export default function EmailComposer({
   const design = useMemo<Partial<EmailDesign>>(
     () =>
       look === "personal"
-        ? { style: "personal", ctaText, ctaUrl, signature, brandColor, footerName, footerAddress, footerNote, footerUnsubscribe }
-        : { ...card, style: "card", signature, brandColor, footerName, footerAddress, footerNote, footerUnsubscribe, ctaText: card.ctaText || ctaText, ctaUrl: card.ctaUrl || ctaUrl, logoUrl: useLogo ? logoUrl : null, bullets: card.bullets.filter((b) => b.trim()) },
-    [look, ctaText, ctaUrl, signature, brandColor, card, useLogo, logoUrl, footerName, footerAddress, footerNote, footerUnsubscribe],
+        ? { pictureUrl, pictureAlt, pictureCaption, picturePosition, style: "personal", ctaText, ctaUrl, signature, brandColor, footerName, footerAddress, footerNote, footerUnsubscribe }
+        : { ...card, pictureUrl, pictureAlt, pictureCaption, picturePosition, style: "card", signature, brandColor, footerName, footerAddress, footerNote, footerUnsubscribe, ctaText: card.ctaText || ctaText, ctaUrl: card.ctaUrl || ctaUrl, logoUrl: useLogo ? logoUrl : null, bullets: card.bullets.filter((b) => b.trim()) },
+    [pictureUrl, pictureAlt, pictureCaption, picturePosition, look, ctaText, ctaUrl, signature, brandColor, card, useLogo, logoUrl, footerName, footerAddress, footerNote, footerUnsubscribe],
   );
   const accountFooter = { businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]" };
   const footer = footerFor(accountFooter, design, "https://text2sale.com");
@@ -144,11 +153,24 @@ export default function EmailComposer({
   const cardPreview = useMemo(
     () =>
       look === "card"
-        ? buildEmail({ subject, previewText, body: "", design, contact: { ...SAMPLE, agent_name: signature }, footer: footerFor({ businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]" }, design, "https://text2sale.com") }).html
+        ? buildEmail({ subject, previewText, body: "", design: {...design,pictureUrl:""}, contact: { ...SAMPLE, agent_name: signature }, footer: footerFor({ businessName: info.account.businessName || "Your business", address: info.account.address || "[YOUR BUSINESS ADDRESS]" }, design, "https://text2sale.com") }).html
         : "",
     [look, subject, previewText, design, signature, info.account],
   );
 
+  const uploadPicture = async (file?: File) => {
+    if (!file || uploadLock.current || busy) return;
+    uploadLock.current = true; setUploading(true); setNotice(null);
+    try {
+      const form = new FormData();
+      form.set("image",await preparePicture(file),file.name);
+      const response = await authFetch("/api/email/images",{method:"POST",body:form});
+      const result = await json<{url:string}>(response);
+      if (!response.ok || !result.url) throw new Error(result.error || "Could not upload this picture.");
+      setPictureUrl(result.url);
+    } catch (err) { setNotice({tone:"error",text:err instanceof Error ? err.message : "Could not upload this picture."}); }
+    finally { uploadLock.current=false; setUploading(false); }
+  };
   const insert = (token: string) => {
     const field = lastField.current;
     const el = refs[field].current;
@@ -216,7 +238,7 @@ export default function EmailComposer({
     setNotice(null);
     try {
       await fn();
-    } finally {
+    } catch { setNotice({tone:"error",text:"Could not confirm the request. Check your campaign before retrying."}); } finally {
       setBusy(false);
     }
   };
@@ -269,8 +291,9 @@ export default function EmailComposer({
       ? "Now"
       : `${when_.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })} · ${when_.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })} ${contactZone ? "in each contact's time zone" : "your time"}`;
   const estimate = (summary?.willReceive || 0) * rate;
-  const hasContent = look === "card" ? Boolean(card.headline.trim()) : Boolean(body.replace(/Hi \{first_name\},?/i, "").trim());
-  const ready = verified && info.account.ok && subject.trim() && hasContent && (summary?.willReceive || 0) > 0;
+  const hasContent = Boolean(pictureUrl || body.replace(/Hi \{first_name\},?/i, "").trim() || (look === "card" && card.headline.trim()));
+  const canTest = !uploading && verified && info.account.ok && subject.trim() && hasContent;
+  const ready = canTest && (summary?.willReceive || 0) > 0;
   const fromLabel = fromName.trim() || info.account.businessName || "Your business";
 
   return (
@@ -283,7 +306,9 @@ export default function EmailComposer({
         <div className="em-head-actions">
           {channelSwitch}
           <button className="v2-btn" onClick={onCancel} disabled={busy}>Cancel</button>
-          <button className="v2-btn" disabled={!ready || busy} onClick={sendTest}>Send test</button>
+          <button className="v2-btn" disabled={busy || uploading || !subject.trim()} onClick={()=>act(async()=>{ if(await save()) setNotice({tone:"ok",text:"Draft saved. You can reopen it from Email campaigns."}); })}><Save size={15}/> Save draft</button>
+          <button className="v2-btn" onClick={()=>setPreviewMode(previewMode ? null : "desktop")} aria-expanded={!!previewMode}><Eye size={15}/> Preview</button>
+          <button className="v2-btn" disabled={!canTest || busy} onClick={sendTest}>Send test</button>
           <button className="v2-btn v2-btn-primary" disabled={!ready || busy} onClick={() => setConfirming(true)}>{when === "now" ? "Send now" : "Schedule"}</button>
         </div>
       </header>
@@ -294,12 +319,19 @@ export default function EmailComposer({
         <div className="v2-notice is-ok em-confirm">
           <span>{when === "now" ? "Send now" : `Schedule for ${scheduleText}`} to {summary?.willReceive.toLocaleString() || 0} contacts, up to {money(estimate)} from your wallet, charged batch by batch as it sends?</span>
           <span style={{ display: "flex", gap: 8 }}>
-            <button className="v2-btn v2-btn-primary" onClick={schedule}><Check size={15} /> {when === "now" ? "Yes, send" : "Yes, schedule"}</button>
+            <button className="v2-btn v2-btn-primary" disabled={uploading || busy || !ready} onClick={schedule}><Check size={15} /> {when === "now" ? "Yes, send" : "Yes, schedule"}</button>
             <button className="v2-btn" onClick={() => setConfirming(false)}>Back</button>
           </span>
         </div>
       )}
 
+      {previewMode && <section className="em-card em-message-preview" aria-label="Recipient preview">
+        <div className="em-preview-tools"><b>Recipient preview</b><span>Example contact: Maria</span>
+          <button className="v2-btn" aria-pressed={previewMode==="desktop"} onClick={()=>setPreviewMode("desktop")}>Desktop</button>
+          <button className="v2-btn" aria-pressed={previewMode==="phone"} onClick={()=>setPreviewMode("phone")}>Phone</button>
+          <button className="em-link" onClick={()=>setPreviewMode(null)}>Close</button></div>
+        <iframe title="Email as the recipient sees it" sandbox="" style={{width:previewMode==="phone"?"375px":"100%"}} srcDoc={buildEmail({subject,previewText,body,design,contact:{...SAMPLE,agent_name:signature},footer}).html}/>
+      </section>}
       <div className="em-grid">
         <section className="em-card em-editor">
           <div className="em-row">
@@ -346,7 +378,18 @@ export default function EmailComposer({
             </div>
           )}
 
-          <div className="em-letter">
+          <div className="em-letter" onDragOver={e=>{if(e.dataTransfer.types.includes("Files")) e.preventDefault();}}
+            onDrop={e=>{if(e.dataTransfer.files.length){e.preventDefault();void uploadPicture(e.dataTransfer.files[0]);}}}
+            onPaste={e=>{const image=Array.from(e.clipboardData.files).find(f=>f.type.startsWith("image/"));if(image){e.preventDefault();void uploadPicture(image);}}}>
+            <input hidden ref={fileInput} type="file" accept="image/jpeg,image/png,image/webp" onChange={e=>{void uploadPicture(e.target.files?.[0]);e.target.value="";}}/>
+            <button type="button" className="em-image-drop" disabled={uploading || busy} onClick={()=>fileInput.current?.click()}><ImagePlus size={21}/><span><strong>{uploading ? "Uploading picture…" : pictureUrl ? "Replace picture" : "Add a picture"}</strong><small>Drop or paste a picture in the message, or click to browse. JPG, PNG or WebP · up to 20 MB.</small></span></button>
+            {pictureUrl && <div className="em-art-settings">
+              <img src={pictureUrl} alt={pictureAlt || "Uploaded marketing artwork"} />
+              <label className="em-field"><span>Picture placement</span><select value={picturePosition} onChange={e=>setPicturePosition(e.target.value==="above"?"above":"below")}><option value="above">Above message</option><option value="below">Below message</option></select></label>
+              <label className="em-field"><span>Caption (optional)</span><input maxLength={500} value={pictureCaption} onChange={e=>setPictureCaption(e.target.value)} placeholder="Add wording below the picture"/></label>
+              <label className="em-field"><span>Image description</span><input maxLength={250} value={pictureAlt} onChange={e=>setPictureAlt(e.target.value)} placeholder="Describe the post for readers who can’t see images"/></label>
+              <button type="button" className="em-link" disabled={uploading || busy} onClick={()=>{setPictureUrl("");setPictureCaption("");setPictureAlt("");}}>Remove picture</button>
+            </div>}
             <textarea ref={refs.body} onFocus={() => (lastField.current = "body")} value={body} onChange={(e) => setBody(e.target.value)} rows={Math.max(7, body.split("\n").length + 1)} aria-label="Email message" placeholder="Write like a person. Leave a blank line between paragraphs." />
             {look === "card" && cardPreview && <iframe title="Branded card preview" srcDoc={cardPreview} sandbox="" className="em-card-preview" />}
             {ctaText || ctaUrl ? (

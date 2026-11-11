@@ -10,6 +10,10 @@ export type EmailDesign = {
   style?: "personal" | "card";
   /** Sign-off under a personal email, e.g. "Jamie". */
   signature?: string;
+  pictureUrl?: string;
+  pictureAlt?: string;
+  pictureCaption?: string;
+  picturePosition?: "above" | "below";
   /** Footer overrides; blank uses the account's business details. */
   footerName?: string;
   footerAddress?: string;
@@ -111,6 +115,10 @@ function shade(hex: string, amount: number): string {
 export function normalizeDesign(d: Partial<EmailDesign>): EmailDesign {
   return {
     style: d.style === "personal" ? "personal" : "card",
+    pictureUrl: safeUrl(d.pictureUrl),
+    pictureAlt: oneLine(d.pictureAlt, 250),
+    pictureCaption: oneLine(d.pictureCaption, 500),
+    picturePosition: d.picturePosition === "above" ? "above" : "below",
     signature: (d.signature || "").slice(0, 120),
     footerName: oneLine(d.footerName, 120),
     footerAddress: oneLine(d.footerAddress, 200),
@@ -273,16 +281,23 @@ export function buildEmail(args: {
   const preview = personalize(args.previewText, args.contact);
   const f = args.footer;
   const personal = args.design?.style === "personal";
+  const pic = args.design && normalizeDesign(args.design);
+  const url = pic?.pictureUrl;
+  const alt = personalize(pic?.pictureAlt || "Campaign image", args.contact);
+  const caption = personalize(pic?.pictureCaption || "", args.contact);
+  const above = pic?.picturePosition === "above";
+  const picture = url ? `<div style="margin:0 0 16px"><img src="${escapeHtml(url)}" alt="${escapeHtml(alt)}" width="600" style="display:block;width:100%;max-width:600px;height:auto;border:0">${caption ? `<p style="margin:8px 0;font-size:15px">${escapeHtml(caption)}</p>` : ""}</div>` : "";
+  const pictureText = url ? [caption || alt, url].join("\n") : "";
   const html =
     `<!doctype html><html><body style="margin:0;padding:24px;background:#ffffff">` +
     (preview ? `<div style="display:none;max-height:0;overflow:hidden">${escapeHtml(preview)}</div>` : "") +
     `<div style="max-width:600px;margin:0 auto;font-family:Helvetica,Arial,sans-serif;font-size:16px;line-height:1.55;color:#1f2937">` +
-    bodyToHtml(body) +
+    (above ? picture : "") + bodyToHtml(body) + (above ? "" : picture) +
     (personal ? renderPersonal(args.design!, args.contact) : args.design ? renderDesign(args.design, args.contact, f.businessName) : "") +
     `<p style="margin:32px 0 0;font-size:12px;line-height:1.5;color:#6b7280">${escapeHtml(f.businessName)} · ${escapeHtml(f.address)}<br>` +
     `${escapeHtml(footerNote(f))} <a href="${escapeHtml(f.unsubscribeUrl)}" style="color:#6b7280">${escapeHtml(f.unsubscribeLabel || "Unsubscribe")}</a></p>` +
     `</div></body></html>`;
-  const parts = [body.trim(), personal ? personalToText(args.design!, args.contact) : args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
+  const parts = [above ? pictureText : "", body.trim(), above ? "" : pictureText, personal ? personalToText(args.design!, args.contact) : args.design ? designToText(args.design, args.contact) : ""].filter(Boolean);
   const text = `${parts.join("\n\n")}\n\n${footerText(f)}`;
   return { subject, html, text };
 }
