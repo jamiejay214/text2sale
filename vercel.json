@@ -65,6 +65,10 @@
     {
       "path": "/api/billing/low-balance",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/email/verify-pending",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
