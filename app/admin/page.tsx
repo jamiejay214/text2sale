@@ -261,6 +261,10 @@ function AdminConsole() {
 
   const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [selectedId, setSelectedId] = useState("");
+  // Per-number 30-day deliverability for the selected account. Admin-only:
+  // customers no longer see delivery health on their own Numbers tab, so this
+  // is the one place to spot a number whose delivery rate is slipping.
+  const [numberDelivery, setNumberDelivery] = useState<Record<string, { total: number; delivered: number; failed: number; pending: number }>>({});
   const [search, setSearch] = useState("");
   const [userFilter, setUserFilter] = useState<"all" | "active" | "inactive" | "paused" | "usha">("all");
   const [message, setMessage] = useState("");
@@ -568,6 +572,23 @@ function AdminConsole() {
     () => accounts.find((a) => a.id === selectedId) || null,
     [accounts, selectedId]
   );
+
+  // Load the selected client's 30-day per-number deliverability. Same RPC the
+  // customer dashboard used to call; now only the admin screen shows it.
+  useEffect(() => {
+    if (!selectedId) { setNumberDelivery({}); return; }
+    let cancelled = false;
+    (async () => {
+      const { data } = await supabase.rpc("deliverability_stats", { p_user_id: selectedId, p_days: 30 });
+      if (cancelled) return;
+      const next: Record<string, { total: number; delivered: number; failed: number; pending: number }> = {};
+      for (const row of (data || []) as Array<{ digits: string; total: number; delivered: number; failed: number; pending: number }>) {
+        next[row.digits] = { total: Number(row.total), delivered: Number(row.delivered), failed: Number(row.failed), pending: Number(row.pending || 0) };
+      }
+      setNumberDelivery(next);
+    })();
+    return () => { cancelled = true; };
+  }, [selectedId]);
 
   const filteredAccounts = useMemo(() => {
     return accounts.filter((acct) => {
@@ -2006,11 +2027,24 @@ function AdminConsole() {
                   {/* Phone Numbers */}
                   {(selectedAccount.ownedNumbers?.length || 0) > 0 && (
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-800/50 p-4">
-                      <div className="mb-2 text-[10px] uppercase tracking-wide text-zinc-500">Phone Numbers</div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedAccount.ownedNumbers?.map((n) => (
-                          <span key={n.id} className="rounded-full bg-zinc-700 px-3 py-1 text-xs font-mono">{n.number} <span className="text-zinc-500">{n.alias || ""}</span></span>
-                        ))}
+                      <div className="mb-2 text-[10px] uppercase tracking-wide text-zinc-500">Phone Numbers · 30-day deliverability</div>
+                      <div className="flex flex-col gap-2">
+                        {selectedAccount.ownedNumbers?.map((n) => {
+                          const digits = n.number.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+                          const stats = numberDelivery[digits];
+                          const receipts = (stats?.delivered || 0) + (stats?.failed || 0);
+                          const rate = receipts ? Math.round((stats!.delivered / receipts) * 1000) / 10 : null;
+                          const rateCls = rate === null ? "text-zinc-500" : rate >= 90 ? "text-emerald-300" : rate >= 70 ? "text-amber-300" : "text-red-400";
+                          return (
+                            <div key={n.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/40 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="text-xs font-mono">{n.number} <span className="text-zinc-500">{n.alias || ""}</span></div>
+                                <div className="text-[10px] text-zinc-500">{stats?.total?.toLocaleString() || 0} sent · {stats?.delivered || 0} delivered · {stats?.failed || 0} failed · {stats?.pending || 0} pending</div>
+                              </div>
+                              <div className={`shrink-0 text-sm font-bold tabular-nums ${rateCls}`}>{rate === null ? (stats?.total ? "—" : "No sends") : `${rate}%`}</div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
