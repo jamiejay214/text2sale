@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import "./workspace-v2.css";
+import "./calling-first.css";
+import "./emerald-workspace.css";
 
 // App-only route: keep it out of search results.
 export const metadata: Metadata = {

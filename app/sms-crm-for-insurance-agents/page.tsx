@@ -81,14 +81,10 @@ export default function SmsCrmForInsuranceAgentsPage() {
         },
         {
           question: "What does Text2Sale cost for an insurance agent?",
-          answer: "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. AI replies and appointment booking are included with the platform.",
+          answer: "Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. AI replies and appointment booking are included with the platform.",
         },
       ]}
       relatedPages={[
-        {
-          href: "/best-sms-crm-for-insurance-agents",
-          label: "Best SMS CRM for insurance agents",
-        },
         {
           href: "/health-insurance-texting-crm",
           label: "Health insurance texting CRM",

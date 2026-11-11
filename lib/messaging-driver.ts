@@ -57,6 +57,9 @@ import {
 import { MAIN_SITE, getUniqueSlug, probeComplianceSite, probeSite, siteBase, siteUrls, toSlug, type Db } from "./business-site";
 import { ensureDomainAttached, purchaseDomainForUser } from "./domain-purchase";
 import { sendAdminAlertSMS } from "./admin-alert";
+import { sendCustomerEmail } from "./customer-email-send";
+import { messagingApprovedEmail } from "./customer-emails";
+import { notifyCommand } from "./command-notify";
 
 /**
  * Auto-purchase kill switch for phone numbers.
@@ -100,13 +103,22 @@ export type ProfileRow = {
 };
 
 export const PROFILE_COLUMNS =
-  "id, email, phone, first_name, last_name, industry, subscription_status, free_subscription, wallet_balance, custom_domain, business_slug, messaging_status, messaging_status_at, messaging_attempts, messaging_error, a2p_registration, owned_numbers";
+  "plan, id, email, phone, first_name, last_name, industry, subscription_status, free_subscription, wallet_balance, custom_domain, business_slug, messaging_status, messaging_status_at, messaging_attempts, messaging_error, a2p_registration, owned_numbers";
 
 /** Outcome of advancing one account, for run summaries and API responses. */
 export type StepResult = { userId: string; from: MessagingStatus; to: MessagingStatus; note?: string };
 
 const hoursSince = (iso: string | null | undefined) =>
   iso ? Math.max(0, (Date.now() - new Date(iso).getTime()) / 3_600_000) : 0;
+
+async function notifyCustomerApproved(db: Db, profile: ProfileRow) {
+  // One "you're approved" email per account, the first time texting goes live.
+  if (!profile.email || !isEntitled(profile)) return;
+  const reg = (profile.a2p_registration || {}) as Record<string, unknown>;
+  if (reg.approvedEmailAt) return;
+  const ok = await sendCustomerEmail(profile.email, messagingApprovedEmail(profile.first_name || ""), `approved-${profile.id}`);
+  if (ok) await db.from("profiles").update({ a2p_registration: { ...reg, approvedEmailAt: new Date().toISOString() } }).eq("id", profile.id);
+}
 
 function notifyAdmin(text: string) {
   void sendAdminAlertSMS(text).catch(() => {});
@@ -224,9 +236,22 @@ export async function setStatus(db: Db, profile: ProfileRow, status: MessagingSt
   if (notifyText) notifyAdmin(notifyText);
   if (changed && status === "REJECTED") {
     notifyAdmin(`❌ Text2Sale registration rejected\n${businessLabel(profile)}\n${opts.error || "No reason given"}`);
+    await notifyCommand(db, {
+      eventKey: `rejected:${profile.id}:${now.slice(0, 10)}`,
+      kind: "rejected",
+      title: "⚠️ Messaging registration rejected",
+      body: `${businessLabel(profile)} — ${opts.error || "no reason given"}. Needs your attention.`,
+    }).catch(() => {});
   }
   if (changed && status === "ACTIVE" && wasStatus !== "ACTIVE") {
     notifyAdmin(`✅ Text2Sale texting is live\n${businessLabel(profile)}`);
+    await notifyCustomerApproved(db, profile).catch(() => {});
+    await notifyCommand(db, {
+      eventKey: `approved:${profile.id}`,
+      kind: "approved",
+      title: "✅ Customer texting is live",
+      body: `${businessLabel(profile)} is approved and ready to send.`,
+    }).catch(() => {});
   }
 }
 

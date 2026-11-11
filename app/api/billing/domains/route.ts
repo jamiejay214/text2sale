@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { EMAIL_FROM, SUPPORT_EMAIL } from "@/lib/email-sender";
 import { createClient } from "@supabase/supabase-js";
 import { processDomainRenewal, type RenewalMarker, type RenewalOutcome } from "@/lib/domain-renewal";
 import { patchRegistration, priceToCharge } from "@/lib/domain-purchase";
@@ -27,7 +28,8 @@ async function emailInsufficient(to: string | null, name: string, domain: string
     method: "POST",
     headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json", "Idempotency-Key": `domain-renewal-${domain}-${expiresAt.toISOString().slice(0, 10)}` },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM_ADDRESS || "Text2Sale <hello@text2sale.com>",
+      from: EMAIL_FROM,
+      reply_to: SUPPORT_EMAIL,
       to: [to],
       subject: `Add funds to keep ${domain}`,
       text,

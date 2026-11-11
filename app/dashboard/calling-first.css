@@ -1,0 +1,104 @@
+/* Calling-first CRM refresh: scoped to the authenticated workspace. */
+.workspace-v2 .t2s-sales-launchpad {
+  display:grid;
+  grid-template-columns:minmax(0,1.35fr) minmax(270px,.85fr);
+  gap:24px;
+  align-items:center;
+  margin-bottom:20px;
+  padding:28px;
+  border:1px solid #255542;
+  border-radius:20px;
+  background:linear-gradient(125deg,#133e30 0%,#1d5541 58%,#27664b 100%);
+  box-shadow:0 16px 34px rgba(14,57,41,.12);
+  color:#fff;
+}
+.workspace-v2 .t2s-sales-kicker {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  font-size:.68rem;
+  font-weight:850;
+  letter-spacing:.13em;
+  color:#d4f09d;
+}
+.workspace-v2 .t2s-sales-launchpad h2 {
+  max-width:540px;
+  margin:11px 0 10px;
+  color:#fff;
+  font-size:clamp(1.4rem,2.4vw,2.1rem);
+  line-height:1.14;
+  letter-spacing:-.035em;
+}
+.workspace-v2 .t2s-sales-launchpad-copy>p {
+  max-width:490px;
+  margin:0;
+  color:#d0e2d6;
+  font-size:.87rem;
+  line-height:1.65;
+}
+.workspace-v2 .t2s-sales-launchpad-actions {
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+  margin-top:22px;
+}
+.workspace-v2 .t2s-sales-launchpad-actions button {
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:9px;
+  min-height:43px;
+  padding:0 16px;
+  border-radius:11px;
+  font-size:.83rem;
+  font-weight:800;
+  cursor:pointer;
+}
+.workspace-v2 .t2s-sales-start { background:#d9f779; color:#143e30; border:1px solid #d9f779; }
+.workspace-v2 .t2s-sales-secondary { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.28); }
+.workspace-v2 .t2s-sales-launchpad button:focus-visible { outline:3px solid #d9f779; outline-offset:3px; }
+.workspace-v2 .t2s-sales-quicklinks {
+  display:grid;
+  gap:8px;
+  padding:10px;
+  border:1px solid rgba(255,255,255,.17);
+  border-radius:16px;
+  background:rgba(7,35,25,.22);
+}
+.workspace-v2 .t2s-sales-quicklinks button {
+  display:flex;
+  align-items:center;
+  gap:12px;
+  min-height:60px;
+  padding:10px 12px;
+  border:1px solid rgba(255,255,255,.11);
+  border-radius:10px;
+  background:rgba(255,255,255,.09);
+  color:#fff;
+  text-align:left;
+  cursor:pointer;
+}
+.workspace-v2 .t2s-sales-quicklinks button:hover { background:rgba(255,255,255,.16); }
+.workspace-v2 .t2s-sales-quicklinks button>span { min-width:0; flex:1; }
+.workspace-v2 .t2s-sales-quicklinks strong,.workspace-v2 .t2s-sales-quicklinks small { display:block; }
+.workspace-v2 .t2s-sales-quicklinks strong { font-size:.82rem; }
+.workspace-v2 .t2s-sales-quicklinks small { margin-top:3px; color:#d1e5d7; font-size:.68rem; }
+.workspace-v2 .workspace-sidebar .workspace-nav-group:first-of-type { margin-top:8px; }
+.workspace-v2 .workspace-sidebar .workspace-nav-group:first-of-type button.is-active {
+  border-radius:10px;
+}
+.workspace-v2 .v2-metric-card { min-height:132px; }
+.workspace-v2 .v2-metric-card p { margin-top:17px; }
+@media(max-width:1000px){
+  .workspace-v2 .t2s-sales-launchpad { grid-template-columns:1fr; }
+  .workspace-v2 .t2s-sales-quicklinks { grid-template-columns:repeat(3,minmax(0,1fr)); }
+  .workspace-v2 .t2s-sales-quicklinks button { align-items:flex-start; }
+  .workspace-v2 .t2s-sales-quicklinks button>svg:last-child { display:none; }
+}
+@media(max-width:700px){
+  .workspace-v2 .t2s-sales-launchpad { padding:20px; gap:17px; }
+  .workspace-v2 .t2s-sales-quicklinks { grid-template-columns:1fr; }
+  .workspace-v2 .t2s-sales-quicklinks button { align-items:center; }
+  .workspace-v2 .t2s-sales-quicklinks button>svg:last-child { display:block; }
+  .workspace-v2 .t2s-sales-launchpad-actions button { flex:1; }
+}

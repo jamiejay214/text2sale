@@ -1,5 +1,6 @@
 import type { MetadataRoute } from "next";
 import { getAllPosts, getIndexableTags, getPostsByTag } from "@/lib/blog-posts";
+import { isTagSearchIndexed } from "@/lib/blog-tag-intros";
 import { HOME_UPDATED, SITE_PAGES, SITE_URL } from "@/lib/site-pages";
 
 // lastmod values track real content changes. Stamping every URL with the
@@ -11,7 +12,7 @@ const TAG_INTROS_ADDED = "2026-09-28";
 
 // Landing pages with their own opengraph-image.tsx (the rest share the
 // site-wide card, which is already listed once on the homepage entry).
-const PAGES_WITH_OWN_IMAGE = new Set(["/private-health-insurance-vs-marketplace-insurance"]);
+const PAGES_WITH_OWN_IMAGE = new Set<string>();
 
 function newest(dates: string[]): Date {
   return new Date(dates.reduce((a, b) => (a > b ? a : b)));
@@ -19,7 +20,7 @@ function newest(dates: string[]): Date {
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const blogPosts = getAllPosts();
-  const blogTags = getIndexableTags();
+  const blogTags = getIndexableTags().filter(isTagSearchIndexed);
 
   return [
     {

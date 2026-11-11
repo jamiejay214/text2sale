@@ -289,8 +289,8 @@ export default function ContactsWorkspace({ profile, onNavigate }: WorkspaceView
     <>
       <PageHeader
         eyebrow="Contact intelligence"
-        title="Every lead, ready for the next move."
-        description="Search, organize, assign, and manage your lead database without loading thousands of records at once."
+        title="Contacts"
+        description="Your people, their details, and the next step."
         actions={<><button className="v2-btn" onClick={() => onNavigate("upload")}><Upload size={16} /> Import CSV</button><button className="v2-btn" onClick={exportPage}><Download size={16} /> Export</button><button className="v2-btn v2-btn-primary" onClick={() => setEditing("new")}><Plus size={16} /> Add contact</button></>}
       />
       {notice && <div className="v2-notice is-ok">{notice}<button onClick={() => setNotice("")}><X size={15} /></button></div>}

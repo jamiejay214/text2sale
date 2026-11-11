@@ -324,9 +324,10 @@ export function isEntitled(profile: {
 }
 
 /**
- * AI features (auto-reply, AI receptionist) are included in the one plan, so
- * an active subscription is enough. ai_plan / free_ai_plan are kept for
- * accounts the admin granted AI to directly.
+ * AI access comes with an active subscription; which AI (text replies or
+ * the AI receptionist) also depends on the plan, checked separately with
+ * canText / canCall (lib/entitlements.ts). ai_plan / free_ai_plan are kept
+ * for accounts the admin granted AI to directly.
  */
 export function hasAiAccess(profile: {
   ai_plan?: boolean | null;

@@ -6,9 +6,10 @@ import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
-import MarketingHome from "@/components/MarketingHome";
+import ApprovedHome from "@/components/ApprovedHome";
 import { captureProspect, FOLLOWUP_NOTICE } from "@/lib/prospect-capture";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
+import { isPlanKey, PLAN_KEYS, PLANS, USAGE_RATES, type PlanKey } from "@/lib/plans";
 
 export default function HomeClient({
   faqSection,
@@ -40,6 +41,14 @@ export default function HomeClient({
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
   const [signupStep, setSignupStep] = useState<1 | 2>(1);
+  // The plan picked on the pricing cards rides through signup to checkout
+  // (and survives an email-verification detour in localStorage).
+  const [selectedPlan, setSelectedPlan] = useState<PlanKey>("text");
+  // /pricing links here with ?signup=1&plan=<key>.
+  useEffect(() => {
+    const plan = new URLSearchParams(window.location.search).get("plan");
+    if (isPlanKey(plan)) setSelectedPlan(plan);
+  }, []);
   const [followup, setFollowup] = useState(false);
   const savedContact = useRef("");
 
@@ -70,7 +79,11 @@ export default function HomeClient({
     document.getElementById("auth-form")?.scrollIntoView({ behavior: "smooth", block: "center" });
   };
 
-  const handleSelectPlan = () => {
+  const handleSelectPlan = (plan?: PlanKey) => {
+    if (plan) {
+      setSelectedPlan(plan);
+      try { localStorage.setItem("t2s_signup_plan", plan); } catch {}
+    }
     setMode("signup");
     setError("");
     setTimeout(scrollToAuth, 100);
@@ -173,12 +186,12 @@ export default function HomeClient({
       await authFetch("/api/onboarding/plan", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ package: "standard" }),
+        body: JSON.stringify({ package: selectedPlan }),
       });
       const checkoutResponse = await authFetch("/api/create-subscription", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: result.user?.id, userEmail: signupEmail.trim().toLowerCase() }),
+        body: JSON.stringify({ userId: result.user?.id, userEmail: signupEmail.trim().toLowerCase(), package: selectedPlan }),
       });
       const checkout = await checkoutResponse.json().catch(() => ({}));
       if (!checkoutResponse.ok || !checkout.url) {
@@ -194,77 +207,9 @@ export default function HomeClient({
 
   return (
     <main className="crm-theme marketing-site min-h-screen overflow-hidden">
-      <MarketingHome
-        onLogin={() => { setMode("login"); scrollToAuth(); }}
-        onSignup={() => { setMode("signup"); scrollToAuth(); }}
-      />
-
-      {/* ═══════ PRICING + SIGN-IN ═══════ */}
-      <section id="pricing" className="marketing-auth marketing-plan-section relative border-b border-emerald-900/70 bg-gradient-to-b from-[#102c23] via-[#173b2f] to-[#0b241b] py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center">
-            <div className="inline-block rounded-full bg-lime-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-lime-200 ring-1 ring-emerald-500/20">
-              Simple pricing
-            </div>
-            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">Pick your plan. <span className="bg-gradient-to-r from-lime-200 to-emerald-300 bg-clip-text text-transparent">Cancel anytime.</span></h2>
-            <p className="mx-auto mt-4 max-w-xl text-lg text-zinc-400">No long-term contracts. No hidden fees. Just results.</p>
-          </div>
-
-          <div className="mx-auto mt-12 max-w-2xl">
-            <div
-              onClick={() => handleSelectPlan()}
-              className="group relative cursor-pointer overflow-hidden rounded-3xl border-2 border-lime-300/70 bg-gradient-to-br from-emerald-950/70 via-zinc-900/80 to-emerald-950/30 p-8 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-lime-300/20"
-            >
-              <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-lime-300/20 blur-3xl" />
-              <div className="relative">
-                <div className="flex items-center gap-2">
-                  <div className="text-xs font-semibold uppercase tracking-widest text-lime-200">Text2Sale</div>
-                  <span className="inline-flex items-center rounded-full bg-lime-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-950">
-                    AI included
-                  </span>
-                </div>
-                <div className="mt-3 flex items-baseline gap-2">
-                  <span className="text-5xl font-black text-white">$39.99</span>
-                  <span className="text-sm text-zinc-400">/month</span>
-                </div>
-                <div className="mt-2 text-sm text-zinc-300">$0.015/SMS segment · inbound SMS free · $0.020/AI reply + SMS</div>
-                <div className="mt-1 text-xs text-zinc-400">$0.025/min outbound calls · $0.015/min inbound calls · $0.18/min AI calls</div>
-
-                <ul className="mt-6 grid gap-2.5 text-sm text-zinc-200 sm:grid-cols-2">
-                  {[
-                    "Unlimited contacts",
-                    "Campaigns + drip workflows",
-                    "2-way conversations",
-                    "CSV import & blast",
-                    "AI auto-replies + qualification",
-                    "AI appointment booking",
-                    "AI calling receptionist",
-                    "Google Calendar sync",
-                    "Team management",
-                    "10DLC onboarding tools",
-                  ].map((x) => (
-                    <li key={x} className="flex items-center gap-2">
-                      <span className="text-lime-300">✓</span> {x}
-                    </li>
-                  ))}
-                </ul>
-
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleSelectPlan(); }}
-                  className="mt-7 w-full rounded-2xl bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-xl shadow-lime-300/20 transition hover:brightness-110"
-                >
-                  Start Texting Leads · $39.99/month
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="mx-auto mt-6 max-w-2xl">
-            <div className="rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-4 py-3 text-center text-sm text-emerald-200">
-              💰 <span className="font-semibold">Volume SMS:</span> a $500+ wallet purchase unlocks $0.0135/SMS.
-            </div>
-          </div>
-
+      <ApprovedHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
+      <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
+        <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. One-time and monthly carrier registration fees apply to texting plans.</p></details>
           {/* Sign-in / Sign-up form */}
           <div id="auth-form" className="mx-auto mt-16 max-w-xl">
             <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-2xl ring-1 ring-white/5" onKeyDown={handleKeyDown}>
@@ -350,8 +295,13 @@ export default function HomeClient({
                 ) : (
                   <div className="space-y-4">
                     <div className="rounded-2xl border border-emerald-800/60 bg-emerald-950/30 px-4 py-3">
-                      <span className="text-sm font-semibold text-white">Text2Sale — <span className="text-zinc-300">$39.99/month</span></span>
-                      <p className="mt-1 text-xs text-zinc-400">AI included. Payment is required immediately after account creation; there is no free trial.</p>
+                      <label className="flex items-center justify-between gap-3 text-sm font-semibold text-white">
+                        Plan
+                        <select value={selectedPlan} onChange={(e) => { if (isPlanKey(e.target.value)) handleSelectPlan(e.target.value); }} className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white">
+                          {PLAN_KEYS.map((key) => <option key={key} value={key}>{PLANS[key].name} · ${PLANS[key].price}/month</option>)}
+                        </select>
+                      </label>
+                      <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. Payment is required right after account creation; there is no free trial.{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
                     </div>
 
                     <p className="text-sm text-lime-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>

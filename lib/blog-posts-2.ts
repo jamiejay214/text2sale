@@ -1451,7 +1451,6 @@ export const BLOG_POSTS_2: BlogPost[] = [
     relatedSlugs: ["open-enrollment-texting-campaign", "health-insurance-lead-qualifying-texts", "medicare-turning-65-texts", "tcpa-compliance-texting-leads"],
     relatedPages: [
       { href: "/health-insurance-texting-crm", label: "Texting CRM for health insurance agents" },
-      { href: "/private-health-insurance-vs-marketplace-insurance", label: "Private vs marketplace health insurance" },
     ],
   },
   {
@@ -1546,7 +1545,6 @@ export const BLOG_POSTS_2: BlogPost[] = [
     relatedSlugs: ["special-enrollment-period-texting", "open-enrollment-texting-campaign", "hipaa-aware-patient-texting", "how-to-book-appointments-by-text"],
     relatedPages: [
       { href: "/health-insurance-texting-crm", label: "Texting CRM for health insurance agents" },
-      { href: "/private-health-insurance-vs-marketplace-insurance", label: "Private vs marketplace health insurance" },
     ],
   },
   {

@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
+import { planShape, toPlanKey } from "@/lib/packages";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import type { Db } from "@/lib/business-site";
 import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
 import { NUMBER_MONTHLY_FEE, TEN_DLC_MIXED_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
+import { receiptEmail } from "@/lib/customer-emails";
+import { sendCustomerEmail } from "@/lib/customer-email-send";
+import { notifyCommand } from "@/lib/command-notify";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -133,7 +137,7 @@ export async function POST(req: NextRequest) {
           // itself is already settled atomically above.
           const { data: profile } = await supabase
             .from("profiles")
-            .select("wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name, plan")
+            .select("email, wallet_balance, usage_history, total_deposited, referred_by, referral_rewarded, first_name, last_name, plan")
             .eq("id", userId)
             .single();
 
@@ -177,6 +181,26 @@ export async function POST(req: NextRequest) {
                 usage_history: [entry, ...(profile.usage_history || [])],
               })
               .eq("id", userId);
+
+            // Email the customer a receipt for the funds they just added.
+            await sendCustomerEmail(
+              profile.email,
+              receiptEmail({
+                name: `${profile.first_name || ""} ${profile.last_name || ""}`.trim(),
+                kind: "funds",
+                items: [{ description: "Funds added to your Text2Sale balance", amount }],
+                total: amount,
+                receiptId: `T2S-${event.id.slice(-8).toUpperCase()}`,
+              }),
+              `receipt-${event.id}`,
+            ).catch(() => {});
+
+            await notifyCommand(supabase, {
+              eventKey: `payment:${event.id}`,
+              kind: "payment",
+              title: `💵 Funds added — $${amount.toFixed(2)}`,
+              body: `${`${profile.first_name || ""} ${profile.last_name || ""}`.trim() || profile.email || "A customer"} topped up their balance.`,
+            });
 
             // ── Referral bonus — atomic flag flip gates the payout ──────
             // Before: check `!referral_rewarded`, then separately write
@@ -291,13 +315,27 @@ export async function POST(req: NextRequest) {
         // don't want Stripe's "inactive" state to clobber the comp.
         const { data: current } = await supabase
           .from("profiles")
-          .select("free_subscription, free_ai_plan")
+          .select("free_subscription, free_ai_plan, plan")
           .eq("id", userId)
           .single();
         const update: Record<string, unknown> = {
           stripe_subscription_id: subscription.id,
         };
         if (!current?.free_subscription) update.subscription_status = subStatus;
+
+        // The plan paid for (Text, Dialer, Complete) is stamped on the
+        // subscription. A downgrade booked for renewal keeps today's plan
+        // until its date (see lib/entitlements.ts planKeyOf).
+        const paidPlan = toPlanKey(subscription.metadata?.package);
+        if (paidPlan && !current?.free_subscription) {
+          const plan = (current?.plan || {}) as Record<string, unknown>;
+          const pendingAt = typeof plan.pendingAt === "string" ? new Date(plan.pendingAt).getTime() : 0;
+          const downgradeBooked = plan.pendingKey === paidPlan && pendingAt > Date.now();
+          if (!downgradeBooked && plan.key !== paidPlan) {
+            const shape = planShape(paidPlan, Number(plan.messageCost) === 0.0135 ? 0.0135 : undefined);
+            update.plan = { ...plan, ...shape, pendingKey: null, pendingAt: null };
+          }
+        }
 
         // The AI features follow the package that is actually being paid for.
         // The package is stamped on the subscription at checkout (and by the
@@ -352,7 +390,7 @@ export async function POST(req: NextRequest) {
         if (userId) {
           const { data: profile } = await supabase
             .from("profiles")
-            .select("usage_history, owned_numbers, wallet_balance, a2p_registration")
+            .select("email, first_name, usage_history, owned_numbers, wallet_balance, a2p_registration, plan")
             .eq("id", userId)
             .single();
 
@@ -360,13 +398,23 @@ export async function POST(req: NextRequest) {
             const now = new Date().toISOString();
             const entries = [];
 
+            // A downgrade booked for this renewal takes effect now.
+            const plan = (profile.plan || {}) as Record<string, unknown>;
+            const pendingKey = toPlanKey(plan.pendingKey);
+            if (pendingKey && typeof plan.pendingAt === "string" && new Date(plan.pendingAt).getTime() <= Date.now() + 60_000) {
+              await supabase
+                .from("profiles")
+                .update({ plan: { ...plan, ...planShape(pendingKey, Number(plan.messageCost) === 0.0135 ? 0.0135 : undefined), pendingKey: null, pendingAt: null } })
+                .eq("id", userId);
+            }
+
             // Log subscription charge (stable id keyed on the invoice so a
             // webhook retry can't create a duplicate audit entry).
             entries.push({
               id: `sub_${invoice.id}`,
               type: "charge",
               amount: (invoice.amount_paid || 0) / 100,
-              description: "Monthly subscription — Text2Sale Plan",
+              description: `Monthly subscription — ${typeof plan.name === "string" ? plan.name : "Text2Sale"}`,
               createdAt: now,
               status: "succeeded",
             });
@@ -411,6 +459,28 @@ export async function POST(req: NextRequest) {
               .from("profiles")
               .update({ usage_history: updatedHistory })
               .eq("id", userId);
+
+            // Email the customer a receipt for the subscription charge (card).
+            const subAmount = (invoice.amount_paid || 0) / 100;
+            if (subAmount > 0) {
+              await sendCustomerEmail(
+                profile.email,
+                receiptEmail({
+                  name: profile.first_name || "",
+                  kind: "subscription",
+                  items: [{ description: `${typeof plan.name === "string" ? plan.name : "Text2Sale"} — monthly subscription`, amount: subAmount }],
+                  total: subAmount,
+                  receiptId: invoice.number || `T2S-${event.id.slice(-8).toUpperCase()}`,
+                }),
+                `receipt-${event.id}`,
+              ).catch(() => {});
+              await notifyCommand(supabase, {
+                eventKey: `payment:${event.id}`,
+                kind: "payment",
+                title: `💵 Subscription payment — $${subAmount.toFixed(2)}`,
+                body: `${typeof plan.name === "string" ? plan.name : "Text2Sale"} · ${profile.email || ""}`,
+              });
+            }
           }
         }
       }

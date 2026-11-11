@@ -13,6 +13,7 @@
 import { CALL_RATE_FORWARD_PER_MIN, CALL_RATE_INBOUND_PER_MIN } from "./call-pricing";
 import { isEntitled } from "./messaging-status";
 import { toE164 } from "./browser-calls";
+import { canCall } from "./entitlements";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -32,7 +33,14 @@ async function telnyx(path: string, method: "GET" | "POST", body?: Record<string
   return { ok: res.ok, status: res.status, json };
 }
 
-type ForwardingEntry = { number?: string | null; forwardEnabled?: boolean | null; forwardTo?: string | null };
+type ForwardingEntry = { number?: string | null; forwardEnabled?: boolean | null; forwardTo?: string | null; aiOff?: boolean | null };
+
+/** True when the owner switched the AI receptionist off for this business number. */
+export function aiOffFor(ownedNumbers: unknown, businessNumber: string): boolean {
+  const business = toE164(businessNumber);
+  const entries = Array.isArray(ownedNumbers) ? (ownedNumbers as ForwardingEntry[]) : [];
+  return Boolean(business && entries.some((n) => n && n.aiOff && toE164(n.number) === business));
+}
 
 /**
  * The forwarding number for a call to `businessNumber`, or null when
@@ -90,6 +98,16 @@ export async function findCallOwner(
   }
   if (!owners.length) return null;
 
+  // An agent sharing a sponsor's numbers (calling_sponsors) has no phone line
+  // of their own: calls to those numbers, their leads' callbacks included, go
+  // to the sponsor (AI receptionist or forwarding).
+  if (owners.length > 1) {
+    const { data: agents } = await db.from("calling_sponsors").select("agent_id").in("agent_id", owners);
+    const agentIds = new Set(((agents || []) as Array<{ agent_id: string }>).map((a) => a.agent_id));
+    const sponsors = owners.filter((id) => !agentIds.has(id));
+    if (sponsors.length) owners = sponsors;
+  }
+
   const variants = phoneVariants(callerNumber);
   const { data: contacts } = variants.length
     ? await db
@@ -117,7 +135,7 @@ export async function findCallOwner(
 async function loadRoutingProfile(db: Db, userId: string) {
   const { data } = await db
     .from("profiles")
-    .select("telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription, owned_numbers")
+    .select("telnyx_credential_id, wallet_balance, paused, subscription_status, free_subscription, owned_numbers, email, plan")
     .eq("id", userId)
     .maybeSingle();
   return data;
@@ -141,7 +159,7 @@ export async function routeInboundCall(
   if (forward && balance >= CALL_RATE_FORWARD_PER_MIN) {
     route = "forward";
     to = forward;
-  } else if (!forward && profile.telnyx_credential_id && balance >= CALL_RATE_INBOUND_PER_MIN) {
+  } else if (!forward && profile.telnyx_credential_id && canCall(profile) && balance >= CALL_RATE_INBOUND_PER_MIN) {
     const credential = await telnyx(`/telephony_credentials/${encodeURIComponent(profile.telnyx_credential_id)}`, "GET");
     const username = credential.ok ? String(credential.json?.data?.sip_username || "") : "";
     if (username) {
@@ -197,4 +215,158 @@ export async function legIsAlive(ccid: string): Promise<boolean> {
   if (result.status === 404) return false;
   if (!result.ok) return true;
   return result.json?.data?.is_alive !== false;
+}
+
+// ── Overflow: the owner is dialing, an agent takes the call ──────────────
+// While the owner has a predictive dialer session open, an inbound call to
+// their numbers rings an agent they've opted in (calling_sponsors
+// take_overflow) on the agent's browser phone. The call stays the owner's:
+// same call row, billed to the owner's wallet at the inbound rate. If the
+// agent doesn't pick up, the webhook hands the call to the AI receptionist.
+//
+// An agent who is running the dialer themselves is only rung while waiting
+// (ready) or wrapping up, never mid-call; their session is held on the
+// inbound call (no new dials, ringing lead legs hung up) and handed back
+// in its previous state by releaseOverflow.
+
+const DIALER_HEARTBEAT_MS = 45_000;
+
+export type OverflowState = { agentId: string; agentSession?: string | null };
+
+export async function sipUsername(credentialId: string | null | undefined): Promise<string> {
+  if (!credentialId) return "";
+  const credential = await telnyx(`/telephony_credentials/${encodeURIComponent(credentialId)}`, "GET");
+  return credential.ok ? String(credential.json?.data?.sip_username || "") : "";
+}
+
+async function openDialerSession(db: Db, userId: string) {
+  const { data } = await db
+    .from("dialer_sessions")
+    .select("id, status, agent_state, agent_seen_at")
+    .eq("user_id", userId)
+    .in("status", ["active", "paused"])
+    .maybeSingle();
+  const seen = data?.agent_seen_at ? new Date(data.agent_seen_at).getTime() : 0;
+  return data && Date.now() - seen < DIALER_HEARTBEAT_MS ? data : null;
+}
+
+/**
+ * Hold a user's open dialer session for a call put through to them: no new
+ * dials, no lead put through, their ringing lead lines dropped. Only from
+ * one of `states` (never mid-call). Returns the session (with its SIP user),
+ * or null when they have no fresh session or it isn't free.
+ */
+export async function holdSession(
+  db: Db,
+  userId: string,
+  hold: { from: string; label?: string | null; states: string[] }
+): Promise<{ id: string; sip_username: string | null } | null> {
+  const session = await openDialerSession(db, userId);
+  if (!session || !hold.states.includes(session.agent_state)) return null;
+  const { data } = await db
+    .from("dialer_sessions")
+    .update({ agent_state: "on_call", inbound_from: hold.from, inbound_label: hold.label || null, inbound_prev_state: session.agent_state })
+    .eq("id", session.id)
+    .eq("agent_state", session.agent_state)
+    .is("inbound_from", null)
+    .select("id, sip_username")
+    .maybeSingle();
+  if (!data) return null;
+  const { data: ringing } = await db
+    .from("dialer_queue")
+    .select("call_control_id")
+    .eq("session_id", session.id)
+    .eq("status", "dialing")
+    .not("call_control_id", "is", null)
+    .is("human_at", null);
+  await Promise.all(((ringing || []) as Array<{ call_control_id: string }>).map((leg) => hangupLeg(leg.call_control_id)));
+  return data;
+}
+
+/**
+ * Hand a held dialer session back in the state it was held from. Returns
+ * that state ("ready" means the caller should restart dialing), or null.
+ */
+export async function releaseHold(db: Db, sessionId: string | null | undefined): Promise<string | null> {
+  if (!sessionId) return null;
+  const { data: session } = await db
+    .from("dialer_sessions")
+    .select("inbound_prev_state")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (!session) return null;
+  const restored = session.inbound_prev_state || "wrap";
+  const { data } = await db
+    .from("dialer_sessions")
+    .update({ agent_state: restored, inbound_from: null, inbound_label: null, inbound_prev_state: null })
+    .eq("id", sessionId)
+    .not("inbound_from", "is", null)
+    .select("id")
+    .maybeSingle();
+  return data ? restored : null;
+}
+
+/** Hand an agent's dialer session back after an overflow call. */
+export async function releaseOverflow(db: Db, overflow: OverflowState): Promise<string | null> {
+  return releaseHold(db, overflow.agentSession);
+}
+
+/**
+ * Ring an opted-in agent when the owner is busy dialing. Returns true when
+ * the call is ringing the agent; false leaves it to the usual path.
+ */
+export async function routeOverflow(
+  db: Db,
+  call: { ccid: string; rowId: string; userId: string; callerNumber: string; businessNumber: string }
+): Promise<boolean> {
+  if (!(await openDialerSession(db, call.userId))) return false;
+  const profile = await loadRoutingProfile(db, call.userId);
+  if (!profile || profile.paused || !canCall(profile)) return false;
+  if ((Number(profile.wallet_balance) || 0) < CALL_RATE_INBOUND_PER_MIN) return false;
+
+  const { data: links } = await db
+    .from("calling_sponsors")
+    .select("agent_id")
+    .eq("sponsor_id", call.userId)
+    .eq("take_overflow", true);
+  for (const { agent_id: agentId } of (links || []) as Array<{ agent_id: string }>) {
+    const { data: agent } = await db.from("profiles").select("telnyx_credential_id, paused").eq("id", agentId).maybeSingle();
+    if (!agent || agent.paused) continue;
+    const username = await sipUsername(agent.telnyx_credential_id);
+    if (!username) continue;
+
+    // Hold the agent's own dialer, if running, so it neither dials nor puts
+    // a lead through while they're on this call.
+    let held: string | null = null;
+    if (await openDialerSession(db, agentId)) {
+      const session = await holdSession(db, agentId, {
+        from: toE164(call.callerNumber) || call.callerNumber,
+        label: "Customer calling your business line",
+        states: ["ready", "wrap"],
+      });
+      if (!session) continue;
+      held = session.id;
+    }
+
+    const overflow: OverflowState = { agentId, agentSession: held };
+    const transfer = {
+      to: `sip:${username}@sip.telnyx.com`,
+      timeout_secs: 20,
+      // Lets the agent's browser ring this call rather than auto-answer it
+      // like a dialer lead.
+      custom_headers: [{ name: "X-Text2Sale-Route", value: "overflow" }],
+      client_state: encode({ v: 1, callRowId: call.rowId, route: "overflow", overflow }),
+      target_leg_client_state: encode({ v: 1, callRowId: call.rowId, route: "overflow", leg: "target", overflow }),
+    };
+    const callerId = toE164(call.callerNumber);
+    let result = await telnyx(`/calls/${call.ccid}/actions/transfer`, "POST", callerId ? { ...transfer, from: callerId } : transfer);
+    if (!result.ok && callerId) result = await telnyx(`/calls/${call.ccid}/actions/transfer`, "POST", transfer);
+    if (result.ok) {
+      await db.from("calls").update({ notes: "Overflow: rang your agent while you were dialing" }).eq("id", call.rowId);
+      return true;
+    }
+    console.error(`[call-routing] overflow transfer failed ${result.status}: ${JSON.stringify(result.json).slice(0, 300)}`);
+    await releaseOverflow(db, overflow);
+  }
+  return false;
 }

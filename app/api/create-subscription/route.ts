@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
-import { PACKAGES, planShape } from "@/lib/packages";
+import { planShape, toPlanKey } from "@/lib/packages";
+import { ensurePlanPrice } from "@/lib/stripe-plans";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -25,7 +26,7 @@ export async function POST(req: NextRequest) {
 
     const stripe = getStripe();
     const supabase = createClient(supabaseUrl, supabaseKey);
-    const { userId: bodyUserId, userEmail } = await req.json();
+    const { userId: bodyUserId, userEmail, package: requestedPackage } = await req.json();
 
     if (!bodyUserId || !userEmail) {
       return NextResponse.json(
@@ -55,20 +56,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // The single $39.99 plan. Never trust a stale plan price stored on the
-    // profile: older accounts may still carry a retired price.
-    const pkg = "standard" as const;
-    const planPrice = PACKAGES.standard.price;
-    const planPriceCents = Math.round(planPrice * 100);
-    const messageCost = Number(profile?.plan?.messageCost) === 0.0135 ? 0.0135 : PACKAGES.standard.messageCost;
+    // Text, Dialer or Complete (lib/plans.ts): the plan asked for at
+    // checkout, else the one chosen at signup, else Text. Prices always come
+    // from lib/plans.ts, never from a price stored on the profile.
+    const pkg = toPlanKey(requestedPackage) || toPlanKey(profile?.plan?.key) || "text";
+    const messageCost = Number(profile?.plan?.messageCost) === 0.0135 ? 0.0135 : undefined;
 
     let customerId = profile?.stripe_customer_id;
 
     await supabase
       .from("profiles")
-      .update({
-        plan: { ...planShape("standard"), messageCost },
-      })
+      .update({ plan: planShape(pkg, messageCost) })
       .eq("id", userId);
 
     // Create or reuse Stripe customer
@@ -85,39 +83,7 @@ export async function POST(req: NextRequest) {
         .eq("id", userId);
     }
 
-    // Create or find the product
-    const products = await stripe.products.list({ limit: 10, active: true });
-    let product = products.data.find((p) => p.name === "Text2Sale Monthly Plan");
-
-    if (!product) {
-      product = await stripe.products.create({
-        name: "Text2Sale Monthly Plan",
-        description: `Unlimited access to Text2Sale CRM — $${messageCost} per message`,
-      });
-    }
-
-    // Find existing price matching user's plan price, or create one
-    const prices = await stripe.prices.list({
-      product: product.id,
-      active: true,
-      limit: 50,
-    });
-
-    let price = prices.data.find(
-      (p) =>
-        p.unit_amount === planPriceCents &&
-        p.recurring?.interval === "month" &&
-        p.currency === "usd"
-    );
-
-    if (!price) {
-      price = await stripe.prices.create({
-        product: product.id,
-        unit_amount: planPriceCents,
-        currency: "usd",
-        recurring: { interval: "month" },
-      });
-    }
+    const price = await ensurePlanPrice(stripe, pkg);
 
     // Create Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
@@ -125,7 +91,7 @@ export async function POST(req: NextRequest) {
       payment_method_types: ["card"],
       line_items: [{ price: price.id, quantity: 1 }],
       mode: "subscription",
-      success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}&plan=${pkg}`,
       cancel_url: `${appUrl}/dashboard?subscription=cancelled`,
       metadata: {
         userId,

@@ -1,13 +1,15 @@
 import { authenticateWorkspaceOrInternal as authenticateOrInternal } from "@/lib/workspace-auth";
 import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canText } from "@/lib/entitlements";
 import { buildAiSystemPrompt } from "@/lib/ai-sales-prompts";
-import { createCalendarEvent, checkCalendarConflict } from "@/lib/google-calendar";
+import { createCalendarEvent, checkCalendarConflict, getCalendarBusy } from "@/lib/google-calendar";
 import { inferTimezone } from "@/lib/quiet-hours";
 import { sanitizeForSms, cleanAiSms, countSegments } from "@/lib/sms-text";
 import { AI_REPLY_FEE, customerSmsRate } from "@/lib/sms-pricing";
 import { requireSameUser } from "@/lib/auth-guard";
 import { EIN_CERTIFICATE_REQUIRED_MESSAGE, hasEINCertificate } from "@/lib/ein-certificate-storage";
+import { spendableBalance } from "@/lib/call-metering";
 import {
   type AvailableHours,
   DEFAULT_AVAILABLE_HOURS,
@@ -146,6 +148,9 @@ export async function POST(req: NextRequest) {
         { status: 403 }
       );
     }
+    if (!canText(profile)) {
+      return NextResponse.json({ error: "AI text replies come with Text2Sale Text or Complete.", upgrade: "texting" }, { status: 403 });
+    }
 
     if (sendReply && contactRes.data?.dnc) {
       return NextResponse.json(
@@ -161,7 +166,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const balance = Number(profile.wallet_balance) || 0;
+    const balance = await spendableBalance(supabase, userId, profile.wallet_balance);
 
     const messages = (messagesRes.data || []).slice().reverse();
     const contact = contactRes.data;
@@ -224,7 +229,10 @@ export async function POST(req: NextRequest) {
     let availabilityContext = "";
     let availableSlots: { date: string; time: string; display: string }[] = [];
     if (hours.enabled) {
-      availableSlots = await getAvailableSlots(supabase, userId, hours, 8);
+      // Skip times already taken on the owner's Google Calendar, so the AI
+      // never offers a slot it would then have to take back.
+      const busy = await getCalendarBusy(userId, new Date(), new Date(Date.now() + (hours.maxDaysOut + 1) * 86_400_000));
+      availableSlots = await getAvailableSlots(supabase, userId, hours, 8, undefined, busy);
       if (availableSlots.length > 0) {
         availabilityContext = `\nAPPOINTMENT SCHEDULING:
 You can book appointments for the customer. Available slots (${hours.timezone}):
@@ -330,6 +338,8 @@ BOOKING RULES — follow exactly:
 
     if (toolUse && toolUse.name === "book_appointment") {
       const input = toolUse.input as { date: string; time: string; title?: string };
+      // Slots are "HH:MM:SS"; the model sometimes sends "HH:MM".
+      if (/^\d{1,2}:\d{2}$/.test(input.time || "")) input.time = `${input.time.padStart(5, "0")}:00`;
 
       // Verify the slot is valid
       const slotValid = availableSlots.some((s) => s.date === input.date && s.time === input.time);
@@ -423,6 +433,11 @@ BOOKING RULES — follow exactly:
             model: "claude-haiku-4-5-20251001",
             max_tokens: 300,
             system: systemPrompt,
+            // Required: the API rejects a tool_result without the tool
+            // definitions, which left the lead with no reply at all whenever
+            // the slot it picked was taken. tool_choice none: answer in text.
+            tools,
+            tool_choice: { type: "none" },
             messages: [
               ...turns,
               {
@@ -447,12 +462,18 @@ BOOKING RULES — follow exactly:
           }),
         });
 
-        const followUpData = await followUp.json();
+        const followUpData = await followUp.json().catch(() => ({}));
+        if (!followUp.ok) console.error("[ai-reply] booking follow-up failed:", JSON.stringify(followUpData).slice(0, 300));
         const followUpText = followUpData.content?.find((c: { type: string }) => c.type === "text");
         const cleanedFollowUp = cleanAiSms(followUpText?.text || "");
+        // If the model still has nothing to say, offer the next open time
+        // rather than leaving the lead without an answer.
+        const nextSlot = availableSlots.find((s) => !(s.date === input.date && s.time === input.time));
         aiReply = cleanedFollowUp || (appointmentBooked
           ? sanitizeForSms(`You're all set for ${formatDateNice(input.date)} at ${formatTime12(input.time)}! Looking forward to it.`)
-          : "");
+          : nextSlot
+            ? sanitizeForSms(`That time isn't open anymore. Would ${nextSlot.display} work for you?`)
+            : "");
         if (!aiReply) {
           return NextResponse.json(
             { error: "AI failed to generate a reply. Please try again." },
@@ -585,6 +606,14 @@ BOOKING RULES — follow exactly:
           last_message_at: new Date().toISOString(),
         })
         .eq("id", conversationId);
+
+      // Puts the conversation in the AI handled tab. Separate from the update
+      // above so a database without the column still saves the preview.
+      const { error: markError } = await supabase
+        .from("conversations")
+        .update({ ai_replied_at: new Date().toISOString() })
+        .eq("id", conversationId);
+      if (markError) console.warn("[ai-reply] could not mark AI reply:", markError.message);
 
       const newBalance = Number(reservedBalance);
 

@@ -1,3 +1,8 @@
+import { createHash } from "node:crypto";
+import {campaignSegmentPreview} from "@/lib/campaign-segment-preview";
+import {countSegments} from "@/lib/sms-text";
+import {customerSmsRate} from "@/lib/sms-pricing";
+import {normalizeImportPhone} from "@/lib/workspace-input";
 import { authenticateWorkspace as authenticate } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -9,7 +14,7 @@ import {
   waveStart,
 } from "@/lib/campaign-sequence";
 import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
-import { withFirstMessageOptOut } from "@/lib/opt-out";
+import { campaignFirstMessage } from "@/lib/opt-out";
 import { enqueueSequence } from "@/lib/campaign-enqueue";
 
 export const maxDuration = 300;
@@ -21,14 +26,15 @@ export async function POST(req: NextRequest) {
     const input = await req.json();
     if (
       typeof input.campaignId !== "string" ||
-      !["assigned", "all"].includes(input.audience)
+      !["assigned", "all", "upload"].includes(input.audience) ||
+      (input.audience === "upload" && (typeof input.uploadId !== "string" || !/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(input.uploadId)))
     ) {
       return NextResponse.json(
         { error: "Choose a campaign and audience." },
         { status: 400 },
       );
     }
-    const startsAt = input.startsAt ? Date.parse(input.startsAt) : Date.now();
+    let startsAt = input.startsAt ? Date.parse(input.startsAt) : Date.now();
     if (!Number.isFinite(startsAt) || startsAt < Date.now() - 60_000)
       return NextResponse.json(
         { error: "Choose a valid start time." },
@@ -58,7 +64,7 @@ export async function POST(req: NextRequest) {
         .maybeSingle(),
       db
         .from("profiles")
-        .select("paused, subscription_status, free_subscription, owned_numbers, opt_out_settings")
+        .select("paused, subscription_status, free_subscription, owned_numbers, opt_out_settings, plan")
         .eq("id", auth.user.id)
         .single(),
     ]);
@@ -82,6 +88,13 @@ export async function POST(req: NextRequest) {
         { error: "An active subscription is required." },
         { status: 403 },
       );
+    if (input.audience === "upload") {
+      const { data: batch, error } = await db.from("csv_uploads").select("id").eq("id",input.uploadId).eq("user_id",auth.user.id).eq("campaign_ready",true).maybeSingle();
+      if (error || !batch) return NextResponse.json({error:"This CSV is unavailable for campaign sending."},{status:error ? 503 : 404});
+      if (campaign.status === "Scheduled" && campaign.scheduled_at) startsAt = Math.max(startsAt, Date.parse(campaign.scheduled_at));
+    }
+    const revision=createHash("sha256").update(JSON.stringify({name:campaign.name,steps:campaign.steps,message:campaign.message,numbers:campaign.selected_numbers,quiet:campaign.quiet_hours_enabled,omit:campaign.omit_first_opt_out,...(input.audience==="upload"?{upload:input.uploadId,status:campaign.status,at:campaign.scheduled_at}:{})})).digest("hex");
+    if(input.expectedRevision && input.expectedRevision!==revision)return NextResponse.json({error:"Campaign changed after review. Review it again before launching."},{status:409});
     let steps;
     try {
       steps = validateSequence(
@@ -138,7 +151,8 @@ export async function POST(req: NextRequest) {
         .order("id")
         .range(offset, offset + 999);
       if (input.audience === "assigned")
-        query = query.eq("campaign", campaign.name);
+        query = query.eq("campaign_id", campaign.id);
+      if (input.audience === "upload") query = query.eq("upload_batch_id",input.uploadId);
       if (input.importedSinceIso)
         query = query.gte("created_at", input.importedSinceIso);
       const { data, error } = await query;
@@ -160,10 +174,12 @@ export async function POST(req: NextRequest) {
     }
     // One sequence per phone number: the same person imported twice must
     // not be texted (and charged) twice.
+    const blockedPhones=new Set<string>();
+    for(let offset=0;;offset+=1000){const {data,error}=await db.from("contacts").select("phone").eq("user_id",auth.user.id).eq("dnc",true).order("id").range(offset,offset+999);if(error)return NextResponse.json({error:"Could not check suppression. Nothing queued."},{status:503});for(const c of data||[])blockedPhones.add(normalizeImportPhone(c.phone));if(!data||data.length<1000)break;}
     const seenPhones = new Set<string>();
     const uniqueContacts = contacts.filter((contact) => {
-      const phone = String(contact.phone || "").replace(/\D/g, "").slice(-10);
-      if (phone.length < 10 || seenPhones.has(phone)) return false;
+      const phone = normalizeImportPhone(String(contact.phone || ""));
+      if (phone.length < 10 || blockedPhones.has(phone) || seenPhones.has(phone)) return false;
       seenPhones.add(phone);
       return true;
     });
@@ -184,7 +200,7 @@ export async function POST(req: NextRequest) {
             contact_id: contact.id,
             body: sanitizeForSms(
               stepIndex === 0
-                ? withFirstMessageOptOut(rendered, profile.opt_out_settings)
+                ? campaignFirstMessage(rendered, profile.opt_out_settings, campaign.omit_first_opt_out === true)
                 : rendered,
             ),
             from_number: numbers[index % numbers.length],
@@ -205,6 +221,7 @@ export async function POST(req: NextRequest) {
         { status: 400 },
       );
     }
+    if(rows.some(row=>/\{[^}]+\}/.test(row.body)))return NextResponse.json({error:"A message has an unresolved personalization field. Correct the template before launch."},{status:400});
     if (rows.some((row) => hasNonGsmChars(row.body)))
       return NextResponse.json(
         {
@@ -213,6 +230,24 @@ export async function POST(req: NextRequest) {
         },
         { status: 400 },
       );
+    if(input.dryRun===true){
+      const segments=rows.reduce((n,row)=>n+countSegments(row.body),0);
+      let minSegments = Infinity, maxSegments = 0;
+      if(input.audience === "upload") {
+        for(const contact of contacts) for(const step of steps) {
+          const estimate=campaignSegmentPreview(step.message,"",contact);
+          minSegments=Math.min(minSegments,estimate.segments);
+          maxSegments=Math.max(maxSegments,estimate.maxSegments);
+        }
+      }
+      return NextResponse.json({...(input.audience==="upload"?{minSegments,maxSegments}:{}),revision,paused:campaign.status==="Paused",recipients:contacts.length,messages:rows.length,segments,estimatedCost:Number((segments*customerSmsRate(profile.plan)).toFixed(2)),samples:rows.slice(0,Math.min(steps.length,3)).map(r=>({body:r.body,scheduledAt:r.scheduled_at})),note:"Estimate uses rendered sample spin choices. Personalization, alternate spin text and replies can change actual usage. Quiet hours may delay sending; follow-ups stop on replies."});
+    }
+    if (input.audience === "upload") {
+      if (input.expectedRevision !== revision) return NextResponse.json({error:"Review this upload before queueing."},{status:409});
+      const {data,error}=await db.rpc("queue_csv_campaign",{p_user:auth.user.id,p_campaign:campaign.id,p_upload:input.uploadId,p_rows:rows});
+      if (error) return NextResponse.json({error:error.code==="P0001"?error.message:"Could not confirm the queue. Check this upload before trying again."},{status:error.code==="P0001"?409:503});
+      return NextResponse.json(data);
+    }
     const queued = await enqueueSequence(db, {
       userId: auth.user.id,
       campaignId: campaign.id,

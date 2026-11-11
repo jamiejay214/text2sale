@@ -69,6 +69,50 @@ function startTone(onSeconds: number, offSeconds: number): () => void {
   }
 }
 
+// One audio context for the connect beep, unlocked by a click. Browsers
+// start an AudioContext created without a recent click "suspended", so a
+// beep made fresh when a lead connects (no click involved) could be silent.
+let beepContext: AudioContext | null = null;
+
+/** Call from a click handler (Start / Ready) so the connect beep can sound later. */
+export function primeConnectBeep() {
+  try {
+    if (!beepContext || beepContext.state === "closed") beepContext = new AudioContext();
+    void beepContext.resume().catch(() => undefined);
+  } catch {
+    // no audio available
+  }
+}
+
+/**
+ * A short double beep through this computer's speakers when the dialer puts
+ * a lead through. It plays locally, outside the call, so only the agent
+ * hears it.
+ */
+function playConnectBeep() {
+  try {
+    if (!beepContext || beepContext.state === "closed") beepContext = new AudioContext();
+    const context = beepContext;
+    void context.resume().catch(() => undefined);
+    const gain = context.createGain();
+    gain.connect(context.destination);
+    const tone = context.createOscillator();
+    tone.frequency.value = 880;
+    tone.connect(gain);
+    const start = context.currentTime + 0.02;
+    gain.gain.setValueAtTime(0, context.currentTime);
+    for (const offset of [0, 0.18]) {
+      gain.gain.setValueAtTime(0.25, start + offset);
+      gain.gain.setValueAtTime(0, start + offset + 0.1);
+    }
+    tone.onended = () => gain.disconnect();
+    tone.start(start);
+    tone.stop(start + 0.35);
+  } catch {
+    // no audio available; the screen still shows the lead
+  }
+}
+
 export type BrowserPhoneHandle = {
   makeCall: (to: string, from: string) => void;
   /** Pick up the inbound call ringing this browser. */
@@ -84,6 +128,11 @@ type Props = {
   /** Short-lived Telnyx JWT returned by /api/telnyx/webrtc-token */
   token: string | null;
   onStateChange?: (status: BrowserPhoneStatus) => void;
+  /**
+   * Pick up inbound calls without ringing. On while the predictive dialer is
+   * waiting for a lead: the person who answered is already on the line.
+   */
+  autoAnswer?: boolean;
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -92,7 +141,7 @@ type TelnyxCall = any;
 type TelnyxClient = any;
 
 const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
-  ({ token, onStateChange }, ref) => {
+  ({ token, onStateChange, autoAnswer = false }, ref) => {
     const clientRef = useRef<TelnyxClient>(null);
     const readyRef = useRef(false);
     const ringbackRef = useRef<(() => void) | null>(null);
@@ -100,6 +149,18 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
     const callRef = useRef<TelnyxCall>(null);
     const audioRef = useRef<HTMLAudioElement>(null);
     const [muted, setMuted] = useState(false);
+    const autoAnswerRef = useRef(autoAnswer);
+    useEffect(() => { autoAnswerRef.current = autoAnswer; }, [autoAnswer]);
+    // Any click on the page unlocks the connect beep, so it also works after
+    // a reload in the middle of a dialer session.
+    useEffect(() => {
+      document.addEventListener("pointerdown", primeConnectBeep);
+      document.addEventListener("keydown", primeConnectBeep);
+      return () => {
+        document.removeEventListener("pointerdown", primeConnectBeep);
+        document.removeEventListener("keydown", primeConnectBeep);
+      };
+    }, []);
 
     const emit = (callState: BrowserCallState, extra?: Partial<BrowserPhoneStatus>) => {
       onStateChange?.({
@@ -151,6 +212,21 @@ const BrowserPhone = forwardRef<BrowserPhoneHandle, Props>(
           // Inbound call ringing this browser (routed here by the call
           // webhook): ring and show Answer / Decline until it's picked up.
           if (call.direction === "inbound" && call.state === "ringing") {
+            // The server marks calls that aren't the dialer's own leads: a
+            // customer calling in or a teammate's transfer ("overflow") rings
+            // for the agent to accept; a lead a teammate's dialer passes on
+            // ("autoanswer") is picked up at once like the agent's own.
+            const headers: Array<{ name?: string; value?: string }> = Array.isArray(call.options?.customHeaders) ? call.options.customHeaders : [];
+            const route = headers.find((h) => String(h?.name || "").toLowerCase() === "x-text2sale-route")?.value;
+            if ((autoAnswerRef.current && route !== "overflow") || route === "autoanswer") {
+              try {
+                call.answer();
+                playConnectBeep();
+                return;
+              } catch {
+                // fall through to ringing so the agent can answer by hand
+              }
+            }
             if (!ringtoneRef.current) ringtoneRef.current = startTone(2, 4);
             emit("ringing", { incoming: { from: String(call.options?.remoteCallerNumber || call.options?.callerNumber || "") } });
             return;

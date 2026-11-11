@@ -1,3 +1,4 @@
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import { getPostsByTags } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
@@ -93,6 +94,7 @@ export default function SeoLandingPage({
   // on the client, so it was missing from the HTML crawlers fetch.
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
+      <MarketingHeader/>
       {faqSchema && (
         <script
           type="application/ld+json"

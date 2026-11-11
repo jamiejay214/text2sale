@@ -1,0 +1,30 @@
+/* Public pages share the workspace's emerald identity. */
+.marketing-site { background:#f1f7f4; color:#17352b; }
+.marketing-site .marketing-hero { background:#f1f7f4; color:#17352b; }
+.marketing-site .marketing-hero:before { background:radial-gradient(ellipse,#b8dfcb55,transparent 65%); }
+.marketing-site .marketing-nav { border-bottom:1px solid #dce7e1; }
+.marketing-site .marketing-nav .workspace-brand { color:#17352b; }
+.marketing-site .marketing-hero h1 em { color:#16634b; }
+.marketing-site .marketing-hero-copy > p,.marketing-site .marketing-hero-note,.marketing-site .marketing-nav-links a { color:#526b60; }
+.marketing-site .marketing-eyebrow { background:#e0efe7; border-color:#c8dfd2; color:#16634b; }
+.marketing-site .marketing-text-link { color:#16634b; }
+.marketing-site .marketing-button.lime,.marketing-site .marketing-button.dark { background:#16634b; color:#fff; }
+.marketing-site .marketing-section { padding-top:80px; padding-bottom:80px; }
+.marketing-site .marketing-feature-grid article { border-radius:12px; border-color:#dce7e1; box-shadow:0 4px 16px #17352b05; }
+.marketing-site .marketing-feature-icon { background:#e0efe7; color:#16634b; }
+.marketing-site .marketing-feature-grid p,.marketing-site .marketing-section-heading > p { color:#526b60; }
+.marketing-site .marketing-auth { background:#103c2d!important; }
+.marketing-site [class*="text-lime-"] { color:#a8e2c6; }
+.marketing-site [class*="bg-lime-300"]:not([class*="bg-lime-300/"]) { background-color:#a8e2c6; color:#103c2d; }
+.marketing-site [class*="border-lime-300"] { border-color:#a8e2c6; }
+.recovery-page { background:#f1f7f4; color:#17352b; }
+.recovery-card { background:#fff; border-color:#dce7e1; border-radius:16px; box-shadow:0 12px 48px #17352b0d; }
+.recovery-brand { color:#17352b; }
+.recovery-card p { color:#526b60; }
+.recovery-card input { background:#f7faf8; border-color:#cfddd5; color:#17352b; }
+.recovery-card .marketing-button { background:#16634b; color:white; }
+.recovery-card a { color:#16634b; }
+.marketing-site .marketing-proof-grid { border-color:#dce7e1; }
+.marketing-site .marketing-proof-grid > div { color:#16634b; }
+.marketing-site .marketing-proof-grid strong { color:#17352b; }
+.marketing-site .marketing-proof-grid small { color:#526b60; font-size:10px; }

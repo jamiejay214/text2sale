@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { mergeNewestFirst, tabQueries, type InboxFilter, type TabQuery } from "./inbox-filter";
 import type {
   Profile,
   Contact,
@@ -147,7 +148,7 @@ export async function fetchContactsPage(
   let query = supabase
     .from("contacts")
     .select(
-      "id,user_id,first_name,last_name,phone,email,city,state,tags,notes,dnc,campaign,address,zip,lead_source,quote,policy_id,timeline,household_size,date_of_birth,age,created_at",
+      "id,user_id,first_name,last_name,phone,email,city,state,pipeline_stage,campaign_id,consent_source,consent_at,follow_up_at,deal_value,tags,notes,dnc,campaign,address,zip,lead_source,quote,policy_id,timeline,household_size,date_of_birth,age,created_at",
       { count: "exact" },
     )
     .eq("user_id", userId)
@@ -277,28 +278,33 @@ export async function fetchConversations(userId: string): Promise<Conversation[]
   return all;
 }
 
-/** Paginated conversation summaries. Message bodies are fetched on demand. */
+function conversationQuery(userId: string, plan: TabQuery) {
+  let query = supabase.from("conversations").select(plan.select, { count: "exact" }).eq("user_id", userId);
+  for (const step of plan.steps) {
+    if (step.op === "not") query = query.not(step.column, step.operator, step.value);
+    else if (step.op === "eq") query = query.eq(step.column, step.value);
+    else if (step.op === "gt") query = query.gt(step.column, step.value);
+    else if (step.op === "in") query = query.in(step.column, step.values);
+    else query = query.or(step.filters);
+  }
+  return query.order("last_message_at", { ascending: false });
+}
+
+// The Archived tab merges several lookups, so it pages over this many rows.
+const ARCHIVE_SCAN = 500;
+
+/** Paginated conversation summaries for one inbox tab. Message bodies are fetched on demand. */
 export async function fetchConversationsPage(
   userId: string,
-  options: { page?: number; pageSize?: number } = {},
+  options: { page?: number; pageSize?: number; filter?: InboxFilter; search?: string; archivedIds?: readonly string[] } = {},
 ): Promise<PageResult<Conversation>> {
   const page = Math.max(0, options.page ?? 0);
   const pageSize = Math.min(100, Math.max(20, options.pageSize ?? 50));
-  const from = page * pageSize;
-  const to = from + pageSize - 1;
-  const { data, error, count } = await supabase
-    .from("conversations")
-    .select(
-      "id,user_id,contact_id,preview,unread,last_message_at,starred,created_at,from_number,ai_enabled,agent_enabled,ai_skipped_reason",
-      { count: "exact" },
-    )
-    .eq("user_id", userId)
-    .order("last_message_at", { ascending: false })
-    .range(from, to);
+  const { data, error } = await supabase.rpc("workspace_inbox_page", { p_user_id: userId, p_search: options.search || "", p_filter: options.filter || "all", p_offset: page * pageSize, p_limit: pageSize });
   if (error) throw error;
-  const rows = (data || []) as Conversation[];
-  const total = count || 0;
-  return { rows, total, hasMore: from + rows.length < total };
+  const rows = (data?.rows || []) as Conversation[];
+  const total = Number(data?.total || 0);
+  return { rows, total, hasMore: (page + 1) * pageSize < total };
 }
 
 /** Latest messages for one open thread, returned oldest-to-newest for chat. */
@@ -312,7 +318,7 @@ export async function fetchMessagesPage(
   const to = from + pageSize - 1;
   const { data, error, count } = await supabase
     .from("messages")
-    .select("id,conversation_id,direction,body,status,created_at,from_number", {
+    .select("id,conversation_id,direction,body,status,created_at,from_number,channel,email_subject,picture_path", {
       count: "exact",
     })
     .eq("conversation_id", conversationId)

@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { countSegments } from "@/lib/sms-text";
 import { customerSmsRate } from "@/lib/sms-pricing";
 import { hasEINCertificate } from "@/lib/ein-certificate-storage";
+import { spendableBalance } from "@/lib/call-metering";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -77,7 +78,7 @@ export async function GET(req: NextRequest) {
       if (!contact?.phone) continue;
 
       // Check wallet
-      const balance = Number(profile.wallet_balance) || 0;
+      const balance = await spendableBalance(supabase, apt.user_id, profile.wallet_balance);
       const messageCost = customerSmsRate((profile as { plan?: { messageCost?: number | null } }).plan);
       if (balance < messageCost) continue;
 

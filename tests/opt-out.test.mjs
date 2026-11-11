@@ -46,3 +46,10 @@ test("carrier-required opt-out keywords cannot be removed", () => {
     assert.equal(keywords.includes(required), true);
   assert.equal(keywords.includes("N"), true);
 });
+
+test("a first message that already says how to opt out gets no extra trigger", () => {
+  assert.equal(
+    exports.withFirstMessageOptOut("Hi Jamie, it's Sam with Acme Health. Want a quick quote? Reply STOP to opt out.", { keywords: ["STOP", "N"], firstMessageText: "N" }),
+    "Hi Jamie, it's Sam with Acme Health. Want a quick quote? Reply STOP to opt out.",
+  );
+});

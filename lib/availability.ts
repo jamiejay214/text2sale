@@ -70,8 +70,55 @@ export function nowInTimezone(timezone: string, now: Date = new Date()): { date:
   };
 }
 
+/** A busy stretch on the owner's Google Calendar, as epoch milliseconds. */
+export type BusyWindow = { start: number; end: number };
+
+// The wall-clock reading of `instant` in `timezone`, as if it were UTC.
+function wallClockMs(instant: number, timezone: string): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  }).formatToParts(new Date(instant));
+  const get = (type: string) => Number(parts.find((part) => part.type === type)?.value || 0);
+  return Date.UTC(get("year"), get("month") - 1, get("day"), get("hour"), get("minute"), get("second"));
+}
+
 /**
- * Get available slots for the next N days, excluding already-booked ones.
+ * The real moment of a local date and time in `timezone`: 10:30 on
+ * 2026-10-12 in New York is 14:30 UTC. Calendar lookups need this; a bare
+ * "2026-10-12T10:30:00 America/New_York" string doesn't parse in JavaScript.
+ */
+export function zonedTimeToUtc(date: string, time: string, timezone: string): Date {
+  const [y, mo, d] = date.split("-").map(Number);
+  const [h, mi, s = 0] = time.split(":").map(Number);
+  const target = Date.UTC(y, mo - 1, d, h, mi, s);
+  const zone = (() => {
+    try { new Intl.DateTimeFormat("en-US", { timeZone: timezone }); return timezone; } catch { return "America/New_York"; }
+  })();
+  // Twice, so a time next to a daylight-saving switch settles on the right offset.
+  let utc = target;
+  for (let i = 0; i < 2; i++) utc = target - (wallClockMs(utc, zone) - utc);
+  return new Date(utc);
+}
+
+/** Whether a slot starting at `date` `time` in `timezone` overlaps a busy window. */
+export function overlapsBusy(
+  date: string,
+  time: string,
+  durationMinutes: number,
+  timezone: string,
+  busy: BusyWindow[]
+): boolean {
+  if (!busy.length) return false;
+  const start = zonedTimeToUtc(date, time, timezone).getTime();
+  const end = start + durationMinutes * 60_000;
+  return busy.some((window) => start < window.end && window.start < end);
+}
+
+/**
+ * Get available slots for the next N days, excluding already-booked ones and
+ * anything overlapping `busy` (the owner's Google Calendar).
  * Slots come back earliest-first so callers can treat #1 as "soonest".
  * Dates and times are in `hours.timezone`.
  */
@@ -80,7 +127,8 @@ export async function getAvailableSlots(
   userId: string,
   hours: AvailableHours,
   limit = 6,
-  now: Date = new Date()
+  now: Date = new Date(),
+  busy: BusyWindow[] = []
 ): Promise<AvailableSlot[]> {
   const local = nowInTimezone(hours.timezone, now);
   const [year, month, day] = local.date.split("-").map(Number);
@@ -123,7 +171,10 @@ export async function getAvailableSlots(
       // For today, skip slots that have already passed (add 30-min buffer)
       if (d === 0 && m < local.minutes + 30) continue;
 
-      if (!bookedSet.has(`${dateStr}_${timeStr}`)) {
+      if (
+        !bookedSet.has(`${dateStr}_${timeStr}`) &&
+        !overlapsBusy(dateStr, timeStr, hours.slotDuration, hours.timezone, busy)
+      ) {
         slots.push({
           date: dateStr,
           time: timeStr,

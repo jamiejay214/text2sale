@@ -35,7 +35,7 @@ export default function Page() {
         },
         {
           question: "Does Text2Sale cost less than Salesmsg?",
-          answer: "Text2Sale is $39.99/month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no long-term contract."
+          answer: "Text2Sale Text is $39.99/month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no long-term contract."
         },
         {
           question: "Can I import my Salesmsg contacts into Text2Sale?",

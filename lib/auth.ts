@@ -5,8 +5,10 @@ import { waitForSession } from "./request-timeout";
 
 export type { Profile };
 
+// New accounts start on the texting plan until they pick one at checkout.
 export const DEFAULT_PLAN = {
-  name: "Text2Sale",
+  key: "text" as const,
+  name: "Text2Sale Text",
   price: 39.99,
   messageCost: 0.015,
 };

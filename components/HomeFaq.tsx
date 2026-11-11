@@ -14,13 +14,13 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "What is Text2Sale?",
     answer:
-      "Text2Sale is a mass texting CRM for insurance agents, sales teams, and business owners. You upload lead lists, send SMS campaigns, manage two-way conversations in one inbox, and keep opt-in and opt-out records for TCPA and 10DLC compliance.",
+      "Text2Sale is a sales and business outreach CRM for independent sales professionals, teams, and business owners. You upload lead lists, send SMS campaigns, manage two-way conversations in one inbox, and keep opt-in and opt-out records for TCPA and 10DLC compliance.",
     link: { href: "/mass-texting-crm", label: "How the mass texting CRM works" },
   },
   {
     question: "How much does Text2Sale cost?",
     answer:
-      "Text2Sale is $39.99 per month with AI included. Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. Standard calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI-assisted calls are $0.18 per minute. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no free trial and no long-term contract.",
+      "Text2Sale Text is $39.99 per month with AI text replies included (Dialer $89.99, Complete $119.99). Outbound SMS is $0.015 per segment, inbound SMS is free, and AI replies are $0.020 each plus the outbound SMS segment charge. Standard calls are $0.025 per minute outbound and $0.015 per minute inbound, and AI-assisted calls are $0.18 per minute. A $500+ wallet purchase unlocks the $0.0135 volume SMS rate. There is no free trial and no long-term contract.",
   },
   {
     question: "Is Text2Sale TCPA compliant?",
@@ -41,7 +41,7 @@ export const HOME_FAQ: HomeFaqItem[] = [
   {
     question: "What does Text2Sale AI do?",
     answer:
-      "AI is included with every paid Text2Sale account. It can reply to inbound texts, handle common objections, qualify leads, book appointments that sync to Google Calendar, and power the AI calling receptionist. You can control AI workspace-wide or one conversation at a time.",
+      "AI text replies come with Text and Complete: they reply to inbound texts, handle common objections, qualify leads and book appointments that sync to Google Calendar. The AI receptionist for incoming calls comes with Dialer and Complete. AI usage is billed from the wallet ($0.02 per AI text reply plus SMS; $0.18 per AI receptionist minute). You can control AI workspace-wide or one conversation at a time.",
     link: { href: "/ai-texting-crm", label: "See the AI texting CRM" },
   },
 ];
@@ -50,7 +50,7 @@ export default function HomeFaq() {
   return (
     <section id="faq" className="border-b border-zinc-800 bg-black py-20">
       <div className="mx-auto max-w-3xl px-6">
-        <h2 className="text-3xl font-black tracking-tight md:text-4xl">Frequently asked questions</h2>
+        <h2 style={{ color: "#e8f5eb" }} className="text-3xl font-black tracking-tight md:text-4xl">Frequently asked questions</h2>
         <div className="mt-8 space-y-4">
           {HOME_FAQ.map((item) => (
             <div key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">

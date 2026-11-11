@@ -1,4 +1,8 @@
 export const FOLLOWUP_NOTICE = "Save my contact details as I fill out this form so Text2Sale can email me if I do not finish signing up. You can opt out at any time.";
+export const RESOURCE_NOTICE = "Unlock this resource and send me The Insurance Lead Playbook, a weekly email with follow-up tactics and occasional Text2Sale updates. Unsubscribe at any time.";
+export const NEWSLETTER_NOTICE = "Send me The Insurance Lead Playbook, a weekly email with follow-up tactics and occasional Text2Sale updates. Unsubscribe at any time.";
+const PROSPECT_KINDS = ["signup", "inquiry", "resource", "newsletter"] as const;
+type ProspectKind = (typeof PROSPECT_KINDS)[number];
 export const PROSPECT_STATUSES = ["new", "contacted", "follow_up", "won", "not_interested", "do_not_contact"] as const;
 
 export function parseProspect(input: Record<string, unknown>) {
@@ -9,7 +13,7 @@ export function parseProspect(input: Record<string, unknown>) {
   if (!name || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error("Enter your name and a valid email address.");
   if (phone && !/^\+?\d{10,15}$/.test(phone)) throw new Error("Enter a valid phone number, including area code.");
   if (input.followup !== true) throw new Error("Confirm that we can save your details and email you about this request.");
-  const kind = input.kind === "signup" ? "signup" : "inquiry";
+  const kind: ProspectKind = PROSPECT_KINDS.includes(input.kind as ProspectKind) ? (input.kind as ProspectKind) : "inquiry";
   const path = text("path", 200).split(/[?#]/)[0];
   return {
     name, email, phone: phone || null, kind,
@@ -18,11 +22,11 @@ export function parseProspect(input: Record<string, unknown>) {
     path: path.startsWith("/") ? path : "/",
     source: text("source", 100) || "direct",
     campaign: text("campaign", 100) || null,
-    consent_text: FOLLOWUP_NOTICE,
+    consent_text: kind === "resource" ? RESOURCE_NOTICE : kind === "newsletter" ? NEWSLETTER_NOTICE : FOLLOWUP_NOTICE,
   };
 }
 
-export async function captureProspect(input: { name: string; email: string; phone?: string; kind: "signup" | "inquiry"; followup: boolean; industry?: string; message?: string; website?: string }) {
+export async function captureProspect(input: { name: string; email: string; phone?: string; kind: ProspectKind; followup: boolean; industry?: string; message?: string; website?: string }) {
   const params = new URLSearchParams(window.location.search);
   const response = await fetch("/api/prospects", {
     method: "POST",

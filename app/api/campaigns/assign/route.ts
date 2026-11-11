@@ -8,10 +8,11 @@ import {
   waveStart,
   validateSequence,
 } from "@/lib/campaign-sequence";
-import { withFirstMessageOptOut } from "@/lib/opt-out";
+import { campaignFirstMessage } from "@/lib/opt-out";
 import { hasNonGsmChars, sanitizeForSms } from "@/lib/sms-text";
 
 type CampaignRow = {
+  omit_first_opt_out?: boolean;
   id: string;
   name: string;
   status: "Draft" | "Sending" | "Completed" | "Paused" | "Scheduled";
@@ -265,7 +266,7 @@ export async function POST(req: NextRequest) {
             contact_id: contact.id,
             body: sanitizeForSms(
               stepIndex === 0
-                ? withFirstMessageOptOut(rendered, profile.opt_out_settings)
+                ? campaignFirstMessage(rendered, profile.opt_out_settings, campaign.omit_first_opt_out === true)
                 : rendered,
             ),
             from_number: numbers[contactIndex % numbers.length],

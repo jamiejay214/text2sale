@@ -1,12 +1,15 @@
 "use client";
 
+import WorkspaceSearch from "./WorkspaceSearch";
 import dynamic from "next/dynamic";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import WorkspaceNavigation, { type WorkspaceTab } from "@/components/WorkspaceNavigation";
+import WorkspaceNavigation, { SettingsNav, type WorkspaceTab } from "@/components/WorkspaceNavigation";
 import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
+import { canCall, canText } from "@/lib/entitlements";
+import PlanPicker from "./PlanPicker";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/lib/supabase-data";
 import type { Profile } from "@/lib/types";
@@ -70,10 +73,9 @@ export default function WorkspaceApp() {
   const [unread, setUnread] = useState(0);
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [searchOpen, setSearchOpen] = useState(false);
+  useEffect(()=>{const key=(e:KeyboardEvent)=>{if((e.metaKey||e.ctrlKey)&&e.key.toLowerCase()==="k"){e.preventDefault();setSearchOpen(v=>!v);}if(e.key==="Escape")setSearchOpen(false);};window.addEventListener("keydown",key);return()=>window.removeEventListener("keydown",key);},[]);
   const [viewerEmail, setViewerEmail] = useState("");
   const [impersonated, setImpersonated] = useState(false);
-  const [paymentBusy, setPaymentBusy] = useState(false);
-  const [paymentError, setPaymentError] = useState("");
   const profileId = profile?.id;
 
   const requestedTab = searchParams.get("tab") as WorkspaceTab | null;
@@ -84,6 +86,15 @@ export default function WorkspaceApp() {
     !!profile?.free_subscription ||
     ["active", "canceling"].includes(String(profile?.subscription_status || ""));
   const aiAccess = subscribed || !!profile?.free_ai_plan;
+  // What the plan includes (lib/entitlements.ts): Text → texting, Dialer →
+  // calling, Complete → both. Agents an account sponsors (calling_sponsors)
+  // also get the browser phone and dialer, not the AI receptionist settings.
+  // Locked features stay in the menu and open an upgrade page instead.
+  const textingEnabled = canText(profile);
+  const ownerCalling = canCall(profile);
+  const [sponsoredCalling, setSponsoredCalling] = useState(false);
+  const callingEnabled = ownerCalling || sponsoredCalling;
+  const aiCallingEnabled = ownerCalling;
 
   const loadShell = useCallback(async () => {
     setLoading(true);
@@ -203,8 +214,21 @@ export default function WorkspaceApp() {
     };
   }, [profileId]);
 
+  useEffect(() => {
+    if (!profileId || ownerCalling) return;
+    let live = true;
+    void supabase
+      .from("calling_sponsors")
+      .select("agent_id")
+      .eq("agent_id", profileId)
+      .maybeSingle()
+      .then(({ data }) => { if (live) setSponsoredCalling(!!data); });
+    return () => { live = false; };
+  }, [profileId, ownerCalling]);
+
   const navigate = useCallback(
-    (tab: WorkspaceTab, subtab?: string) => {
+    (requested: WorkspaceTab, subtab?: string) => {
+      const tab = requested;
       const aiOnly = tab === "aicalls" || (tab === "settings" && subtab === "ai");
       const destinationTab = aiOnly && !aiAccess ? "settings" : tab;
       const destinationSubtab = aiOnly && !aiAccess ? "upgrade" : subtab;
@@ -212,8 +236,14 @@ export default function WorkspaceApp() {
       if (impersonateId) params.set("impersonate", impersonateId);
       if (destinationTab !== "overview") params.set("tab", destinationTab);
       if (destinationTab === "settings" && destinationSubtab) params.set("subtab", destinationSubtab);
+      const contact = sessionStorage.getItem("t2s_contact_id");
+      if(destinationTab === "conversations" && contact) params.set("contact",contact);
+      const campaign=sessionStorage.getItem("t2s_campaign_id");
+      if(destinationTab==="campaigns" && campaign)params.set("campaign",campaign);
+      const appointment=sessionStorage.getItem("t2s_appointment_id");
+      if(destinationTab==="appointments" && appointment)params.set("appointment",appointment);
       const query = params.toString();
-      router.replace(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
+      router.push(query ? `/dashboard?${query}` : "/dashboard", { scroll: false });
     },
     [aiAccess, impersonateId, router],
   );
@@ -234,6 +264,26 @@ export default function WorkspaceApp() {
   const view = useMemo(() => {
     if (!profile) return null;
     const shared: WorkspaceViewProps = { profile, onProfile: setProfile, onNavigate: navigate };
+    const textingTab =
+      activeTab === "conversations" || activeTab === "campaigns" || activeTab === "templates" ||
+      (activeTab === "settings" && (settingsTab === "ai" || settingsTab === "10dlc"));
+    const lockedFeature =
+      !callingEnabled && activeTab === "calls" ? "calling" :
+      !aiCallingEnabled && activeTab === "aicalls" ? "calling" :
+      !textingEnabled && textingTab ? "texting" : null;
+    if (lockedFeature) {
+      return (
+        <div className="v2-upgrade-page">
+          <h1>{lockedFeature === "texting" ? "Texting isn't on your plan" : "Calling isn't on your plan"}</h1>
+          <p>
+            {lockedFeature === "texting"
+              ? "Texting, campaigns and AI text replies come with Text2Sale Text and Complete. After upgrading, register your business for texting (EIN and business details) to start sending."
+              : "The dialer, browser phone and AI receptionist come with Text2Sale Dialer and Complete."}
+          </p>
+          <PlanPicker profile={profile} onProfile={setProfile} highlight={lockedFeature} onMessagingSetup={() => navigate("settings", "10dlc")} />
+        </div>
+      );
+    }
     if (!aiAccess && (activeTab === "aicalls" || (activeTab === "settings" && settingsTab === "ai"))) {
       return <OperationsWorkspace {...shared} tab="settings" settingsTab="upgrade" />;
     }
@@ -249,7 +299,7 @@ export default function WorkspaceApp() {
       default:
         return <OperationsWorkspace {...shared} tab={activeTab} settingsTab={settingsTab} />;
     }
-  }, [activeTab, aiAccess, navigate, profile, settingsTab]);
+  }, [activeTab, aiAccess, aiCallingEnabled, callingEnabled, navigate, profile, settingsTab, textingEnabled]);
 
   if (loading) {
     return (
@@ -272,35 +322,13 @@ export default function WorkspaceApp() {
     );
   }
 
-  const startSubscription = async () => {
-    if (paymentBusy) return;
-    setPaymentBusy(true);
-    setPaymentError("");
-    try {
-      const response = await authFetch("/api/create-subscription", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId: profile.id, userEmail: profile.email }),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || !data.url) throw new Error(data.error || "Secure checkout could not be opened.");
-      window.location.href = data.url;
-    } catch (reason) {
-      setPaymentError(reason instanceof Error ? reason.message : "Secure checkout could not be opened.");
-      setPaymentBusy(false);
-    }
-  };
-
   if (!subscribed && !impersonated) {
     return (
       <main className="crm-theme workspace-v2 t2s-light v2-entry-loading">
         <div className="v2-error-card">
-          <strong>Activate Text2Sale</strong>
-          <p>Your account is created, but the workspace stays locked until the $39.99 monthly subscription is paid. There is no free trial.</p>
-          {paymentError ? <p>{paymentError}</p> : null}
-          <button onClick={startSubscription} disabled={paymentBusy}>
-            {paymentBusy ? "Opening secure checkout…" : "Pay $39.99 & unlock workspace"}
-          </button>
+          <strong>Choose your Text2Sale plan</strong>
+          <p>Your account is created. Pick a plan to unlock the workspace; there is no free trial. You can upgrade or switch later.</p>
+          <PlanPicker profile={profile} onProfile={setProfile} />
           <button onClick={logout}>Sign out</button>
         </div>
       </main>
@@ -309,7 +337,7 @@ export default function WorkspaceApp() {
 
   const displayName = [profile.first_name, profile.last_name].filter(Boolean).join(" ") || "My";
   return (
-    <main className={`crm-theme workspace-v2 workspace-app t2s-${theme}`}>
+    <main className={`crm-theme workspace-v2 workspace-app emerald-workspace t2s-${theme}`}>
       <WorkspaceNavigation
         activeTab={activeTab}
         settingsTab={settingsTab}
@@ -322,6 +350,9 @@ export default function WorkspaceApp() {
         onSearch={() => setSearchOpen(true)}
         onLogout={logout}
         aiAccess={aiAccess}
+        callingEnabled={callingEnabled}
+        aiCallingEnabled={aiCallingEnabled}
+        textingEnabled={textingEnabled}
       />
       <section className="workspace-content v2-workspace-content">
         {impersonated && (
@@ -331,34 +362,10 @@ export default function WorkspaceApp() {
             <button onClick={() => router.push(isOwnerEmail(viewerEmail) ? "/admin" : "/dashboard?tab=settings&subtab=team")}>Exit account</button>
           </div>
         )}
+        <SettingsNav activeTab={activeTab} settingsTab={settingsTab} onNavigate={navigate} textingEnabled={textingEnabled} />
         {view}
       </section>
-      {searchOpen && (
-        <div className="v2-command-backdrop" onMouseDown={() => setSearchOpen(false)}>
-          <div className="v2-command" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="v2-command-input">
-              <Search size={18} />
-              <input autoFocus placeholder="Jump to a workspace…" aria-label="Search workspace" />
-              <button onClick={() => setSearchOpen(false)} aria-label="Close search"><X size={18} /></button>
-            </div>
-            <div className="v2-command-links">
-              {[
-                ["conversations", "Open conversations"],
-                ["campaigns", "Build a campaign"],
-                ["contacts", "Find a contact"],
-                ["calls", "Open the power dialer"],
-                ["website", "Edit your website"],
-                ["settings", "Manage phone numbers"],
-                ["learn", "Open tutorials"],
-              ].map(([tab, label]) => (
-                <button key={tab} onClick={() => { navigate(tab as WorkspaceTab, tab === "settings" ? "numbers" : undefined); setSearchOpen(false); }}>
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {searchOpen && profile && <WorkspaceSearch userId={profile.id} onNavigate={navigate} onClose={()=>setSearchOpen(false)}/>}
     </main>
   );
 }

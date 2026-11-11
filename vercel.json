@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "regions": ["pdx1"],
   "crons": [
     {
       "path": "/api/billing/numbers",
@@ -27,7 +28,7 @@
     },
     {
       "path": "/api/indexnow",
-      "schedule": "23 14 * * *"
+      "schedule": "*/2 * * * *"
     },
     {
       "path": "/api/email/welcome",
@@ -44,6 +45,26 @@
     {
       "path": "/api/calls/voice-setup",
       "schedule": "23 * * * *"
+    },
+    {
+      "path": "/api/email/campaigns/run",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/email/inbox/poll",
+      "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/track/abandoned-signups",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/platform/balance-check",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/billing/low-balance",
+      "schedule": "0 * * * *"
     }
   ]
 }

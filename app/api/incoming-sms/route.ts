@@ -1,9 +1,11 @@
 import { smsProgramResponses } from "@/lib/sms-consent";
+import { canText } from "@/lib/entitlements";
 import { after, NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { shouldAiSkipReply } from "@/lib/ai-decline-check";
 import { verifyTelnyxSignature, allowUnverifiedInDev } from "@/lib/telnyx-verify";
 import { hasAiAccess } from "@/lib/messaging-status";
+import { spendableBalance } from "@/lib/call-metering";
 import { MANDATORY_OPT_OUT_KEYWORDS, normalizeOptOutSettings } from "@/lib/opt-out";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -95,10 +97,13 @@ export async function POST(req: NextRequest) {
     // `.maybeSingle()` ERRORED whenever a number had more than one owner, which
     // dropped or misrouted every reply to a shared line — the cause of replies
     // landing in the wrong account / not showing up at all.
+    // Oldest first: when nobody has the sender as a contact, the number's
+    // original owner gets the text, not an agent it was shared with later.
     const { data: ownerRows } = await supabase
       .from("owned_phone_numbers")
       .select("user_id")
-      .eq("digits", toNormalized);
+      .eq("digits", toNormalized)
+      .order("created_at", { ascending: true });
     const ownerIds: string[] = Array.from(new Set((ownerRows || []).map((o) => o.user_id as string)));
 
     // Fallback for legacy numbers only present on profiles.owned_numbers.
@@ -259,7 +264,18 @@ export async function POST(req: NextRequest) {
     // never be saved — leaving no in-app compliance audit trail that we received
     // and honored the request. Finds-or-creates the conversation and inserts the
     // inbound row (mirrors the normal-message path below).
-    const recordInbound = async () => {
+    //
+    // replied_at drives the Inbox tab: a real reply sets it, an opt-out clears
+    // it. Written on its own so a database without the column still saves the
+    // message and the conversation preview.
+    const markReplied = async (conversationId: string, replied: boolean) => {
+      const { error: markError } = await supabase
+        .from("conversations")
+        .update({ replied_at: replied ? new Date().toISOString() : null })
+        .eq("id", conversationId);
+      if (markError) console.warn("[incoming-sms] could not mark reply:", markError.message);
+    };
+    const recordInbound = async (replied: boolean) => {
       const { data: convs } = await supabase
         .from("conversations").select("id, unread")
         .eq("contact_id", contact.id)
@@ -286,6 +302,7 @@ export async function POST(req: NextRequest) {
         await supabase.from("messages").insert({
           conversation_id: convId, direction: "inbound", body, status: "received",
         });
+        await markReplied(convId, replied);
       }
     };
 
@@ -293,7 +310,7 @@ export async function POST(req: NextRequest) {
     // We do NOT mark DNC or change subscription state.
     if (isHelp) {
       await sendTelnyxReply(to, from, responses.help);
-      await recordInbound();
+      await recordInbound(true);
       return NextResponse.json({ status: "ok" });
     }
 
@@ -315,7 +332,7 @@ export async function POST(req: NextRequest) {
         .update({ status: "cancelled" })
         .in("contact_id", ids)
         .eq("status", "pending");
-      await recordInbound();
+      await recordInbound(false);
       // Always send a confirmation reply so the carrier sees compliance.
       await sendTelnyxReply(to, from, responses.optOut);
       return NextResponse.json({ status: "ok" });
@@ -325,7 +342,7 @@ export async function POST(req: NextRequest) {
       const { data: copies } = await sameNumberContacts();
       const ids = Array.from(new Set([contact.id, ...(copies || []).map((c) => c.id as string)]));
       await supabase.from("contacts").update({ dnc: false }).in("id", ids);
-      await recordInbound();
+      await recordInbound(true);
       await sendTelnyxReply(to, from, responses.optIn);
       return NextResponse.json({ status: "ok" });
     }
@@ -386,6 +403,7 @@ export async function POST(req: NextRequest) {
         body,
         status: "received",
       });
+      await markReplied(conversation.id, true);
 
       // Inbound SMS is free to the customer. Telnyx/provider inbound charges
       // are a Text2Sale cost and are never deducted from the customer wallet.
@@ -431,7 +449,7 @@ export async function POST(req: NextRequest) {
       try {
         const { data: aiProfile } = await supabase
           .from("profiles")
-          .select("ai_plan, free_ai_plan, subscription_status, free_subscription, ai_auto_reply, wallet_balance")
+          .select("ai_plan, free_ai_plan, plan, email, subscription_status, free_subscription, ai_auto_reply, wallet_balance")
           .eq("id", contact.user_id)
           .single();
 
@@ -442,7 +460,8 @@ export async function POST(req: NextRequest) {
           .eq("id", conversation.id)
           .single();
 
-        const aiAccess = !!aiProfile && hasAiAccess(aiProfile);
+        // AI text replies are a texting feature: Text or Complete plans only.
+        const aiAccess = !!aiProfile && hasAiAccess(aiProfile) && canText(aiProfile);
         const globalAi = aiAccess && aiProfile?.ai_auto_reply;
         const perConvAi = aiAccess && convData?.ai_enabled;
 
@@ -486,7 +505,7 @@ export async function POST(req: NextRequest) {
           .eq("id", conversation.id);
 
         if (aiAccess && (globalAi || perConvAi)) {
-          const balance = Number(aiProfile.wallet_balance) || 0;
+          const balance = await spendableBalance(supabase, contact.user_id, aiProfile.wallet_balance);
           if (balance >= 0.025) {
             // Runs after the webhook response via after(): a bare promise could
             // be cut off when the serverless function froze, which looked like

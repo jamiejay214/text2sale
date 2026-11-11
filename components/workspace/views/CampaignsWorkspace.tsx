@@ -1,4 +1,7 @@
 "use client";
+import {useSearchParams} from "next/navigation";
+import { campaignSegmentPreview } from "@/lib/campaign-segment-preview";
+import { delayParts } from "@/lib/workspace-input";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -14,6 +17,7 @@ import {
   Play,
   Plus,
   Save,
+  ShieldAlert,
   ShieldCheck,
   Sparkles,
   Trash2,
@@ -31,11 +35,30 @@ import {
   updateCampaign,
 } from "@/lib/supabase-data";
 import type { Campaign, CampaignStep } from "@/lib/types";
-import { normalizeOptOutSettings } from "@/lib/opt-out";
+import { normalizeOptOutSettings, hasCampaignOptOutSuffix } from "@/lib/opt-out";
+import { checkSpam } from "@/lib/spam-check";
+import EmailCampaigns from "./EmailCampaigns";
+import type { Channel } from "./email/types";
 
 const TOKENS = ["{firstName}", "{lastName}", "{phone}", "{city}", "{state}"];
 
+// Live spam check under the message box: what carrier filters would flag.
+function SpamCheckPanel({ message }: { message: string }) {
+  const result = useMemo(() => checkSpam(message), [message]);
+  const label = result.level === "high" ? "High spam risk" : result.level === "medium" ? "Some spam risk" : "Low spam risk";
+  return (
+    <div className={`v2-spam-check is-${result.level}`} role="status">
+      {result.level === "low" ? <ShieldCheck size={16} /> : <ShieldAlert size={16} />}
+      <div>
+        <strong>{label} · spam score {result.score}/100</strong>
+        {result.issues.length ? <ul>{result.issues.map((issue) => <li key={issue.id}>{issue.text}{issue.tip ? <small>{issue.tip}</small> : null}</li>)}</ul> : <p>No words or patterns that spam filters usually flag.</p>}
+      </div>
+    </div>
+  );
+}
+
 type Draft = {
+  omitOptOut: boolean;
   name: string;
   steps: CampaignStep[];
   selectedNumbers: string[];
@@ -44,11 +67,12 @@ type Draft = {
 
 const newStep = (delayMinutes = 60): CampaignStep => ({
   id: `step_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-  message: "",
+  message: delayMinutes === 0 ? "Reply STOP to opt out." : "",
   delayMinutes,
 });
 
 const blankDraft = (): Draft => ({
+  omitOptOut: false,
   name: "",
   steps: [newStep(0)],
   selectedNumbers: [],
@@ -57,6 +81,7 @@ const blankDraft = (): Draft => ({
 
 function campaignDraft(campaign: Campaign): Draft {
   return {
+    omitOptOut: campaign.omit_first_opt_out === true,
     name: campaign.name,
     steps:
       campaign.steps?.length > 0
@@ -94,8 +119,10 @@ function sequenceDuration(steps: CampaignStep[]) {
 
 export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceViewProps) {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const requestedCampaign=useSearchParams().get("campaign");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(blankDraft);
+  const [previewName, setPreviewName] = useState("");
   const [activeStep, setActiveStep] = useState(0);
   const [audience, setAudience] = useState<"assigned" | "all">("assigned");
   const [loading, setLoading] = useState(true);
@@ -104,6 +131,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   const [pendingContactIds, setPendingContactIds] = useState<string[]>([]);
   const [assignOnCreate, setAssignOnCreate] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
+  const [channel, setChannel] = useState<Channel>("text");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -134,14 +162,14 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   }, []);
 
   useEffect(() => {
-    const requested = window.sessionStorage.getItem("t2s_campaign_id");
+    const requested = requestedCampaign || window.sessionStorage.getItem("t2s_campaign_id");
     if (requested && campaigns.some((campaign) => campaign.id === requested)) {
       const campaign = campaigns.find((item) => item.id === requested)!;
       setSelectedId(campaign.id);
       setDraft(campaignDraft(campaign));
       window.sessionStorage.removeItem("t2s_campaign_id");
     }
-  }, [campaigns]);
+  }, [campaigns,requestedCampaign]);
 
   const selected = useMemo(
     () => campaigns.find((campaign) => campaign.id === selectedId) || null,
@@ -149,7 +177,9 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   );
   const ownedNumbers = profile.owned_numbers || [];
   const validSteps = draft.steps.filter((step) => step.message.trim());
-  const firstMessageOptOut = normalizeOptOutSettings(profile.opt_out_settings).firstMessageText;
+  const optOutSettings = normalizeOptOutSettings(profile.opt_out_settings);
+  const firstMessageOptOut = optOutSettings.firstMessageText;
+  const firstOptOutPresent = hasCampaignOptOutSuffix(draft.steps[0]?.message || "", optOutSettings);
   const allNumbersSelected = ownedNumbers.length > 0 && ownedNumbers.every((number) => draft.selectedNumbers.includes(number.number));
 
   const chooseCampaign = (campaign: Campaign) => {
@@ -200,11 +230,15 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       setNotice({ tone: "error", text: "Every workflow step needs a message." });
       return;
     }
+    if (!draft.omitOptOut && !firstOptOutPresent) {
+      setActiveStep(0); setNotice({tone:"error",text:"The first message needs an opt-out at the end. Add one using the examples, or choose Remove opt-out."}); return;
+    }
     setSaving(true);
     setNotice(null);
     const quietHoursEnabled =
       draft.quietHours === "inherit" ? null : draft.quietHours === "on";
     const values = {
+      omit_first_opt_out: draft.omitOptOut,
       name: draft.name.trim(),
       message: draft.steps[0].message.trim(),
       steps: draft.steps.map((step) => ({ ...step, message: step.message.trim() })),
@@ -238,7 +272,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     if (!selected && assignOnCreate && pendingContactIds.length) {
       const { error: assignmentError } = await supabase
         .from("contacts")
-        .update({ campaign: result.name })
+        .update({ campaign: result.name, campaign_id: result.id })
         .eq("user_id", profile.id)
         .in("id", pendingContactIds);
       if (assignmentError) {
@@ -260,17 +294,36 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
       setNotice({ tone: "error", text: "Save the campaign before launching it." });
       return;
     }
+    if (JSON.stringify(draft) !== JSON.stringify(campaignDraft(selected))) {
+      setNotice({ tone: "error", text: "You have unsaved changes. Save this campaign, then review and launch the saved version." });
+      return;
+    }
     if (!selected.selected_numbers?.length && !ownedNumbers.length) {
       setNotice({ tone: "error", text: "Add a sending number before launching." });
+      return;
+    }
+    if (!selected.omit_first_opt_out && !hasCampaignOptOutSuffix(selected.steps?.[0]?.message || selected.message || "", profile.opt_out_settings)) {
+      setActiveStep(0);setNotice({tone:"error",text:"Add opt-out wording to the first message and save before launching."});return;
+    }
+    const firstCheck = checkSpam(selected.steps?.[0]?.message || selected.message || "");
+    if (
+      firstCheck.level === "high" &&
+      !window.confirm(`This message has words carriers often block as spam:\n\n${firstCheck.issues.map((issue) => `• ${issue.text}`).join("\n")}\n\nSend it anyway?`)
+    ) {
       return;
     }
     setLaunching(true);
     setNotice(null);
     try {
+      const reviewResponse=await authFetch("/api/campaigns/enroll",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({campaignId:selected.id,audience,dryRun:true})});
+      const review=await reviewResponse.json();
+      if(!reviewResponse.ok)throw new Error(review.error || "Could not review audience.");
+      if(!window.confirm(`Review saved campaign: ${selected.name}\n${review.recipients} eligible recipients · ${review.messages} messages · ${review.segments} estimated segments\nEstimated full-sequence SMS usage: $${Number(review.estimatedCost).toFixed(2)}\n\n${review.samples.map((s:{body:string;scheduledAt:string})=>`${new Date(s.scheduledAt).toLocaleString()}: ${s.body}`).join("\n\n")}\n\n${review.note}\n\nQueue this saved version?`))return;
       const response = await authFetch("/api/campaigns/enroll", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedRevision: review.revision,
           campaignId: selected.id,
           audience,
           resume: selected.status === "Paused",
@@ -307,7 +360,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
     setNotice(null);
     const { error } = await supabase
       .from("contacts")
-      .update({ campaign: selected.name })
+      .update({ campaign: selected.name, campaign_id: selected.id })
       .eq("user_id", profile.id)
       .in("id", pendingContactIds);
     if (error) {
@@ -338,19 +391,36 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
   };
 
   const active = draft.steps[activeStep];
+  const preview = campaignSegmentPreview(active?.message || "", previewName);
+  if (channel === "email") return <EmailCampaigns onChannel={setChannel} />;
+  if (channel === "sequence") {
+    return (
+      <>
+        <PageHeader
+          eyebrow="Follow-up sequence"
+          title="Text + email sequences"
+          description="One sequence that texts, emails and queues calls, and stops the moment a lead replies, books or unsubscribes."
+          actions={<div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email", "sequence"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : item === "email" ? "Email" : "Text + Email"}</button>)}</div>}
+        />
+        <Panel><EmptyState title="Text + email sequences are being built" description="Mix texts, emails and dialer tasks in one follow-up plan. Until it's ready, use a text campaign for the texts and an email campaign for the emails." /></Panel>
+      </>
+    );
+  }
   return (
     <>
       <PageHeader
         eyebrow="Campaign studio"
-        title="Build the whole follow-up in one place."
-        description="One campaign can be a single text or a complete multi-step workflow with timing, spin text, and personalization."
+        title="Campaigns"
+        description="Build and save your texts and follow-ups here. To send them to a new CSV list, choose this campaign in Import leads."
         actions={
           <>
+            <div className="v2-segmented" role="group" aria-label="Campaign type">{(["text", "email", "sequence"] as const).map((item) => <button key={item} className={channel === item ? "is-active" : ""} aria-pressed={channel === item} onClick={() => setChannel(item)}>{item === "text" ? "Text" : item === "email" ? "Email" : "Text + Email"}</button>)}</div>
             <button className="v2-btn" onClick={() => onNavigate("upload")}><Users size={16} /> Import leads</button>
             <button className="v2-btn v2-btn-primary" onClick={startNew}><Plus size={16} /> New campaign</button>
           </>
         }
       />
+      <>
       {notice && <div className={`v2-notice is-${notice.tone}`}>{notice.text}<button onClick={() => setNotice(null)}><X size={15} /></button></div>}
       {pendingContactIds.length > 0 && (
         <div className="v2-campaign-handoff">
@@ -435,12 +505,8 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                   <div className="v2-field">
                     <label>Wait before this step</label>
                     <div className="v2-delay-control">
-                      <input type="number" min={0} value={active.delayMinutes} onChange={(event) => patchStep(activeStep, { delayMinutes: Math.max(0, Number(event.target.value)) })} />
-                      <select value={active.delayMinutes % 1440 === 0 && active.delayMinutes > 0 ? "days" : active.delayMinutes % 60 === 0 ? "hours" : "minutes"} onChange={(event) => {
-                        const unit = event.target.value;
-                        const current = unit === "days" ? Math.max(1, Math.round(active.delayMinutes / 1440)) * 1440 : unit === "hours" ? Math.max(1, Math.round(active.delayMinutes / 60)) * 60 : Math.max(1, active.delayMinutes);
-                        patchStep(activeStep, { delayMinutes: current });
-                      }}><option value="minutes">minutes</option><option value="hours">hours</option><option value="days">days</option></select>
+                      <input aria-label="Delay quantity" type="number" min={0} step={1} value={delayParts(active.delayMinutes).quantity} onChange={(event) => patchStep(activeStep, { delayMinutes: Math.max(0, Number(event.target.value)) * delayParts(active.delayMinutes).unit })} />
+                      <select aria-label="Delay unit" value={delayParts(active.delayMinutes).unit} onChange={(event) => patchStep(activeStep, { delayMinutes: delayParts(active.delayMinutes).quantity * Number(event.target.value) })}><option value={1}>minutes</option><option value={60}>hours</option><option value={1440}>days</option></select>
                     </div>
                     <div className="v2-delay-presets">
                       {[60, 1440, 4320, 10080].map((minutes) => <button key={minutes} onClick={() => patchStep(activeStep, { delayMinutes: minutes })}>{delayLabel(minutes)}</button>)}
@@ -449,11 +515,29 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
                 )}
                 <div className="v2-field">
                   <label htmlFor="campaign-message">Message</label>
-                  <textarea id="campaign-message" value={active.message} onChange={(event) => patchStep(activeStep, { message: event.target.value })} placeholder="Hi {firstName}, thanks for requesting information…" rows={8} />
-                  <div className="v2-message-meta"><span>{active.message.length} characters</span><span>Personalize:</span></div>
+                  <textarea aria-invalid={activeStep === 0 && !draft.omitOptOut && !firstOptOutPresent} aria-describedby={activeStep === 0 ? "campaign-optout-guide" : undefined} id="campaign-message" value={active.message} onChange={(event) => patchStep(activeStep, { message: event.target.value })} placeholder="Hi {firstName}, thanks for requesting information…" rows={8} />
+                  <div className="v2-message-meta"><span>{preview.length}{preview.maxLength !== preview.length ? `–${preview.maxLength}` : ""} characters · <strong aria-live="polite" aria-atomic="true">{preview.segments}{preview.maxSegments !== preview.segments ? `–${preview.maxSegments}` : ""} SMS segment{preview.maxSegments === 1 ? "" : "s"}</strong>{preview.estimated ? " (estimate)" : ""}</span></div>
+                  {preview.estimated && <small>Estimate uses spin choices and sample contact details. Names are estimated at 1–16 letters until you upload leads.</small>}
+                  {active.message.includes("{firstName}") && <div className="v2-field"><label htmlFor="campaign-preview-name">Preview first name (optional)</label><input id="campaign-preview-name" value={previewName} onChange={e=>setPreviewName(e.target.value)} placeholder="Try a name" maxLength={100} /><small>Preview only. Each lead receives their own name.</small></div>}
+                  <div className="v2-message-meta"><span>Personalize:</span></div>
                   <div className="v2-token-row">{TOKENS.map((token) => <button key={token} onClick={() => patchStep(activeStep, { message: `${active.message}${active.message && !active.message.endsWith(" ") ? " " : ""}${token}` })}>{token}</button>)}</div>
                 </div>
-                {activeStep === 0 ? <div className="v2-first-optout"><ShieldCheck size={16} /><div><strong>First-message opt-out</strong><p><b>{firstMessageOptOut}</b> is added automatically when this campaign starts. Follow-up steps do not repeat it.</p></div><button onClick={() => onNavigate("settings", "team")}>Edit</button></div> : null}
+                {active.message.trim() ? <SpamCheckPanel message={active.message} /> : null}
+                {activeStep === 0 ? <aside id="campaign-optout-guide" className="v2-first-optout" aria-label="First-message opt-out">
+                  <ShieldCheck size={16} /><div>
+                    <strong>First message · Opt-out</strong>
+                    <p>Included by default. Follow-up steps do not need to repeat it. STOP replies always unsubscribe.</p>
+                    {draft.omitOptOut ? <p role="status">Opt-out text removed for this campaign. This does not waive carrier requirements.</p> : <>
+                      <p role="status" className={firstOptOutPresent ? "" : "v2-optout-missing"}>{firstOptOutPresent?"Opt-out detected at the end.":"Missing opt-out: add one before saving or launching."}</p>
+                      <p>Examples · click to add:</p><button type="button" onClick={()=>onNavigate("settings","team")}>Choose a custom trigger</button>
+                      {["Reply STOP to opt out.",`Reply ${firstMessageOptOut} to opt out.`,firstMessageOptOut].filter((x,i,a)=>a.indexOf(x)===i).map(example=><button type="button" key={example} style={{margin:"5px 5px 0 0"}} onClick={()=>patchStep(0,{message:`${draft.steps[0].message.trim()} ${example}`.trim()})}>{example}</button>)}
+                    </>}
+                  </div>
+                  <button type="button" onClick={()=>{
+                    if (!draft.omitOptOut && !window.confirm("Remove opt-out text from this campaign? Recipients will have less guidance on unsubscribing. Carrier requirements still apply, and STOP handling stays on.")) return;
+                    setDraft(current=>({...current,omitOptOut:!current.omitOptOut,steps:current.steps.map((step,i)=>i!==0?step:{...step,message:current.omitOptOut?`${step.message.trim()} Reply STOP to opt out.`.trim():step.message.replace(/\s*(?:reply|text|send)\s+(?:stop|end|quit|cancel|unsubscribe|[a-z])\s+to\s+(?:opt\s+out|unsubscribe)[.!?\s]*$/i,"").replace(/\s+(?:STOP|END|QUIT|CANCEL|UNSUBSCRIBE|[A-Z])[.!?\s]*$/i,"").trim()})}));
+                  }}>{draft.omitOptOut?"Include opt-out":"Remove opt-out"}</button>
+                </aside> : null}
                 <div className="v2-spin-help">
                   <Sparkles size={16} />
                   <div><strong>Spin text</strong><p>Use braces and pipes to rotate wording: <code>{"{Hi|Hey|Hello}"}</code>. Each lead receives one variation.</p></div>
@@ -484,6 +568,7 @@ export default function CampaignsWorkspace({ profile, onNavigate }: WorkspaceVie
           </div>
         </Panel>
       )}
+      </>
     </>
   );
 }

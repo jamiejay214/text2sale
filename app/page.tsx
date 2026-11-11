@@ -1,18 +1,14 @@
 import type { Metadata } from "next";
+import { PLAN_KEYS, PLANS } from "@/lib/plans";
 import HomeClient from "./HomeClient";
 import HomeFaq, { HOME_FAQ } from "@/components/HomeFaq";
 import SiteLinks from "@/components/SiteLinks";
 import { SITE_URL } from "@/lib/site-pages";
 
-// Server wrapper for the homepage. The interactive page (hero, pricing, auth
-// form) is a client component, and client components can't export metadata,
-// so the canonical URL and the homepage-only structured data live here.
-// Structured data used to sit in the root layout, which stamped the
-// homepage's FAQ and product markup onto every URL on the site.
-
 export const metadata: Metadata = {
-  title: "Text2Sale AI — Turn Old Leads into Booked Appointments",
-  description: "Upload your leads. Turn on AI. Text2Sale texts, qualifies, follows up, and books appointments for insurance agents and sales teams.",
+  title: "AI Sales CRM for Texting, Calling & Outreach | Text2Sale",
+  description:
+    "AI texting, calling, and lead follow-up for sales professionals, teams, and businesses. Manage outreach, organize conversations, and book appointments with Text2Sale.",
   alternates: { canonical: "/" },
 };
 
@@ -23,7 +19,9 @@ const organizationSchema = {
   name: "Text2Sale",
   url: SITE_URL,
   logo: `${SITE_URL}/logo.png`,
-  description: "AI follow-up and appointment booking for insurance agents and sales teams.",
+  sameAs: ["https://www.instagram.com/text2saleofficialcrm/"],
+  description:
+    "AI lead follow-up, texting, dialing, and appointment booking for sales professionals, teams, and businesses.",
   contactPoint: {
     "@type": "ContactPoint",
     email: "support@text2sale.com",
@@ -41,8 +39,6 @@ const websiteSchema = {
   publisher: { "@id": `${SITE_URL}/#organization` },
 };
 
-// Prices mirror the plan cards in HomeClient. No aggregateRating: rating
-// markup must come from real, visible reviews, and there is no review source.
 const softwareApplicationSchema = {
   "@context": "https://schema.org",
   "@type": "SoftwareApplication",
@@ -51,35 +47,34 @@ const softwareApplicationSchema = {
   applicationSubCategory: "CRM Software",
   operatingSystem: "Web browser",
   description:
-    "Mass texting CRM for insurance agents, sales teams, and business owners. Upload CSV contact lists, build drip campaigns, manage 2-way conversations, and keep TCPA and 10DLC compliance records.",
+    "AI lead follow-up CRM with mass texting, two-way conversations, a built-in dialer, AI receptionist, appointment booking, CSV contact import, campaign automation, and TCPA/10DLC compliance tools.",
   url: SITE_URL,
   image: `${SITE_URL}/opengraph-image`,
   publisher: { "@id": `${SITE_URL}/#organization` },
-  offers: [
-    {
-      "@type": "Offer",
-      name: "Text2Sale",
-      price: "39.99",
+  offers: PLAN_KEYS.map((key) => ({
+    "@type": "Offer",
+    name: PLANS[key].name,
+    price: PLANS[key].price.toFixed(2),
+    priceCurrency: "USD",
+    availability: "https://schema.org/InStock",
+    priceSpecification: {
+      "@type": "UnitPriceSpecification",
+      price: PLANS[key].price.toFixed(2),
       priceCurrency: "USD",
-      availability: "https://schema.org/InStock",
-      priceSpecification: {
-        "@type": "UnitPriceSpecification",
-        price: "39.99",
-        priceCurrency: "USD",
-        unitText: "MONTH",
-        billingDuration: "P1M",
-      },
+      unitText: "MONTH",
+      billingDuration: "P1M",
     },
-  ],
+  })),
   featureList: [
+    "AI lead follow-up",
+    "Old lead reactivation",
     "Unlimited contacts",
     "Mass SMS campaigns",
     "2-way conversations",
     "CSV contact import",
     "Campaign builder with drip sequences",
     "TCPA and 10DLC compliance tools",
-    "Quiet hours sending windows",
-    "Team management",
+    "Manual, power and predictive dialer",
     "AI auto-replies and appointment booking",
     "AI calling receptionist with qualification and booking",
   ],

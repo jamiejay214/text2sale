@@ -178,6 +178,11 @@ export type Plan = {
   name: string;
   price: number;
   messageCost: number;
+  /** text | dialer | complete (lib/plans.ts). Missing on legacy rows: Text. */
+  key?: "text" | "dialer" | "complete";
+  /** A downgrade booked for the next renewal, and when it takes effect. */
+  pendingKey?: "text" | "dialer" | "complete" | null;
+  pendingAt?: string | null;
 };
 
 export type UsageHistoryItem = {
@@ -196,9 +201,17 @@ export type OwnedNumber = {
   /** Call forwarding: ring this cell for calls the AI receptionist isn't taking. */
   forwardEnabled?: boolean;
   forwardTo?: string | null;
+  /** The AI receptionist never answers this number: its calls go straight to forwarding or the browser. */
+  aiOff?: boolean;
 };
 
 export type Contact = {
+  pipeline_stage?: string;
+  campaign_id?: string | null;
+  consent_source?: string;
+  consent_at?: string | null;
+  follow_up_at?: string | null;
+  deal_value?: number;
   id: string;
   user_id: string;
   first_name: string;
@@ -230,6 +243,7 @@ export type CampaignStep = {
 };
 
 export type Campaign = {
+  omit_first_opt_out?: boolean;
   id: string;
   user_id: string;
   name: string;
@@ -261,6 +275,7 @@ export type CampaignLog = {
 };
 
 export type Conversation = {
+  archived?: boolean;
   id: string;
   user_id: string;
   contact_id: string;
@@ -273,9 +288,13 @@ export type Conversation = {
   ai_enabled?: boolean;
   agent_enabled?: boolean;
   ai_skipped_reason?: string | null;
+  // Last real reply from the lead (opt-outs excluded) and last AI reply.
+  replied_at?: string | null;
+  ai_replied_at?: string | null;
 };
 
 export type Message = {
+  picture_path?: string | null;
   id: string;
   conversation_id: string;
   direction: "inbound" | "outbound";
@@ -285,6 +304,9 @@ export type Message = {
   from_number?: string;
   /** Telnyx message id, so delivery receipts update this exact message. */
   telnyx_message_id?: string | null;
+  /** "email" for email replies in the thread; texts are "sms". */
+  channel?: "sms" | "email";
+  email_subject?: string | null;
 };
 
 // Conversation with messages and contact joined in

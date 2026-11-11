@@ -21,6 +21,7 @@ import {
 import type { WorkspaceTab } from "@/components/WorkspaceNavigation";
 import type { WorkspaceViewProps } from "../../WorkspaceApp";
 import { PageHeader, Panel } from "../../WorkspacePrimitives";
+import { canCall } from "@/lib/entitlements";
 
 type Guide = {
   id: string;
@@ -42,7 +43,7 @@ const GUIDES: Guide[] = [
     subtab: "10dlc",
     steps: [
       { title: "Activate your subscription", detail: "Open Billing & funds and complete the secure Stripe checkout. Your subscription unlocks sending, number purchases, calling, AI, imports, and integrations." },
-      { title: "Add usage funds", detail: "Add at least $20 to the wallet. Texts, calls, imported-lead charges, number activation, and AI calling draw from this balance. The live balance is always visible in the top bar.", tip: "Turn on auto recharge so a running campaign never stops for a low balance." },
+      { title: "Add usage funds", detail: "Add at least $20 to the wallet. Texts, calls, SMS usage charges, number activation, and AI calling draw from this balance. The live balance is always visible in the top bar.", tip: "Turn on auto recharge so a running campaign never stops for a low balance." },
       { title: "Complete messaging setup", detail: "Enter the exact legal business name, EIN, IRS address, website choice, contact details, and preferred area code. Text2Sale creates the required consent pages and submits the carrier registration." },
       { title: "Connect a number", detail: "Once messaging is approved, search by area code in Phone numbers and choose a local line. Delivery health appears on the same screen." },
     ],
@@ -82,7 +83,7 @@ const GUIDES: Guide[] = [
     icon: MessageSquare,
     tab: "conversations",
     steps: [
-      { title: "Filter the inbox", detail: "Use All, Unread, AI handled, and Archived to focus the queue. Search narrows the current page without loading every message in the account." },
+      { title: "Filter the inbox", detail: "Use All, Unread, AI handled, and Archived to focus the queue. Search checks the full account without loading every message in the account." },
       { title: "Open a lead", detail: "Select a conversation to load its thread and contact details. Older messages load only when requested, keeping the inbox fast." },
       { title: "Send or hand off", detail: "Write a reply and press Enter to send. The composer keeps its own state, so typing stays responsive even with a large database." },
       { title: "Control AI", detail: "The workspace switch turns AI texting on or off globally. The switch in a conversation overrides AI for that one lead, so a rep can take over immediately." },
@@ -172,14 +173,16 @@ const GUIDES: Guide[] = [
   },
 ];
 
-export default function LearnWorkspace({ onNavigate }: WorkspaceViewProps) {
+export default function LearnWorkspace({ profile, onNavigate }: WorkspaceViewProps) {
   const [query, setQuery] = useState("");
   const [active, setActive] = useState("launch");
-  const filtered = useMemo(() => GUIDES.filter((guide) => `${guide.title} ${guide.description} ${guide.steps.map((step) => `${step.title} ${step.detail}`).join(" ")}`.toLowerCase().includes(query.toLowerCase())), [query]);
+  // Calling guides only for accounts that have calling.
+  const calling = canCall(profile);
+  const filtered = useMemo(() => GUIDES.filter((guide) => (calling || (guide.tab !== "calls" && guide.tab !== "aicalls")) && `${guide.title} ${guide.description} ${guide.steps.map((step) => `${step.title} ${step.detail}`).join(" ")}`.toLowerCase().includes(query.toLowerCase())), [calling, query]);
   const selected = GUIDES.find((guide) => guide.id === active) || GUIDES[0];
   return (
     <>
-      <PageHeader eyebrow="Text2Sale academy" title="Know exactly what to do next." description="A complete, plain-English guide to setup, texting, calling, AI, campaigns, imports, compliance, billing, and integrations." actions={<div className="v2-header-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tutorials…" /></div>} />
+      <PageHeader eyebrow="Text2Sale academy" title="Tutorials" description="A complete, plain-English guide to setup, texting, calling, AI, campaigns, imports, compliance, billing, and integrations." actions={<div className="v2-header-search"><Search size={15} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search tutorials…" /></div>} />
       <div className="v2-quickstart"><span><BookOpen size={20} /></span><div><p>Recommended starting path</p><h2>Go from new account to first live campaign</h2></div>{["Subscribe", "Register", "Connect number", "Import", "Launch"].map((label, index) => <div key={label}><span>{index + 1}</span><small>{label}</small></div>)}</div>
       <div className="v2-learn-layout">
         <Panel className="v2-guide-nav"><div className="v2-panel-head"><div><h2>Guides</h2><p>{filtered.length} topics</p></div></div><div>{filtered.map((guide) => <button className={guide.id === selected.id ? "is-active" : ""} key={guide.id} onClick={() => setActive(guide.id)}><span><guide.icon size={16} /></span><div><strong>{guide.title}</strong><small>{guide.description}</small></div><ChevronRight size={15} /></button>)}</div></Panel>

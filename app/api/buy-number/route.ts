@@ -4,6 +4,8 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSameUser } from "@/lib/auth-guard";
 import { ensureVoiceRouting } from "@/lib/telnyx-voice";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
+import { canCall, isActiveSubscriber } from "@/lib/entitlements";
+import { isOwnerEmail } from "@/lib/owner";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -25,6 +27,37 @@ export async function POST(req: NextRequest) {
     // Phone numbers have no activation charge. The customer is billed
     // $1.50/month by the recurring billing job after the number is connected.
     const walletClient = createClient(supabaseUrl, serviceKey);
+
+    // Pay first: a number costs us monthly from the moment it's ordered, so
+    // only a paying account (any plan) can order one. Voice-only (Dialer)
+    // accounts need no messaging registration for it.
+    const { data: buyer } = await walletClient
+      .from("profiles")
+      .select("email, plan, paused, subscription_status, free_subscription, messaging_status, a2p_registration")
+      .eq("id", userId)
+      .maybeSingle();
+    if (!buyer || buyer.paused || !(isActiveSubscriber(buyer) || isOwnerEmail(buyer.email))) {
+      return NextResponse.json({ success: false, error: "Start your subscription before adding phone numbers." }, { status: 402 });
+    }
+
+    // A texting number is useless until 10DLC is approved, and we auto-set one
+    // up the moment it is — so don't let a texting-only account pay for a
+    // number early. Calling plans (Dialer, Complete) need a number to make
+    // calls and never do 10DLC, so they're unaffected; the owner is exempt.
+    // "Approved" mirrors the dashboard (lib: messaging ACTIVE, or the carrier
+    // campaign approved/completed).
+    const a2pStatus = (buyer.a2p_registration as { status?: string } | null)?.status || "";
+    const tenDlcApproved = buyer.messaging_status === "ACTIVE" || ["completed", "campaign_approved"].includes(a2pStatus);
+    if (!canCall(buyer) && !isOwnerEmail(buyer.email) && !tenDlcApproved) {
+      return NextResponse.json(
+        {
+          success: false,
+          error:
+            "Your texting registration isn't approved yet. Once it's approved, your phone number is set up for you automatically — no need to buy one now.",
+        },
+        { status: 409 },
+      );
+    }
 
     const fail = (message: string, status = 500) =>
       NextResponse.json({ success: false, error: message }, { status });

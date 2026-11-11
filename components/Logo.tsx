@@ -24,21 +24,21 @@ export function BrandMark({ size = 32 }: { size?: number }) {
       aria-hidden="true"
       className="shrink-0"
     >
-      <rect width="32" height="32" rx="10" fill="#D9F779" />
+      <rect width="32" height="32" rx="10" fill="#16634B" />
       <path
         d="M8 9.75C8 7.68 9.68 6 11.75 6h8.5C22.32 6 24 7.68 24 9.75v6.5A3.75 3.75 0 0 1 20.25 20H15l-4.9 4.08c-.65.54-1.63.08-1.61-.77L8.6 20.6A3.75 3.75 0 0 1 8 18.55v-8.8Z"
-        fill="#153F32"
+        fill="#FFFFFF"
       />
       <path
         d="m11.5 16 3.2-3.15 2.35 2.1 3.55-4.1"
-        stroke="#F7FFE7"
+        stroke="#16634B"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
       <path
         d="M18.45 10.85h2.15V13"
-        stroke="#F7FFE7"
+        stroke="#16634B"
         strokeWidth="1.8"
         strokeLinecap="round"
         strokeLinejoin="round"
@@ -66,8 +66,8 @@ export default function Logo({
           aria-hidden="true"
         >
           <span className="text-current">text2</span>
-          <span className="text-emerald-400">sale</span>
-          <span className="text-lime-300">.</span>
+          <span className="text-emerald-600">sale</span>
+          <span className="text-emerald-600">.</span>
         </span>
       )}
     </span>

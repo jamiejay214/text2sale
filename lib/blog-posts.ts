@@ -10,6 +10,24 @@ import { BLOG_POSTS_4 } from "./blog-posts-4";
 import { BLOG_POSTS_5 } from "./blog-posts-5";
 import { BLOG_POSTS_6 } from "./blog-posts-6";
 import { BLOG_POSTS_7 } from "./blog-posts-7";
+import { BLOG_POSTS_8 } from "./blog-posts-8";
+import { BLOG_POSTS_9 } from "./blog-posts-9";
+import { BLOG_POSTS_10 } from "./blog-posts-10";
+import { BLOG_POSTS_11 } from "./blog-posts-11";
+import { BLOG_POSTS_12 } from "./blog-posts-12";
+import { BLOG_POSTS_13 } from "./blog-posts-13";
+import { BLOG_POSTS_14 } from "./blog-posts-14";
+import { BLOG_POSTS_15 } from "./blog-posts-15";
+import { BLOG_POSTS_16 } from "./blog-posts-16";
+import { BLOG_POSTS_17 } from "./blog-posts-17";
+import { BLOG_POSTS_18 } from "./blog-posts-18";
+
+import { FIELD_GUIDES_1 } from "./field-guides/proof-approvals";
+import { FIELD_GUIDES_2 } from "./field-guides/rental-and-site-quotes";
+import { FIELD_GUIDES_3 } from "./field-guides/proposal-scope";
+import { FIELD_GUIDES_4 } from "./field-guides/recurring-orders";
+import { FIELD_GUIDES_5 } from "./field-guides/sample-decisions";
+import { FIELD_GUIDES_6 } from "./field-guides/change-orders";
 
 export type BlogSection = { heading: string; paragraphs: string[]; bullets?: string[] };
 export type BlogFaq = { question: string; answer: string };
@@ -30,6 +48,7 @@ export type BlogPost = {
   faq: BlogFaq[];
   relatedSlugs?: string[];
   relatedPages?: { href: string; label: string }[];
+  illustration?: { src: string; alt: string; caption: string };
   sources?: { href: string; label: string }[];
 };
 
@@ -4449,7 +4468,7 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["insurance-referral-request-texts", "auto-insurance-renewal-texts", "what-to-text-a-lead-who-ghosted-you", "exclusive-vs-shared-insurance-leads"],
     relatedPages: [
       { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
+      { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
     ],
   },
 
@@ -4524,7 +4543,6 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["insurance-policy-review-texts", "insurance-cross-sell-texts"],
     relatedPages: [
       { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
     ],
   },
 
@@ -7224,7 +7242,7 @@ export const BLOG_POSTS: BlogPost[] = [
     relatedSlugs: ["double-opt-in-sms", "state-mini-tcpa-laws"],
     relatedPages: [
       { href: "/10dlc-compliant-texting", label: "10DLC compliant texting" },
-      { href: "/best-sms-crm-for-insurance-agents", label: "Best SMS CRM for insurance agents" },
+      { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
     ],
   },
 
@@ -8208,6 +8226,23 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_3,
   ...BLOG_POSTS_4,
   ...BLOG_POSTS_7,
+  ...BLOG_POSTS_8,
+  ...BLOG_POSTS_9,
+  ...BLOG_POSTS_10,
+  ...BLOG_POSTS_11,
+  ...BLOG_POSTS_12,
+  ...BLOG_POSTS_13,
+  ...BLOG_POSTS_14,
+  ...BLOG_POSTS_15,
+  ...BLOG_POSTS_16,
+  ...BLOG_POSTS_17,
+  ...BLOG_POSTS_18,
+  ...FIELD_GUIDES_1,
+  ...FIELD_GUIDES_2,
+  ...FIELD_GUIDES_3,
+  ...FIELD_GUIDES_4,
+  ...FIELD_GUIDES_5,
+  ...FIELD_GUIDES_6,
   ...BLOG_POSTS_6,
   ...BLOG_POSTS_5,
 ];

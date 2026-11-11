@@ -37,7 +37,7 @@ ${post.tags.map((tag) => `      <category>${escapeXml(tag)}</category>`).join("\
   <channel>
     <title>Text2Sale Blog</title>
     <link>${SITE}/blog</link>
-    <description>Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for agents and sales teams.</description>
+    <description>Guides on texting leads, SMS follow-up, 10DLC and TCPA compliance, and deliverability for sales professionals, teams, and businesses.</description>
     <language>en-us</language>
     <lastBuildDate>${posts[0] ? toRfc822(posts[0].dateModified) : new Date().toUTCString()}</lastBuildDate>
     <atom:link href="${SITE}/blog/rss.xml" rel="self" type="application/rss+xml" />

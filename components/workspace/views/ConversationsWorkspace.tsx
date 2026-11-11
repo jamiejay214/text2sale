@@ -1,16 +1,18 @@
 "use client";
+import {useSearchParams} from "next/navigation";
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
+import { Archive, Bot, Check, CheckCircle2, ChevronLeft, ChevronRight, Copy, Loader2, Mail, Megaphone, MessageSquare, MoreHorizontal, PhoneCall, Plus, Search, Send, Tag, Trash2, UserRound, X } from "lucide-react";
+import { MMS_PRICE, MMS_MAX_BYTES } from "@/lib/mms";
 import { authFetch } from "@/lib/auth-fetch";
 import { sanitizeForSms, countSegments, hasNonGsmChars } from "@/lib/sms-text";
 import { supabase } from "@/lib/supabase";
 import { fetchCampaigns, fetchConversationsPage, fetchMessagesPage, insertMessage, updateContact, updateConversation } from "@/lib/supabase-data";
+import { belongsInTab, type InboxFilter } from "@/lib/inbox-filter";
+import { canCall } from "@/lib/entitlements";
 import type { Campaign, Contact, Conversation, Message } from "@/lib/types";
 import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
-
-type InboxFilter = "all" | "inbox" | "unread" | "ai" | "archived";
 
 type ContactRailDraft = Pick<Contact,
   "first_name" | "last_name" | "email" | "phone" | "tags" | "date_of_birth" |
@@ -92,7 +94,7 @@ function ContactDetailsRail({
   onClose: () => void;
   onSave: (draft: ContactRailDraft) => Promise<Contact | null>;
   onViewContact: () => void;
-  onCallQueue: () => void;
+  onCallQueue?: () => void;
 }) {
   const [draft, setDraft] = useState<ContactRailDraft>(() => contactRailDraft(contact));
   const [newTag, setNewTag] = useState("");
@@ -240,7 +242,7 @@ function ContactDetailsRail({
         {notice ? <p className={`v2-client-save-notice is-${notice.tone}`}>{notice.tone === "ok" ? <CheckCircle2 size={15} /> : <X size={15} />}{notice.text}</p> : null}
       </div>
       <footer className="v2-contact-rail-footer">
-        <div><button className="v2-btn" onClick={onViewContact}>Full contact</button><button className="v2-btn" onClick={onCallQueue}><UserRound size={15} /> Call queue</button></div>
+        <div><button className="v2-btn" onClick={onViewContact}>Full contact</button>{onCallQueue ? <button className="v2-btn" onClick={onCallQueue}><UserRound size={15} /> Call queue</button> : null}</div>
         <button className="v2-btn v2-btn-primary" disabled={!dirty || !draft.phone.trim() || saving} onClick={() => void save()}>{saving ? <Loader2 className="v2-spin" size={16} /> : <Check size={16} />}{saving ? "Saving…" : dirty ? "Save changes" : "Saved"}</button>
       </footer>
     </aside>
@@ -304,7 +306,7 @@ const ConversationList = memo(function ConversationList({
               <span><strong>{contactName(contact)}</strong><small>{relativeTime(conversation.last_message_at)}</small></span>
               <span>{conversation.preview || "Conversation started"}</span>
               <span className="v2-inbox-badges">
-                {conversation.ai_enabled ? <StatusPill tone="info">AI</StatusPill> : null}
+                {conversation.ai_enabled || conversation.ai_replied_at ? <StatusPill tone="info">AI</StatusPill> : null}
                 {contact?.dnc ? <StatusPill tone="danger">DNC</StatusPill> : null}
               </span>
             </span>
@@ -316,54 +318,104 @@ const ConversationList = memo(function ConversationList({
   );
 });
 
+function Picture({ path }: { path: string }) {
+  const [url,setUrl] = useState("");
+  useEffect(() => { let active=true; authFetch(`/api/message-pictures?path=${encodeURIComponent(path)}`).then(r=>r.json()).then(r=>{if(active)setUrl(r.url || "");}).catch(()=>{}); return()=>{active=false;}; },[path]);
+  return url ? <a href={url} target="_blank" rel="noreferrer"><img src={url} alt="Message attachment" style={{maxWidth:240,maxHeight:240,borderRadius:12,objectFit:"contain"}} /></a> : <span>Picture unavailable</span>;
+}
+
 const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { messages: Message[]; loading: boolean; hasOlder: boolean; onOlder: () => void }) {
-  const end = useRef<HTMLDivElement>(null);
-  useEffect(() => { end.current?.scrollIntoView({ block: "end" }); }, [messages.length]);
+  // Scroll only the thread's own box. scrollIntoView also scrolls every
+  // ancestor, which pushed the whole inbox panel up and hid the search bar.
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (box.current) box.current.scrollTop = box.current.scrollHeight; }, [messages.length]);
   return (
-    <div className="v2-thread">
+    <div className="v2-thread" ref={box}>
       {hasOlder ? <button className="v2-load-older" onClick={onOlder}>Load earlier messages</button> : null}
       {loading ? <div className="v2-thread-loading"><Loader2 size={18} className="v2-spin" /> Loading messages</div> : null}
       {!loading && messages.length === 0 ? <EmptyState title="No messages yet" description="Start this conversation with a personal message." /> : null}
       {messages.map((message) => (
         <div key={message.id} className={`v2-message-row ${message.direction === "outbound" ? "is-outbound" : "is-inbound"}`}>
           <div>
+            {message.channel === "email" ? <b className="v2-message-channel"><Mail size={12} /> Email{message.email_subject ? ` · ${message.email_subject}` : ""}</b> : null}
+            {message.picture_path ? <Picture path={message.picture_path} /> : null}
             <p>{message.body}</p>
             <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{message.direction === "outbound" ? ` · ${message.status}` : ""}</span>
           </div>
         </div>
       ))}
-      <div ref={end} />
     </div>
   );
 });
 
-function MessageComposer({ disabled, firstName, onSend }: { disabled: boolean; firstName: string; onSend: (body: string) => Promise<boolean> }) {
+function MessageComposer({ disabled, firstName, channel, canEmail, onChannel, onSend }: { disabled: boolean; firstName: string; channel: "sms" | "email"; canEmail: boolean; onChannel: (channel: "sms" | "email") => void; onSend: (body: string, channel: "sms" | "email", picturePath?: string) => Promise<boolean> }) {
   const [body, setBody] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const sanitized = sanitizeForSms(body);
-  const unicode = hasNonGsmChars(sanitized);
-  const segments = body ? countSegments(sanitized) : 0;
+  const [picturePath,setPicturePath] = useState<string | undefined>();
+  const [uploading,setUploading] = useState(false);
+  const pictureInput = useRef<HTMLInputElement>(null);
+  const email = channel === "email";
+  const attach = async (file?: File) => {
+    if (!file) return;
+    setUploading(true); setError("");
+    try {
+      if (!["image/jpeg","image/png","image/gif"].includes(file.type) || file.size > 15_000_000) throw new Error("Choose a JPG, PNG or GIF under 15 MB.");
+      let picture: Blob = file;
+      if (file.type !== "image/gif") {
+        const bitmap = await createImageBitmap(file);
+        const scale = Math.min(1,1200/Math.max(bitmap.width,bitmap.height));
+        const canvas = document.createElement("canvas"); canvas.width=Math.max(1,Math.round(bitmap.width*scale)); canvas.height=Math.max(1,Math.round(bitmap.height*scale));
+        const ctx=canvas.getContext("2d"); if(!ctx) throw new Error("Could not prepare picture.");
+        ctx.fillStyle="#fff";ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(bitmap,0,0,canvas.width,canvas.height);bitmap.close();
+        for (const quality of [0.85,0.65,0.45,0.25]) {
+          picture=await new Promise<Blob>((resolve,reject)=>canvas.toBlob(b=>b?resolve(b):reject(new Error("Could not prepare picture.")),"image/jpeg",quality));
+          if(picture.size<=MMS_MAX_BYTES) break;
+        }
+      }
+      if(picture.size>MMS_MAX_BYTES) throw new Error("This picture is too large for MMS. Choose a smaller picture or GIF under 300 KB.");
+      const form=new FormData();form.append("picture",picture,"picture");
+      const response=await authFetch("/api/message-pictures",{method:"POST",body:form});const result=await response.json();
+      if(!response.ok) throw new Error(result.error || "Upload failed.");
+      setPicturePath(result.path);
+    } catch(reason) {setError(reason instanceof Error ? reason.message : "Upload failed.");}
+    finally {setUploading(false);if(pictureInput.current)pictureInput.current.value="";}
+  };
+  const sanitized = email ? body : sanitizeForSms(body);
+  const unicode = !email && hasNonGsmChars(sanitized);
+  const segments = body && !email ? countSegments(sanitized) : 0;
   const send = async () => {
-    if (!body.trim() || disabled || sending) return;
+    if ((!body.trim() && (email || !picturePath)) || disabled || sending || uploading) return;
     if (unicode) { setError("Remove emojis or special characters before sending."); return; }
     setSending(true); setError("");
-    const sent = await onSend(sanitized.trim()).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
-    if (sent) setBody("");
+    const sent = await onSend(sanitized.trim(), channel, email ? undefined : picturePath).catch((reason) => { setError(reason instanceof Error ? reason.message : "Message failed."); return false; });
+    if (sent) {setBody("");setPicturePath(undefined);}
     setSending(false);
   };
   return (
     <div className="v2-composer">
+      {canEmail ? (
+        <div className="v2-composer-channel" role="group" aria-label="Reply by">
+          <button className={!email ? "is-active" : ""} aria-pressed={!email} onClick={() => onChannel("sms")}><MessageSquare size={13} /> Text</button>
+          <button className={email ? "is-active" : ""} aria-pressed={email} onClick={() => onChannel("email")}><Mail size={13} /> Email</button>
+        </div>
+      ) : null}
+      {!email ? <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:8}}>
+        <input ref={pictureInput} type="file" accept="image/jpeg,image/png,image/gif" hidden onChange={e=>void attach(e.target.files?.[0])} />
+        <button type="button" disabled={disabled || sending || uploading} onClick={()=>pictureInput.current?.click()}>{uploading ? "Preparing picture…" : "Attach picture"}</button>
+        <span>Picture message · ${MMS_PRICE.toFixed(2)} each</span>
+      </div> : null}
+      {!email && picturePath ? <div style={{marginBottom:8,flexWrap:"wrap"}}><Picture path={picturePath} /><button type="button" disabled={sending} onClick={()=>setPicturePath(undefined)}>Remove picture</button><p>Optional caption below. Sending charges $0.35 total.</p></div> : null}
       <textarea
         value={body}
         onChange={(event) => setBody(event.target.value)}
         onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); send(); } }}
-        placeholder={`Message ${firstName || "this contact"}…`}
+        placeholder={`${email ? "Email" : "Message"} ${firstName || "this contact"}…`}
         disabled={disabled}
       />
       <div>
-        <span className={unicode ? "is-error" : ""}>{body.length ? `${sanitized.length} characters · ${segments} segment${segments === 1 ? "" : "s"}` : "Enter to send · Shift+Enter for a new line"}</span>
-        <button onClick={send} disabled={disabled || sending || !body.trim()}>{sending ? <Loader2 className="v2-spin" size={17} /> : <Send size={17} />} Send</button>
+        <span className={unicode ? "is-error" : ""}>{email ? "Sent from your email domain, threaded under their last email · Shift+Enter for a new line" : body.length ? `${sanitized.length} characters · ${segments} segment${segments === 1 ? "" : "s"}` : "Enter to send · Shift+Enter for a new line"}</span>
+        <button onClick={send} disabled={disabled || sending || uploading || (!body.trim() && (email || !picturePath))}>{sending ? <Loader2 className="v2-spin" size={17} /> : <Send size={17} />} Send</button>
       </div>
       {error ? <p>{error}</p> : null}
     </div>
@@ -371,6 +423,7 @@ function MessageComposer({ disabled, firstName, onSend }: { disabled: boolean; f
 }
 
 export default function ConversationsWorkspace({ profile, onProfile, onNavigate }: WorkspaceViewProps) {
+  const requestedContactId=useSearchParams().get("contact");
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [contacts, setContacts] = useState<Map<string, Contact>>(new Map());
   const [messages, setMessages] = useState<Message[]>([]);
@@ -381,6 +434,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
   const [hasOlder, setHasOlder] = useState(false);
   const [filter, setFilter] = useState<InboxFilter>("inbox");
   const [search, setSearch] = useState("");
+  const [serverSearch,setServerSearch]=useState("");
+  useEffect(()=>{const timer=setTimeout(()=>setServerSearch(search.trim()),250);return()=>clearTimeout(timer);},[search]);
   const [loading, setLoading] = useState(true);
   const [threadLoading, setThreadLoading] = useState(false);
   const [error, setError] = useState("");
@@ -400,13 +455,49 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
 
   const selected = conversations.find((item) => item.id === selectedId);
   const selectedContact = selected ? contacts.get(selected.contact_id) : undefined;
+  // Reply the way they last wrote: email after an email, otherwise text.
+  const [channelFor, setChannelFor] = useState<Record<string, "sms" | "email">>({});
+  const lastChannel = messages.length ? messages[messages.length - 1].channel : undefined;
+  const replyChannel: "sms" | "email" = !selectedContact?.email ? "sms" : selected && channelFor[selected.id] ? channelFor[selected.id] : lastChannel === "email" ? "email" : "sms";
   const aiAccess = !!profile.ai_plan || !!profile.free_ai_plan;
 
-  const loadPage = useCallback(async (nextPage = page) => {
-    setLoading(true); setError("");
+  // What's on screen right now, for reloads that a live update schedules.
+  const latest = useRef({ filter, page, selectedId, archived, conversations });
+  useEffect(() => { latest.current = { filter, page, selectedId, archived, conversations }; });
+  const loadRequest = useRef(0);
+
+  // silent: a live refresh. No spinner, and the open conversation stays open
+  // even if it no longer fits the tab (say it was just read while on Unread).
+  const loadPage = useCallback(async (nextPage: number, options: { filter?: InboxFilter; silent?: boolean } = {}) => {
+    const request = ++loadRequest.current;
+    const now = latest.current;
+    if (!options.silent) { setLoading(true); setError(""); }
     try {
-      const result = await fetchConversationsPage(profile.id, { page: nextPage, pageSize: 50 });
-      const contactIds = Array.from(new Set(result.rows.map((item) => item.contact_id).filter(Boolean)));
+      const result = await fetchConversationsPage(profile.id, {
+        page: nextPage,
+        pageSize: 50,
+        search: serverSearch,
+        filter: options.filter ?? now.filter,
+        archivedIds: [...now.archived],
+      });
+      let rows = result.rows;
+      const requestedContact = new URLSearchParams(window.location.search).get("contact") || sessionStorage.getItem("t2s_contact_id");
+      let requestedId = "";
+      if (requestedContact) {
+        const {data:contact,error:contactError}=await supabase.from("contacts").select("id").eq("id",requestedContact).eq("user_id",profile.id).single();
+        if(contactError || !contact) throw new Error("This contact could not be opened.");
+        const existing=await supabase.from("conversations").select("*").eq("user_id",profile.id).eq("contact_id",requestedContact).order("last_message_at",{ascending:false}).limit(1).maybeSingle();
+        if(existing.error) throw existing.error;
+        let target=existing.data;
+        if(!target) {const created=await supabase.from("conversations").insert({user_id:profile.id,contact_id:requestedContact,preview:"",unread:0}).select().single();if(created.error)throw created.error;target=created.data;}
+        requestedId=target.id;
+        if(!rows.some(r=>r.id===requestedId))rows=[target,...rows];
+        sessionStorage.removeItem("t2s_contact_id");
+      }
+      setArchived(new Set(rows.filter(r=>r.archived).map(r=>r.id)));
+      const open = options.silent ? latest.current.conversations.find((item) => item.id === latest.current.selectedId) : undefined;
+      if (open && !rows.some((item) => item.id === open.id)) rows = [...rows, open];
+      const contactIds = Array.from(new Set(rows.map((item) => item.contact_id).filter(Boolean)));
       const nextContacts = new Map<string, Contact>();
       if (contactIds.length) {
         const { data, error: contactsError } = await supabase
@@ -417,29 +508,42 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
         if (contactsError) throw contactsError;
         for (const contact of (data || []) as Contact[]) nextContacts.set(contact.id, contact);
       }
-      setConversations(result.rows);
+      // A newer load (another tab or page) started meanwhile; it wins.
+      if (request !== loadRequest.current) return;
+      setConversations(rows);
       setContacts(nextContacts);
       setTotal(result.total);
       setPage(nextPage);
-      if (!result.rows.some((item) => item.id === selectedId)) setSelectedId(result.rows[0]?.id || "");
+      if(requestedId) setSelectedId(requestedId);
+      else if (!options.silent && !rows.some((item) => item.id === latest.current.selectedId)) setSelectedId(rows[0]?.id || "");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Could not load conversations.");
-    } finally { setLoading(false); }
-  }, [page, profile.id, selectedId]);
+      if (!options.silent && request === loadRequest.current) setError(reason instanceof Error ? reason.message : "Could not load conversations.");
+    } finally {
+      if (!options.silent && request === loadRequest.current) setLoading(false);
+    }
+  }, [profile.id,serverSearch,requestedContactId]);
 
   useEffect(() => {
-    try {
-      const stored = window.localStorage.getItem(`t2s_archived_convs_${profile.id}`);
-      if (stored) setArchived(new Set(JSON.parse(stored)));
-    } catch {}
-    loadPage(0);
-  // only reload when the signed-in account changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profile.id]);
+    const migrate = async () => {
+      const key=`t2s_archived_convs_${profile.id}`;
+      const ids=JSON.parse(localStorage.getItem(key) || "[]") as string[];
+      for(let i=0;i<ids.length;i+=100){const {error}=await supabase.from("conversations").update({archived:true}).eq("user_id",profile.id).in("id",ids.slice(i,i+100));if(error)throw error;}
+      localStorage.removeItem(key);
+      await loadPage(0);
+    };
+    void migrate().catch(e=>{setError(e.message || "Could not load inbox.");setLoading(false);});
+  },[loadPage,profile.id]);
 
-  useEffect(() => {
-    try { window.localStorage.setItem(`t2s_archived_convs_${profile.id}`, JSON.stringify([...archived])); } catch {}
-  }, [archived, profile.id]);
+  // Live updates refresh the list at most every 1.5 s, however many arrive.
+  const refreshTimer = useRef<number | undefined>(undefined);
+  const refreshSoon = useCallback(() => {
+    if (refreshTimer.current !== undefined) return;
+    refreshTimer.current = window.setTimeout(() => {
+      refreshTimer.current = undefined;
+      void loadPage(latest.current.page, { silent: true });
+    }, 1_500);
+  }, [loadPage]);
+  useEffect(() => () => window.clearTimeout(refreshTimer.current), []);
 
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
@@ -478,34 +582,61 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           setMessages((current) => current.some((item) => item.id === message.id) ? current : [...current, message]);
         }
         setConversations((current) => current.map((item) => item.id === message.conversation_id ? { ...item, preview: message.body, last_message_at: message.created_at } : item));
+        // A reply moves its conversation to the top of every tab.
+        if (message.direction === "inbound") refreshSoon();
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [profile.id, selectedId]);
+  }, [profile.id, refreshSoon, selectedId]);
+
+  // Conversation changes: refresh rows on screen, and reload when one that
+  // isn't shown now belongs in this tab (the AI just replied, say).
+  useEffect(() => {
+    const channel = supabase
+      .channel(`workspace-inbox-${profile.id}`)
+      .on("postgres_changes", { event: "UPDATE", schema: "public", table: "conversations", filter: `user_id=eq.${profile.id}` }, (payload) => {
+        const row = payload.new as Conversation;
+        const { filter: tab, conversations: shown, archived: hidden } = latest.current;
+        if (shown.some((item) => item.id === row.id)) {
+          setConversations((current) => current.map((item) => item.id === row.id ? { ...item, ...row } : item));
+        } else if (tab !== "all" && tab !== "archived" && belongsInTab(row, tab, hidden.has(row.id))) {
+          refreshSoon();
+        }
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, [profile.id, refreshSoon]);
 
   const visible = useMemo(() => {
-    const needle = search.trim().toLowerCase();
+    const requested = new URLSearchParams(window.location.search).get("contact");
     return conversations.filter((conversation) => {
       const contact = contacts.get(conversation.contact_id);
-      const isArchived = archived.has(conversation.id) || !!contact?.dnc;
       // "All texts" shows every conversation, archived and opted-out included.
-      if (filter !== "all" && (filter === "archived" ? !isArchived : isArchived)) return false;
-      if (filter === "unread" && conversation.unread < 1) return false;
-      if (filter === "ai" && !conversation.ai_enabled) return false;
-      if (!needle) return true;
-      return `${contactName(contact)} ${contact?.phone || ""} ${conversation.preview || ""}`.toLowerCase().includes(needle);
+      if (requested === conversation.contact_id) return true;
+      if (!belongsInTab(conversation, filter, archived.has(conversation.id) || !!contact?.dnc)) return false;
+      return true;
     });
   }, [archived, contacts, conversations, filter, search]);
 
-  const sendMessage = useCallback(async (body: string) => {
+  const sendMessage = useCallback(async (body: string, channel: "sms" | "email" = "sms", picturePath?: string) => {
     if (!selected || !selectedContact) return false;
+    if (channel === "email") {
+      const response = await authFetch("/api/email/reply", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ conversationId: selected.id, body }) });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Email failed.");
+      const inserted = result.message as Message | undefined;
+      const now = new Date().toISOString();
+      if (inserted) setMessages((current) => current.some((item) => item.id === inserted.id) ? current : [...current, inserted]);
+      setConversations((current) => current.map((item) => item.id === selected.id ? { ...item, preview: `Email: ${body}`.slice(0, 100), last_message_at: now, unread: 0 } : item));
+      return true;
+    }
     const from = selected.from_number || profile.owned_numbers?.[0]?.number;
     if (!from) throw new Error("Buy or connect a sending number before messaging.");
-    const response = await authFetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: selectedContact.phone, from, body, conversationId: selected.id }) });
+    const response = await authFetch("/api/send-sms", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ to: selectedContact.phone, from, body, conversationId: selected.id, ...(picturePath ? {picturePath} : {}) }) });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || "Message failed.");
     const sentBody = typeof result.body === "string" ? result.body : body;
-    const inserted = await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from, telnyx_message_id: typeof result.sid === "string" && result.sid ? result.sid : null });
+    const inserted = picturePath ? result.message as Message | null : await insertMessage({ conversation_id: selected.id, direction: "outbound", body: sentBody, status: "sent", from_number: from, telnyx_message_id: typeof result.sid === "string" && result.sid ? result.sid : null });
     const now = new Date().toISOString();
     if (inserted) setMessages((current) => current.some((item) => item.id === inserted.id) ? current : [...current, inserted]);
     await updateConversation(selected.id, { preview: sentBody, last_message_at: now, unread: 0 });
@@ -529,7 +660,9 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     onProfile(data as typeof profile);
   };
 
-  const archiveChecked = () => {
+  const archiveChecked = async () => {
+    const {error}=await supabase.from("conversations").update({archived:filter!=="archived"}).eq("user_id",profile.id).in("id",[...checked]);
+    if(error){setError("Could not save archive changes.");return;}
     const archivedIds = new Set(checked);
     const restoring = filter === "archived";
     setArchived((current) => {
@@ -546,7 +679,9 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     setChecked(new Set()); setSelectMode(false);
   };
 
-  const archiveConversation = (conversationId: string) => {
+  const archiveConversation = async (conversationId: string) => {
+    const {error}=await supabase.from("conversations").update({archived:true}).eq("id",conversationId).eq("user_id",profile.id);
+    if(error){setError("Could not archive this conversation.");return;}
     setArchived((current) => new Set(current).add(conversationId));
     if (conversationId === selectedId) {
       setSelectedId(
@@ -657,8 +792,8 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
     <div className="v2-conversations">
       <PageHeader
         eyebrow="Workspace / Conversations"
-        title={SALES_QUOTES[quoteIndex]}
-        description="Handle replies, turn AI on when you need it, and move leads into the right follow-up."
+        title="Conversations"
+        description={SALES_QUOTES[quoteIndex]}
         actions={
           <>
             <label className="v2-global-ai"><span><Bot size={16} /> {aiAccess ? "AI handles all replies" : "Unlock AI replies"}</span><input type="checkbox" checked={aiAccess && !!profile.ai_auto_reply} onChange={toggleGlobalAi} /><i /></label>
@@ -679,7 +814,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             <div className="v2-inbox-search"><Search size={15} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search conversations" /></div>
           </div>
           <div className="v2-inbox-filters">
-            {(["all", "inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => setFilter(item)}>{item === "all" ? "All texts" : item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
+            {(["all", "inbox", "unread", "ai", "archived"] as InboxFilter[]).map((item) => <button key={item} className={filter === item ? "is-active" : ""} onClick={() => { setFilter(item); void loadPage(0, { filter: item }); }}>{item === "all" ? "All texts" : item === "ai" ? "AI handled" : item[0].toUpperCase() + item.slice(1)}</button>)}
           </div>
           {selectMode && checked.size > 0 ? (
             <div className="v2-bulk-actions">
@@ -697,7 +832,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
           ) : null}
           {loading ? <div className="v2-thread-loading"><Loader2 size={17} className="v2-spin" /> Loading inbox</div> : null}
           {!loading && visible.length === 0 ? <EmptyState title="Nothing here" description={filter === "archived" ? "Archived conversations will stay available here." : filter === "all" ? "Every text you send or receive will appear here." : "New replies will appear here as soon as they arrive."} /> : null}
-          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={(id) => { setSelectedId(id); setContactRailOpen(false); }} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
+          <ConversationList conversations={visible} contacts={contacts} selectedId={selectedId} checked={checked} selectMode={selectMode} onOpen={(id) => { const url=new URL(window.location.href);url.searchParams.delete("contact");window.history.replaceState(null,"",url);setSelectedId(id); setContactRailOpen(false); }} onCheck={(id) => { setSelectMode(true); setChecked((current) => { const next = new Set(current); if (next.has(id)) next.delete(id); else next.add(id); return next; }); }} />
           <div className="v2-page-controls">
             <button disabled={page === 0} onClick={() => loadPage(page - 1)}><ChevronLeft size={15} /></button>
             <span>{total ? `${page * 50 + 1}–${Math.min(total, (page + 1) * 50)} of ${total}` : "0 conversations"}</span>
@@ -712,15 +847,15 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
                 <div className="v2-thread-person"><span className="v2-avatar">{initials(selectedContact)}</span><span><strong>{contactName(selectedContact)}</strong><small>{selectedContact.phone}{selectedContact.city ? ` · ${selectedContact.city}, ${selectedContact.state} ${selectedContact.zip || ""}` : ""}</small></span></div>
                 <div className="v2-thread-actions">
                   <button className="v2-thread-quick" title="Archive conversation" onClick={() => archiveConversation(selected.id)}><Archive size={15} /><span>Archive</span></button>
-                  <button className="v2-thread-quick" title={`Call ${contactName(selectedContact)}`} onClick={openLeadInDialer}><PhoneCall size={15} /><span>Call</span></button>
+                  {canCall(profile) ? <button className="v2-thread-quick" title={`Call ${contactName(selectedContact)}`} onClick={openLeadInDialer}><PhoneCall size={15} /><span>Call</span></button> : null}
                   <button className="v2-thread-quick" title="Add this lead to a campaign" onClick={() => void openCampaignPicker([selected.id])}><Megaphone size={15} /><span>Add to campaign</span></button>
                   <label className="v2-ai-switch"><span><Bot size={15} /> {aiAccess ? `AI ${selected.ai_enabled ? "on" : "off"}` : "Unlock AI"}</span><input type="checkbox" checked={aiAccess && !!selected.ai_enabled} onChange={toggleAi} /><i /></label>
                   <button className={contactRailOpen ? "is-active" : ""} aria-label={contactRailOpen ? "Hide contact details" : "Show contact details"} aria-expanded={contactRailOpen} aria-controls="conversation-contact-details" onClick={() => setContactRailOpen((open) => !open)}><MoreHorizontal size={18} /></button>
                 </div>
               </header>
               <Thread messages={messages} loading={threadLoading} hasOlder={hasOlder} onOlder={() => loadThread(selected.id, messagePage + 1)} />
-              <MessageComposer disabled={!!selectedContact.dnc} firstName={selectedContact.first_name} onSend={sendMessage} />
-              {selectedContact.dnc ? <div className="v2-dnc-notice">This contact opted out. Sending is disabled.</div> : null}
+              <MessageComposer key={selected.id} disabled={replyChannel === "sms" && !!selectedContact.dnc} firstName={selectedContact.first_name} channel={replyChannel} canEmail={!!selectedContact.email} onChannel={(channel) => setChannelFor((current) => ({ ...current, [selected.id]: channel }))} onSend={sendMessage} />
+              {selectedContact.dnc && replyChannel === "sms" ? <div className="v2-dnc-notice">This contact opted out of texts. Sending texts is disabled{selectedContact.email ? "; you can still reply by email" : ""}.</div> : null}
             </>
           ) : (
             <EmptyState title="Choose a conversation" description="Open a lead from the inbox to see their history and continue the conversation." action={<MessageSquare size={22} />} />
@@ -735,7 +870,7 @@ export default function ConversationsWorkspace({ profile, onProfile, onNavigate 
             onClose={() => setContactRailOpen(false)}
             onSave={saveContactDetails}
             onViewContact={() => onNavigate("contacts")}
-            onCallQueue={openLeadInDialer}
+            onCallQueue={canCall(profile) ? openLeadInDialer : undefined}
           />
         ) : null}
       </Panel>

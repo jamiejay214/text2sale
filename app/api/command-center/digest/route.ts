@@ -3,6 +3,7 @@ import { authenticate, requireAdmin } from "@/lib/auth-guard";
 import { sendAdminAlertSMS } from "@/lib/admin-alert";
 import { buildOverview } from "@/lib/command-center";
 import { getAllLeads } from "@/lib/leads-intel";
+import { balanceLevel, getTelnyxBalance } from "@/lib/telnyx-balance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,6 +42,13 @@ export async function GET(req: NextRequest) {
       `👀 ${c.visitorsToday.toLocaleString()} visitors today / ${c.visitorsWeek.toLocaleString()} this week`,
       `🎯 ${c.leads.toLocaleString()} total leads · ${c.customers} paying`,
     ];
+    // Platform Telnyx balance — surfaced daily so a low balance never hides.
+    try {
+      const bal = await getTelnyxBalance();
+      const lvl = balanceLevel(bal.available);
+      const mark = lvl === "critical" ? "⛔" : lvl === "low" ? "⚠️" : "💳";
+      lines.push(`${mark} Telnyx balance ${money(bal.available)}${lvl !== "ok" ? ` (${lvl}!)` : ""}`);
+    } catch { /* balance read is best-effort */ }
     if (recoverable > 0) lines.push(`🔥 ${recoverable} abandoned quotes worth recovering (Trusted Quotes)`);
     if (top) lines.push(`🏆 ${top.name} leads traffic (${top.kpis.visitors.toLocaleString()})`);
     lines.push(`→ text2sale.com/command`);
