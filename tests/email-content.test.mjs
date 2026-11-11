@@ -150,3 +150,17 @@ test('the unsubscribe link wording can be one of the clear options, never anythi
   const sneaky = footerFor(account, { footerUnsubscribe: 'View our latest offers' }, 'https://t2s.test/u');
   assert.match(buildEmail({ subject: 's', previewText: '', body: 'x', contact: {}, footer: sneaky }).html, />Unsubscribe<\/a>/);
 });
+
+test('uploaded campaign art stays inline in both styles, with placement, safe caption and plain-text fallback', () => {
+  const url = "https://assets.example.com/storage/v1/object/public/email-campaign-images/account/file.jpg";
+  for (const style of ["personal","card"]) for (const picturePosition of ["above","below"]) {
+    const saved = design.normalizeDesign({style, picturePosition, pictureUrl:url, pictureAlt:'Spring "offer"',pictureCaption:"Details for {first_name} <today>"});
+    const msg = buildEmail({subject:"News",previewText:"An update",body:"Message body",design:saved,contact:{first_name:"Ana"},footer});
+    assert.ok(msg.html.includes('src="'+url+'"'));
+    assert.ok(msg.html.includes('alt="Spring &quot;offer&quot;"')); assert.ok(msg.html.includes("Details for Ana &lt;today&gt;"));
+    assert.equal(msg.html.indexOf(url) < msg.html.indexOf("Message body"),picturePosition==="above");
+    assert.match(msg.text,/Details for Ana <today>/); assert.ok(msg.text.includes(url));
+    assert.ok(msg.html.indexOf(footer.unsubscribeUrl)>msg.html.indexOf(url));
+  }
+  assert.equal(design.normalizeDesign({pictureUrl:"javascript:alert(1)"}).pictureUrl,"");
+});
