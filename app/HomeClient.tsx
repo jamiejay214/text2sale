@@ -6,10 +6,10 @@ import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
-import MarketingHome from "@/components/MarketingHome";
+import ApprovedHome from "@/components/ApprovedHome";
 import { captureProspect, FOLLOWUP_NOTICE } from "@/lib/prospect-capture";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
-import { COMPLETE_SAVINGS, isPlanKey, PLAN_KEYS, PLANS, USAGE_RATES, type PlanKey } from "@/lib/plans";
+import { isPlanKey, PLAN_KEYS, PLANS, USAGE_RATES, type PlanKey } from "@/lib/plans";
 
 export default function HomeClient({
   faqSection,
@@ -207,70 +207,9 @@ export default function HomeClient({
 
   return (
     <main className="crm-theme marketing-site min-h-screen overflow-hidden">
-      <MarketingHome
-        onLogin={() => { setMode("login"); scrollToAuth(); }}
-        onSignup={() => { setMode("signup"); scrollToAuth(); }}
-      />
-
-      {/* ═══════ PRICING + SIGN-IN ═══════ */}
-      <section id="pricing" className="marketing-auth marketing-plan-section relative border-b border-emerald-900/70 bg-gradient-to-b from-[#102c23] via-[#173b2f] to-[#0b241b] py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <div className="text-center">
-            <div className="inline-block rounded-full bg-lime-300/10 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-lime-200 ring-1 ring-emerald-500/20">
-              Simple pricing
-            </div>
-            <h2 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">Pick your plan. <span className="bg-gradient-to-r from-lime-200 to-emerald-300 bg-clip-text text-transparent">Cancel anytime.</span></h2>
-            <p className="mx-auto mt-4 max-w-xl text-lg text-zinc-400">No long-term contracts. No hidden fees. Just results.</p>
-          </div>
-
-          <div className="mx-auto mt-12 grid max-w-6xl gap-5 md:grid-cols-3">
-            {PLAN_KEYS.map((key) => {
-              const plan = PLANS[key];
-              const featured = key === "complete";
-              return (
-                <div
-                  key={key}
-                  onClick={() => handleSelectPlan(key)}
-                  className={`group relative flex cursor-pointer flex-col overflow-hidden rounded-3xl border-2 p-7 backdrop-blur transition hover:-translate-y-1 hover:shadow-2xl hover:shadow-lime-300/20 ${featured ? "border-lime-300/70 bg-gradient-to-br from-emerald-950/70 via-zinc-900/80 to-emerald-950/30" : "border-emerald-800/60 bg-zinc-900/60"}`}
-                >
-                  <div className="flex items-center gap-2">
-                    <div className="text-xs font-semibold uppercase tracking-widest text-lime-200">{plan.name.replace("Text2Sale ", "")}</div>
-                    {featured && <span className="inline-flex items-center rounded-full bg-lime-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-emerald-950">Save ${COMPLETE_SAVINGS}/mo</span>}
-                  </div>
-                  <div className="mt-3 flex items-baseline gap-2">
-                    <span className="text-4xl font-black text-white">${plan.price}</span>
-                    <span className="text-sm text-zinc-400">/month per user</span>
-                  </div>
-                  <p className="mt-2 text-sm text-zinc-300">{plan.tagline}</p>
-                  <ul className="mt-5 grid flex-1 gap-2 text-sm text-zinc-200">
-                    {plan.includes.map((x) => (
-                      <li key={x} className="flex gap-2"><span className="text-lime-300">✓</span> {x}</li>
-                    ))}
-                    {plan.excludes.map((x) => (
-                      <li key={x} className="flex gap-2 text-zinc-500"><span>–</span> Not included: {x}</li>
-                    ))}
-                  </ul>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleSelectPlan(key); }}
-                    className={`mt-6 w-full rounded-2xl px-5 py-3 font-bold transition hover:brightness-110 ${featured ? "bg-gradient-to-r from-emerald-400 via-emerald-500 to-lime-400 text-emerald-950 shadow-xl shadow-lime-300/20" : "border border-lime-300/40 text-lime-100"}`}
-                  >
-                    Choose {plan.name.replace("Text2Sale ", "")} · ${plan.price}/month
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mx-auto mt-6 max-w-4xl rounded-2xl border border-emerald-800/50 bg-emerald-950/30 px-5 py-4 text-sm text-emerald-100">
-            <p className="font-semibold text-white">Subscriptions cover the software. Usage is paid from a prepaid wallet:</p>
-            <p className="mt-2 text-zinc-300">
-              Texting ${USAGE_RATES.smsPerSegment}/SMS segment (inbound free) · AI text reply ${USAGE_RATES.aiReplyFee.toFixed(2)} + SMS · Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · Inbound calls ${USAGE_RATES.inboundCallPerMin}/min · Forwarded calls ${USAGE_RATES.forwardedCallPerMin}/min · Calls transferred to a cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · Local numbers ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month each.
-            </p>
-            <p className="mt-2 text-xs text-zinc-400">
-              Calls are billed per started minute, rounded up. Texting plans also pay one-time and monthly carrier registration (10DLC) fees; Dialer-only accounts don&apos;t. A $500+ wallet purchase unlocks ${USAGE_RATES.smsVolumePerSegment}/SMS. Taxes may apply. Nothing is unlimited.
-            </p>
-          </div>
-
+      <ApprovedHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
+      <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
+        <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. One-time and monthly carrier registration fees apply to texting plans.</p></details>
           {/* Sign-in / Sign-up form */}
           <div id="auth-form" className="mx-auto mt-16 max-w-xl">
             <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-2xl ring-1 ring-white/5" onKeyDown={handleKeyDown}>
