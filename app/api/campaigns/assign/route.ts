@@ -9,7 +9,7 @@ import {
   validateSequence,
 } from "@/lib/campaign-sequence";
 import { campaignFirstMessage } from "@/lib/opt-out";
-import { hasNonGsmChars, sanitizeForSms } from "@/lib/sms-text";
+import { hasNonGsmChars, foldToGsm } from "@/lib/sms-text";
 
 type CampaignRow = {
   omit_first_opt_out?: boolean;
@@ -264,7 +264,7 @@ export async function POST(req: NextRequest) {
           return {
             user_id: auth.user.id,
             contact_id: contact.id,
-            body: sanitizeForSms(
+            body: foldToGsm(
               stepIndex === 0
                 ? campaignFirstMessage(rendered, profile.opt_out_settings, campaign.omit_first_opt_out === true)
                 : rendered,

@@ -13,7 +13,7 @@ import {
   sequenceTimes,
   waveStart,
 } from "@/lib/campaign-sequence";
-import { sanitizeForSms, hasNonGsmChars } from "@/lib/sms-text";
+import { foldToGsm, hasNonGsmChars } from "@/lib/sms-text";
 import { campaignFirstMessage } from "@/lib/opt-out";
 import { enqueueSequence } from "@/lib/campaign-enqueue";
 
@@ -198,7 +198,7 @@ export async function POST(req: NextRequest) {
           const rendered = renderCampaignMessage(step.message, contact);
           return {
             contact_id: contact.id,
-            body: sanitizeForSms(
+            body: foldToGsm(
               stepIndex === 0
                 ? campaignFirstMessage(rendered, profile.opt_out_settings, campaign.omit_first_opt_out === true)
                 : rendered,
