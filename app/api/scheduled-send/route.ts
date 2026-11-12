@@ -298,9 +298,18 @@ export async function GET(req: NextRequest) {
         });
         if (decErr || newBal === null) {
           skippedNoFunds++;
+          // Not enough wallet balance to send this message right now. Keep it
+          // PENDING and resumable instead of failing it, so the campaign stays
+          // alive and automatically continues sending the moment the customer
+          // adds funds — no relaunch needed. Defer it a short while so we don't
+          // re-attempt every minute while the balance is still empty.
           await supabase
             .from("scheduled_messages")
-            .update({ status: "failed" })
+            .update({
+              processing_at: null,
+              scheduled_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+              last_error: "Waiting for wallet funds — add funds and this message will send automatically.",
+            })
             .eq("id", msg.id);
           return;
         }

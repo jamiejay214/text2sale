@@ -1,45 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import crypto from "crypto";
-import { sendAdminAlertSMS } from "@/lib/admin-alert";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-// Rate limit: track last alert time in memory (resets on cold start, which is fine)
-let lastAlertSentAt = 0;
-const ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes between alerts
-
-async function sendVisitorAlert(city: string, region: string, country: string, path: string, referrer: string) {
-  const now = Date.now();
-  if (now - lastAlertSentAt < ALERT_COOLDOWN_MS) return; // Rate limited
-
-  try {
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Check if admin has visitor alerts enabled
-    const { data: adminProfile } = await supabase
-      .from("profiles")
-      .select("visitor_alerts")
-      .eq("role", "admin")
-      .limit(1)
-      .single();
-
-    if (adminProfile?.visitor_alerts === false) return;
-
-    // Build alert content
-    const location = [city, region, country].filter(Boolean).join(", ") || "Unknown location";
-    const page = path || "/";
-    const source = referrer || "Direct";
-    const time = new Date().toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", timeZone: "America/New_York" });
-    // New visits are recorded in the Command Center; the optional owner ping is SMS only.
-    lastAlertSentAt = now;
-    await sendAdminAlertSMS(
-      `🔔 Text2Sale visitor\n📍 ${location}\n📄 ${page}\n🔗 ${source}\n🕐 ${time} ET`
-    );
-  } catch (e) {
-    console.error("Visitor alert error:", e);
-  }
-}
+// Visitor page views are still recorded in the Command Center for the owner to
+// see. We intentionally do NOT text the owner just for visiting the page — the
+// only signup-side SMS alert now fires when someone actually signs up
+// (see app/api/track/abandoned-signups).
 
 // Server-side channel classification from referrer + UTM
 function classifyChannel(referrer: string, utm: { source?: string; medium?: string }): { channel: string; referrer_domain: string } {
@@ -188,8 +156,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ success: false }, { status: 503 });
     }
 
-    // Notify by SMS if enabled (rate limited)
-    sendVisitorAlert(decodedCity, region, country, path || "/", referrer || "");
+    // No per-visitor SMS to the owner — visits are recorded in the Command
+    // Center only. The owner is texted when someone signs up, not on a visit.
 
     return NextResponse.json({ success: true });
   } catch (e) {

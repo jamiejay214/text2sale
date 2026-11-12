@@ -274,30 +274,10 @@ async function ensureCarrierFee(
   const reg = profile.a2p_registration || {};
   if (Number(reg[opts.paidThroughKey] || 0) >= opts.attempt) return true;
 
-  const { data: newBalance, error } = await db.rpc("decrement_wallet", {
-    p_user_id: profile.id,
-    p_amount: opts.amount,
-  });
-
-  if (error) {
-    await setStatus(db, profile, opts.resumeStatus, {
-      mode: "hold",
-      holdMinutes: 15,
-      alert: { code: "carrier_fee_billing", message: `Could not reserve ${opts.label} fee: ${error.message}` },
-    });
-    return false;
-  }
-
-  if (newBalance === null || newBalance === undefined) {
-    await setStatus(db, profile, "AWAITING_PAYMENT", {
-      mode: "hold",
-      holdMinutes: 5,
-      error: `Add funds for the ${opts.amount.toFixed(2)} ${opts.label} carrier fee.`,
-      patch: { awaiting: opts.awaiting } as Partial<Registration>,
-    });
-    return false;
-  }
-
+  // Texting registration (10DLC brand + campaign) is included in the plan:
+  // the platform absorbs these carrier fees, so the customer is never charged
+  // and activation is never blocked waiting for wallet funds. Mark the fee
+  // covered for this submission and let the driver continue.
   await setStatus(db, profile, opts.resumeStatus, {
     patch: {
       [opts.paidThroughKey]: opts.attempt,
@@ -305,7 +285,7 @@ async function ensureCarrierFee(
     } as Partial<Registration>,
   });
 
-  // Make every pass-through fee visible in the customer's billing history.
+  // Keep a $0 "covered" line in billing history for transparency.
   try {
     const { data: current } = await db
       .from("profiles")
@@ -320,8 +300,8 @@ async function ensureCarrierFee(
           {
             id: `${opts.awaiting}_fee_${opts.attempt}_${Date.now()}`,
             type: "charge",
-            amount: opts.amount,
-            description: `Carrier fee — ${opts.label} (submission ${opts.attempt})`,
+            amount: 0,
+            description: `Carrier fee — ${opts.label} (included, covered by Text2Sale)`,
             createdAt: new Date().toISOString(),
             status: "succeeded",
           },
@@ -333,7 +313,6 @@ async function ensureCarrierFee(
     console.error("[messaging-driver] carrier fee history write failed:", historyError);
   }
 
-  profile.wallet_balance = Number(newBalance);
   return true;
 }
 

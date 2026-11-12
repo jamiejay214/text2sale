@@ -54,7 +54,16 @@ export default function EmailDomainPanel({
   return (
     <Panel>
       <div className="v2-panel-head"><h2>Sending domain</h2>{sender && <StatusPill tone={verified ? "success" : "warning"}>{verified ? "Verified" : "Waiting for DNS"}</StatusPill>}</div>
-      {!sender || changing ? (
+      {!sender && info.suggestedDomain && !changing ? (
+        <div className="v2-panel-body" style={{ display: "grid", gap: 12 }}>
+          <p style={{ margin: 0 }}>Send campaigns from your own domain so they land in the inbox and replies come straight to you. One click and we set it all up on <strong>{info.suggestedDomain}</strong> for you — we add the records and verify it automatically. There&apos;s no DNS to touch on your side.</p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="v2-btn v2-btn-primary" disabled={busy} onClick={() => submit({})}><Mail size={15} /> Activate email sending</button>
+            <button className="v2-btn" disabled={busy} onClick={() => setChanging(true)}>Use a different domain</button>
+          </div>
+          <small style={{ opacity: 0.75 }}>You&apos;ll send from <strong>{(fromLocal || "hello")}@{info.suggestedDomain}</strong>. You can change the from-name, address or reply-to any time.</small>
+        </div>
+      ) : !sender || changing ? (
         <div className="v2-panel-body" style={{ display: "grid", gap: 12 }}>
           <p style={{ margin: 0 }}>Emails go out from your own domain so they land in the inbox and replies come to you.{info.suggestedDomain ? " We'll add the DNS records to your Text2Sale domain for you." : " We'll walk you through the DNS records to add."}</p>
           <div style={{ display: "grid", gap: 12, gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))" }}>
@@ -65,7 +74,7 @@ export default function EmailDomainPanel({
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="v2-btn v2-btn-primary" disabled={busy || !domain} onClick={() => submit({ domain, fromName, fromLocal, replyTo })}><Mail size={15} /> {sender ? "Save sending domain" : "Set up sending domain"}</button>
-            {sender && <button className="v2-btn" disabled={busy} onClick={() => setChanging(false)}>Cancel</button>}
+            {(sender || info.suggestedDomain) && <button className="v2-btn" disabled={busy} onClick={() => setChanging(false)}>Cancel</button>}
           </div>
         </div>
       ) : (
@@ -74,7 +83,13 @@ export default function EmailDomainPanel({
             <p style={{ margin: 0 }}>Sending as <strong>{sender.from_name} &lt;{sender.from_local}@{sender.domain}&gt;</strong>{sender.reply_to ? <> · replies to <strong>{sender.reply_to}</strong></> : null}</p>
             <button className="v2-btn" disabled={busy} onClick={() => startChange(sender)}>Change domain</button>
           </div>
-          {!verified && plan && (
+          {!verified && sender.dns_managed && (
+            <div className="v2-notice is-ok" style={{ display: "grid", gap: 6 }}>
+              <span><strong>Setting up your email…</strong> We added everything to <strong>{sender.domain}</strong> and we&apos;re verifying it for you automatically — you don&apos;t need to do anything. This usually finishes within an hour (occasionally a few hours), and it&apos;ll switch to Verified on its own.</span>
+              <div><button className="v2-btn" disabled={busy} onClick={() => onAction({ action: "refresh" })}><RefreshCw size={15} /> Check now</button></div>
+            </div>
+          )}
+          {!verified && !sender.dns_managed && plan && (
             <>
               {plan.suggestSubdomain && planOpen && (
                 <div className="v2-notice is-ok" style={{ display: "grid", gap: 8 }}>
@@ -110,9 +125,9 @@ export default function EmailDomainPanel({
               <div><button className="v2-btn" disabled={busy} onClick={() => onAction({ action: "refresh" })}><RefreshCw size={15} /> Check verification</button></div>
             </>
           )}
-          {!verified && !plan && (
+          {!verified && !sender.dns_managed && !plan && (
             <>
-              <p style={{ margin: 0 }}>{sender.dns_managed ? "We added these records to your domain. Verification usually finishes within an hour." : "Add these records where your domain's DNS is managed, then check verification. If your domain already has an SPF record (v=spf1 ...), add the include to it instead of adding a second one."}</p>
+              <p style={{ margin: 0 }}>Add these records where your domain&apos;s DNS is managed, then check verification. If your domain already has an SPF record (v=spf1 ...), add the include to it instead of adding a second one.</p>
               <div style={{ overflowX: "auto" }}>
                 <table style={{ width: "100%", fontSize: 13, borderCollapse: "collapse" }}>
                   <thead><tr><th style={{ textAlign: "left", padding: 6 }}>Type</th><th style={{ textAlign: "left", padding: 6 }}>Name</th><th style={{ textAlign: "left", padding: 6 }}>Value</th></tr></thead>

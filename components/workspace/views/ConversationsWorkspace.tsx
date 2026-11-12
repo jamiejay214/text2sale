@@ -340,7 +340,7 @@ const Thread = memo(function Thread({ messages, loading, hasOlder, onOlder }: { 
             {message.channel === "email" ? <b className="v2-message-channel"><Mail size={12} /> Email{message.email_subject ? ` · ${message.email_subject}` : ""}</b> : null}
             {message.picture_path ? <Picture path={message.picture_path} /> : null}
             <p>{message.body}</p>
-            <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}{message.direction === "outbound" ? ` · ${message.status}` : ""}</span>
+            <span>{new Date(message.created_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}</span>
           </div>
         </div>
       ))}

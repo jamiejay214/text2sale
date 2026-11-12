@@ -63,6 +63,26 @@ export function hasNonGsmChars(body: string): boolean {
   return /[^\x00-\x7F]/.test(body);
 }
 
+/**
+ * Force a rendered message to GSM-safe ASCII. Beyond sanitizeForSms (which
+ * only fixes typographic substitutions), this transliterates accented Latin
+ * letters to their base form (é→e, ñ→n, ü→u, ç→c …) and drops anything still
+ * non-ASCII — emoji and, crucially, the Unicode replacement character (U+FFFD,
+ * "�") that a non-UTF-8 CSV upload leaves behind.
+ *
+ * Used when merging uploaded contact data into a campaign template: without
+ * this, a single mojibake name like "Ren�e" from one row would make the
+ * whole message non-GSM and block the entire campaign from launching.
+ */
+export function foldToGsm(body: string): string {
+  if (!body) return body;
+  // NFKD splits accented letters into base + combining mark; strip the marks.
+  const folded = sanitizeForSms(body).normalize("NFKD").replace(/[̀-ͯ]/g, "");
+  // Anything still non-ASCII (replacement chars, emoji, CJK …) is dropped so
+  // it can neither force UCS-2 nor trip the "unsupported characters" guard.
+  return folded.replace(/[^\x00-\x7F]/g, "");
+}
+
 /** Number of GSM-7 septets for an ASCII campaign message. */
 export function smsUnits(body: string): number {
   return body.length + (body.match(/[\f^{}\\\[\]~|]/g)?.length || 0);
