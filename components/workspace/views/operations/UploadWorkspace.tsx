@@ -1,5 +1,6 @@
 "use client";
 import { normalizeImportPhone, importSuppressed } from "@/lib/workspace-input";
+import { foldToGsm } from "@/lib/sms-text";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
@@ -157,8 +158,11 @@ Queue this campaign for these leads?`)) return "No messages queued.";
       return {
         user_id: profile.id,
         upload_batch_id: uploadId,
-        first_name: values.first_name || "",
-        last_name: values.last_name || "",
+        // Clean names on the way in so a mojibake value from a non-UTF-8 CSV
+        // (e.g. "Ren��e") becomes sendable ASCII ("Rene") instead of
+        // blocking the whole campaign at launch.
+        first_name: foldToGsm(values.first_name || ""),
+        last_name: foldToGsm(values.last_name || ""),
         phone: values.phone || "",
         email: values.email || "",
         address: values.address || "",
