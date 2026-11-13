@@ -71,7 +71,7 @@ function makeDemo(): Overview {
   };
   const aibg: BusinessMetrics = {
     id: "aibusinessgrowth", name: "AI Business Growth", domain: "aibusinessgrowth.com", color: "#22d3ee", online: true,
-    kpis: { revenue: 0, revenueToday: 0, visitors: 126, visitorsToday: 9, visitorsWeek: 58, leads: 11, leadsWeek: 4, customers: 2, conversionRate: 8.7 },
+    kpis: { revenue: 0, revenueToday: 0, visitors: 126, visitorsToday: 9, visitorsWeek: 58, leads: 11, leadsWeek: 4, customers: 0, conversionRate: 8.7 },
     trafficByDay: days(7, 6),
     topPages: [{ label: "/", value: 71 }, { label: "/pricing", value: 33 }, { label: "/demo", value: 22 }],
     sources: [{ label: "linkedin.com", value: 44 }, { label: "Direct", value: 38 }, { label: "google.com", value: 31 }],
@@ -83,7 +83,7 @@ function makeDemo(): Overview {
   };
   const tq: BusinessMetrics = {
     id: "trustedquotes", name: "Trusted Quotes", domain: "trustedquotes.org", color: "#34d399", online: true,
-    kpis: { revenue: 0, revenueToday: 0, visitors: 445, visitorsToday: 22, visitorsWeek: 140, leads: 12, leadsWeek: 5, customers: 12, conversionRate: 2.7 },
+    kpis: { revenue: 0, revenueToday: 0, visitors: 445, visitorsToday: 22, visitorsWeek: 140, leads: 12, leadsWeek: 5, customers: 0, conversionRate: 2.7 },
     trafficByDay: days(15, 10),
     topPages: [{ label: "/", value: 201 }, { label: "/quote", value: 132 }, { label: "/thank-you", value: 44 }],
     sources: [{ label: "google.com", value: 210 }, { label: "Direct", value: 120 }, { label: "facebook.com", value: 80 }],
@@ -101,7 +101,7 @@ function makeDemo(): Overview {
     businesses,
     combined: {
       revenue: 18420, revenueToday: 640, visitors: 1519, visitorsToday: 72, visitorsWeek: 431,
-      leads: 31, customers: 19, messages: 3508, calls: 80,
+      leads: 31, customers: 5, messages: 3508, calls: 80,
       trafficByDay: t2s.trafficByDay.map((d, i) => ({ date: d.date, value: d.value + aibg.trafficByDay[i].value + tq.trafficByDay[i].value })),
       topPages: mergeSeries(businesses.map((b) => b.topPages.map((p) => ({ label: `${b.domain}${p.label}`, value: p.value }))), 8),
       geo,
@@ -243,6 +243,11 @@ export default function CommandCenterPage() {
     }
     if (!tok) return;
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { tokenRef.current = null; setToken(null); setOverview(null); setAuthState("needs-login"); return; }
+      tok = session.access_token;
+      tokenRef.current = tok;
+      setToken(tok);
       const res = await fetch("/api/command-center/overview", { headers: { authorization: `Bearer ${tok}` } });
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) setOverview(null);
@@ -252,7 +257,7 @@ export default function CommandCenterPage() {
       }
       const data = (await res.json()) as Overview;
       setOverview(data);
-      setUpdatedAt(new Date());
+      setUpdatedAt(new Date(data.generatedAt));
       setErr(null);
     } catch {
       setErr("Network error.");
@@ -367,7 +372,7 @@ export default function CommandCenterPage() {
       sources, devices, funnel, feed,
       messages: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.messages || 0),
       calls: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.calls || 0),
-      mrr: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.mrr || 0),
+      mrr: scope !== "all" && scope !== "text2sale" ? 0 : Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.mrr || 0),
       activeSubscribers: Number(overview.businesses.find((b) => b.id === "text2sale")?.extra.activeSubscribers || 0),
     };
   }, [overview, scope]);
@@ -496,13 +501,17 @@ export default function CommandCenterPage() {
         <>
         <Notifications token={token} demo={demo} />
         {!demo && <SupportChat admin token={token} initialUserId={params.get("chat") || ""} />}
+        <div className="mb-3 text-xs text-white/70" role="status">
+          {overview.businesses.filter(b => scope === "all" || b.id === scope).map(b => <span key={b.id} className="mr-4 inline-block">{b.name}: {b.checkedAt ? (b.online ? "checked " : "last good read ") + timeAgo(b.checkedAt) : demo ? "demo" : "unavailable"}</span>)}
+          {(scope === "all" || scope === "text2sale") && overview.businesses.find(b => b.id === "text2sale")?.extra.revenueSource === "wallet_fallback" && <span>Stripe total unavailable · showing wallet credits only.</span>}
+        </div>
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <StatTile label="Revenue collected" value={vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} spark={vm.traffic} />
-          <StatTile label="Visitors" value={vm.visitors} color="#22d3ee" icon={<Users className="h-4 w-4" />} sub={`${vm.visitorsWeek.toLocaleString()} this week${scope === "text2sale" ? " · Since Oct 6" : ""}`} spark={vm.traffic} />
-          <StatTile label="Visitors Today (ET)" value={vm.visitorsToday} color="#38bdf8" icon={<TrendingUp className="h-4 w-4" />} spark={vm.traffic} />
+          <StatTile label={scope === "all" || scope === "text2sale" ? "CRM revenue collected" : "Revenue tracking"} value={scope === "trustedquotes" || scope === "aibusinessgrowth" ? null : vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={scope === "trustedquotes" || scope === "aibusinessgrowth" ? "No payment source connected" : vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} />
+          <StatTile label={scope === "all" ? "Site traffic" : scope === "text2sale" ? "Unique visitors" : "Visits"} value={vm.visitors} color="#22d3ee" icon={<Users className="h-4 w-4" />} sub={`${vm.visitorsWeek.toLocaleString()} last 7 days${scope === "text2sale" ? " · Since Oct 6" : ""}`} spark={vm.traffic} />
+          <StatTile label={scope === "text2sale" ? "Visitors today (ET)" : "Site traffic today (ET)"} value={vm.visitorsToday} color="#38bdf8" icon={<TrendingUp className="h-4 w-4" />} spark={vm.traffic} />
           <StatTile label="Leads" value={vm.leads} color="#a855f7" icon={<Target className="h-4 w-4" />} />
-          <StatTile label="Paying customers" value={vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} sub={(scope === "all" || scope === "text2sale") && vm.activeSubscribers > vm.customers ? `+${vm.activeSubscribers - vm.customers} comped` : undefined} />
+          <StatTile label={scope === "trustedquotes" ? "Completed quotes" : scope === "aibusinessgrowth" ? "Purchase events" : "Paying CRM customers"} value={scope === "trustedquotes" ? Number(vm.biz?.extra.completedLeads ?? 0) : scope === "aibusinessgrowth" ? Number(vm.biz?.extra.purchases ?? 0) : vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} sub={(scope === "all" || scope === "text2sale") && vm.activeSubscribers > vm.customers ? `+${vm.activeSubscribers - vm.customers} comped` : undefined} />
           <StatTile label={ctx.label} value={ctx.value} color={ctx.color} icon={ctx.icon} />
         </div>
 
@@ -538,7 +547,7 @@ export default function CommandCenterPage() {
                           <span className="text-sm font-semibold text-white">{b.name}</span>
                         </div>
                         <span className="flex items-center gap-1.5">
-                          {b.online ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <span title={b.note} className="text-[9px] text-amber-400">setup</span>}
+                          {b.online ? <Wifi className="h-3.5 w-3.5 text-emerald-400" /> : <span title={b.note} className="text-[9px] text-amber-400">{b.checkedAt ? "Stale" : "Unavailable"}</span>}
                           <ChevronRight className="h-3.5 w-3.5 text-white/25 transition group-hover/lb:translate-x-0.5 group-hover/lb:text-white/60" />
                         </span>
                       </div>
@@ -639,6 +648,10 @@ function BusinessSpotlight({ biz, accent }: { biz: BusinessMetrics; accent: stri
       { label: "Contacts", value: n("contacts").toLocaleString() },
       { label: "Messages", value: n("messages").toLocaleString() },
       { label: "Calls", value: n("calls").toLocaleString() },
+      ...(["Accepted", "Delivered", "Bounced"] as const).map(label => ({
+        label: "Email " + label.toLowerCase() + " · today ET",
+        value: e["email" + label] == null ? "—" : n("email" + label).toLocaleString()
+      })),
     ];
   } else if (biz.id === "aibusinessgrowth") {
     stats = [
@@ -667,7 +680,7 @@ function BusinessSpotlight({ biz, accent }: { biz: BusinessMetrics; accent: stri
             {biz.online ? (
               <span className="flex shrink-0 items-center gap-1 text-emerald-400"><span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />Live</span>
             ) : (
-              <span className="shrink-0 text-amber-400">Setup</span>
+              <span className="shrink-0 text-amber-400">{biz.checkedAt ? "Stale" : "Unavailable"}</span>
             )}
           </div>
         </div>

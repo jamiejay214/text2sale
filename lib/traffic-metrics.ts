@@ -7,19 +7,20 @@ export function reportingSince(iso: string) {
   return new Date(Math.max(Date.parse(iso), Date.parse(TRAFFIC_START))).toISOString();
 }
 
-export function easternDay(iso: string | Date) {
-  return new Intl.DateTimeFormat("en-CA", {
+const easternDateFormat = new Intl.DateTimeFormat("en-CA", {
     timeZone: REPORTING_TZ, year: "numeric", month: "2-digit", day: "2-digit",
-  }).format(new Date(iso));
+  });
+export function easternDay(iso: string | Date) {
+  return easternDateFormat.format(new Date(iso));
 }
 
 export function easternMidnight(now = new Date()) {
   const day = easternDay(now);
-  const probe = new Date(`${day}T12:00:00Z`);
+  const probe = new Date(`${day}T05:00:00Z`);
   const hour = Number(new Intl.DateTimeFormat("en-US", {
     timeZone: REPORTING_TZ, hour: "2-digit", hourCycle: "h23",
   }).format(probe));
-  return new Date(Date.parse(`${day}T00:00:00Z`) + (12 - hour) * 3600000).toISOString();
+  return new Date(Date.parse(`${day}T00:00:00Z`) + (5 - hour) * 3600000).toISOString();
 }
 
 export type TrafficView = {

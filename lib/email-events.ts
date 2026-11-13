@@ -33,7 +33,7 @@ export async function applyEvent(database: Db, event: EmailEvent): Promise<boole
   const messageId = String(event.payload?.id || "");
   if (!messageId) return false;
   const kind = eventKind(event);
-  const { data: row } = await database.from("email_sends").select("id, user_id, email, status, delivered_at, opened_at, clicked_at").eq("provider_message_id", messageId).maybeSingle();
+  const { data: row } = await database.from("email_sends").select("id, user_id, email, status, delivered_at, opened_at, clicked_at").eq("provider_message_id", messageId).maybeSingle().throwOnError();
   if (!row) return false;
   const at = event.occurred_at || new Date().toISOString();
   const patch: Record<string, unknown> = {};
@@ -59,11 +59,11 @@ export async function applyEvent(database: Db, event: EmailEvent): Promise<boole
     return false;
   }
 
-  if (Object.keys(patch).length) await database.from("email_sends").update(patch).eq("id", row.id);
+  if (Object.keys(patch).length) await database.from("email_sends").update(patch).eq("id", row.id).throwOnError();
   const email = normalizeEmail(row.email);
   if (suppress && email) {
     // A complaint outranks an earlier unsubscribe or bounce.
-    await database.from("email_suppressions").upsert({ user_id: row.user_id, email, reason: suppress }, { onConflict: "user_id,email", ignoreDuplicates: suppress !== "complaint" });
+    await database.from("email_suppressions").upsert({ user_id: row.user_id, email, reason: suppress }, { onConflict: "user_id,email", ignoreDuplicates: suppress !== "complaint" }).throwOnError();
   }
   return true;
 }

@@ -10,6 +10,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import Stripe from "stripe";
+import { easternDay, easternMidnight } from "./traffic-metrics";
 
 export type StripeRevenue = {
   ok: boolean;
@@ -26,15 +27,10 @@ let cache: { at: number; data: StripeRevenue } | null = null;
 const TTL_MS = 90_000;
 
 function startOfTodayUnix(): number {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return Math.floor(d.getTime() / 1000);
+  return Date.parse(easternMidnight()) / 1000;
 }
 function startOfMonthUnix(): number {
-  const d = new Date();
-  d.setDate(1);
-  d.setHours(0, 0, 0, 0);
-  return Math.floor(d.getTime() / 1000);
+  return Date.parse(easternMidnight(new Date(easternDay(new Date()).slice(0,7) + "-01T12:00:00Z"))) / 1000;
 }
 
 export async function getStripeRevenue(): Promise<StripeRevenue> {
@@ -70,7 +66,8 @@ export async function getStripeRevenue(): Promise<StripeRevenue> {
         if (c.created >= todayStart) collectedToday += net;
       }
       pages++;
-      if (!batch.has_more || pages >= MAX_PAGES) break;
+      if (!batch.has_more) break;
+      if (pages >= MAX_PAGES) throw new Error("Stripe history exceeds overview window");
       const last = batch.data[batch.data.length - 1];
       params = { limit: 100, starting_after: last.id };
     }
