@@ -18,6 +18,7 @@ import {
 import { Panel, BarList, Donut, type Bar } from "./CommandKit";
 import type { LeadRow, LeadsResult } from "@/lib/leads-intel";
 import ProspectActions from "./ProspectActions";
+import WelcomeAudience from "./WelcomeAudience";
 
 type ChannelRow = { channel: string; sessions: number; visitors: number; pct: number };
 type ReferrerRow = { domain: string; sessions: number };
@@ -302,6 +303,7 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
           </div>
         }
       />
+      {!demo && token && (isAll || scope === "text2sale") && <WelcomeAudience token={token} />}
       {leadsData && recoverable > 0 && (
         <button
           onClick={() => { setLeadFilter("recoverable"); setLeadStage("partial"); }}

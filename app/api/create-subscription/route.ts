@@ -3,6 +3,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import { authenticate, requireSameUser } from "@/lib/auth-guard";
 import { planShape, toPlanKey } from "@/lib/packages";
+import { prepareWelcomeCode } from "@/lib/stripe-welcome-offer";
 import { ensurePlanPrice } from "@/lib/stripe-plans";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
@@ -72,9 +73,9 @@ export async function POST(req: NextRequest) {
     // Create or reuse Stripe customer
     if (!customerId) {
       const customer = await stripe.customers.create({
-        email: userEmail,
+        email: auth.user.email,
         metadata: { userId },
-      });
+      }, { idempotencyKey: "text2sale-subscription-customer-" + userId });
       customerId = customer.id;
 
       await supabase
@@ -85,12 +86,18 @@ export async function POST(req: NextRequest) {
 
     const price = await ensurePlanPrice(stripe, pkg);
 
+    const { data: claim, error: claimError } = await supabase.from("welcome_offer_claims")
+      .select("email").eq("email", auth.user.email?.trim().toLowerCase() || "").maybeSingle();
+    if (claimError) throw new Error("Could not check your subscription offer. Please retry.");
+    const allowCode = !!claim && await prepareWelcomeCode(stripe, customerId);
+
     // Create Checkout Session for subscription
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       payment_method_types: ["card"],
       line_items: [{ price: price.id, quantity: 1 }],
       mode: "subscription",
+      allow_promotion_codes: allowCode,
       success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}&plan=${pkg}`,
       cancel_url: `${appUrl}/dashboard?subscription=cancelled`,
       metadata: {

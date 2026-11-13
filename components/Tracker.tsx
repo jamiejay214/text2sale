@@ -12,7 +12,8 @@
 // hashed server-side in /api/track-view (existing behavior).
 // ─────────────────────────────────────────────────────────────────────────
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import WelcomeOffer from "./WelcomeOffer";
 import { usePathname } from "next/navigation";
 
 const VISITOR_COOKIE = "t2s_vid";
@@ -105,6 +106,7 @@ function beacon(url: string, body: object) {
 const BOT_RE = /bot|crawl|spider|slurp|bing|google|yahoo|duckduck|baidu|yandex|facebookexternalhit|whatsapp|telegram|discord|preview|lighthouse|pagespeed|headless/i;
 
 export default function Tracker() {
+  const [offerPath, setOfferPath] = useState<string | null>(null);
   const pathname = usePathname();
   const lastTrackedPath = useRef<string | null>(null);
   useEffect(() => {
@@ -119,6 +121,7 @@ export default function Tracker() {
 
     // Skip on admin/internal routes to keep the dashboard out of the data
     const path = pathname || window.location.pathname;
+    setOfferPath(previous => previous === path ? previous : null);
     if (/^\/(api|admin|command|dashboard|biz)(\/|$)/.test(path)) {
       lastTrackedPath.current = null;
       return;
@@ -131,6 +134,7 @@ export default function Tracker() {
     const shouldTrack = lastTrackedPath.current !== path;
     lastTrackedPath.current = path;
     const visitor = getOrCreateVisitorId();
+    if (visitor.isNew && !/^\/(thank-you|verify|forgot-password|reset-password|terms|privacy-policy)(\/|$)/.test(path)) setOfferPath(path);
     const session = getOrCreateSessionId();
     const { device, browser, os } = parseUA(ua);
 
@@ -288,5 +292,5 @@ export default function Tracker() {
     };
   }, [pathname]);
 
-  return null;
+  return offerPath && offerPath === pathname ? <WelcomeOffer /> : null;
 }
