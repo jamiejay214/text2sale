@@ -245,6 +245,7 @@ export default function CommandCenterPage() {
     try {
       const res = await fetch("/api/command-center/overview", { headers: { authorization: `Bearer ${tok}` } });
       if (!res.ok) {
+        if (res.status === 401 || res.status === 403) setOverview(null);
         setErr(res.status === 403 ? "Admin access required." : "Failed to load analytics.");
         setLoading(false);
         return;
@@ -374,7 +375,7 @@ export default function CommandCenterPage() {
   if (authState === "needs-login") return <SignInScreen onSignedIn={initAuth} />;
   if (authState === "not-admin") return <NotAdminScreen onSignOut={async () => { await supabase.auth.signOut(); setAuthState("needs-login"); }} />;
   if (loading || authState === "checking") return <BootScreen />;
-  if (err) return <ErrorScreen msg={err} onRetry={() => { setLoading(true); load(tokenRef.current); }} />;
+  if (err && !overview) return <ErrorScreen msg={err} onRetry={() => { setLoading(true); load(tokenRef.current); }} />;
   if (!overview || !vm) return <BootScreen />;
 
   const tabs: { id: Scope; label: string; color: string }[] = [
@@ -396,6 +397,9 @@ export default function CommandCenterPage() {
       <CommandVoice token={token} snapshot={overview} accent={vm.accent} />
 
       <div className="relative z-10 mx-auto max-w-[1500px] px-4 py-5 sm:px-6">
+        {(err || overview.businesses.some(b => !b.online)) && <p role="status" className="mb-4 rounded-lg bg-amber-950 px-4 py-2 text-sm text-amber-100">
+          {err ? "Refresh failed. Showing your last loaded dashboard." : "Partial overview: " + overview.businesses.filter(b => !b.online).map(b => b.name).join(", ") + " could not refresh. Totals may be incomplete."}
+        </p>}
         {/* Header */}
         <header className="mb-6 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">

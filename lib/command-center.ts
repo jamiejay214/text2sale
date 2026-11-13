@@ -12,7 +12,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getStripeRevenue } from "./stripe-revenue";
-import { TRAFFIC_START, easternMidnight, REPORTING_TZ, publicTraffic, uniqueVisitors, visitorKey } from "./traffic-metrics";
+import { TRAFFIC_START, easternMidnight, REPORTING_TZ } from "./traffic-metrics";
 
 export type Series = { label: string; value: number }[];
 export type DayPoint = { date: string; value: number };
@@ -131,15 +131,16 @@ function tally(values: (string | null | undefined)[], limit = 6): Series {
     .map(([label, value]) => ({ label, value }));
 }
 
+const dayLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ });
 function byDay(dates: string[], days = 14): DayPoint[] {
   const buckets = new Map<string, number>();
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(Date.now() - i * DAY);
-    buckets.set(d.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ }), 0);
+    buckets.set(dayLabel.format(d), 0);
   }
   for (const raw of dates) {
     if (!raw) continue;
-    const label = new Date(raw).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ });
+    const label = dayLabel.format(new Date(raw));
     if (buckets.has(label)) buckets.set(label, (buckets.get(label) || 0) + 1);
   }
   return [...buckets.entries()].map(([date, value]) => ({ date, value }));
@@ -213,35 +214,14 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       countSince(sb, "calls", "created_at"),
     ]);
 
-    // Fetch every row in the reporting period; Supabase caps individual pages.
-    // Visitors are distinct browser IDs, not a count of page-view rows.
-    const views = [];
-    for (let offset = 0; ; offset += 1000) {
-      const { data, error } = await sb.from("page_views")
-        .select("id,created_at,path,referrer,user_agent,region,country,visitor_id,session_id,ip_hash")
-        .gte("created_at", TRAFFIC_START).order("created_at").order("id")
-        .range(offset, offset + 999);
-      if (error) throw new Error("Website traffic is temporarily unavailable");
-      views.push(...(data || []));
-      if (!data || data.length < 1000) break;
-    }
-    const allViews = publicTraffic(views);
-    const visTotal = uniqueVisitors(allViews);
-    const visToday = uniqueVisitors(allViews.filter(r => r.created_at >= startOfToday()));
-    const visWeek = uniqueVisitors(allViews.filter(r => r.created_at >= daysAgo(7)));
-    const v = allViews.filter(r => r.created_at >= daysAgo(30));
-    // A visitor counts once per day in the trend, even across repeat sessions.
-    const daily = new Map<string, typeof v[number]>();
-    for (const r of v) {
-      const day = new Date(r.created_at).toLocaleDateString("en-CA", { timeZone: REPORTING_TZ });
-      const key = `${day}:${visitorKey(r)}`;
-      if (!daily.has(key)) daily.set(key, r);
-    }
-    biz.trafficByDay = byDay([...daily.values()].map(r => r.created_at));
-    biz.topPages = tally(v.map((r) => cleanPath(r.path as string)));
-    biz.sources = tally(v.map((r) => (r.referrer ? hostOf(r.referrer as string) : "Direct")));
-    biz.devices = tally(v.map((r) => classifyDevice(r.user_agent as string)));
-    for (const r of v) if ((r.country as string) === "US") addGeo(biz.geo, r.region as string);
+    const { data: traffic, error } = await sb.rpc("command_traffic_summary", { report_start: TRAFFIC_START });
+    if (error || !traffic) throw new Error("Website traffic is temporarily unavailable");
+    const { total: visTotal, today: visToday, week: visWeek } = traffic;
+    biz.trafficByDay = byDay([]).map(d => ({ ...d, value: traffic.daily?.[d.date] ?? 0 }));
+    biz.topPages = traffic.series?.pages ?? [];
+    biz.sources = traffic.series?.sources ?? [];
+    biz.devices = traffic.series?.devices ?? [];
+    for (const { label, value } of traffic.series?.geo ?? []) addGeo(biz.geo, label, value);
 
     // Wallet top-ups (prepaid SMS credit) — kept for reference, but real
     // collected cash now comes from Stripe (which also includes these).
@@ -317,8 +297,8 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       inquiries: unregistered.filter(x => x.kind === "inquiry").length,
       partialLeads: unregistered.filter(x => x.kind === "signup").length,
       trafficStartedAt: TRAFFIC_START,
-      pageViews: allViews.length,
-      sessions: new Set(allViews.map(r => r.session_id).filter(Boolean)).size,
+      pageViews: traffic.views,
+      sessions: traffic.sessions,
       mrr: Math.round(mrr * 100) / 100,
       collectedThisMonth: useStripe ? stripeRev.collectedThisMonth : walletLifetime,
       walletTopupsLifetime: Math.round(walletLifetime * 100) / 100,
@@ -516,13 +496,7 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
   return biz;
 }
 
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, "");
-  } catch {
-    return url.slice(0, 40);
-  }
-}
+
 
 function mergeSeries(list: Series[], limit = 8): Series {
   const m = new Map<string, number>();
@@ -538,11 +512,41 @@ function mergeByDay(list: DayPoint[][]): DayPoint[] {
   return skeleton.map(({ date }) => ({ date, value: m.get(date) || 0 }));
 }
 
+// Coalesce overlapping polls per source. A slow upstream may finish and populate
+// the next refresh without holding the other businesses off screen.
+const sourceCache = new Map<string, { at: number; data: BusinessMetrics }>();
+const pending = new Map<string, Promise<BusinessMetrics>>();
+async function source(id: BusinessMetrics["id"], name: string, domain: string, color: string, read: () => Promise<BusinessMetrics>) {
+  const cached = sourceCache.get(id);
+  if (cached && Date.now() - cached.at < 30_000) return cached.data;
+  const fallback = () => cached
+    ? { ...cached.data, online: false, note: "Showing the last successful refresh." }
+    : emptyBiz(id, name, domain, color, false, "Temporarily unavailable; retrying on refresh.");
+  let work = pending.get(id);
+  if (!work) {
+    const started = Date.now();
+    work = read().then(result => {
+      if (result.online) sourceCache.set(id, { at: Date.now(), data: result });
+      return !result.online && cached ? fallback() : result;
+    }).catch(fallback).finally(() => {
+      pending.delete(id);
+      console.info("[command-overview]", id, Date.now() - started, "ms");
+    });
+    pending.set(id, work);
+  }
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([work, new Promise<BusinessMetrics>(resolve => {
+      timer = setTimeout(() => resolve(fallback()), 8000);
+    })]);
+  } finally { clearTimeout(timer); }
+}
+
 export async function buildOverview(): Promise<Overview> {
   const [t2s, aibg, tq] = await Promise.all([
-    buildText2Sale(),
-    buildAiBusinessGrowth(),
-    buildTrustedQuotes(),
+    source("text2sale", "Text2Sale", "text2sale.com", "#a855f7", buildText2Sale),
+    source("aibusinessgrowth", "AI Business Growth", "aibusinessgrowth.net", "#22d3ee", buildAiBusinessGrowth),
+    source("trustedquotes", "Trusted Quotes", "trustedquotes.org", "#34d399", buildTrustedQuotes),
   ]);
   const businesses = [t2s, aibg, tq];
 
