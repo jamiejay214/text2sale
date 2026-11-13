@@ -12,7 +12,7 @@
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { getStripeRevenue } from "./stripe-revenue";
-import { TRAFFIC_START, easternMidnight, REPORTING_TZ } from "./traffic-metrics";
+import { TRAFFIC_START, easternDay, easternMidnight, REPORTING_TZ } from "./traffic-metrics";
 
 export type Series = { label: string; value: number }[];
 export type DayPoint = { date: string; value: number };
@@ -24,6 +24,7 @@ export type BusinessMetrics = {
   domain: string;
   color: string;
   online: boolean;
+  checkedAt?: string;
   note?: string;
   kpis: {
     revenue: number;
@@ -102,33 +103,24 @@ const startOfToday = () => easternMidnight();
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
 // ── small aggregators ────────────────────────────────────────────────────────
-function cleanPath(p: string | null | undefined): string {
-  if (!p) return "/";
-  let s = String(p).split("?")[0].split("#")[0];
-  try {
-    if (s.startsWith("http")) s = new URL(s).pathname;
-  } catch {
-    /* keep raw */
-  }
-  return s || "/";
+async function visitCharts(sb: SupabaseClient, biz: BusinessMetrics) {
+  const { data, error } = await sb.rpc("command_visit_charts");
+  if (error || !data) throw new Error("Visit charts unavailable");
+  biz.trafficByDay = byDay([]).map(d => ({ ...d, value: data.daily?.[d.date] ?? 0 }));
+  biz.topPages = data.series?.pages ?? [];
+  biz.sources = data.series?.sources ?? [];
+  biz.devices = data.series?.devices ?? [];
+  for (const entry of data.series?.geo ?? []) addGeo(biz.geo, entry.label, entry.value);
 }
 
-function classifyDevice(ua: string | null | undefined): string {
-  if (!ua) return "Unknown";
-  return /mobile|iphone|android|ipad|ipod/i.test(ua) ? "Mobile" : "Desktop";
-}
-
-function tally(values: (string | null | undefined)[], limit = 6): Series {
-  const m = new Map<string, number>();
-  for (const v of values) {
-    const k = (v ?? "").trim();
-    if (!k) continue;
-    m.set(k, (m.get(k) || 0) + 1);
+async function readRows(sb: SupabaseClient, table: string, fields: string) {
+  const records: Record<string, unknown>[] = [];
+  for (let offset = 0;; offset += 500) {
+    const { data, error } = await sb.from(table).select(fields).order("id").range(offset, offset + 499);
+    if (error || !data) throw new Error(table + " read unavailable");
+    records.push(...(data as unknown as Record<string, unknown>[]));
+    if (data.length < 500) return records;
   }
-  return [...m.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, limit)
-    .map(([label, value]) => ({ label, value }));
 }
 
 const dayLabel = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: REPORTING_TZ });
@@ -181,8 +173,9 @@ async function countSince(
 ): Promise<number> {
   let q = sb.from(table).select("id", { count: "exact", head: true });
   if (sinceIso) q = q.gte(sinceCol, sinceIso);
-  const { count } = await q;
-  return count || 0;
+  const { count, error } = await q;
+  if (error || count == null) throw new Error(table + " count unavailable");
+  return count;
 }
 
 function emptyBiz(
@@ -225,23 +218,14 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
 
     // Wallet top-ups (prepaid SMS credit) — kept for reference, but real
     // collected cash now comes from Stripe (which also includes these).
-    const { data: topups } = await sb
-      .from("wallet_topups")
-      .select("amount, created_at, description")
-      .limit(10000);
-    const tu = topups || [];
+    const tu = await readRows(sb, "wallet_topups", "amount,created_at,description");
     const walletLifetime = tu.reduce((s, t) => s + Number(t.amount || 0), 0);
     const todayIso = startOfToday();
     const walletToday = tu
       .filter((t) => (t.created_at as string) >= todayIso)
       .reduce((s, t) => s + Number(t.amount || 0), 0);
 
-    const { data: profs } = await sb
-      .from("profiles")
-      .select("plan, subscription_status, role, free_subscription, total_deposited, created_at, first_name, last_name, email")
-      .limit(10000);
-    const p = profs || [];
-
+    const p = await readRows(sb, "profiles", "plan,subscription_status,role,free_subscription,created_at,first_name,last_name,email");
     // ── Honest subscriber math ────────────────────────────────────────────
     // active subscribers = anyone with an active/canceling sub (incl. comped)
     const activeSubs = p.filter((x) =>
@@ -274,8 +258,8 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
 
     // Real signups (exclude the owner/admin account) + signups this week
     const nonAdmin = p.filter((x) => (x.role as string) !== "admin");
-    const { data: prospects, error: prospectsError } = await sb.from("text2sale_prospects").select("email,kind,created_at").limit(10000);
-    if (prospectsError) throw new Error("Prospect metrics are temporarily unavailable");
+    const prospects = await readRows(sb, "text2sale_prospects", "email,kind,created_at");
+    const month = easternDay(new Date()).slice(0,7);
     const signupEmails = new Set(nonAdmin.map(x => String(x.email).toLowerCase()));
     const unregistered = (prospects || []).filter(x => !signupEmails.has(String(x.email).toLowerCase()));
     const signups = nonAdmin.length;
@@ -293,14 +277,18 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       customers: payingSubs.length, // PAYING customers only
       conversionRate: visTotal ? (payingSubs.filter(x => String(x.created_at) >= TRAFFIC_START).length / visTotal) * 100 : 0,
     };
+    const emailCount = () => sb.from("email_sends").select("id", { head: true, count: "exact" })
+      .not("provider_message_id", "is", null).gte("sent_at", todayIso);
+    const email = await Promise.all([emailCount(), emailCount().not("delivered_at","is",null), emailCount().eq("status","bounced")]);
     biz.extra = {
+      ...(email.every(v => !v.error && v.count != null) ? {emailAccepted: email[0].count!, emailDelivered: email[1].count!, emailBounced: email[2].count!} : {}),
       inquiries: unregistered.filter(x => x.kind === "inquiry").length,
       partialLeads: unregistered.filter(x => x.kind === "signup").length,
       trafficStartedAt: TRAFFIC_START,
       pageViews: traffic.views,
       sessions: traffic.sessions,
       mrr: Math.round(mrr * 100) / 100,
-      collectedThisMonth: useStripe ? stripeRev.collectedThisMonth : walletLifetime,
+      collectedThisMonth: useStripe ? stripeRev.collectedThisMonth : tu.filter(t => easternDay(String(t.created_at)).startsWith(month)).reduce((sum,t) => sum + Number(t.amount || 0),0),
       walletTopupsLifetime: Math.round(walletLifetime * 100) / 100,
       revenueSourceLive: useStripe ? 1 : 0,
       payingCustomers: payingSubs.length,
@@ -312,7 +300,7 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
       conversations: await countSince(sb, "conversations", "created_at"),
       messages,
       calls: callsCount,
-      revenueSource: stripeRev.ok ? "stripe" : "wallet_fallback",
+      revenueSource: useStripe ? "stripe" : "wallet_fallback",
     };
     biz.funnel = [
       { label: "Visitors", value: visTotal },
@@ -353,9 +341,10 @@ async function buildText2Sale(): Promise<BusinessMetrics> {
 // ── aibusinessgrowth (its own Supabase project; falls back to text2sale's
 //    legacy website_* tables until ABG_* env is set) ─────────────────────────
 async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
-  const sb = abgClient() || mainClient();
+  const sb = abgClient();
   const biz = emptyBiz("aibusinessgrowth", "AI Business Growth", "aibusinessgrowth.net", "#22d3ee", true);
   try {
+    if (!sb) throw new Error("AI Business Growth source is not configured");
     const [visToday, visWeek, visTotal, leads, leadsWeek, subs, purchases] = await Promise.all([
       countSince(sb, "website_visits", "created_at", startOfToday()),
       countSince(sb, "website_visits", "created_at", daysAgo(7)),
@@ -366,17 +355,7 @@ async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
       countSince(sb, "website_purchases", "created_at"),
     ]);
 
-    const { data: visits } = await sb
-      .from("website_visits")
-      .select("created_at, page, device_type, source, region, country")
-      .gte("created_at", daysAgo(30))
-      .limit(10000);
-    const v = visits || [];
-    biz.trafficByDay = byDay(v.map((r) => r.created_at as string));
-    biz.topPages = tally(v.map((r) => cleanPath(r.page as string)));
-    biz.sources = tally(v.map((r) => (r.source as string) || "Direct"));
-    biz.devices = tally(v.map((r) => (r.device_type as string) || "Unknown"));
-    for (const r of v) if ((r.country as string) === "US") addGeo(biz.geo, r.region as string);
+    await visitCharts(sb, biz);
 
     biz.kpis = {
       revenue: 0,
@@ -386,7 +365,7 @@ async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
       visitorsWeek: visWeek,
       leads,
       leadsWeek,
-      customers: purchases,
+      customers: 0, // Purchases have no unique customer identity.
       conversionRate: visTotal ? (leads / visTotal) * 100 : 0,
     };
     biz.extra = { subscribers: subs, purchases, sales: purchases };
@@ -401,7 +380,7 @@ async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
       .from("website_leads")
       .select("created_at, name, company, industry")
       .order("created_at", { ascending: false })
-      .limit(8);
+      .limit(8).throwOnError();
     biz.recent = (recentLeads || []).map((l) => ({
       kind: "lead",
       title: (l.name as string) || (l.company as string) || "New lead",
@@ -435,24 +414,7 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
       countSince(sb, "partial_leads", "created_at"),
     ]);
 
-    const { data: visitors } = await sb
-      .from("visitors")
-      .select("created_at, page, state, country")
-      .gte("created_at", daysAgo(30))
-      .limit(10000);
-    const v = visitors || [];
-    biz.trafficByDay = byDay(v.map((r) => r.created_at as string));
-    biz.topPages = tally(v.map((r) => cleanPath(r.page as string)));
-    for (const r of v) addGeo(biz.geo, r.state as string);
-
-    // device + source breakdown come from partial_leads
-    const { data: pls } = await sb
-      .from("partial_leads")
-      .select("device_type, ref_source")
-      .gte("created_at", daysAgo(30))
-      .limit(10000);
-    biz.devices = tally((pls || []).map((r) => (r.device_type as string) || "Unknown"));
-    biz.sources = tally((pls || []).map((r) => (r.ref_source as string) || "Direct"));
+    await visitCharts(sb, biz);
 
     biz.kpis = {
       revenue: 0,
@@ -462,7 +424,7 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
       visitorsWeek: visWeek,
       leads,
       leadsWeek,
-      customers: leads, // each completed lead is the deliverable for a lead-gen site
+      customers: 0, // A quote request is not a payment.
       conversionRate: visTotal ? (leads / visTotal) * 100 : 0,
     };
     biz.extra = { partialLeads: partials, completedLeads: leads };
@@ -479,7 +441,7 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
       .from("leads")
       .select("created_at, first_name, last_name, coverage_type, current_status, zip, source")
       .order("created_at", { ascending: false })
-      .limit(8);
+      .limit(8).throwOnError();
     biz.recent = (recentLeads || []).map((l) => ({
       kind: "lead",
       title: `${(l.first_name as string) || ""} ${(l.last_name as string) || ""}`.trim() || "New lead",
@@ -526,7 +488,10 @@ async function source(id: BusinessMetrics["id"], name: string, domain: string, c
   if (!work) {
     const started = Date.now();
     work = read().then(result => {
-      if (result.online) sourceCache.set(id, { at: Date.now(), data: result });
+      if (result.online) {
+        result.checkedAt = new Date().toISOString();
+        sourceCache.set(id, { at: Date.now(), data: result });
+      }
       return !result.online && cached ? fallback() : result;
     }).catch(fallback).finally(() => {
       pending.delete(id);

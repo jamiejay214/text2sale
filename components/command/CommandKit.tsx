@@ -304,7 +304,7 @@ export function StatTile({
   icon,
 }: {
   label: string;
-  value: number;
+  value: number | null;
   prefix?: string;
   suffix?: string;
   decimals?: number;
@@ -319,7 +319,7 @@ export function StatTile({
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-white/40">{label}</div>
           <div className="mt-1.5 font-mono text-2xl font-bold tracking-tight text-white">
-            <CountUp value={value} prefix={prefix} suffix={suffix} decimals={decimals} />
+            {value == null ? "—" : <CountUp value={value} prefix={prefix} suffix={suffix} decimals={decimals} />}
           </div>
           {sub && <div className="mt-0.5 text-[11px] text-white/40">{sub}</div>}
         </div>
