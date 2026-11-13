@@ -14,6 +14,7 @@ export type BusinessProfile = {
   business_description: string | null;
   business_logo_url: string | null;
   a2p_registration: {
+    industry?: string;
     businessName?: string;
     businessAddress?: string;
     businessCity?: string;

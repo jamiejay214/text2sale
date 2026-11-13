@@ -92,7 +92,11 @@ export function validateBusinessDetails(body: Record<string, unknown>): Validate
     ? (body.businessType as BusinessDetails["businessType"])
     : "llc";
 
-  const industry: IndustryId = isIndustryId(body.industry) ? body.industry : "other";
+  if (!isIndustryId(body.industry)) return { ok: false, error: "Choose a valid industry." };
+  const industry = body.industry;
+  if (["GAMBLING", "POLITICAL", "GOVERNMENT"].includes(industry)) {
+    return { ok: false, error: "Contact support before registration. This industry needs a review of the entity type or messaging use case before automatic submission." };
+  }
   const businessDescription = str(body.businessDescription, 500);
   const area = str(body.areaCode, 3).replace(/\D/g, "");
   const areaCode = area.length === 3 ? area : null;

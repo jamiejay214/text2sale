@@ -17,32 +17,36 @@
 // client components and the test script alike.
 
 /** The brand `vertical` values Telnyx accepts (checked against its OpenAPI spec). */
-export type TcrVertical =
-  | "AGRICULTURE"
-  | "COMMUNICATION"
-  | "CONSTRUCTION"
-  | "EDUCATION"
-  | "ENERGY"
-  | "ENTERTAINMENT"
-  | "FINANCIAL"
-  | "GAMBLING"
-  | "GOVERNMENT"
-  | "HEALTHCARE"
-  | "HOSPITALITY"
-  | "HUMAN_RESOURCES"
-  | "INSURANCE"
-  | "LEGAL"
-  | "MANUFACTURING"
-  | "NGO"
-  | "POLITICAL"
-  | "POSTAL"
-  | "PROFESSIONAL"
-  | "REAL_ESTATE"
-  | "RETAIL"
-  | "TECHNOLOGY"
-  | "TRANSPORTATION";
+export const TELNYX_VERTICALS = {
+  AGRICULTURE: "Agriculture",
+  COMMUNICATION: "Communication",
+  CONSTRUCTION: "Construction",
+  EDUCATION: "Education",
+  ENERGY: "Energy",
+  ENTERTAINMENT: "Entertainment",
+  FINANCIAL: "Financial Services",
+  GAMBLING: "Gambling",
+  GOVERNMENT: "Government",
+  HEALTHCARE: "Healthcare",
+  HOSPITALITY: "Hospitality",
+  HUMAN_RESOURCES: "Human Resources",
+  INSURANCE: "Insurance",
+  LEGAL: "Legal",
+  MANUFACTURING: "Manufacturing",
+  NGO: "NGO",
+  POLITICAL: "Political",
+  POSTAL: "Postal",
+  PROFESSIONAL: "Professional Services",
+  REAL_ESTATE: "Real Estate",
+  RETAIL: "Retail",
+  TECHNOLOGY: "Technology",
+  TRANSPORTATION: "Transportation",
+} as const;
+
+export type TcrVertical = keyof typeof TELNYX_VERTICALS;
 
 export type IndustryId =
+  | TcrVertical
   | "health_insurance"
   | "life_insurance"
   | "auto_insurance"
@@ -354,6 +358,58 @@ export const INDUSTRIES: Industry[] = [
 ];
 
 const BY_ID = new Map<string, Industry>(INDUSTRIES.map((i) => [i.id, i]));
+
+// Every brand category has one copy source for the website, consent and campaign.
+type SectorCopy = readonly [noun: string, headline: string, cta: string, first: string, second: string, third: string, topics: string, firstText: string, secondText: string];
+const SECTOR_COPY: Record<Exclude<TcrVertical, "REAL_ESTATE" | "LEGAL">, SectorCopy> = {
+  AGRICULTURE: ["agricultural business", "Plan your next agricultural order", "Ask about availability", "Seasonal availability", "Order planning", "Pickup details", "seasonal availability alerts, order confirmations, and pickup updates", "The availability update you requested is ready.", "Your order pickup time has been confirmed."],
+  COMMUNICATION: ["communications provider", "Get help with your communications service", "Ask a service question", "Service options", "Installation visits", "Service updates", "service announcements, installation reminders, and support updates", "The service information you requested is available.", "Your installation visit is scheduled for tomorrow."],
+  CONSTRUCTION: ["construction business", "From project estimate to site visit", "Discuss a project", "Project inquiries", "Estimate reviews", "Site visits", "estimate follow-ups, site visit reminders, and project updates", "Your project estimate is ready to review.", "Your site visit is confirmed for tomorrow."],
+  EDUCATION: ["learning organization", "Find your next class", "Explore classes", "Course information", "Enrollment questions", "Class schedules", "course announcements, enrollment follow-ups, and schedule reminders", "The course information you requested is ready.", "Your class starts tomorrow."],
+  ENERGY: ["provider in the energy sector", "Explore energy services for your property", "Ask about service", "Service options", "Project estimates", "Service visits", "service updates, estimate follow-ups, and visit reminders", "The energy service information you requested is ready.", "Your service visit is confirmed for tomorrow."],
+  ENTERTAINMENT: ["business in entertainment", "Plan your next event experience", "Ask about an event", "Upcoming events", "Booking inquiries", "Event schedules", "event announcements, booking confirmations, and schedule changes", "The event details you requested are available.", "Your event booking is confirmed for Saturday."],
+  FINANCIAL: ["financial services business", "Talk through your financial service needs", "Request a consultation", "Service inquiries", "Consultations", "Account support", "service announcements, consultation follow-ups, and appointment reminders", "The financial service overview you requested is ready.", "Your consultation is scheduled for tomorrow."],
+  GAMBLING: ["gaming business", "Visitor information and guest services", "Contact guest services", "Visitor information", "Venue inquiries", "Guest support", "guest inquiries and requested service updates", "The guest information you requested is available.", "We have an update on your guest service inquiry."],
+  GOVERNMENT: ["public agency", "Find public services and office information", "Contact the office", "Public programs", "Service requests", "Office appointments", "public program notices, service request updates, and appointment reminders", "The public program information you requested is ready.", "Your office appointment is scheduled for tomorrow."],
+  HEALTHCARE: ["healthcare provider", "Plan your visit and stay in touch", "Request a visit", "Visit information", "Appointment scheduling", "Office updates", "service announcements, appointment reminders, and scheduling updates", "The office information you requested is available.", "Your visit is scheduled for tomorrow."],
+  HOSPITALITY: ["hospitality business", "Make plans for your visit", "Ask about a reservation", "Reservation inquiries", "Guest services", "Arrival details", "availability alerts, reservation confirmations, and arrival updates", "The availability information you requested is ready.", "Your reservation for tomorrow is confirmed."],
+  HUMAN_RESOURCES: ["human resources organization", "Get answers about roles and interviews", "Ask about opportunities", "Role information", "Interview scheduling", "Application updates", "role announcements, interview reminders, and application updates", "The role information you requested is available.", "Your interview is scheduled for tomorrow."],
+  INSURANCE: ["provider of insurance services", "Explore your coverage options", "Request a coverage review", "Coverage questions", "Quote requests", "Policy reviews", "coverage updates, requested quote follow-ups, and policy review reminders", "The coverage information you requested is ready.", "Your policy review is scheduled for tomorrow."],
+  MANUFACTURING: ["manufacturer", "Plan your next production order", "Discuss your requirements", "Product specifications", "Production inquiries", "Order updates", "product announcements, production updates, and pickup notices", "The product specifications you requested are ready.", "Your production order is ready for pickup."],
+  NGO: ["nonprofit organization", "Find programs and ways to get involved", "Explore our programs", "Program information", "Volunteer opportunities", "Event schedules", "program announcements, volunteer confirmations, and event reminders", "The volunteer information you requested is available.", "Your volunteer shift is confirmed for tomorrow."],
+  POLITICAL: ["political organization", "Find event and volunteer information", "Contact the team", "Public events", "Volunteer inquiries", "Event schedules", "event announcements, volunteer confirmations, and scheduling updates", "The event information you requested is available.", "Your volunteer shift is scheduled for tomorrow."],
+  POSTAL: ["postal services business", "Plan your shipment or pickup", "Ask about a shipment", "Shipping options", "Pickup scheduling", "Delivery inquiries", "service announcements, pickup confirmations, and shipment updates", "The shipping options you requested are ready.", "Your shipment pickup is scheduled for tomorrow."],
+  PROFESSIONAL: ["professional services business", "Get the right help for your project", "Request a consultation", "Service inquiries", "Project scoping", "Consultation scheduling", "service announcements, project follow-ups, and consultation reminders", "The project information you requested is ready.", "Your project consultation is scheduled for tomorrow."],
+  RETAIL: ["retail business", "Find products and plan your pickup", "Ask about a product", "Product information", "Availability checks", "Order pickup", "product announcements, availability alerts, and pickup confirmations", "The product you asked about is back in stock.", "Your order is ready for pickup."],
+  TECHNOLOGY: ["technology business", "Explore products and get technical support", "Talk to our team", "Product information", "Demo scheduling", "Technical support", "product announcements, demo reminders, and support updates", "The product information you requested is ready.", "Your product demo is scheduled for tomorrow."],
+  TRANSPORTATION: ["transportation provider", "Plan a trip or arrange a pickup", "Ask about transportation", "Route information", "Booking requests", "Pickup coordination", "route announcements, booking confirmations, and pickup updates", "The route information you requested is available.", "Your pickup is scheduled for tomorrow."],
+};
+
+for (const vertical of Object.keys(TELNYX_VERTICALS) as TcrVertical[]) {
+  const label = TELNYX_VERTICALS[vertical];
+  if (vertical === "REAL_ESTATE" || vertical === "LEGAL") {
+    BY_ID.set(vertical, { ...BY_ID.get(vertical.toLowerCase())!, id: vertical, label });
+    continue;
+  }
+  const [businessNoun, headline, cta, first, second, third, messageTypes, one, two] = SECTOR_COPY[vertical];
+  BY_ID.set(vertical, {
+    id: vertical, label, vertical, businessNoun, headline, cta, messageTypes,
+    defaultDescription: (business) => `${business} can help with ${first.toLowerCase()}, ${second.toLowerCase()}, and ${third.toLowerCase()}. Contact our team to get started.`,
+    services: [
+      { title: first, desc: `Find out about ${first.toLowerCase()} and get answers from our team.` },
+      { title: second, desc: `Contact us about ${second.toLowerCase()} and we’ll walk you through the next step.` },
+      { title: third, desc: `Ask us about ${third.toLowerCase()} and choose how you’d like to hear back.` },
+    ],
+    samples: ({ business, site, phone }) => [
+      `${business}: ${one} Visit ${site} or reply with a question. ${STOP}`,
+      `${business}: ${two} Call ${phone} with questions. ${STOP}`,
+    ],
+  });
+}
+
+export function registrationVertical(value: string): TcrVertical | "" {
+  return BY_ID.get(value)?.vertical || "";
+}
 
 export function isIndustryId(value: unknown): value is IndustryId {
   return typeof value === "string" && BY_ID.has(value);

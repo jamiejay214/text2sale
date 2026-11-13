@@ -49,10 +49,10 @@ export async function loadSite(slug: string, opts: { required?: boolean } = {}):
   const host = (await headers()).get("host");
   const onOwnDomain = isBrandedHost(host);
   const name = getBusinessName(biz);
-  const industry = getIndustry(biz.industry);
+  const industry = getIndustry(biz.a2p_registration?.industry || biz.industry);
   const config = normalizeSiteConfig(biz.a2p_registration?.siteConfig, {
     businessName: name,
-    industry: biz.industry,
+    industry: industry.id,
     description: biz.business_description,
     logoUrl: biz.business_logo_url,
   });

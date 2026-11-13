@@ -7,6 +7,7 @@ import { canText } from "@/lib/entitlements";
 import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 import { getUniqueSlug, toSlug } from "@/lib/business-site";
+import { registrationVertical } from "@/lib/industries";
 import { publishSiteConfig } from "@/lib/site-config";
 
 // ── Start texting activation ───────────────────────────────────────────────
@@ -106,7 +107,10 @@ export async function POST(req: NextRequest) {
       // A brand that was approved and whose campaign was then rejected is
       // reused rather than bought again — unless the details that identify
       // the business changed, which the carriers would treat as a new brand.
+      const previousIndustry = String(reg.industry || profile.industry || "");
+      const sameIndustry = registrationVertical(previousIndustry) === registrationVertical(d.industry);
       const sameBrand =
+        sameIndustry &&
         !!reg.brandRegistrationSid &&
         !!reg.campaignSid &&
         status === "REJECTED" &&
@@ -175,7 +179,7 @@ export async function POST(req: NextRequest) {
         (await getUniqueSlug(db, toSlug(d.businessName) || `site-${userId.slice(0, 6)}`, userId));
 
       const now = new Date().toISOString();
-      const siteConfig = publishSiteConfig(reg.siteConfig, {
+      const siteConfig = publishSiteConfig(previousIndustry && previousIndustry !== d.industry ? undefined : reg.siteConfig, {
         businessName: d.businessName,
         industry: d.industry,
         description: d.businessDescription,
