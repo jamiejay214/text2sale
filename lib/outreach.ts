@@ -13,7 +13,7 @@ import { normalizeEmail } from "@/lib/email-content";
 type Db = any;
 
 /** Most outreach emails one account sends per UTC day. */
-export const DAILY_CAP = Number(process.env.OUTREACH_DAILY_CAP || 100);
+export const DAILY_CAP = Number(process.env.OUTREACH_DAILY_CAP || 500);
 /** Most sent per cron run, so sends trickle out instead of bursting. */
 export const PER_RUN = 10;
 
