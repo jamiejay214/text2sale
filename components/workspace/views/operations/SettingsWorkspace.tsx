@@ -166,7 +166,7 @@ function Registration({ profile, onProfile, onNavigate }: Props) {
     ...EMPTY_BUSINESS_FORM,
     businessName: registration?.businessName || "", businessType: registration?.businessType || "llc", ein: registration?.ein || "",
     businessAddress: registration?.businessAddress || "", businessCity: registration?.businessCity || "", businessState: registration?.businessState || "", businessZip: registration?.businessZip || "",
-    contactPhone: registration?.contactPhone || profile.phone || "", contactEmail: registration?.contactEmail || profile.email || "", industry: profile.industry || registration?.industry || "",
+    contactPhone: registration?.contactPhone || profile.phone || "", contactEmail: registration?.contactEmail || profile.email || "", industry: registration?.industry || profile.industry || "",
     businessDescription: profile.business_description || "", areaCode: registration?.desiredAreaCode || "", existingDomain: (() => { const purchase = (registration as { domainPurchase?: { domain?: string; state?: string } } | null)?.domainPurchase; return profile.custom_domain && purchase?.domain === profile.custom_domain && purchase?.state === "bought" ? profile.custom_domain : ""; })(),
   }));
   const submit = async () => {

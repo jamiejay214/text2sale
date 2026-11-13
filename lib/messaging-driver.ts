@@ -706,7 +706,7 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         firstName: profile.first_name,
         lastName: profile.last_name,
         website: String(r.website || ""),
-        industry: profile.industry || (r.industry as string | undefined),
+        industry: (r.industry as string | undefined) || profile.industry,
       });
 
       if (!submitted.ok) {
@@ -816,7 +816,7 @@ async function advance(db: Db, profile: ProfileRow): Promise<StepResult> {
         businessName: String(reg.businessName || "Text2Sale User"),
         contactEmail: String(reg.contactEmail || profile.email || ""),
         contactPhone: String(reg.contactPhone || profile.phone || ""),
-        industry: profile.industry || (reg.industry as string | undefined),
+        industry: (reg.industry as string | undefined) || profile.industry,
         referenceId: `t2s-${profile.id}-${attempt}`,
         ...inputs,
       });

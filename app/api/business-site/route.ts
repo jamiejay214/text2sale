@@ -41,7 +41,7 @@ function businessName(profile: SiteProfile) {
 function seed(profile: SiteProfile) {
   return {
     businessName: businessName(profile),
-    industry: profile.industry || profile.a2p_registration?.industry,
+    industry: profile.a2p_registration?.industry || profile.industry,
     description: profile.business_description,
     logoUrl: profile.business_logo_url,
   };

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState } from "react";
-import { INDUSTRIES } from "@/lib/industries";
+import { TELNYX_VERTICALS, registrationVertical } from "@/lib/industries";
 import { formatPhoneNumber } from "@/lib/auth";
 
 // ── Business details ───────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ export function businessFormProblem(v: BusinessFormValues): string | null {
   if (!/^\d{5}(-\d{4})?$/.test(v.businessZip.trim())) return "Enter a 5-digit ZIP code.";
   if (digitsOnly(v.contactPhone).replace(/^1(?=\d{10}$)/, "").length !== 10) return "Enter a 10-digit business phone number.";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.contactEmail.trim())) return "Enter a valid business email.";
-  if (!v.industry) return "Choose your industry.";
+  if (!registrationVertical(v.industry)) return "Choose your industry.";
   if (!v.domainRequest && !v.existingDomain) return "Choose an address for your website.";
   return null;
 }
@@ -249,10 +249,10 @@ export default function BusinessDetailsForm({
 
       <div>
         <label className={LABEL}>Industry *</label>
-        <select className={INPUT} value={values.industry} onChange={(e) => onChange({ industry: e.target.value })}>
+        <select className={INPUT} value={registrationVertical(values.industry)} onChange={(e) => onChange({ industry: e.target.value })}>
           <option value="">Select your industry…</option>
-          {INDUSTRIES.map((i) => (
-            <option key={i.id} value={i.id}>{i.label}</option>
+          {Object.entries(TELNYX_VERTICALS).map(([code, label]) => (
+            <option key={code} value={code}>{label}</option>
           ))}
         </select>
         <p className="mt-1 text-[10px] text-zinc-600">Used to word your registration and your website to match what you do.</p>
