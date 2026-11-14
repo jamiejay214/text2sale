@@ -686,7 +686,7 @@ const ARTICLES: NewArticle[] = [
         heading: "What to put in a confirmation text",
         paragraphs: [
           "A good confirmation text answers the questions people have before an appointment and makes it easy to respond. Include the day and time, who they will meet or speak with, where it is or whether it is a phone call, and how to confirm or reschedule.",
-          "For example: \"Hi Maria, this is Sunrise Insurance confirming your call with Jamie tomorrow at 10 AM. Reply YES to confirm or R to pick a new time.\" Keep it to one or two sentences, and send it from the same number you will call from so the person recognizes it.",
+          "For example: \"Hi Maria, this is Sunrise Insurance confirming your call with Alex tomorrow at 10 AM. Reply YES to confirm or R to pick a new time.\" Keep it to one or two sentences, and send it from the same number you will call from so the person recognizes it.",
         ],
       },
       {

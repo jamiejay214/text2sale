@@ -52,7 +52,7 @@ function fill(text: string, values: Record<string, string>) {
 export default function FollowUpCadenceGenerator() {
   const [type, setType] = useState("new");
   const [agency, setAgency] = useState("Sunrise Insurance");
-  const [agent, setAgent] = useState("Jamie");
+  const [agent, setAgent] = useState("Alex");
   const [product, setProduct] = useState("health insurance");
   const [copied, setCopied] = useState(false);
 

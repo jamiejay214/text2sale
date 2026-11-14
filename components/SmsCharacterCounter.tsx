@@ -33,7 +33,7 @@ export function analyzeMessage(value: string) {
   };
 }
 
-const SAMPLE = "Hi Alex, this is Jamie with Text2Sale. Are you still looking for help? Reply STOP to opt out.";
+const SAMPLE = "Hi Sam, this is Alex with Text2Sale. Are you still looking for help? Reply STOP to opt out.";
 
 export default function SmsCharacterCounter() {
   const [message, setMessage] = useState("");

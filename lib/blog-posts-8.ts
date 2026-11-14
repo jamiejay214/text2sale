@@ -994,7 +994,7 @@ const ARTICLES: NewArticle[] = [
           "Give your name, your business, and the reason you have their number, such as the form they filled out or the quote they requested. Then ask one easy question. Keep it under two sentences so it reads like a person, not a script.",
         ],
         bullets: [
-          "Hi, it's Jamie with Johnson Health. You asked about health coverage on our site yesterday. Still looking?",
+          "Hi, it's Alex with Johnson Health. You asked about health coverage on our site yesterday. Still looking?",
           "This is Sam from Bright Roofing. You requested an estimate for your roof. Is this still the best number?",
           "Sorry for the surprise! It's Alex with Coastal Realty, following up on your open house sign-in. Any homes catch your eye?",
         ],

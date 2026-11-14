@@ -250,7 +250,7 @@ export const INDUSTRIES: Industry[] = [
       { title: "Home Improvement", desc: "Exterior and interior projects scoped and scheduled with clear communication." },
     ],
     samples: ({ business, phone, site }) => [
-      `Hi Jamie, this is ${business}. Your roofing estimate is ready - reply here or visit ${site} to go over it. ${STOP}`,
+      `Hi Alex, this is ${business}. Your roofing estimate is ready - reply here or visit ${site} to go over it. ${STOP}`,
       `Hi Casey, ${business} here. Our crew is scheduled to arrive tomorrow between 8 and 10 AM. Reply C to confirm or call ${phone}. ${STOP}`,
     ],
   },

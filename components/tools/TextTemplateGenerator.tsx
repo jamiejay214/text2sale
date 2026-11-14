@@ -63,7 +63,7 @@ export default function TextTemplateGenerator() {
   const [scenario, setScenario] = useState("new");
   const [product, setProduct] = useState("health");
   const [agency, setAgency] = useState("Sunrise Insurance");
-  const [agent, setAgent] = useState("Jamie");
+  const [agent, setAgent] = useState("Alex");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
   const [shareStatus, setShareStatus] = useState("");

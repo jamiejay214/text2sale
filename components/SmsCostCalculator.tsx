@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { analyzeMessage } from "@/components/SmsCharacterCounter";
 import { STANDARD_SMS_RATE_PER_SEGMENT, VOLUME_SMS_RATE_PER_SEGMENT } from "@/lib/sms-pricing";
 
-const SAMPLE = "Hi {first_name}, this is Jamie with Sunrise Insurance. You asked about coverage options. Are you still looking? Reply STOP to opt out.";
+const SAMPLE = "Hi {first_name}, this is Alex with Sunrise Insurance. You asked about coverage options. Are you still looking? Reply STOP to opt out.";
 
 const money = (value: number) =>
   value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });

@@ -261,7 +261,7 @@ function OptOutEditor({ profile, onProfile }: Pick<Props, "profile" | "onProfile
           />
           <small>Use a short trigger such as N. It will appear at the very end of the first campaign message only.</small>
         </label>
-        <div className="v2-optout-preview"><span>First campaign message</span><p>Hi Jamie, are you still looking for a health plan? <b>{trigger || DEFAULT_FIRST_MESSAGE_OPT_OUT}</b></p></div>
+        <div className="v2-optout-preview"><span>First campaign message</span><p>Hi Alex, are you still looking for a health plan? <b>{trigger || DEFAULT_FIRST_MESSAGE_OPT_OUT}</b></p></div>
         <div className="v2-optout-rule">
           <ShieldCheck size={17} />
           <div><strong>Follow-ups stay clean</strong><small>Messages two and later will not repeat the trigger. STOP, END, QUIT, CANCEL, and UNSUBSCRIBE continue working automatically.</small></div>
