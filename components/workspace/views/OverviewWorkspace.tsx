@@ -9,6 +9,7 @@ import type { WorkspaceViewProps } from "../WorkspaceApp";
 import { EmptyState, PageHeader, Panel, StatusPill } from "../WorkspacePrimitives";
 import { canCall, canText, planKeyOf } from "@/lib/entitlements";
 import TodayQueue from "../TodayQueue";
+import ReferralBanner from "../ReferralBanner";
 import { nowInTimezone } from "@/lib/availability";
 import { PLANS } from "@/lib/plans";
 
@@ -148,6 +149,7 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
         }
       />
 
+      <ReferralBanner code={profile.referral_code} />
       <SetupChecklist profile={profile} onNavigate={onNavigate} hasLeads={snapshot.contacts>0} hasSent={snapshot.sent>0} hasCalled={hasCalled}/>
       <TodayQueue profile={profile} onNavigate={onNavigate}/>
       <section className="v2-panel"><div className="v2-panel-head"><div><h2>Appointment &amp; sales outcomes · all time</h2><p>Record appointment outcomes and pipeline wins to keep these totals accurate. These are workspace totals, not attributed campaign conversions.</p></div></div><div className="v2-outcome-stats"><div><strong>{outcomes.booked}</strong><span>Bookings</span></div><div><strong>{outcomes.attended}</strong><span>Attended</span></div><div><strong>{outcomes.no_show}</strong><span>No-shows</span></div><div><strong>{outcomes.won}</strong><span>Won</span></div><div><strong>${Number(outcomes.revenue).toLocaleString()}</strong><span>Recorded sales value</span></div></div></section>

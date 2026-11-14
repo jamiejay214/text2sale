@@ -40,6 +40,15 @@ export default function HomeClient({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [referralCode, setReferralCode] = useState("");
+  // Invite links (text2sale.com/?ref=T2S-XXXXXX) open signup with the code filled in.
+  const [invited, setInvited] = useState(false);
+  useEffect(() => {
+    const ref = (new URLSearchParams(window.location.search).get("ref") || "").trim().toUpperCase();
+    if (!/^T2S-[A-Z0-9]{6}$/.test(ref)) return;
+    setReferralCode(ref);
+    setInvited(true);
+    setMode("signup");
+  }, []);
   const [signupStep, setSignupStep] = useState<1 | 2>(1);
   // The plan picked on the pricing cards rides through signup to checkout
   // (and survives an email-verification detour in localStorage).
@@ -207,6 +216,15 @@ export default function HomeClient({
 
   return (
     <main className="crm-theme marketing-site min-h-screen overflow-hidden">
+      <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-500 px-4 py-3 text-center text-sm text-white">
+        {invited ? (
+          <>🎁 <strong>You&apos;ve been invited.</strong> Sign up with code <span className="font-mono font-bold text-lime-200">{referralCode}</span> and get <strong className="text-lime-200">$50 in credits</strong> after your first $50 deposit.{" "}
+            <button onClick={() => { setMode("signup"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Create my account</button></>
+        ) : (
+          <>🎁 <strong>Refer a friend, get <span className="text-lime-200">$100 in credits</span>.</strong> Your friend gets $50 too when they add $50.{" "}
+            <button onClick={() => { setMode("login"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Log in to get your invite link</button></>
+        )}
+      </div>
       <ApprovedHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
       <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
         <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. One-time and monthly carrier registration fees apply to texting plans.</p></details>
@@ -346,7 +364,7 @@ export default function HomeClient({
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-zinc-200">
-                        Referral Code <span className="ml-1 text-xs font-normal text-emerald-400">(Optional — $50 deposit = both get $50!)</span>
+                        Referral Code <span className="ml-1 text-xs font-normal text-emerald-400">(Optional — add $50 and get $50 in credits)</span>
                       </label>
                       <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="e.g. T2S-ABC123" />
                     </div>

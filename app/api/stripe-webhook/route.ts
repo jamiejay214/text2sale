@@ -252,12 +252,12 @@ export async function POST(req: NextRequest) {
                   })
                   .eq("id", userId);
 
-                // Award $50 to the REFERRER
+                // Award $100 to the REFERRER
                 await supabase.rpc("credit_wallet", {
                   p_user_id: profile.referred_by,
-                  p_amount: 50,
+                  p_amount: 100,
                   p_idempotency_key: `${event.id}_ref_src`,
-                  p_description: `Referral bonus — ${profile.first_name || "downline"} deposited $50+`,
+                  p_description: `Referral bonus — $100 for referring ${profile.first_name || "a friend"} (deposited $50+)`,
                 });
 
                 const { data: referrer } = await supabase
@@ -274,8 +274,8 @@ export async function POST(req: NextRequest) {
                         {
                           id: `referral_reward_${event.id}`,
                           type: "fund_add",
-                          amount: 50,
-                          description: `Referral bonus — ${profile.first_name || "Someone"} ${profile.last_name || ""} deposited $50+`,
+                          amount: 100,
+                          description: `Referral bonus — $100 for referring ${`${profile.first_name || ""} ${profile.last_name || ""}`.trim() || "a friend"} (deposited $50+)`,
                           createdAt: now,
                           status: "succeeded",
                         },
@@ -285,7 +285,7 @@ export async function POST(req: NextRequest) {
                     .eq("id", profile.referred_by);
                 }
 
-                console.log(`Referral bonus awarded: $50 to ${userId}, $50 to ${profile.referred_by}`);
+                console.log(`Referral bonus awarded: $50 to ${userId}, $100 to ${profile.referred_by}`);
               }
             }
             // Touch newBalance so linters don't complain about unused
