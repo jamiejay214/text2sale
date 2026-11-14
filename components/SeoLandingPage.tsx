@@ -13,6 +13,8 @@ type SeoLandingPageProps = {
   title: string;
   description: string;
   primaryCta?: string;
+  primaryHref?: string;
+  afterHero?: import("react").ReactNode;
   foundingAgentOffer?: boolean;
   secondaryCta?: string;
   secondaryHref?: string;
@@ -46,6 +48,8 @@ export default function SeoLandingPage({
   title,
   description,
   primaryCta = "Sign Up",
+  primaryHref = "/?signup=1#auth-form",
+  afterHero,
   foundingAgentOffer = false,
   secondaryCta = "See mass texting CRM",
   secondaryHref = "/mass-texting-crm",
@@ -116,7 +120,7 @@ export default function SeoLandingPage({
         <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">{title}</h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">{description}</p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href="/?signup=1#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">
+          <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">
             {primaryCta}
           </Link>
           <Link href={secondaryHref} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">
@@ -125,6 +129,7 @@ export default function SeoLandingPage({
         </div>
       </section>
 
+      {afterHero}
       {foundingAgentOffer && <FoundingAgentOffer />}
 
       <section className="border-y border-zinc-800 bg-zinc-900/40">
