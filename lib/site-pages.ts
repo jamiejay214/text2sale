@@ -17,10 +17,10 @@ const TOPIC_CLUSTER_2026_10 = "2026-10-29";
 export const SITE_PAGES: SitePage[] = [
   { path: "/about", label: "About Text2Sale", group: "guide", priority: 0.72, updated: "2026-10-28" },
   { path: "/press", label: "Product facts & media", group: "guide", priority: 0.65, updated: "2026-10-28" },
-  { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-10-21" },
+  { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-11-14" },
   { path: "/ai-appointment-setter", label: "AI appointment setter", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
-  { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
-  { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: SEO_EXPANSION_2026_10 },
+  { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: "2026-11-14" },
+  { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: "2026-11-14" },
   { path: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
   { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: "2026-11-09" },
 
@@ -101,4 +101,4 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
   tool: "Free tools",
 };
 
-export const HOME_UPDATED = "2026-10-29";
+export const HOME_UPDATED = "2026-11-14";

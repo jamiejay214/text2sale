@@ -237,6 +237,7 @@ export default function PricingPage() {
 
         <section className="mx-auto max-w-4xl border-t border-zinc-800 py-16">
           <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Pricing questions</p>
+          <p className="mt-4 leading-7 text-zinc-300">Comparing plans for an insurance team? See how the <Link className="font-bold text-emerald-300 underline" href="/predictive-dialer-for-insurance-agents">predictive dialer works through a call list</Link> and how the <Link className="font-bold text-emerald-300 underline" href="/ai-receptionist-for-insurance-agents">AI receptionist handles inbound calls</Link>.</p>
           <div className="mt-7 space-y-4">
             {faq.map((item) => (
               <details key={item.question} className="group rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">

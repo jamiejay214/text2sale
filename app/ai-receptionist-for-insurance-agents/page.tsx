@@ -26,6 +26,7 @@ export default function Page() {
       ]}
       guideTitle="How insurance agencies can use an AI receptionist responsibly"
       guide={[
+        { heading: "What happens when a quote shopper calls back?", paragraphs: ["A caller says, “I have an appointment about my quote.” The receptionist can skip the new-lead questions and transfer the call when an agent is available. If the agent is already with a client, the receptionist can offer an available calendar time instead. The caller leaves with a next step, and the agent handles the coverage discussion."] },
         { heading: "Use AI for intake, not licensed advice", paragraphs: ["An AI receptionist is most useful at the front of the call: greeting the caller, identifying what they need, collecting basic contact information, and deciding whether to transfer or schedule.", "Questions about plan suitability, benefits, premiums, underwriting, or coverage recommendations should move to the appropriately licensed person rather than being improvised by automation."] },
         { heading: "Reduce missed-opportunity calls", paragraphs: ["A missed call can become a lost lead. An AI receptionist gives every inbound caller a path forward even when your team is handling another prospect."], bullets: ["Answer common intake questions", "Capture callback information", "Identify the caller's state", "Transfer active opportunities", "Book a later consultation when nobody is available"] },
         { heading: "Keep the call history connected to the CRM", paragraphs: ["The value grows when intake, calls, texts, appointments, and follow-up all live in the same workspace. That gives the agent context before the live conversation begins."] },
@@ -37,6 +38,7 @@ export default function Page() {
         { question: "Does Text2Sale also include texting?", answer: "Text2Sale Complete combines the dialer and AI calling features with texting, campaigns, AI text replies, and appointment workflows." },
       ]}
       relatedPages={[
+        { href: "/pricing", label: "Compare Dialer and Complete pricing" },
         { href: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents" },
         { href: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software" },
         { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
