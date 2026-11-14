@@ -217,7 +217,7 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
   } else if (rejectedAt === "brand") {
     steps.push({ key: "brand", label: LABELS.brand, state: "failed", detail: p.messaging_error || "Rejected" });
   } else if (status === "AWAITING_PAYMENT" && awaiting === "brand") {
-    steps.push({ key: "brand", label: LABELS.brand, state: "waiting", detail: "Waiting for $4.50 carrier registration fee" });
+    steps.push({ key: "brand", label: LABELS.brand, state: "waiting", detail: "Business registration will resume automatically" });
   } else if (status === "BRAND_PENDING") {
     steps.push({ key: "brand", label: LABELS.brand, state: "waiting", detail: `In review for ${ago(hours)}` });
   } else if (siteLive && entitled && status === "BUSINESS_SUBMITTED") {
@@ -232,7 +232,7 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
   } else if (rejectedAt === "campaign") {
     steps.push({ key: "campaign", label: LABELS.campaign, state: "failed", detail: p.messaging_error || "Rejected" });
   } else if (status === "AWAITING_PAYMENT" && awaiting === "campaign") {
-    steps.push({ key: "campaign", label: LABELS.campaign, state: "waiting", detail: "Waiting for $15 carrier review fee" });
+    steps.push({ key: "campaign", label: LABELS.campaign, state: "waiting", detail: "Campaign submission will resume automatically" });
   } else if (status === "CAMPAIGN_PENDING") {
     steps.push({
       key: "campaign",

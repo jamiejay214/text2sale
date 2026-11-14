@@ -116,7 +116,7 @@ export const COMPETITORS: Competitor[] = [
       { label: "Predictive dialer", text2sale: T2S.predictive, competitor: "Not listed on pricing page" },
       { label: "AI", text2sale: `${T2S.aiText}; ${T2S.aiVoice}`, competitor: "AI message generator; AI automation as add-ons on lower plans" },
       { label: "Appointment booking", text2sale: T2S.booking, competitor: "Not listed on pricing page" },
-      { label: "10DLC fees", text2sale: "Carrier registration fees passed through", competitor: "$5 brand + $45 campaign on Spark Starter; included on higher plans" },
+      { label: "10DLC fees", text2sale: "Registration and campaign fees covered by Text2Sale", competitor: "$5 brand + $45 campaign on Spark Starter; included on higher plans" },
       { label: "Extra phone numbers", text2sale: T2S.numbers, competitor: "1 free, $0.50 each after" },
       { label: "Built for", text2sale: "Agents who text and call lead lists", competitor: "Agents focused on drip texting" },
     ],

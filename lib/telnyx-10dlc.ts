@@ -19,7 +19,6 @@ export const NUMBER_PURCHASE_COST = 0;
 export const NUMBER_MONTHLY_FEE = 1.5;
 export const TEN_DLC_BRAND_FEE = 4.5;
 export const TEN_DLC_CAMPAIGN_REVIEW_FEE = 15;
-export const TEN_DLC_MIXED_MONTHLY_FEE = 1.5;
 
 const telnyxApiKey = process.env.TELNYX_API_KEY!;
 const messagingProfileId = process.env.TELNYX_MESSAGING_PROFILE_ID || "";

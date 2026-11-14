@@ -4,7 +4,7 @@ import Stripe from "stripe";
 import { createClient } from "@supabase/supabase-js";
 import type { Db } from "@/lib/business-site";
 import { VOLUME_SMS_RATE_PER_SEGMENT, VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
-import { NUMBER_MONTHLY_FEE, TEN_DLC_MIXED_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
+import { NUMBER_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
 import { receiptEmail } from "@/lib/customer-emails";
 import { sendCustomerEmail } from "@/lib/customer-email-send";
 import { notifyCommand } from "@/lib/command-notify";
@@ -419,7 +419,7 @@ export async function POST(req: NextRequest) {
               status: "succeeded",
             });
 
-            // Charge recurring phone-number + carrier campaign fees via the SAME atomic,
+            // Charge recurring phone-number fees via the SAME atomic,
             // period-claimed RPC the /api/billing/numbers cron uses, keyed on
             // the invoice's billing month. This prevents BOTH (a) double
             // billing when this webhook and the monthly cron both run, and
@@ -427,12 +427,8 @@ export async function POST(req: NextRequest) {
             // claims the month first wins; the others become no-ops.
             const ownedNumbers = profile.owned_numbers || [];
             const numberCount = ownedNumbers.length;
-            const reg = (profile.a2p_registration || {}) as { campaignSid?: string | null };
-            const campaignFee = reg.campaignSid ? TEN_DLC_MIXED_MONTHLY_FEE : 0;
-
-            if (numberCount > 0 || campaignFee > 0) {
-              const numberCharge = numberCount * NUMBER_MONTHLY_FEE;
-              const recurringCharge = Number((numberCharge + campaignFee).toFixed(2));
+            if (numberCount > 0) {
+              const recurringCharge = Number((numberCount * NUMBER_MONTHLY_FEE).toFixed(2));
               const period = now.slice(0, 7); // "YYYY-MM"
               const { data: billed, error: billErr } = await supabase.rpc("bill_number_fee", {
                 p_user_id: userId,
@@ -447,7 +443,7 @@ export async function POST(req: NextRequest) {
                   id: `numfee_${invoice.id}`,
                   type: "charge",
                   amount: recurringCharge,
-                  description: `Monthly messaging fees — ${numberCount} number${numberCount > 1 ? "s" : ""} × $${NUMBER_MONTHLY_FEE.toFixed(2)}${campaignFee ? ` + $${campaignFee.toFixed(2)} 10DLC campaign` : ""}`,
+                  description: `Monthly phone numbers — ${numberCount} number${numberCount > 1 ? "s" : ""} × $${NUMBER_MONTHLY_FEE.toFixed(2)}`,
                   createdAt: now,
                   status: "succeeded",
                 });

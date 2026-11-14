@@ -33,7 +33,7 @@ export default function Page() {
         { question: "How much does it cost to send a text message?", answer: "It depends on your provider and the number of segments. In Text2Sale, outbound texts are $0.015 per segment, or $0.0135 after a single wallet deposit of $500 or more. Incoming replies are free." },
         { question: "What is an SMS segment?", answer: "A segment is one billable unit of a text. A plain GSM-7 text holds up to 160 characters in one segment. Longer texts are split into 153-character segments, and Unicode texts into 70 or 67 characters." },
         { question: "How can I lower my texting costs?", answer: "Keep messages to one segment, avoid emoji in campaign texts, remove opt-outs and bad numbers before sending, and stop sequences when a lead replies." },
-        { question: "Does this include carrier registration fees?", answer: "No. The calculator estimates per-message cost only. Business texting also requires carrier (10DLC) registration, which has separate one-time and monthly fees." },
+        { question: "Does this include carrier registration fees?", answer: "No. The calculator estimates per-message cost only. Business texting also requires carrier (10DLC) registration, which Text2Sale covers." },
       ]}
       relatedPages={[
         { href: "/sms-character-counter", label: "SMS character counter" },

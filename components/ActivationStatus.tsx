@@ -115,7 +115,7 @@ export default function ActivationStatus({
   const notStarted = state.status === "NOT_STARTED";
   const isActive = state.status === "ACTIVE";
   const isProblem = state.status === "REJECTED";
-  const needsFunds = state.status === "AWAITING_PAYMENT";
+  const needsFunds = state.status === "AWAITING_PAYMENT" && state.amountNeeded > 0;
 
   const accent = isActive
     ? "border-emerald-400/40 bg-emerald-400/10"

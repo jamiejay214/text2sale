@@ -6,8 +6,7 @@
 // already use), so a price shown is the price charged.
 //
 // The subscription pays for software access; the prepaid wallet pays for
-// usage (minutes, segments, AI); phone numbers and messaging registration
-// are separate pass-through charges. None of them turn into each other.
+// usage (minutes, segments, AI); phone numbers are billed monthly. Text2Sale covers registration.
 
 import {
   AI_CALL_RATE_PER_MIN,
@@ -106,14 +105,4 @@ export const USAGE_RATES = {
   aiReceptionistPerMin: AI_CALL_RATE_PER_MIN,
   localNumberMonthly: 1.5,
   numberActivation: 0,
-} as const;
-
-/** Messaging registration pass-through fees (Telnyx 10DLC). Not charged to voice-only accounts. */
-export const REGISTRATION_FEES = {
-  brand: 4.5,
-  campaignReview: 15,
-  lowVolumeCampaignMonthly: 1.5,
-  standardCampaignMonthly: 10,
-  /** Campaign fees are billed three months up front at registration. */
-  upfrontCampaignMonths: 3,
 } as const;

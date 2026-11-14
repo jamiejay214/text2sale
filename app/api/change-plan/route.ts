@@ -32,7 +32,7 @@ function featuresLost(from: PlanKey, to: PlanKey): string[] {
   if (has(from, "texting") && !has(to, "texting")) {
     lost.push(
       "Texting stops: one-off texts, campaigns, scheduled drips and AI text replies won't send.",
-      "Your messaging registration stays in place (and its monthly campaign fee continues) so texting can be switched back on; ask support to deactivate it.",
+      "Your messaging registration stays in place so texting can be switched back on; ask support to deactivate it.",
     );
   }
   if (has(from, "calling") && !has(to, "calling")) {

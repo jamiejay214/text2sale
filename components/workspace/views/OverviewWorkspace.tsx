@@ -268,7 +268,7 @@ function SetupChecklist({ profile, onNavigate,hasLeads,hasSent,hasCalled }: Pick
   const textingLive = profile.messaging_status === "ACTIVE";
   const steps: SetupStep[] = [];
   if (PLANS[plan].capabilities.includes("texting")) {
-    steps.push({ label: "Register your business for texting", detail: "EIN and business details for carrier (10DLC) approval. Registration fees apply.", done: textingLive, go: () => onNavigate("settings", "10dlc") });
+    steps.push({ label: "Register your business for texting", detail: "EIN and business details for carrier (10DLC) approval. Text2Sale covers registration.", done: textingLive, go: () => onNavigate("settings", "10dlc") });
   }
   steps.push({ label: "Get a phone number", detail: plan === "dialer" ? "A local number to call from. No texting registration needed." : "A local number for calls and texts.", done: hasNumber, go: () => onNavigate("settings", "numbers") });
   steps.push({ label: "Add funds to your wallet", detail: "Calls, texts and AI minutes are paid from your prepaid wallet.", done: funded, go: () => onNavigate("settings", "billing") });
