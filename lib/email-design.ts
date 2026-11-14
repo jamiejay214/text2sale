@@ -8,7 +8,7 @@
 export type EmailDesign = {
   /** "personal": a plain letter with one button and a signature. "card" (default): the branded card. */
   style?: "personal" | "card";
-  /** Sign-off under a personal email, e.g. "Jamie". */
+  /** Sign-off under a personal email, e.g. "Alex". */
   signature?: string;
   pictureUrl?: string;
   pictureAlt?: string;

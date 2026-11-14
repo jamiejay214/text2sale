@@ -74,7 +74,7 @@ const ARTICLES: NewArticle[] = [
       {
         heading: "A day with the fix in place",
         paragraphs: [
-          "A rep finishes a call that went to voicemail and clicks a template: \"Hi Dana, it's Jamie with Sunrise Insurance. Just tried you about your quote. Is texting easier?\" It goes out in two seconds with the right name. Leads who received a quote yesterday get an automatic check-in at 10 AM. The rep only types when a lead says something that needs a real answer.",
+          "A rep finishes a call that went to voicemail and clicks a template: \"Hi Dana, it's Alex with Sunrise Insurance. Just tried you about your quote. Is texting easier?\" It goes out in two seconds with the right name. Leads who received a quote yesterday get an automatic check-in at 10 AM. The rep only types when a lead says something that needs a real answer.",
           "At 4 PM, the follow-up quality is the same as at 9 AM, because the words do not depend on the rep's energy. At the end of the month, the team can see which template drove the most replies and update the others.",
         ],
       },
@@ -205,7 +205,7 @@ const ARTICLES: NewArticle[] = [
         heading: "A handoff with the fix in place",
         paragraphs: [
           "At 5 PM, the day rep reassigns three active leads to the evening rep, each with a short note. The evening rep opens the first one, scrolls through the texts and call notes, and sees that the lead asked for a quote on two cars and prefers texts after 6 PM.",
-          "The evening rep texts at 6:15: \"Hi Mark, it's Alex at Sunrise. Jamie mentioned you wanted quotes for both cars. I have them ready. Want me to text them over?\" Mark replies right away. He never had to repeat himself.",
+          "The evening rep texts at 6:15: \"Hi Mark, it's Sam at Sunrise. Alex mentioned you wanted quotes for both cars. I have them ready. Want me to text them over?\" Mark replies right away. He never had to repeat himself.",
         ],
       },
       {

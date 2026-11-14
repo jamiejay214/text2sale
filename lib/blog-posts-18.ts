@@ -812,7 +812,7 @@ const ARTICLES: NewArticle[] = [
       {
         heading: "A pre-enrollment review invitation",
         paragraphs: [
-          "A short, friendly message to existing clients a few weeks before enrollment opens can fill your calendar ahead of the rush. For example: \"Hi Maria, it's Jamie with Sunrise Insurance. Open enrollment starts soon. Want to book a quick review to make sure your plan still fits next year? Reply with a day that works. Reply STOP to opt out.\"",
+          "A short, friendly message to existing clients a few weeks before enrollment opens can fill your calendar ahead of the rush. For example: \"Hi Maria, it's Alex with Sunrise Insurance. Open enrollment starts soon. Want to book a quick review to make sure your plan still fits next year? Reply with a day that works. Reply STOP to opt out.\"",
           "Clients who book early are less likely to be poached by other agents during the season, and you spread your workload more evenly.",
         ],
       },

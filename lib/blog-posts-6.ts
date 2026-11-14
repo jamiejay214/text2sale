@@ -561,7 +561,7 @@ const ARTICLES: NewArticle[] = [
       ] },
       { heading: "Build a compact but varied test set", paragraphs: [
         "Include clear interest, clear disinterest, an opt-out, a wrong number, an existing appointment, a requested callback and a request for a person. Add incomplete replies such as 'sure' and 'next week,' which require clarification.",
-        "Test a message containing several instructions: 'I can talk Friday, but please stop texting and have Jamie call.' The expected result should honor the channel preference and hand off the callback; it should not continue a booking conversation simply because Friday appears.",
+        "Test a message containing several instructions: 'I can talk Friday, but please stop texting and have Alex call.' The expected result should honor the channel preference and hand off the callback; it should not continue a booking conversation simply because Friday appears.",
       ] },
       { heading: "Score actions as well as wording", paragraphs: [
         "For each case, record the expected response, campaign stop or pause, owner notification and next task. Check that the real system state matches the message. 'I've stopped the reminders' is incorrect if the scheduled messages remain active.",
@@ -601,7 +601,7 @@ const ARTICLES: NewArticle[] = [
         "Document how these settings interact in your CRM and test the actual behavior. Agents need to know whether turning off one thread also pauses scheduled campaigns, or whether those controls must be handled separately.",
       ] },
       { heading: "Create a handoff record with useful context", paragraphs: [
-        "Record the reason for escalation, current owner, prospect's request and next promised action. A short note such as 'Asked about family coverage; wants Jamie to call after 4 PM Eastern' is more useful than 'AI stopped.'",
+        "Record the reason for escalation, current owner, prospect's request and next promised action. A short note such as 'Asked about family coverage; wants Alex to call after 4 PM Eastern' is more useful than 'AI stopped.'",
         "Preserve the recent messages and any collected information. Avoid making the prospect repeat what the assistant already asked. If the assistant made an uncertain statement, flag it for the agent to verify before responding.",
       ] },
       { heading: "Pause competing sends at the same time", paragraphs: [

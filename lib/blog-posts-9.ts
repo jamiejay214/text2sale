@@ -474,7 +474,7 @@ const ARTICLES: NewArticle[] = [
           "Speed matters more with social leads than with almost any other source. Send the first text automatically within a minute or two, mention the ad or offer they responded to, and ask one simple question.",
         ],
         bullets: [
-          "Hi Kim, it's Jamie with Johnson Health. Thanks for requesting a health plan quote on Facebook. Is the quote for just you or your family?",
+          "Hi Kim, it's Alex with Johnson Health. Thanks for requesting a health plan quote on Facebook. Is the quote for just you or your family?",
           "Hi Tom, Bright Roofing here. You asked about a free roof inspection. What's the best day this week for us to stop by?",
         ],
       },
