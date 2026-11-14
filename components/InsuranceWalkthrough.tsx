@@ -16,9 +16,13 @@ export default function InsuranceWalkthrough() {
     <div className="rounded-3xl border border-emerald-300/30 bg-zinc-900 p-5 sm:p-8">
       <p className="text-sm font-bold text-emerald-300">Interactive example · fictional contact</p>
       <h2 id="walkthrough-title" className="mt-2 text-3xl font-bold">Follow one quote request from CSV to callback.</h2>
-      <div className="my-6 flex flex-wrap gap-2" role="group" aria-label="Walkthrough steps">{steps.map((s,i)=><button key={s.label} type="button" aria-pressed={index===i} onClick={()=>setIndex(i)} className={"rounded-full border px-4 py-2 text-sm font-bold "+(i===index?"border-emerald-300 bg-emerald-300 text-zinc-950":"border-zinc-600 text-zinc-100")}>{i+1}. {s.label}</button>)}</div>
+      <div className="my-6 flex flex-wrap gap-2" role="group" aria-label="Walkthrough steps">{steps.map((s,i)=><button key={s.label} type="button" aria-pressed={index===i} onClick={()=>setIndex(i)} className={"min-h-11 rounded-full border px-4 py-2 text-sm font-bold "+(i===index?"border-emerald-300 bg-emerald-300 text-zinc-950":"border-zinc-600 text-zinc-100")}>{i+1}. {s.label}</button>)}</div>
       <div aria-live="polite" className="grid gap-5 md:grid-cols-2"><div><h3 className="text-xl font-bold">{step.title}</h3><p className="my-3 leading-7 text-zinc-200">{step.copy}</p><Link className="text-emerald-300 underline" href="/insurance-text-templates">Try the free insurance text templates</Link></div>
       <div className="rounded-2xl border border-zinc-700 bg-zinc-950 p-5"><strong className="text-emerald-300">{step.screen}</strong><dl className={index===1?"ia-thread":undefined}>{step.rows.map(([key,value],i)=><div key={i} className={index===1?undefined:"mt-3 border-t border-zinc-800 pt-2"}><dt className={index===1?undefined:"text-xs font-bold text-zinc-400"}>{key}</dt><dd className={index===1?undefined:"text-sm text-white"}>{value}</dd></div>)}</dl></div></div>
+      <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-zinc-700 pt-4">
+        <span className="text-sm text-zinc-300">Step {index + 1} of {steps.length}</span>
+        {index < steps.length - 1 ? <button type="button" onClick={() => setIndex(index + 1)} className="min-h-11 rounded-lg bg-emerald-300 px-4 font-semibold text-zinc-950">Next: {steps[index + 1].label} →</button> : <Link href="/pricing" className="inline-flex min-h-11 items-center rounded-lg bg-emerald-300 px-4 font-semibold text-zinc-950">Compare texting and calling plans →</Link>}
+      </div>
     </div>
   </section>;
 }
