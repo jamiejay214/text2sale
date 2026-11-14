@@ -124,15 +124,14 @@ export default function OverviewWorkspace({ profile, onNavigate }: WorkspaceView
   }, [load]);
 
   const firstName = profile.first_name || "there";
-  const responseRate = snapshot.sent > 0 ? (snapshot.replies / snapshot.sent) * 100 : 0;
   const cards = useMemo(
     () => [
       { label: "Leads", value: compactNumber(snapshot.contacts), note: "In your CRM", icon: Users },
       { label: "Conversations", value: compactNumber(snapshot.conversations), note: `${snapshot.unread} unread`, icon: MessageSquare },
-      { label: "Campaign messages · all time", value: compactNumber(snapshot.sent), note: `${responseRate.toFixed(1)}% reply rate`, icon: CheckCircle2 },
+      { label: "Campaign messages · all time", value: compactNumber(snapshot.sent), note: "Sent by your campaigns", icon: CheckCircle2 },
       { label: "Available balance", value: `$${Number(profile.wallet_balance || 0).toFixed(2)}`, note: "Messaging wallet", icon: Sparkles },
     ],
-    [profile.wallet_balance, responseRate, snapshot],
+    [profile.wallet_balance, snapshot],
   );
 
   return (
