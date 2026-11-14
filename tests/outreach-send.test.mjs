@@ -107,3 +107,14 @@ test("does nothing until the sender is verified", async () => {
   assert.deepEqual({ ...(await processOutreach(fakeDb(tables), NOW)) }, { sent: 0, failed: 0, skipped: 0 });
   assert.equal(tables.outreach_emails[0].status, "queued");
 });
+
+test("sends a whole queued batch in one run instead of trickling", async () => {
+  const sent = [];
+  const { processOutreach } = load(sent);
+  const rows = Array.from({ length: 35 }, (_, i) => row(`r${i}`, `p${i}@acme${i}.com`));
+  const tables = { email_senders: [sender], email_suppressions: [], outreach_emails: rows };
+  const result = await processOutreach(fakeDb(tables), NOW);
+  assert.equal(result.sent, 35);
+  assert.equal(new Set(sent.map((m) => m.to)).size, 35);
+  assert.ok(tables.outreach_emails.every((r) => r.status === "sent"));
+});
