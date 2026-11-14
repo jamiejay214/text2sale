@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { analyzeMessage } from "@/components/SmsCharacterCounter";
 import { Note, ToolCard, copyText, inputClass } from "@/components/tools/ToolFields";
 
@@ -66,6 +66,20 @@ export default function TextTemplateGenerator() {
   const [agent, setAgent] = useState("Jamie");
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
 
+  const [shareStatus, setShareStatus] = useState("");
+  useEffect(() => {
+    const read = () => {
+      const params = new URLSearchParams(location.hash.slice(1));
+      const scenario = params.get("scenario"), product = params.get("product");
+      if (scenario && Object.hasOwn(SCENARIOS, scenario)) setScenario(scenario);
+      if (product && Object.hasOwn(PRODUCTS, product)) setProduct(product);
+    };
+    read();
+    window.addEventListener("hashchange", read);
+    return () => window.removeEventListener("hashchange", read);
+  }, []);
+  useEffect(() => setShareStatus(""), [scenario, product]);
+
   const messages = useMemo(
     () =>
       SCENARIOS[scenario].templates.map((template) => {
@@ -125,6 +139,16 @@ export default function TextTemplateGenerator() {
           </li>
         ))}
       </ul>
+      <div className="mt-6 rounded-2xl border border-emerald-300/30 p-4">
+        <h3 className="font-bold text-white">Share these examples with your team</h3>
+        <p className="mt-1 text-sm text-zinc-300">The link opens this situation and insurance product. Your name and agency stay on this page.</p>
+        <button type="button" className="mt-3 rounded-xl bg-emerald-300 px-4 py-2 font-bold text-zinc-950" onClick={async () => {
+          const url = new URL("/insurance-text-templates", window.location.origin);
+          url.hash = new URLSearchParams({ scenario, product }).toString();
+          setShareStatus(await copyText(url.href) ? "Link copied" : url.href);
+        }}>Copy team link</button>
+        <p role="status" className="mt-2 break-all text-sm text-white">{shareStatus}</p>
+      </div>
       <Note>
         Every template names your agency, asks one question and includes opt-out language, which is what carriers and leads respond to best. {"{first}"} is a merge field for the lead&apos;s first name. Medicare is left out because Medicare marketing has its own contact rules.
       </Note>
