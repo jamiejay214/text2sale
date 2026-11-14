@@ -6,6 +6,7 @@ import Link from "next/link";
 import { loginUser, signupUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
+import AppointmentDemo from "@/components/AppointmentDemo";
 import ApprovedHome from "@/components/ApprovedHome";
 import { captureProspect, FOLLOWUP_NOTICE } from "@/lib/prospect-capture";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
@@ -226,6 +227,7 @@ export default function HomeClient({
         )}
       </div>
       <ApprovedHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
+      <AppointmentDemo />
       <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
         <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. One-time and monthly carrier registration fees apply to texting plans.</p></details>
           {/* Sign-in / Sign-up form */}
