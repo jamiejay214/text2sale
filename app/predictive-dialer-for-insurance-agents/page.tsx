@@ -26,6 +26,7 @@ export default function Page() {
       ]}
       guideTitle="Choosing the right dialer mode for an insurance sales team"
       guide={[
+        { heading: "Which mode fits this call list?", paragraphs: ["For a promised 2:30 callback, open that contact and dial manually so you have the quote notes in front of you. For a list of people who asked for a quote yesterday, power dialing moves to the next record after you log each outcome. Use predictive mode when your team is ready to take live answers from a longer list. If every agent is finishing notes or handling callbacks, pause the list first."] },
         { heading: "Predictive is about throughput", paragraphs: ["Predictive dialing is useful when a team has enough agents and call volume to benefit from dialing ahead of rep availability. It is not automatically the right mode for every team or every campaign.", "For smaller teams, power dialing often gives a better balance between speed and control because each call remains tied closely to the contact record."] },
         { heading: "The CRM around the dialer matters", paragraphs: ["A dialer alone creates more calls. A dialer connected to messaging, appointments, and contact history creates a repeatable follow-up system."], bullets: ["See the contact before and during the call", "Record a disposition immediately", "Schedule a callback", "Send a follow-up text", "Move qualified prospects toward an appointment"] },
         { heading: "Protect deliverability and caller reputation", paragraphs: ["High-volume calling should be managed carefully. Use accurate caller identity, reasonable pacing, compliant contact lists, and follow-up workflows that do not repeatedly hammer unresponsive contacts."] },
@@ -37,6 +38,7 @@ export default function Page() {
         { question: "Is this only for health insurance?", answer: "No. The workflow can support health, life, final expense, Medicare, recruiting, and other sales teams that use outbound calling." },
       ]}
       relatedPages={[
+        { href: "/pricing", label: "Compare Dialer and Complete pricing" },
         { href: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents" },
         { href: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software" },
         { href: "/sms-crm-for-insurance-agents", label: "Insurance SMS CRM" },
