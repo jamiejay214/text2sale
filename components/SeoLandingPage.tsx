@@ -14,6 +14,7 @@ type SeoLandingPageProps = {
   description: string;
   primaryCta?: string;
   primaryHref?: string;
+  customHero?: import("react").ReactNode;
   afterHero?: import("react").ReactNode;
   foundingAgentOffer?: boolean;
   secondaryCta?: string;
@@ -49,6 +50,7 @@ export default function SeoLandingPage({
   description,
   primaryCta = "Sign Up",
   primaryHref = "/?signup=1#auth-form",
+  customHero,
   afterHero,
   foundingAgentOffer = false,
   secondaryCta = "See mass texting CRM",
@@ -112,7 +114,7 @@ export default function SeoLandingPage({
         />
       )}
 
-      <section className="mx-auto max-w-5xl px-6 py-20">
+      {customHero ?? <section className="mx-auto max-w-5xl px-6 py-20">
         <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
           ← Back to Text2Sale
         </Link>
@@ -127,7 +129,7 @@ export default function SeoLandingPage({
             {secondaryCta}
           </Link>
         </div>
-      </section>
+      </section>}
 
       {afterHero}
       {foundingAgentOffer && <FoundingAgentOffer />}

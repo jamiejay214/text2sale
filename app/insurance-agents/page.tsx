@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import InsuranceHero from "@/components/InsuranceHero";
 import InsuranceWalkthrough from "@/components/InsuranceWalkthrough";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
@@ -95,4 +96,4 @@ const content = {
   ]
 };
 
-export default function Page() { return <SeoLandingPage {...content} primaryHref="/pricing" afterHero={<InsuranceWalkthrough />} foundingAgentOffer />; }
+export default function Page() { return <SeoLandingPage {...content} customHero={<InsuranceHero />} primaryHref="/pricing" afterHero={<InsuranceWalkthrough />} foundingAgentOffer />; }
