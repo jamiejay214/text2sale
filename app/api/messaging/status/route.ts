@@ -11,8 +11,6 @@ import {
 } from "@/lib/messaging-status";
 import {
   NUMBER_PURCHASE_COST,
-  TEN_DLC_BRAND_FEE,
-  TEN_DLC_CAMPAIGN_REVIEW_FEE,
 } from "@/lib/telnyx-10dlc";
 import { computePipeline, type StepKey } from "@/lib/activation-pipeline";
 import type { A2PRegistration } from "@/lib/types";
@@ -76,15 +74,11 @@ export async function GET(req: NextRequest) {
 
   // What the customer still has to pay for, depending on what's blocking.
   let amountNeeded = 0;
-  if (status === "AWAITING_PAYMENT") {
+  if (status === "AWAITING_PAYMENT" && awaiting !== "brand" && awaiting !== "campaign") {
     const price =
       awaiting === "domain"
         ? reg.domainRequest?.price ?? 0
-        : awaiting === "brand"
-          ? TEN_DLC_BRAND_FEE
-          : awaiting === "campaign"
-            ? TEN_DLC_CAMPAIGN_REVIEW_FEE
-            : NUMBER_PURCHASE_COST;
+        : NUMBER_PURCHASE_COST;
     amountNeeded = Math.max(Math.round((price - balance) * 100) / 100, 0);
   }
 

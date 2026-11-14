@@ -137,7 +137,7 @@ export default function PlanPicker({
           </div>
         </div>
       )}
-      <p className="v2-plan-note">Subscriptions cover the software. Calls, texts, AI minutes and phone numbers are paid from your prepaid wallet; messaging registration fees apply only to texting plans.</p>
+      <p className="v2-plan-note">Subscriptions cover the software. Calls, texts, AI minutes and phone numbers are paid from your prepaid wallet; Text2Sale covers messaging registration and campaign fees.</p>
     </div>
   );
 }

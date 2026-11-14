@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { COMPLETE_SAVINGS, PLAN_KEYS, PLANS, REGISTRATION_FEES, USAGE_RATES } from "@/lib/plans";
+import { COMPLETE_SAVINGS, PLAN_KEYS, PLANS, USAGE_RATES } from "@/lib/plans";
 import { VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
 
 // Every number on this page comes from lib/plans.ts (the same constants checkout
@@ -48,7 +48,7 @@ const faq = [
   {
     question: "What does the monthly plan include, and what costs extra?",
     answer:
-      "The plan pays for software access per user. Usage (texts, calls, AI replies, AI receptionist minutes) is paid from a prepaid wallet at the rates on this page. Phone numbers and carrier texting registration (10DLC) are separate pass-through charges.",
+      "The plan pays for software access per user. Usage (texts, calls, AI replies, AI receptionist minutes) is paid from a prepaid wallet at the rates on this page. Each local phone number costs $1.50/month. Text2Sale covers 10DLC registration and campaign fees.",
   },
   {
     question: "How are calls billed?",
@@ -59,8 +59,8 @@ const faq = [
     answer: `Yes. A wallet purchase of $${VOLUME_SMS_UNLOCK_AMOUNT} or more unlocks ${rate(USAGE_RATES.smsVolumePerSegment)} per outbound SMS segment instead of ${rate(USAGE_RATES.smsPerSegment)}. Inbound texts are free.`,
   },
   {
-    question: "Do I pay texting registration fees on the Dialer plan?",
-    answer: "No. Carrier registration (10DLC) is only needed for texting, so Dialer-only accounts don't pay it.",
+    question: "Are there any 10DLC fees?",
+    answer: "No. Text2Sale covers brand registration, campaign review and recurring 10DLC campaign fees.",
   },
   {
     question: "Is anything unlimited?",
@@ -116,12 +116,6 @@ export default function PricingPage() {
     ["Local phone number", `${money(USAGE_RATES.localNumberMonthly)}/month each`],
   ];
 
-  const registrationRows: [string, string][] = [
-    ["Brand registration (one time)", money(REGISTRATION_FEES.brand)],
-    ["Campaign review (one time)", money(REGISTRATION_FEES.campaignReview)],
-    ["Low-volume campaign", `${money(REGISTRATION_FEES.lowVolumeCampaignMonthly)}/month`],
-    ["Standard campaign", `${money(REGISTRATION_FEES.standardCampaignMonthly)}/month`],
-  ];
 
   return (
     <main className="min-h-screen bg-[#060806] text-zinc-100">
@@ -204,16 +198,8 @@ export default function PricingPage() {
           <div>
             <h2 className="text-2xl font-black text-white">Texting registration (10DLC)</h2>
             <p className="mt-2 text-sm text-zinc-400">
-              Carrier pass-through fees for texting accounts. {`Campaign fees are billed ${REGISTRATION_FEES.upfrontCampaignMonths} months up front at registration.`} Dialer-only accounts don&apos;t pay these.
+              Text2Sale covers registration, review and recurring campaign fees. Carrier approval is still required before sending.
             </p>
-            <dl className="mt-5 divide-y divide-zinc-800 rounded-2xl border border-zinc-800 bg-zinc-900/60">
-              {registrationRows.map(([k, v]) => (
-                <div key={k} className="flex justify-between gap-4 px-5 py-3 text-sm">
-                  <dt className="text-zinc-300">{k}</dt>
-                  <dd className="text-right font-bold text-white">{v}</dd>
-                </div>
-              ))}
-            </dl>
 
             <h2 className="mt-10 text-2xl font-black text-white">What usage can cost</h2>
             <p className="mt-2 text-sm text-zinc-400">Examples at standard rates, on top of your plan. Illustrations, not quotes.</p>

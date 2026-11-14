@@ -146,18 +146,18 @@ export function statusCopy(status: MessagingStatus, awaiting?: Awaiting | null):
   }
   if (status === "AWAITING_PAYMENT" && awaiting === "brand") {
     return {
-      headline: "Add funds for business registration",
-      detail: "The carrier charges $4.50 to register your business. Add funds and Text2Sale will continue automatically.",
+      headline: "Business registration is resuming",
+      detail: "Text2Sale covers registration. No payment is needed.",
       progress: 30,
-      needsCustomerAction: true,
+      needsCustomerAction: false,
     };
   }
   if (status === "AWAITING_PAYMENT" && awaiting === "campaign") {
     return {
-      headline: "Add funds for messaging review",
-      detail: "The carrier charges $15.00 for campaign review. Add funds and Text2Sale will submit it automatically.",
+      headline: "Messaging review is resuming",
+      detail: "Text2Sale covers campaign review. No payment is needed.",
       progress: 60,
-      needsCustomerAction: true,
+      needsCustomerAction: false,
     };
   }
   return COPY[status];

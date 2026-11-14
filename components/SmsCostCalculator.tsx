@@ -69,7 +69,7 @@ export default function SmsCostCalculator() {
         {result.segments > 1
           ? `This message is ${result.segments} segments. Trimming it to one segment would cut the cost of each send to ${money(rate * Math.max(contacts, 0) * Math.max(steps, 0))}.`
           : "This message fits in one segment, the cheapest way to send it."}{" "}
-        Estimates cover outbound texts only. Incoming replies are free in Text2Sale; carrier registration fees are separate.
+        Estimates cover outbound texts only. Incoming replies are free in Text2Sale; Text2Sale covers registration and campaign fees.
       </div>
     </div>
   );
