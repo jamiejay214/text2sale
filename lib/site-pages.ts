@@ -24,7 +24,7 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
   { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: "2026-11-09" },
 
-  { path: "/insurance-agents", label: "Insurance agent appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
+  { path: "/insurance-agents", label: "Insurance agent CRM", group: "industry", priority: 0.85, updated: "2026-11-14" },
   { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/medicare", label: "Medicare appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },

@@ -1,21 +1,22 @@
 import type { Metadata } from "next";
+import InsuranceWalkthrough from "@/components/InsuranceWalkthrough";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  "title": "AI Appointment Setter for Insurance Agents | Text2Sale",
-  "description": "Reactivate opted-in health, life, and Medicare inquiries. Let AI qualify interest and schedule a call while you focus on advising clients.",
+  "title": "Insurance Agent CRM for Texting, Follow-Up and Calls | Text2Sale",
+  "description": "See how insurance agents follow up on opted-in quote requests by text, manage replies and make callbacks. Try the interactive example and compare CRM plans.",
   "alternates": {
     "canonical": "/insurance-agents"
   }
 };
 
 const content = {
-  "eyebrow": "Text2Sale AI for insurance agents",
-  "title": "Turn old insurance leads into booked appointments.",
-  "description": "Reactivate opted-in health, life, and Medicare inquiries. Let AI qualify interest and schedule a call while you focus on advising clients. Upload your leads. Turn on AI. Text2Sale texts, qualifies, follows up, and books appointments for you.",
-  "primaryCta": "Put My Leads on Autopilot",
-  "secondaryCta": "Watch AI Book an Appointment",
-  "secondaryHref": "/#ai-booking-demo",
+  "eyebrow": "Insurance agent CRM",
+  "title": "Follow up on insurance quotes without losing the next call.",
+  "description": "Import a list of opted-in leads, read their replies, and keep callback notes beside each contact. Start with texting, add a dialer, or use both when your agency needs one place to follow up.",
+  "primaryCta": "Compare plans and usage",
+  "secondaryCta": "Try the quote walkthrough",
+  "secondaryHref": "#quote-walkthrough",
   "canonicalPath": "/insurance-agents",
   "sections": [
     {
@@ -76,26 +77,22 @@ const content = {
       "label": "Life insurance"
     },
     {
-      "href": "/medicare",
-      "label": "Medicare"
+      "href": "/predictive-dialer-for-insurance-agents",
+      "label": "Insurance predictive dialer"
     },
     {
-      "href": "/recruiters",
-      "label": "Recruiters"
+      "href": "/ai-receptionist-for-insurance-agents",
+      "label": "Insurance AI receptionist"
     },
     {
-      "href": "/solar",
-      "label": "Solar"
-    },
-    {
-      "href": "/real-estate",
-      "label": "Real estate"
-    },
-    {
-      "href": "/roofing",
-      "label": "Roofing"
+      "href": "/insurance-text-templates",
+      "label": "Free insurance text templates"
     }
+  ],
+  "blogTags": [
+    "Insurance",
+    "Appointments"
   ]
 };
 
-export default function Page() { return <SeoLandingPage {...content} foundingAgentOffer />; }
+export default function Page() { return <SeoLandingPage {...content} primaryHref="/pricing" afterHero={<InsuranceWalkthrough />} foundingAgentOffer />; }

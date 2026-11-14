@@ -1,0 +1,24 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+
+const steps = [
+  { label: "Import a lead", title: "Start with the quote request.", copy: "Alex imports the people who asked his agency for a quote and agreed to receive texts. He maps the name and phone columns and selects a follow-up campaign.", screen: "Lead import", rows: [["CSV column", "CRM field"], ["Full name", "Contact name"], ["Mobile", "Phone number"], ["Campaign", "Health quote follow-up"]] },
+  { label: "Read the reply", title: "Turn “after lunch” into a time.", copy: "Taylor replies while Alex is on another call. The conversation stays with Taylor’s contact record, so Alex can pick up where they left off.", screen: "Conversation · Taylor", rows: [["Alex", "Hi Taylor, Alex from Sunrise Insurance here. Is today a good time to discuss your quote? Reply STOP to opt out."], ["Taylor", "After lunch works."], ["Alex", "Would 2:30 today work for a quick call?"], ["Taylor", "Yes, thank you!"]] },
+  { label: "Make the callback", title: "Call with the context in front of you.", copy: "At 2:30, Alex opens Taylor’s contact, sees the quote request and the agreed time, and places the call. Afterward he saves the outcome and the next step.", screen: "Callback · today at 2:30", rows: [["Contact", "Taylor"], ["Reason", "Requested a health quote"], ["Last reply", "Yes, thank you!"], ["Next action", "Call to discuss the quote"]] },
+];
+
+export default function InsuranceWalkthrough() {
+  const [index, setIndex] = useState(0);
+  const step = steps[index];
+  return <section id="quote-walkthrough" aria-labelledby="walkthrough-title" className="mx-auto max-w-5xl scroll-mt-20 px-6 pb-16">
+    <div className="rounded-3xl border border-emerald-300/30 bg-zinc-900 p-5 sm:p-8">
+      <p className="text-sm font-bold text-emerald-300">Interactive example · fictional contact</p>
+      <h2 id="walkthrough-title" className="mt-2 text-3xl font-bold">Follow one quote request from CSV to callback.</h2>
+      <div className="my-6 flex flex-wrap gap-2" role="group" aria-label="Walkthrough steps">{steps.map((s,i)=><button key={s.label} type="button" aria-pressed={index===i} onClick={()=>setIndex(i)} className={"rounded-full border px-4 py-2 text-sm font-bold "+(i===index?"border-emerald-300 bg-emerald-300 text-zinc-950":"border-zinc-600 text-zinc-100")}>{i+1}. {s.label}</button>)}</div>
+      <div aria-live="polite" className="grid gap-5 md:grid-cols-2"><div><h3 className="text-xl font-bold">{step.title}</h3><p className="my-3 leading-7 text-zinc-200">{step.copy}</p><Link className="text-emerald-300 underline" href="/insurance-text-templates">Try the free insurance text templates</Link></div>
+      <div className="rounded-2xl border border-zinc-700 bg-zinc-950 p-5"><strong className="text-emerald-300">{step.screen}</strong><dl>{step.rows.map(([key,value],i)=><div key={i} className="mt-3 border-t border-zinc-800 pt-2"><dt className="text-xs font-bold text-zinc-400">{key}</dt><dd className="text-sm text-white">{value}</dd></div>)}</dl></div></div>
+    </div>
+  </section>;
+}
