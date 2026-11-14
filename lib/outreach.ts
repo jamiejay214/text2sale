@@ -14,8 +14,10 @@ type Db = any;
 
 /** Most outreach emails one account sends per UTC day. */
 export const DAILY_CAP = Number(process.env.OUTREACH_DAILY_CAP || 500);
-/** Most sent per cron run, so sends trickle out instead of bursting. */
-export const PER_RUN = 10;
+/** Most sent per cron run (every minute); queued mail goes out within minutes. */
+export const PER_RUN = Number(process.env.OUTREACH_PER_RUN || 150);
+/** Emails handed to Telnyx at the same time, to finish a run inside the function limit. */
+const CONCURRENCY = 10;
 
 type Row = { id: string; user_id: string; to_email: string; subject: string; html: string; text_body: string };
 
@@ -41,7 +43,7 @@ export async function processOutreach(database: Db, now = new Date()): Promise<{
     .eq("status", "queued")
     .lte("send_after", now.toISOString())
     .order("send_after", { ascending: true })
-    .limit(PER_RUN * 5);
+    .limit(PER_RUN * 2);
   if (error) throw error;
   const byUser = new Map<string, Row[]>();
   for (const row of (due || []) as Row[]) byUser.set(row.user_id, [...(byUser.get(row.user_id) || []), row]);
@@ -66,12 +68,12 @@ export async function processOutreach(database: Db, now = new Date()): Promise<{
       : { data: [] };
     const blockedSet = new Set((blocked || []).map((b: { email: string }) => b.email));
 
-    for (const row of batch) {
+    const sendOne = async (row: Row) => {
       const email = normalizeEmail(row.to_email);
       if (!email || blockedSet.has(email)) {
         await database.from("outreach_emails").update({ status: "skipped", error: email ? "Unsubscribed" : "Invalid address" }).eq("id", row.id).eq("status", "queued");
         result.skipped++;
-        continue;
+        return;
       }
       // Claim the row first; if another run already took it, move on.
       const { data: claimed } = await database
@@ -80,7 +82,7 @@ export async function processOutreach(database: Db, now = new Date()): Promise<{
         .eq("id", row.id)
         .eq("status", "queued")
         .select("id");
-      if (!claimed?.length) continue;
+      if (!claimed?.length) return;
       try {
         const unsub = unsubscribeUrl(userId, email);
         const body = withUnsubscribe(row.html, row.text_body, unsub);
@@ -101,7 +103,8 @@ export async function processOutreach(database: Db, now = new Date()): Promise<{
         await database.from("outreach_emails").update({ status: "failed", error: err instanceof Error ? err.message.slice(0, 500) : "Send failed" }).eq("id", row.id);
         result.failed++;
       }
-    }
+    };
+    for (let i = 0; i < batch.length; i += CONCURRENCY) await Promise.all(batch.slice(i, i + CONCURRENCY).map(sendOne));
   }
   return result;
 }

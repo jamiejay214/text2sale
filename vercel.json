@@ -72,7 +72,7 @@
     },
     {
       "path": "/api/outreach/send",
-      "schedule": "*/5 * * * *"
+      "schedule": "* * * * *"
     }
   ]
 }
