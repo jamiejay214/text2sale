@@ -102,7 +102,7 @@ export default function WorkspaceApp() {
     try {
       const session = await getSession();
       if (!session?.user) {
-        router.replace("/");
+        router.replace("/login");
         return;
       }
       if (!session.user.email_confirmed_at && session.user.app_metadata?.role !== "admin") {
@@ -258,7 +258,7 @@ export default function WorkspaceApp() {
 
   const logout = async () => {
     await logoutUser();
-    router.replace("/");
+    router.replace("/login");
   };
 
   const view = useMemo(() => {

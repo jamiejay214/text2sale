@@ -2,7 +2,8 @@ import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import Image from "next/image";
 import type { BlogPost } from "@/lib/blog-posts";
-import { getPostBySlug, getTagBySlug, tagSlug } from "@/lib/blog-posts";
+import { getPostBySlug, getTagBySlug, isPostIndexed, tagSlug } from "@/lib/blog-posts";
+import { BLOG_AUTHOR } from "@/lib/blog-author";
 import MarketingFooter from "@/components/MarketingFooter";
 import { landingForTags } from "@/lib/topic-landing";
 
@@ -39,7 +40,10 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
       width: 1200,
       height: 630,
     },
-    author: { "@type": "Organization", name: "Text2Sale", url: SITE },
+    // A named person once lib/blog-author.ts is filled in; the company until then.
+    author: BLOG_AUTHOR
+      ? { "@type": "Person", name: BLOG_AUTHOR.name, jobTitle: BLOG_AUTHOR.role, url: BLOG_AUTHOR.url ?? `${SITE}/about` }
+      : { "@type": "Organization", name: "Text2Sale", url: SITE },
     publisher: {
       "@type": "Organization",
       name: "Text2Sale",
@@ -77,7 +81,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
 
   const related = (post.relatedSlugs || [])
     .map((s) => getPostBySlug(s))
-    .filter((p): p is BlogPost => Boolean(p));
+    .filter((p): p is BlogPost => Boolean(p) && isPostIndexed(p as BlogPost));
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
@@ -121,14 +125,21 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
           </p>
         </header>
 
-        {post.illustration && (
+        {post.illustration ? (
           <figure className="mt-8">
             <Image src={post.illustration.src} alt={post.illustration.alt} width={920} height={320} unoptimized className="h-auto w-full rounded-2xl" />
+          </figure>
+        ) : (
+          // Every post has a generated title card (the same image used for
+          // social sharing), so no article is a wall of text with no image.
+          <figure className="mt-8">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={`/blog/${post.slug}/opengraph-image`} alt={`${post.title} — Text2Sale guide`} width={1200} height={630} className="h-auto w-full rounded-2xl border border-zinc-800" />
           </figure>
         )}
 
         <nav aria-label="In this guide" className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/40 p-6"><h2 className="font-bold text-emerald-200">In this guide</h2><ol className="mt-3 space-y-2">{post.sections.map((section,index)=><li key={section.heading}><a className="text-emerald-100 underline underline-offset-4" href={`#section-${index+1}`}>{section.heading}</a></li>)}</ol></nav>
-        <p className="mt-5 text-sm text-zinc-400">Published by <Link href="/about" className="underline">Text2Sale</Link> · Updated <time dateTime={post.dateModified}>{formatDate(post.dateModified)}</time>. Product questions or corrections: <a href="mailto:support@text2sale.com" className="underline">support@text2sale.com</a>.</p>
+        <p className="mt-5 text-sm text-zinc-400">{BLOG_AUTHOR ? <>By <Link href={BLOG_AUTHOR.url ?? "/about"} className="underline">{BLOG_AUTHOR.name}</Link>, {BLOG_AUTHOR.role} at Text2Sale</> : <>Published by <Link href="/about" className="underline">Text2Sale</Link></>} · Updated <time dateTime={post.dateModified}>{formatDate(post.dateModified)}</time>. Product questions or corrections: <a href="mailto:support@text2sale.com" className="underline">support@text2sale.com</a>.</p>
         <div className="mt-10 space-y-5">
           {post.intro.map((p, i) => (
             <p key={i} className="text-[17px] leading-8 text-zinc-200">{p}</p>

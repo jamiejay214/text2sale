@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import { COMPLETE_SAVINGS, PLAN_KEYS, PLANS, USAGE_RATES } from "@/lib/plans";
 import { VOLUME_SMS_UNLOCK_AMOUNT } from "@/lib/sms-pricing";
@@ -119,17 +120,9 @@ export default function PricingPage() {
 
   return (
     <main className="min-h-screen bg-[#060806] text-zinc-100">
+      <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
-        <nav className="flex items-center justify-between gap-4" aria-label="Primary navigation">
-          <Link href="/" className="text-xl font-black tracking-tight text-white">
-            text<span className="text-emerald-300">2</span>sale.
-          </Link>
-          <div className="flex items-center gap-4 text-sm font-bold">
-            <Link href="/blog" className="text-zinc-300 hover:text-emerald-200">Blog</Link>
-            <Link href="/?signup=1#auth-form" className="rounded-xl bg-emerald-300 px-4 py-2 text-zinc-950 hover:bg-emerald-200">Get started</Link>
-          </div>
-        </nav>
 
         <header className="mx-auto max-w-4xl py-16 text-center sm:py-20">
           <p className="text-sm font-black uppercase tracking-[0.24em] text-emerald-300">Pricing</p>

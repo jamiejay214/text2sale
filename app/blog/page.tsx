@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import { getAllPosts, getIndexableTags } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
@@ -53,6 +54,7 @@ export default function BlogIndexPage() {
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
+      <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
 
       <section className="mx-auto max-w-5xl px-6 py-20">

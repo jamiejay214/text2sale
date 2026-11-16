@@ -23,6 +23,14 @@ export default function SiteLinks() {
                 </Link>
               </li>
             ))}
+            {group === "product" &&
+              SITE_PAGES.filter((page) => page.group === "integration").slice(0, 2).map((page) => (
+                <li key={page.path}>
+                  <Link href={page.path} className="text-zinc-400 transition hover:text-white">
+                    {page.label}
+                  </Link>
+                </li>
+              ))}
             {group === "guide" && (
               <li>
                 <Link href="/blog" className="text-zinc-400 transition hover:text-white">

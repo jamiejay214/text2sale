@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import BlogPostLayout from "@/components/BlogPostLayout";
-import { getAllPosts, getPostBySlug } from "@/lib/blog-posts";
+import { getEveryPost, getPostBySlug, isPostIndexed } from "@/lib/blog-posts";
 
 const SITE = "https://text2sale.com";
 
 export function generateStaticParams() {
-  return getAllPosts().map((p) => ({ slug: p.slug }));
+  return getEveryPost().map((p) => ({ slug: p.slug }));
 }
 
 export async function generateMetadata({
@@ -24,6 +24,8 @@ export async function generateMetadata({
     description: post.description,
     alternates: { canonical: `/blog/${post.slug}` },
     keywords: post.tags,
+    // Off-niche posts stay live for anyone holding the link but are kept out of search.
+    ...(isPostIndexed(post) ? {} : { robots: { index: false, follow: true } }),
     openGraph: {
       title: post.metaTitle,
       description: post.description,

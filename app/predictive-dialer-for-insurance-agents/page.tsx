@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
+import { PREDICTIVE_DIALER_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
   title: "Predictive Dialer for Insurance Agents | Text2Sale",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      extras={PREDICTIVE_DIALER_EXTRAS}
       blogTags={["Insurance", "Calls", "Sales", "Operations"]}
       eyebrow="Insurance Predictive Dialer"
       title="Call more insurance leads without losing the conversation around the call."
