@@ -53,7 +53,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Salesmsg compared: plan prices, texting costs, power and predictive dialing, AI replies, AI receptionist, and which one fits insurance agents and sales teams.",
     headline: "Text2Sale vs Salesmsg: business texting platform or lead follow-up CRM?",
     summary:
-      "Salesmsg is a business texting and calling platform with strong CRM integrations. Text2Sale is built for agents who work lead lists: texting, power and predictive dialing, AI replies, an AI receptionist and appointment booking in one workspace.",
+      "Text2Sale is built for agents who work lead lists: texting, power and predictive dialing, AI replies, an AI receptionist and appointment booking in one workspace, with its own CRM included. Salesmsg is a credit-based texting and calling platform that plugs into the CRM you already use.",
     whatItIs:
       "Salesmsg sells credit-based plans for business texting and calling, with integrations for CRMs such as HubSpot and Salesforce. Its pricing page lists a Basic plan at $25/month and a Pro plan at $277/month, each with one seat and one number included, plus custom Enterprise pricing. An SMS uses 1 credit and a calling minute uses 1 credit.",
     rows: [
@@ -104,7 +104,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Textdrip compared: plan prices, per-text costs, drip campaigns, power and predictive dialing, AI replies and which one fits insurance agents.",
     headline: "Text2Sale vs Textdrip: drip texting tool or texting plus dialing in one CRM?",
     summary:
-      "Textdrip is a low-cost drip texting platform popular with insurance agents. Text2Sale adds power and predictive dialing, an AI receptionist and appointment booking, so texting and calling live on one record.",
+      "Text2Sale puts texting, power and predictive dialing, an AI receptionist and appointment booking on one lead record, so you never switch tools between a text and a call. Textdrip is a drip texting platform focused on automated text sequences.",
     whatItIs:
       "Textdrip sells credit-based texting plans: Spark Starter $19.99/month, Growth Gear $34.99/month and Elite $74.99/month, with lower prices billed yearly. One credit costs $0.012, and an SMS uses 1 credit on Growth Gear and Elite (2 on Spark Starter). Some automation features are add-ons on the lower plans.",
     rows: [
@@ -154,7 +154,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs GoHighLevel compared: plan prices, usage costs, texting, dialing, AI and setup time. Which one fits insurance agents versus marketing agencies.",
     headline: "Text2Sale vs GoHighLevel: an all-in-one agency platform or a focused lead follow-up tool?",
     summary:
-      "GoHighLevel is a broad marketing platform for agencies: funnels, websites, email, SMS, calendars and more. Text2Sale does fewer things, focused on texting, dialing, AI follow-up and booking for agents who work leads.",
+      "Text2Sale needs no building: texting, dialing, AI follow-up and booking come set up and ready for a lead list. GoHighLevel is a broad marketing platform for agencies, with funnels, websites, email and SMS that you configure yourself.",
     whatItIs:
       "GoHighLevel's plans are Starter at $97/month, Unlimited at $297/month and Agency Pro at $497/month, with annual options. SMS, calling, email and premium AI are billed separately as usage. AI Employee add-ons are $50 or $97 per month per sub-account.",
     rows: [
@@ -202,7 +202,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Twilio compared: per-message costs, carrier fees, numbers, and what you get out of the box versus what you have to build with an API.",
     headline: "Text2Sale vs Twilio: raw messaging API or a ready-to-use texting and dialing CRM?",
     summary:
-      "Twilio is a developer platform: you get low-level messaging and voice APIs and build the product yourself. Text2Sale is the finished product, with inbox, campaigns, dialer, AI and booking ready to use.",
+      "Text2Sale is the finished product: inbox, campaigns, dialer, AI and booking, ready to use with no code. Twilio is a developer platform that gives you messaging and voice APIs and leaves you to build the product yourself.",
     whatItIs:
       "Twilio charges $0.0083 per US long code SMS segment, outbound or inbound, plus carrier fees that vary by carrier. Long code numbers are $1.15/month. 10DLC registration fees apply. There is no CRM, inbox or dialer; you build those on top of the API.",
     rows: [
@@ -247,7 +247,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs OnlySales compared for insurance agents: subscription price, per-text and per-minute costs, dialing, AI replies, AI receptionist and booking.",
     headline: "Text2Sale vs OnlySales: two agent-focused tools, compared honestly.",
     summary:
-      "OnlySales is a low-cost texting, drip and calling platform with a pipeline for health advisors. Text2Sale adds predictive dialing, AI replies, an AI receptionist and appointment booking on top of texting and calling.",
+      "Text2Sale gives agents predictive dialing, AI replies, an AI receptionist and appointment booking on top of texting and calling. OnlySales is a texting, drip and calling platform with a pipeline for health advisors.",
     whatItIs:
       "OnlySales lists one subscription for agents at $35/month with unlimited lead uploads, SMS, calling and pipeline management. Usage is $0.012 per outbound segment, free inbound messages, $0.02 per call minute and $1/month per phone number.",
     rows: [
@@ -295,7 +295,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Aloware compared: per-user prices, user minimums, power dialing, texting, AI and which one fits small insurance teams versus larger call centers.",
     headline: "Text2Sale vs Aloware: a contact center platform or a lead follow-up CRM for small teams?",
     summary:
-      "Aloware is a cloud contact center with power dialing, texting and AI voice analytics, aimed at teams that run on HubSpot or Salesforce. Text2Sale is built for solo agents and small teams with no user minimums.",
+      "Text2Sale is built for solo agents and small teams: no user minimums, its own CRM, and texting, dialing and AI in one workspace. Aloware is a cloud contact center aimed at larger teams that run on HubSpot or Salesforce.",
     whatItIs:
       "Aloware's per-user plans are iPro + AI, uPro + AI and xPro + AI, from $30 to $100 per user per month depending on plan and billing, with minimums of 5 to 10 users. Its power dialer starts on uPro. Packages for up to 3 or 5 users are $199 and $399 per month.",
     rows: [
@@ -338,7 +338,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs PhoneBurner compared: per-user prices, power dialing, texting limits, voicemail drop, AI and which one fits insurance agents.",
     headline: "Text2Sale vs PhoneBurner: a dedicated power dialer or texting and dialing together?",
     summary:
-      "PhoneBurner is a well-known power dialer with unlimited dialing and one-click voicemail drops. Text2Sale combines dialing with two-way texting, AI replies, an AI receptionist and booking at a lower per-user price.",
+      "Text2Sale combines power and predictive dialing with two-way texting, AI replies, an AI receptionist and booking, at a lower per-user price. PhoneBurner is a dedicated power dialer built around calling.",
     whatItIs:
       "PhoneBurner's plans are Standard ($140–$165/user/month), Professional ($165–$195) and Premium ($183–$215), depending on annual or monthly billing. All include unlimited power dialing and voicemail drop. Texting is only on Premium, with 1,000 outbound messages per month.",
     rows: [
@@ -383,7 +383,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Kixie compared: power dialing, multi-line dialing, texting, CRM integrations, AI and which one fits insurance agents.",
     headline: "Text2Sale vs Kixie: a CRM-connected dialer or an all-in-one lead follow-up tool?",
     summary:
-      "Kixie is a business phone and power dialer that plugs into CRMs such as HubSpot and Salesforce. Text2Sale includes its own CRM with texting, predictive dialing, AI and booking in one place.",
+      "Text2Sale includes its own CRM with texting, predictive dialing, AI and booking in one place, so there is no second system to pay for. Kixie is a business phone and power dialer designed to plug into a separate CRM such as HubSpot or Salesforce.",
     whatItIs:
       "Kixie's plans are Professional, Single-Line PowerDialer and Multi-Line PowerDialer (up to 4 lines), with unlimited US and Canada minutes and texting on every plan. Its pricing page does not show prices; several AI features are premium add-ons.",
     rows: [
@@ -426,7 +426,7 @@ export const COMPETITORS: Competitor[] = [
       "Text2Sale vs Close compared: per-user prices, power and predictive dialers, texting, AI and which one fits insurance agents versus B2B sales teams.",
     headline: "Text2Sale vs Close: a B2B sales CRM or a lead follow-up CRM for agents?",
     summary:
-      "Close is a sales CRM with built-in calling, SMS and email, popular with B2B and SMB sales teams. Text2Sale is narrower and built around texting and dialing consumer leads, with an AI receptionist and appointment booking.",
+      "Text2Sale is built around texting and dialing consumer leads, with predictive dialing, an AI receptionist and appointment booking included. Close is a general-purpose sales CRM with calling, SMS and email, aimed at B2B sales teams.",
     whatItIs:
       "Close's plans are Solo, Essentials, Growth and Scale, from about $9 to $149 per user per month depending on plan and billing. Calling and SMS are included at cost. The power dialer starts on Growth and the predictive dialer is on Scale.",
     rows: [
