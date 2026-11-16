@@ -12,7 +12,7 @@ const scenarios = [
     label: "Sales follow-up",
     booked: "Tomorrow, 5:30 PM",
     messages: [
-      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Business Solutions. You requested a demo and agreed to text updates. Still interested in a quick walkthrough? Reply STOP to opt out." },
+      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Business Solutions. You requested a demo. Still interested in a quick walkthrough? Reply STOP to opt out." },
       { speaker: LEAD, text: "Maybe, but I don't have time for a long presentation." },
       { speaker: AI, text: "We can keep it to 10 minutes and focus on your questions. What are you hoping to improve?" },
       { speaker: LEAD, text: "Keeping up with customer inquiries. I'm only free after work." },
@@ -25,7 +25,7 @@ const scenarios = [
     label: "Home services inquiry",
     booked: "Tomorrow, 12:15 PM",
     messages: [
-      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Home Services. You requested an estimate and agreed to text updates. Would you like to arrange a quick call? Reply STOP to opt out." },
+      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Home Services. You requested an estimate. Would you like to arrange a quick call? Reply STOP to opt out." },
       { speaker: LEAD, text: "Can you just text me a price?" },
       { speaker: AI, text: "The team needs a few details about the project before quoting. What work do you have in mind?" },
       { speaker: LEAD, text: "Replacing the kitchen cabinets. I'm comparing options." },
@@ -38,7 +38,7 @@ const scenarios = [
     label: "Business services follow-up",
     booked: "Tomorrow, 6 PM",
     messages: [
-      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Business Services. You asked about support for your business and agreed to text updates. Is now a good time to arrange a consultation? Reply STOP to opt out." },
+      { speaker: AI, text: "Hi Alex, it's Taylor with Northstar Business Services. You asked about support for your business. Is now a good time to arrange a consultation? Reply STOP to opt out." },
       { speaker: LEAD, text: "I'm at work. My business partner needs to join too." },
       { speaker: AI, text: "Of course. Would an evening call work better for both of you?" },
       { speaker: LEAD, text: "Tomorrow evening could work. Is there a charge for the call?" },
@@ -83,7 +83,7 @@ export default function AppointmentDemo() {
           <div aria-live="polite" aria-atomic="false" className="space-y-3">
             {step === 0 && <p className="text-base text-emerald-100">Press play to follow the conversation.</p>}
             {messages.slice(0, step).map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.speaker === AI ? "bg-emerald-800" : "ml-8 bg-white/10"}`}><span className="block font-semibold text-lime-200">{message.speaker}</span>{message.text}</div>)}
-            {complete && <p className="rounded-xl border border-lime-300 p-4 font-semibold text-lime-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Example calendar result</span></p>}
+            {complete && <p className="rounded-xl border border-lime-300 p-4 font-semibold text-lime-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Added to Google Calendar</span></p>}
           </div>
           {running && !complete && <button type="button" onClick={() => { setStep(messages.length); setRunning(false); }} className="mt-4 text-sm text-lime-200 underline">Show full conversation</button>}
         </div>
