@@ -129,3 +129,30 @@ export function NewsletterSignup() {
     </section>
   );
 }
+
+// Homepage lead magnet. Leaving an email unlocks the full text pack (the same
+// browser flag ResourceGate checks on /insurance-follow-up-text-pack), so the
+// visitor lands on the open resource instead of a second form.
+export function LeadMagnet() {
+  const [done, setDone] = useState(false);
+  return done ? (
+    <p role="status" className="mt-5 font-bold text-emerald-300">
+      Unlocked. <a className="underline underline-offset-4" href="/insurance-follow-up-text-pack">Open the 30 follow-up texts →</a>
+    </p>
+  ) : (
+    <CaptureForm
+      id="home-text-pack"
+      kind="resource"
+      resource="30 insurance follow-up texts"
+      buttonLabel="Send me the texts"
+      onDone={() => {
+        try {
+          localStorage.setItem(storageKey("text-pack"), "1");
+        } catch {
+          // Storage blocked; the pack page will ask again.
+        }
+        setDone(true);
+      }}
+    />
+  );
+}

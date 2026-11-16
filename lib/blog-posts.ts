@@ -8249,8 +8249,31 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_5,
 ];
 
+// ── Off-niche posts ────────────────────────────────────────────────────────
+// Posts that have nothing to do with texting, calling or following up on
+// sales leads (how a print shop approves a proof, how to apply for an EIN).
+// They stay reachable at their URLs but carry a noindex tag and are left out
+// of the blog index, tag archives, sitemap, RSS feed, llms.txt and internal
+// link suggestions, so search engines judge the site on its own subject.
+const OFF_NICHE_SLUGS = new Set<string>([
+  ...[FIELD_GUIDES_1, FIELD_GUIDES_2, FIELD_GUIDES_3, FIELD_GUIDES_4, FIELD_GUIDES_5, FIELD_GUIDES_6].flat().map((post) => post.slug),
+  "how-to-apply-for-an-ein",
+]);
+
+export function isPostIndexed(post: BlogPost): boolean {
+  return !OFF_NICHE_SLUGS.has(post.slug);
+}
+
+const INDEXED_POSTS: BlogPost[] = BLOG_POSTS.filter(isPostIndexed);
+
+/** Posts shown in listings and submitted to search engines, newest first. */
 export function getAllPosts(): BlogPost[] {
-  return [...BLOG_POSTS].sort((a, b) => byNewest(a, b));
+  return [...INDEXED_POSTS].sort((a, b) => byNewest(a, b));
+}
+
+/** Every post with a page, including noindexed ones. For route generation only. */
+export function getEveryPost(): BlogPost[] {
+  return BLOG_POSTS;
 }
 
 // Newest first. Equal dates return 0 so Array.prototype.sort (stable) keeps
@@ -8292,7 +8315,7 @@ export function tagSlug(tag: string): string {
 function buildTagIndex(): Map<string, { label: string; posts: BlogPost[]; spellings: Map<string, number> }> {
   const index = new Map<string, { label: string; posts: BlogPost[]; spellings: Map<string, number> }>();
 
-  for (const post of BLOG_POSTS) {
+  for (const post of INDEXED_POSTS) {
     for (const tag of post.tags) {
       const slug = tagSlug(tag);
       if (!slug) continue;
@@ -8370,7 +8393,7 @@ export function getPostsByTags(tags: string[], limit?: number): BlogPost[] {
     if (!weight.has(slug)) weight.set(slug, 2 ** (tags.length - 1 - i));
   });
 
-  const scored = BLOG_POSTS.map((post) => {
+  const scored = INDEXED_POSTS.map((post) => {
     const own = new Set(post.tags.map(tagSlug));
     let score = 0;
     for (const t of own) score += weight.get(t) ?? 0;

@@ -1,6 +1,6 @@
 export const SITE_URL = "https://text2sale.com";
 
-export type SitePageGroup = "product" | "industry" | "compare" | "guide" | "tool";
+export type SitePageGroup = "product" | "industry" | "compare" | "guide" | "tool" | "integration";
 
 export type SitePage = {
   path: string;
@@ -18,13 +18,13 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/about", label: "About Text2Sale", group: "guide", priority: 0.72, updated: "2026-10-28" },
   { path: "/press", label: "Product facts & media", group: "guide", priority: 0.65, updated: "2026-10-28" },
   { path: "/pricing", label: "Pricing", group: "product", priority: 0.9, updated: "2026-11-14" },
-  { path: "/ai-appointment-setter", label: "AI appointment setter", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
+  { path: "/ai-appointment-setter", label: "AI appointment setter", group: "product", priority: 0.92, updated: "2026-11-16" },
   { path: "/ai-receptionist-for-insurance-agents", label: "AI receptionist for insurance agents", group: "product", priority: 0.92, updated: "2026-11-14" },
-  { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: "2026-11-14" },
+  { path: "/predictive-dialer-for-insurance-agents", label: "Predictive dialer for insurance agents", group: "product", priority: 0.9, updated: "2026-11-16" },
   { path: "/insurance-lead-follow-up-software", label: "Insurance lead follow-up software", group: "product", priority: 0.92, updated: SEO_EXPANSION_2026_10 },
   { path: "/reactivate-old-insurance-leads", label: "Reactivate old insurance leads", group: "guide", priority: 0.88, updated: "2026-11-09" },
 
-  { path: "/insurance-agents", label: "Insurance agent CRM", group: "industry", priority: 0.85, updated: "2026-11-14" },
+  { path: "/insurance-agents", label: "Insurance agent CRM", group: "industry", priority: 0.85, updated: "2026-11-16" },
   { path: "/health-insurance", label: "Health insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/medicare", label: "Medicare appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
@@ -34,9 +34,9 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/real-estate", label: "Real estate appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/roofing", label: "Roofing appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
 
-  { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
+  { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: "2026-11-16" },
   { path: "/ai-texting-crm", label: "AI texting CRM", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
-  { path: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents", group: "product", priority: 0.9, updated: REFRESH_2026_09 },
+  { path: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents", group: "product", priority: 0.9, updated: "2026-11-16" },
   { path: "/bulk-sms-software", label: "Bulk SMS software", group: "product", priority: 0.85, updated: REFRESH_2026_09 },
   { path: "/10dlc-compliant-texting", label: "10DLC compliant texting", group: "product", priority: 0.85, updated: REFRESH_2026_09 },
   { path: "/sms-follow-up-for-sales-teams", label: "SMS follow-up for sales teams", group: "product", priority: 0.8, updated: REFRESH_2026_09 },
@@ -82,6 +82,13 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/insurance-follow-up-text-pack", label: "30 insurance follow-up texts", group: "guide", priority: 0.82, updated: "2026-10-29" },
   { path: "/aged-lead-reactivation-playbook", label: "Aged lead reactivation playbook", group: "guide", priority: 0.82, updated: "2026-10-29" },
 
+  { path: "/demo", label: "Book a demo", group: "integration", priority: 0.85, updated: "2026-11-16" },
+  { path: "/integrations", label: "Integrations", group: "integration", priority: 0.85, updated: "2026-11-16" },
+  { path: "/integrations/lead-vendor-webhook", label: "Lead vendor webhooks", group: "integration", priority: 0.8, updated: "2026-11-16" },
+  { path: "/integrations/google-calendar", label: "Google Calendar", group: "integration", priority: 0.8, updated: "2026-11-16" },
+  { path: "/integrations/csv-import", label: "CSV import", group: "integration", priority: 0.8, updated: "2026-11-16" },
+  { path: "/integrations/zapier-webhooks", label: "Zapier and webhooks", group: "integration", priority: 0.8, updated: "2026-11-16" },
+
   { path: "/sms-character-counter", label: "SMS character counter", group: "tool", priority: 0.85, updated: "2026-10-04" },
   { path: "/sms-cost-calculator", label: "SMS cost calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
   { path: "/lead-reactivation-roi-calculator", label: "Lead reactivation ROI calculator", group: "tool", priority: 0.85, updated: TOPIC_CLUSTER_2026_10 },
@@ -100,6 +107,7 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
   compare: "Compare",
   guide: "Guides",
   tool: "Free tools",
+  integration: "Integrations & demo",
 };
 
-export const HOME_UPDATED = "2026-11-14";
+export const HOME_UPDATED = "2026-11-16";

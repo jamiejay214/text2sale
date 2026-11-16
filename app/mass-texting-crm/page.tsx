@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
+import { MASS_TEXTING_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
   title: "Mass Texting CRM for Sales Teams | Text2Sale",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function MassTextingCrmPage() {
   return (
     <SeoLandingPage
+      extras={MASS_TEXTING_EXTRAS}
       blogTags={["texting CRM", "Campaigns", "SMS marketing", "Automation"]}
       eyebrow="Mass Texting CRM"
       title="Mass texting CRM built to turn lead lists into conversations."

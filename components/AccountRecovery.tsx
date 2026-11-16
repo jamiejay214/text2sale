@@ -229,7 +229,7 @@ export default function AccountRecovery({
             </form>
           </>
         )}
-        <Link href="/#auth-form">Back to sign in</Link>
+        <Link href="/login">Back to sign in</Link>
       </section>
     </main>
   );

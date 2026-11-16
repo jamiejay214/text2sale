@@ -3,6 +3,7 @@ import Link from "next/link";
 import { getPostsByTags } from "@/lib/blog-posts";
 import MarketingFooter from "@/components/MarketingFooter";
 import FoundingAgentOffer from "@/components/FoundingAgentOffer";
+import type { MoneyPageExtras } from "@/lib/money-page-extras";
 
 type FaqItem = { question: string; answer: string };
 type GuideSection = { heading: string; paragraphs: string[]; bullets?: string[] };
@@ -42,6 +43,11 @@ type SeoLandingPageProps = {
    * dealership page links to dealership articles rather than insurance ones.
    */
   blogTags?: string[];
+  /**
+   * Extra depth for the highest-intent pages: a how-it-works strip with
+   * images, message templates, more guide sections and more FAQ.
+   */
+  extras?: MoneyPageExtras;
 };
 
 export default function SeoLandingPage({
@@ -65,7 +71,12 @@ export default function SeoLandingPage({
   relatedPages = [],
   canonicalPath,
   blogTags = [],
+  extras,
 }: SeoLandingPageProps) {
+  // Extras extend the page's own guide and FAQ, so the FAQ schema below
+  // covers every question that is visible on the page.
+  guide = extras ? [...guide, ...extras.guide] : guide;
+  faq = extras ? [...faq, ...extras.faq] : faq;
   // Topic-matched posts when the page declares tags, cornerstone posts
   // otherwise. Falls back to cornerstone if a tag set matches nothing.
   const taggedPosts = blogTags.length > 0 ? getPostsByTags(blogTags, 5) : [];
@@ -128,6 +139,9 @@ export default function SeoLandingPage({
           <Link href={secondaryHref} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">
             {secondaryCta}
           </Link>
+          <Link href="/demo" className="px-2 py-3 font-bold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">
+            Book a demo
+          </Link>
         </div>
       </section>}
 
@@ -144,6 +158,30 @@ export default function SeoLandingPage({
           ))}
         </div>
       </section>
+
+      {extras && (
+        <section className="mx-auto max-w-5xl px-6 pt-16">
+          <h2 className="text-3xl font-black">{extras.stepsTitle}</h2>
+          <ol className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {extras.steps.map((step, index) => (
+              <li key={step.title} className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={`/home/icons/${step.icon}.svg`} alt={`${step.title} icon`} width={48} height={48} loading="lazy" className="rounded-xl" />
+                <p className="mt-4 text-xs font-bold uppercase tracking-widest text-emerald-300">Step {index + 1}</p>
+                <h3 className="mt-1 text-lg font-bold">{step.title}</h3>
+                <p className="mt-2 text-sm leading-6 text-zinc-400">{step.body}</p>
+              </li>
+            ))}
+          </ol>
+          {extras.image && (
+            <figure className="mt-10 overflow-hidden rounded-3xl border border-zinc-800">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={extras.image.src} alt={extras.image.alt} width={960} height={640} loading="lazy" className="h-64 w-full object-cover sm:h-80" />
+              <figcaption className="bg-zinc-900/60 px-5 py-3 text-sm text-zinc-400">{extras.image.caption}</figcaption>
+            </figure>
+          )}
+        </section>
+      )}
 
       {guide.length > 0 && (
         <article className="mx-auto max-w-3xl px-6 py-16">
@@ -166,6 +204,28 @@ export default function SeoLandingPage({
             </section>
           ))}
         </article>
+      )}
+
+      {extras && (
+        <section className="border-y border-zinc-800 bg-zinc-900/40">
+          <div className="mx-auto max-w-5xl px-6 py-16">
+            <h2 className="text-3xl font-black">{extras.templatesTitle}</h2>
+            <p className="mt-4 max-w-3xl leading-7 text-zinc-300">{extras.templatesIntro}</p>
+            <div className="mt-8 grid gap-4 md:grid-cols-2">
+              {extras.templates.map((template) => (
+                <figure key={template.label} className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
+                  <figcaption className="text-xs font-bold uppercase tracking-widest text-emerald-300">{template.label}</figcaption>
+                  <blockquote className="mt-3 rounded-2xl rounded-bl-sm bg-emerald-400/10 px-4 py-3 leading-7 text-zinc-100">{template.text}</blockquote>
+                </figure>
+              ))}
+            </div>
+            <div className="mt-8 flex flex-wrap gap-3">
+              <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Get started</Link>
+              <Link href="/demo" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">Book a demo</Link>
+              <Link href="/insurance-text-templates" className="px-2 py-3 font-bold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">More free templates</Link>
+            </div>
+          </div>
+        </section>
       )}
 
       {bullets.length > 0 && (

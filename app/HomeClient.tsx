@@ -16,8 +16,14 @@ import { isPlanKey, PLAN_KEYS, PLANS, USAGE_RATES, type PlanKey } from "@/lib/pl
 export default function HomeClient({
   faqSection,
   siteLinks,
+  header,
+  depth,
   variant,
 }: {
+  /** Shared sticky site header, rendered on the server. */
+  header?: React.ReactNode;
+  /** Long-form homepage sections, rendered on the server and shown under the product tour. */
+  depth?: React.ReactNode;
   faqSection: React.ReactNode;
   siteLinks: React.ReactNode;
   /** Industry landing pages reuse this signup form under their own marketing section. */
@@ -28,7 +34,7 @@ export default function HomeClient({
   // Page-view tracking is handled by the universal <Tracker /> in app/layout.tsx
   // (visitor_id, session_id, UTMs, channel, device, exit clicks, form intents).
 
-  const [mode, setMode] = useState<"login" | "signup">(variant ? "signup" : "login");
+  const [mode, setMode] = useState<"login" | "signup">("signup");
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -220,7 +226,7 @@ export default function HomeClient({
   };
 
   return (
-    <main className="crm-theme marketing-site min-h-screen overflow-hidden">
+    <main className="crm-theme marketing-site min-h-screen overflow-x-clip">
       {(!variant || invited) && (
       <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-500 px-4 py-3 text-center text-sm text-white">
         {invited ? (
@@ -228,7 +234,7 @@ export default function HomeClient({
             <button onClick={() => { setMode("signup"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Create my account</button></>
         ) : (
           <>🎁 <strong>Refer a friend, get <span className="text-lime-200">$100 in credits</span>.</strong> Your friend gets $50 too when they add $50.{" "}
-            <button onClick={() => { setMode("login"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Log in to get your invite link</button></>
+            <Link href="/login" className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Log in to get your invite link</Link></>
         )}
       </div>
       )}
@@ -236,8 +242,10 @@ export default function HomeClient({
         <MedSpaHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
       ) : (
         <>
-          <ApprovedHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
+          {header}
+          <ApprovedHome onChoose={handleSelectPlan} />
           <AppointmentDemo />
+          {depth}
         </>
       )}
       <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
@@ -257,24 +265,14 @@ export default function HomeClient({
                   </div>
                 </div>
 
-                <div className="mb-6 flex rounded-2xl border border-zinc-800 bg-zinc-950/60 p-1">
-                  <button
-                    onClick={() => { setMode("login"); setError(""); }}
-                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                      mode === "login" ? "bg-gradient-to-r from-emerald-500 to-lime-400 text-emerald-950 shadow-lg shadow-emerald-500/20" : "text-zinc-400 hover:text-white"
-                    }`}
-                  >
-                    Sign in
-                  </button>
-                  <button
-                    onClick={() => { setMode("signup"); setError(""); }}
-                    className={`flex-1 rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                      mode === "signup" ? "bg-gradient-to-r from-emerald-500 to-lime-400 text-emerald-950 shadow-lg shadow-emerald-500/20" : "text-zinc-400 hover:text-white"
-                    }`}
-                  >
-                    Create account
-                  </button>
-                </div>
+                {/* Sign-in lives at /login. This card is for new accounts; the
+                    sign-in fields only appear here when a flow hands off to them. */}
+                {mode === "signup" && (
+                  <p className="mb-6 text-sm text-zinc-400">
+                    Already have an account?{" "}
+                    <Link href="/login" className="font-semibold text-lime-300 hover:text-lime-200">Log in</Link>
+                  </p>
+                )}
 
                 {mode === "login" ? (
                   <div className="space-y-4">

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import InsuranceHero from "@/components/InsuranceHero";
 import InsuranceWalkthrough from "@/components/InsuranceWalkthrough";
 import SeoLandingPage from "@/components/SeoLandingPage";
+import { INSURANCE_AGENTS_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
   "title": "Insurance Agent CRM for Texting, Follow-Up and Calls | Text2Sale",
@@ -96,4 +97,5 @@ const content = {
   ]
 };
 
-export default function Page() { return <SeoLandingPage {...content} customHero={<InsuranceHero />} primaryHref="/pricing" afterHero={<InsuranceWalkthrough />} foundingAgentOffer />; }
+export default function Page() { return <SeoLandingPage
+      extras={INSURANCE_AGENTS_EXTRAS} {...content} customHero={<InsuranceHero />} primaryHref="/pricing" afterHero={<InsuranceWalkthrough />} foundingAgentOffer />; }

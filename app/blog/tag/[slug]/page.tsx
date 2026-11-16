@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import MarketingHeader from "@/components/MarketingHeader";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getIndexableTags, getPostsByTag, getTagBySlug } from "@/lib/blog-posts";
@@ -90,6 +91,7 @@ export default async function BlogTagPage({
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
+      <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
 

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
+import { AI_SETTER_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
   title: "AI Appointment Setter for Sales & Insurance Leads | Text2Sale",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function Page() {
   return (
     <SeoLandingPage
+      extras={AI_SETTER_EXTRAS}
       blogTags={["AI", "Appointments", "Speed to lead", "Automation"]}
       eyebrow="AI Appointment Setter"
       title="Turn lead replies into booked appointments automatically."

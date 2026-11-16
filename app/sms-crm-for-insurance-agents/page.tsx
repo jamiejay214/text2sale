@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
+import { INSURANCE_SMS_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
   title: "SMS CRM for Insurance Agents | Text2Sale",
@@ -11,6 +12,7 @@ export const metadata: Metadata = {
 export default function SmsCrmForInsuranceAgentsPage() {
   return (
     <SeoLandingPage
+      extras={INSURANCE_SMS_EXTRAS}
       blogTags={["Insurance", "Speed to lead", "Scripts", "Compliance"]}
       eyebrow="Insurance Agent SMS CRM"
       title="SMS CRM for insurance agents who live off speed, follow-up, and booked calls."

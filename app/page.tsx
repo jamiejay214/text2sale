@@ -3,10 +3,12 @@ import { PLAN_KEYS, PLANS } from "@/lib/plans";
 import HomeClient from "./HomeClient";
 import HomeFaq, { HOME_FAQ } from "@/components/HomeFaq";
 import SiteLinks from "@/components/SiteLinks";
+import HomeDepth from "@/components/HomeDepth";
+import MarketingHeader from "@/components/MarketingHeader";
 import { SITE_URL } from "@/lib/site-pages";
 
 export const metadata: Metadata = {
-  title: "AI Sales CRM for Texting, Calling & Outreach | Text2Sale",
+  title: "Sales Texting CRM with Dialer & AI Follow-Up | Text2Sale",
   description:
     "AI texting, calling, and lead follow-up for sales professionals, teams, and businesses. Manage outreach, organize conversations, and book appointments with Text2Sale.",
   alternates: { canonical: "/" },
@@ -100,7 +102,7 @@ export default function HomePage() {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(schema) }}
         />
       ))}
-      <HomeClient faqSection={<HomeFaq />} siteLinks={<SiteLinks />} />
+      <HomeClient header={<MarketingHeader />} depth={<HomeDepth />} faqSection={<HomeFaq />} siteLinks={<SiteLinks />} />
     </>
   );
 }
