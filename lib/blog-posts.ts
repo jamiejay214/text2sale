@@ -21,6 +21,7 @@ import { BLOG_POSTS_15 } from "./blog-posts-15";
 import { BLOG_POSTS_16 } from "./blog-posts-16";
 import { BLOG_POSTS_17 } from "./blog-posts-17";
 import { BLOG_POSTS_18 } from "./blog-posts-18";
+import { BLOG_POSTS_19 } from "./blog-posts-19";
 
 import { FIELD_GUIDES_1 } from "./field-guides/proof-approvals";
 import { FIELD_GUIDES_2 } from "./field-guides/rental-and-site-quotes";
@@ -8237,6 +8238,7 @@ export const BLOG_POSTS: BlogPost[] = [
   ...BLOG_POSTS_16,
   ...BLOG_POSTS_17,
   ...BLOG_POSTS_18,
+  ...BLOG_POSTS_19,
   ...FIELD_GUIDES_1,
   ...FIELD_GUIDES_2,
   ...FIELD_GUIDES_3,
