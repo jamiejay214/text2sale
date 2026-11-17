@@ -6,10 +6,10 @@
   align-items:center;
   margin-bottom:20px;
   padding:28px;
-  border:1px solid #255542;
+  border:1px solid #5a3997;
   border-radius:20px;
-  background:linear-gradient(125deg,#133e30 0%,#1d5541 58%,#27664b 100%);
-  box-shadow:0 16px 34px rgba(14,57,41,.12);
+  background:linear-gradient(125deg,#341b69 0%,#59369c 58%,#6b41b9 100%);
+  box-shadow:0 16px 34px rgba(46,21,102,.12);
   color:#fff;
 }
 .workspace-v2 .t2s-sales-kicker {
@@ -19,7 +19,7 @@
   font-size:.68rem;
   font-weight:850;
   letter-spacing:.13em;
-  color:#d4f09d;
+  color:#ffdc72;
 }
 .workspace-v2 .t2s-sales-launchpad h2 {
   max-width:540px;
@@ -32,7 +32,7 @@
 .workspace-v2 .t2s-sales-launchpad-copy>p {
   max-width:490px;
   margin:0;
-  color:#d0e2d6;
+  color:#e4d9f2;
   font-size:.87rem;
   line-height:1.65;
 }
@@ -54,16 +54,16 @@
   font-weight:800;
   cursor:pointer;
 }
-.workspace-v2 .t2s-sales-start { background:#d9f779; color:#143e30; border:1px solid #d9f779; }
+.workspace-v2 .t2s-sales-start { background:#ffe070; color:#341b69; border:1px solid #ffe070; }
 .workspace-v2 .t2s-sales-secondary { background:rgba(255,255,255,.1); color:#fff; border:1px solid rgba(255,255,255,.28); }
-.workspace-v2 .t2s-sales-launchpad button:focus-visible { outline:3px solid #d9f779; outline-offset:3px; }
+.workspace-v2 .t2s-sales-launchpad button:focus-visible { outline:3px solid #ffe070; outline-offset:3px; }
 .workspace-v2 .t2s-sales-quicklinks {
   display:grid;
   gap:8px;
   padding:10px;
   border:1px solid rgba(255,255,255,.17);
   border-radius:16px;
-  background:rgba(7,35,25,.22);
+  background:rgba(24,6,65,.22);
 }
 .workspace-v2 .t2s-sales-quicklinks button {
   display:flex;
@@ -82,7 +82,7 @@
 .workspace-v2 .t2s-sales-quicklinks button>span { min-width:0; flex:1; }
 .workspace-v2 .t2s-sales-quicklinks strong,.workspace-v2 .t2s-sales-quicklinks small { display:block; }
 .workspace-v2 .t2s-sales-quicklinks strong { font-size:.82rem; }
-.workspace-v2 .t2s-sales-quicklinks small { margin-top:3px; color:#d1e5d7; font-size:.68rem; }
+.workspace-v2 .t2s-sales-quicklinks small { margin-top:3px; color:#efd5ff; font-size:.68rem; }
 .workspace-v2 .workspace-sidebar .workspace-nav-group:first-of-type { margin-top:8px; }
 .workspace-v2 .workspace-sidebar .workspace-nav-group:first-of-type button.is-active {
   border-radius:10px;
