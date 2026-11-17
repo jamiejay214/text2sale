@@ -40,7 +40,6 @@ const MENUS: Menu[] = [
         { href: "/solar-sales-texting-crm", label: "Solar" },
         { href: "/roofing", label: "Home services" },
         { href: "/blog/car-dealership-text-message-marketing", label: "Car dealerships" },
-        { href: "/med-spa", label: "Med spas" },
       ] },
     ],
   },

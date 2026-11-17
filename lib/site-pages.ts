@@ -29,9 +29,6 @@ export const SITE_PAGES: SitePage[] = [
   { path: "/life-insurance", label: "Life insurance appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/medicare", label: "Medicare appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/recruiters", label: "Recruiter appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
-  { path: "/med-spa", label: "Med spa client texting", group: "industry", priority: 0.85, updated: "2026-11-16" },
-  { path: "/solar", label: "Solar appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
-  { path: "/real-estate", label: "Real estate appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
   { path: "/roofing", label: "Roofing appointments", group: "industry", priority: 0.85, updated: "2026-10-07" },
 
   { path: "/mass-texting-crm", label: "Mass texting CRM", group: "product", priority: 0.9, updated: "2026-11-16" },

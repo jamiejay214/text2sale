@@ -88,11 +88,11 @@ const content = {
       "label": "Recruiters"
     },
     {
-      "href": "/solar",
+      "href": "/solar-sales-texting-crm",
       "label": "Solar"
     },
     {
-      "href": "/real-estate",
+      "href": "/real-estate-texting-crm",
       "label": "Real estate"
     }
   ]

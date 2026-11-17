@@ -13,6 +13,12 @@ const nextConfig: NextConfig = {
     return [
       // Merged into the main insurance-agent page (same search intent).
       { source: "/best-sms-crm-for-insurance-agents", destination: "/sms-crm-for-insurance-agents", permanent: true },
+      // Duplicate industry pages: the short URLs competed with the keyword
+      // pages for the same searches.
+      { source: "/real-estate", destination: "/real-estate-texting-crm", permanent: true },
+      { source: "/solar", destination: "/solar-sales-texting-crm", permanent: true },
+      // Med spas are no longer a target market.
+      { source: "/med-spa", destination: "/", permanent: true },
       // Consumer health-insurance article: off-topic for a texting CRM; the same
       // comparison lives on TrustedQuotes, where consumers can act on it.
       {

@@ -8259,10 +8259,10 @@ const OFF_NICHE_SLUGS = new Set<string>([
   ...[FIELD_GUIDES_1, FIELD_GUIDES_2, FIELD_GUIDES_3, FIELD_GUIDES_4, FIELD_GUIDES_5, FIELD_GUIDES_6].flat().map((post) => post.slug),
   "how-to-apply-for-an-ein",
   // Texting guides for businesses Text2Sale is not marketed to: local shops,
-  // restaurants and bars, healthcare clinics, schools, congregations and
+  // restaurants and bars, healthcare clinics and med spas, schools, congregations and
   // internal staff messaging. Kept: insurance, real estate, mortgage, solar,
   // home services, dealerships, hospitality, travel, nonprofits, eCommerce,
-  // recreation, med spa, recruiting and general sales topics.
+  // recreation, recruiting and general sales topics.
   "text-marketing-for-photographers",
   "text-marketing-for-wedding-vendors",
   "text-messaging-for-driving-schools",
@@ -8276,6 +8276,7 @@ const OFF_NICHE_SLUGS = new Set<string>([
   "therapy-practice-texting-privacy",
   "accountant-tax-preparer-texting",
   "dental-practice-text-marketing",
+  "med-spa-text-marketing",
   "chiropractic-text-marketing",
   "chiropractic-patient-reactivation",
   "new-patient-intake-texting",

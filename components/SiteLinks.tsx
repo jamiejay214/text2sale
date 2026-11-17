@@ -24,7 +24,6 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
       { href: "/real-estate-texting-crm", label: "Real estate" },
       { href: "/solar-sales-texting-crm", label: "Solar" },
       { href: "/roofing", label: "Home services" },
-      { href: "/med-spa", label: "Med spas" },
     ],
   },
   {
