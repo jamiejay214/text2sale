@@ -1,40 +1,66 @@
 import Link from "next/link";
-import { SITE_PAGES, type SitePageGroup } from "@/lib/site-pages";
 
-// One header for every public page: sticky, with a real menu into the
-// product, industry, comparison, guide and tool pages. Before this the
-// landing pages were reachable only from footer links, and phones got no
-// menu at all. Built on hover/focus-within and <details>, so it needs no
-// client JavaScript and every link is in the server-rendered HTML.
+// One header for every public page: sticky, with a short menu into the
+// product pages, industries, comparisons and key guides. Built on
+// hover/focus-within and <details>, so it needs no client JavaScript and
+// every link is in the server-rendered HTML.
+//
+// Kept deliberately short: every page used to link all ~76 landing pages from
+// both the header and the footer, which spread crawl attention across pages
+// Google had not indexed. Other pages are reached from contextual links in
+// page bodies, the blog and the hub pages (/insurance-agents, /blog).
 
 type MenuLink = { href: string; label: string };
 type Menu = { label: string; columns: { heading?: string; links: MenuLink[] }[] };
 
-function pages(group: SitePageGroup): MenuLink[] {
-  return SITE_PAGES.filter((page) => page.group === group && page.path !== "/pricing").map((page) => ({
-    href: page.path,
-    label: page.label,
-  }));
-}
-
-function halves(links: MenuLink[]): MenuLink[][] {
-  const middle = Math.ceil(links.length / 2);
-  return [links.slice(0, middle), links.slice(middle)];
-}
-
-const industries = halves(pages("industry"));
-const compare = halves(pages("compare"));
-
 const MENUS: Menu[] = [
-  { label: "Product", columns: [{ links: [...pages("product"), { href: "/integrations", label: "Integrations" }] }] },
-  { label: "Industries", columns: industries.map((links) => ({ links })) },
-  { label: "Compare", columns: compare.map((links) => ({ links })) },
+  {
+    label: "Product",
+    columns: [{ links: [
+      { href: "/sms-crm-for-insurance-agents", label: "SMS CRM for insurance agents" },
+      { href: "/insurance-lead-follow-up-software", label: "Lead follow-up software" },
+      { href: "/ai-for-insurance-agents", label: "AI for insurance agents" },
+      { href: "/10dlc-compliant-texting", label: "10DLC registration" },
+    ] }],
+  },
+  {
+    label: "Industries",
+    columns: [
+      { heading: "Insurance", links: [
+        { href: "/insurance-agents", label: "All insurance agents" },
+        { href: "/health-insurance-texting-crm", label: "Health insurance" },
+        { href: "/crm-for-aca-agents", label: "ACA agents" },
+        { href: "/life-insurance", label: "Life insurance" },
+        { href: "/final-expense-texting-crm", label: "Final expense" },
+        { href: "/medicare-agent-texting-crm", label: "Medicare" },
+        { href: "/auto-insurance-texting-crm", label: "Auto insurance" },
+      ] },
+      { heading: "More industries", links: [
+        { href: "/real-estate-texting-crm", label: "Real estate" },
+        { href: "/solar-sales-texting-crm", label: "Solar" },
+        { href: "/roofing", label: "Home services" },
+        { href: "/blog/car-dealership-text-message-marketing", label: "Car dealerships" },
+        { href: "/med-spa", label: "Med spas" },
+      ] },
+    ],
+  },
+  {
+    label: "Compare",
+    columns: [{ links: [
+      { href: "/text2sale-vs-textdrip", label: "Text2Sale vs TextDrip" },
+      { href: "/text2sale-vs-onlysales", label: "Text2Sale vs OnlySales" },
+      { href: "/text2sale-vs-gohighlevel", label: "Text2Sale vs GoHighLevel" },
+      { href: "/text2sale-vs-salesmsg", label: "Text2Sale vs Salesmsg" },
+    ] }],
+  },
   {
     label: "Resources",
-    columns: [
-      { heading: "Guides", links: [{ href: "/blog", label: "Text2Sale blog" }, ...pages("guide")] },
-      { heading: "Free tools", links: pages("tool") },
-    ],
+    columns: [{ links: [
+      { href: "/blog", label: "Blog" },
+      { href: "/speed-to-lead-for-insurance-agents", label: "Speed to lead" },
+      { href: "/how-to-text-insurance-leads", label: "How to text insurance leads" },
+      { href: "/insurance-text-templates", label: "Insurance text templates" },
+    ] }],
   },
 ];
 

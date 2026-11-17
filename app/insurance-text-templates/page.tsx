@@ -3,7 +3,7 @@ import ToolPage from "@/components/ToolPage";
 import TextTemplateGenerator from "@/components/tools/TextTemplateGenerator";
 
 export const metadata: Metadata = {
-  title: "Free Insurance Text Message Templates (Generator) | Text2Sale",
+  title: "Free Insurance Text Message Templates | Text2Sale",
   description:
     "Generate text message templates for insurance leads: first contact, aged lead re-engagement, missed calls, appointment reminders, no-shows and renewals, personalized with your agency name.",
   alternates: { canonical: "/insurance-text-templates" },

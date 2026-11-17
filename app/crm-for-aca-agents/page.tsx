@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "CRM for ACA Agents: Work Marketplace Leads Faster | Text2Sale",
+  title: "CRM for ACA Agents: Marketplace Leads | Text2Sale",
   description:
     "A CRM built for ACA and marketplace health agents: instant lead response, texting, dialing, appointment booking and follow-up through open enrollment and special enrollment periods.",
   alternates: { canonical: "/crm-for-aca-agents" },

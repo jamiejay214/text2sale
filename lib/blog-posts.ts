@@ -56,7 +56,7 @@ export type BlogPost = {
 export const BLOG_POSTS: BlogPost[] = [
   {
     slug: "how-fast-to-text-insurance-leads",
-    metaTitle: "How Fast Should You Text a New Insurance Lead? (Speed-to-Lead) | Text2Sale",
+    metaTitle: "How Fast to Text a New Insurance Lead | Text2Sale",
     title: "How fast should you text a new insurance lead?",
     description:
       "Speed-to-lead decides whether you reach an insurance lead or your competitor does. Here is the data on response windows and how to text every lead within 5 minutes automatically.",
@@ -303,7 +303,7 @@ export const BLOG_POSTS: BlogPost[] = [
 
   {
     slug: "tcpa-compliance-texting-leads",
-    metaTitle: "TCPA Compliance for Texting Leads: What Agents Need to Know | Text2Sale",
+    metaTitle: "TCPA Rules for Texting Leads: Agent Guide | Text2Sale",
     title: "TCPA compliance for texting leads: what agents need to know",
     description:
       "A practical guide to texting leads without TCPA headaches: consent, identification, opt-out handling, quiet hours, and the records you should keep.",
@@ -8258,10 +8258,11 @@ export const BLOG_POSTS: BlogPost[] = [
 const OFF_NICHE_SLUGS = new Set<string>([
   ...[FIELD_GUIDES_1, FIELD_GUIDES_2, FIELD_GUIDES_3, FIELD_GUIDES_4, FIELD_GUIDES_5, FIELD_GUIDES_6].flat().map((post) => post.slug),
   "how-to-apply-for-an-ein",
-  // Texting guides for businesses Text2Sale is not built for: local retail,
-  // restaurants, clinics, schools, congregations, online stores and internal
-  // staff messaging. Kept: insurance, real estate, mortgage, solar, home
-  // services, recruiting, med spa, dealerships and general sales topics.
+  // Texting guides for businesses Text2Sale is not marketed to: local shops,
+  // restaurants and bars, healthcare clinics, schools, congregations and
+  // internal staff messaging. Kept: insurance, real estate, mortgage, solar,
+  // home services, dealerships, hospitality, travel, nonprofits, eCommerce,
+  // recreation, med spa, recruiting and general sales topics.
   "text-marketing-for-photographers",
   "text-marketing-for-wedding-vendors",
   "text-messaging-for-driving-schools",
@@ -8271,10 +8272,7 @@ const OFF_NICHE_SLUGS = new Set<string>([
   "text-marketing-for-boutiques-and-clothing-stores",
   "text-marketing-for-food-trucks",
   "restaurant-sms-marketing",
-  "gym-sms-marketing",
   "dog-grooming-and-boarding-texting",
-  "youth-sports-and-club-texting",
-  "short-term-rental-guest-texting",
   "therapy-practice-texting-privacy",
   "accountant-tax-preparer-texting",
   "dental-practice-text-marketing",
@@ -8302,13 +8300,7 @@ const OFF_NICHE_SLUGS = new Set<string>([
   "senior-living-texting",
   "childcare-daycare-texting",
   "tutoring-center-texting",
-  "nonprofit-donor-texting",
   "church-congregation-texting",
-  "order-and-shipping-update-texts",
-  "back-in-stock-alert-texts",
-  "flash-sale-text-message-examples",
-  "sms-marketing-for-shopify-stores",
-  "abandoned-cart-text-messages",
   "one-time-passcode-2fa-texts",
   "smishing-protect-customers-from-sms-scams",
   "weather-closure-and-emergency-alert-texts",

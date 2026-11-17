@@ -5,7 +5,7 @@ import SeoLandingPage from "@/components/SeoLandingPage";
 import { INSURANCE_AGENTS_EXTRAS } from "@/lib/money-page-extras";
 
 export const metadata: Metadata = {
-  "title": "Insurance Agent CRM for Texting, Follow-Up and Calls | Text2Sale",
+  "title": "Insurance Agent CRM for Texting & Calls | Text2Sale",
   "description": "See how insurance agents follow up on opted-in quote requests by text, manage replies and make callbacks. Try the interactive example and compare CRM plans.",
   "alternates": {
     "canonical": "/insurance-agents"

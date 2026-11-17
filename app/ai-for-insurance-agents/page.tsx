@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "AI for Insurance Agents: Practical Uses That Book More Appointments | Text2Sale",
+  title: "AI for Insurance Agents: Book More Appointments | Text2Sale",
   description:
     "Where AI actually helps insurance agents: instant lead replies, qualification, appointment booking, answering inbound calls, and follow-up. Practical uses, limits, and how to start.",
   alternates: { canonical: "/ai-for-insurance-agents" },

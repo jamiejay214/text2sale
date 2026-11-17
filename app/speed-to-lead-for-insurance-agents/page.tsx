@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "Speed to Lead for Insurance Agents: Respond in Minutes, Not Hours | Text2Sale",
+  title: "Speed to Lead for Insurance Agents | Text2Sale",
   description:
     "Why speed to lead matters for insurance agents, how to measure it, and how to respond to every new lead within minutes with automatic texts, dialing and AI.",
   alternates: { canonical: "/speed-to-lead-for-insurance-agents" },
