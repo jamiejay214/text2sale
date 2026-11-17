@@ -35,6 +35,11 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
     ],
   };
   const others = COMPETITORS.filter((item) => item.slug !== competitor.slug);
+  // Lead the table with what Text2Sale includes that the other pricing page
+  // does not list. Nothing is added, removed or reworded: the rows and both
+  // companies' figures are exactly as recorded in lib/competitors.ts.
+  const notListed = (value: string) => /^(not listed|not shown|no\b)/i.test(value);
+  const rows = [...competitor.rows.filter((row) => notListed(row.competitor)), ...competitor.rows.filter((row) => !notListed(row.competitor))];
 
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
@@ -52,6 +57,30 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
         </div>
       </section>
 
+      <section className="mx-auto max-w-5xl px-6 pb-16">
+        <div className="rounded-3xl border border-emerald-400/40 bg-emerald-400/10 p-6 sm:p-8">
+          <h2 className="text-3xl font-black">Why teams pick Text2Sale over {competitor.name}</h2>
+          <ul className="mt-6 grid gap-3 md:grid-cols-2">
+            {competitor.chooseText2Sale.map((item) => (
+              <li key={item} className="flex gap-3 rounded-2xl bg-zinc-950/60 p-4 leading-7 text-zinc-100">
+                <span aria-hidden="true" className="font-black text-emerald-300">✓</span>
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm font-semibold text-emerald-200">
+            <li>✓ Texting and dialing in one workspace</li>
+            <li>✓ CRM included</li>
+            <li>✓ 10DLC registration fees covered</li>
+            <li>✓ Month to month</li>
+          </ul>
+          <div className="mt-6 flex flex-wrap gap-3">
+            <Link href="/?signup=1#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Get started</Link>
+            <Link href="/demo" className="rounded-2xl border border-zinc-600 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">Book a demo</Link>
+          </div>
+        </div>
+      </section>
+
       <section className="border-y border-zinc-800 bg-zinc-900/40">
         <div className="mx-auto max-w-5xl px-6 py-16">
           <h2 className="text-3xl font-black">Side-by-side comparison</h2>
@@ -65,15 +94,15 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
               <thead className="bg-zinc-900">
                 <tr>
                   <th scope="col" className="w-1/4 p-4 font-bold text-zinc-400"> </th>
-                  <th scope="col" className="w-[37.5%] p-4 font-black text-emerald-300">Text2Sale</th>
+                  <th scope="col" className="w-[37.5%] bg-emerald-400/10 p-4 font-black text-emerald-300">Text2Sale</th>
                   <th scope="col" className="w-[37.5%] p-4 font-black text-white">{competitor.name}</th>
                 </tr>
               </thead>
               <tbody>
-                {competitor.rows.map((row) => (
+                {rows.map((row) => (
                   <tr key={row.label} className="border-t border-zinc-800 align-top">
                     <th scope="row" className="p-4 font-bold text-white">{row.label}</th>
-                    <td className="p-4 leading-6 text-zinc-200">{row.text2sale}</td>
+                    <td className="bg-emerald-400/10 p-4 font-semibold leading-6 text-white">{/^yes\b/i.test(row.text2sale) && <span aria-hidden="true" className="mr-1 text-emerald-300">✓</span>}{row.text2sale}</td>
                     <td className="p-4 leading-6 text-zinc-400">{row.competitor}</td>
                   </tr>
                 ))}
@@ -88,19 +117,12 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
         <p className="mt-4 leading-8 text-zinc-300">{competitor.whatItIs}</p>
       </section>
 
-      <section className="mx-auto grid max-w-5xl gap-5 px-6 pb-16 md:grid-cols-2">
-        <div className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-6">
-          <h2 className="text-xl font-black">Choose {competitor.name} if…</h2>
-          <ul className="mt-4 list-disc space-y-3 pl-5 leading-7 text-zinc-300 marker:text-zinc-500">
-            {competitor.chooseCompetitor.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
-        <div className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-6">
-          <h2 className="text-xl font-black">Choose Text2Sale if…</h2>
-          <ul className="mt-4 list-disc space-y-3 pl-5 leading-7 text-zinc-200 marker:text-emerald-400">
-            {competitor.chooseText2Sale.map((item) => <li key={item}>{item}</li>)}
-          </ul>
-        </div>
+      <section className="mx-auto max-w-3xl px-6 pb-16">
+        <h2 className="text-xl font-bold text-zinc-200">When {competitor.name} may be the better fit</h2>
+        <ul className="mt-4 list-disc space-y-2 pl-5 text-sm leading-7 text-zinc-400 marker:text-zinc-600">
+          {competitor.chooseCompetitor.map((item) => <li key={item}>{item}</li>)}
+        </ul>
+        <p className="mt-4 text-sm leading-7 text-zinc-400">For everyone else working lead lists by text and phone, Text2Sale is the simpler choice.</p>
       </section>
 
       <section className="mx-auto max-w-3xl px-6 pb-16">
