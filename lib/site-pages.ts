@@ -110,4 +110,4 @@ export const SITE_PAGE_GROUP_LABELS: Record<SitePageGroup, string> = {
   integration: "Integrations & demo",
 };
 
-export const HOME_UPDATED = "2026-11-16";
+export const HOME_UPDATED = "2026-11-17";

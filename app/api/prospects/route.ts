@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { createHmac } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { parseProspect } from "@/lib/prospect-capture";
+import { sendDemoAlert } from "@/lib/demo-alert";
 
 export async function POST(req: NextRequest) {
   const origin = req.headers.get("origin");
   if (origin && origin !== req.nextUrl.origin) return NextResponse.json({ error: "Request not allowed." }, { status: 403 });
   if (Number(req.headers.get("content-length") || 0) > 8192) return NextResponse.json({ error: "Request too large." }, { status: 413 });
   let payload;
+  let isDemo = false;
   try {
     const raw = await req.text();
     if (raw.length > 8192) return NextResponse.json({ error: "Request too large." }, { status: 413 });
@@ -15,6 +17,7 @@ export async function POST(req: NextRequest) {
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Invalid request.");
     if (body.website) return NextResponse.json({ ok: true }); // honeypot
     payload = parseProspect(body);
+    isDemo = body.demo === true && payload.kind === "inquiry";
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Check your contact details." }, { status: 400 });
   }
@@ -26,6 +29,8 @@ export async function POST(req: NextRequest) {
     const { data, error } = await client.rpc("capture_text2sale_prospect", { payload, ip_hash: ipHash });
     if (error) throw error;
     if (data === false) return NextResponse.json({ error: "Too many requests. Please try again in 15 minutes." }, { status: 429 });
+    // Saved first, alerted second: a failed email never loses the request.
+    if (isDemo) await sendDemoAlert(payload);
     // Do not expose contact IDs, saved records or whether an email already exists.
     return NextResponse.json({ ok: true });
   } catch {

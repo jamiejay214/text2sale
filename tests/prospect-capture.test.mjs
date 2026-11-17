@@ -35,12 +35,13 @@ test('durable rate limit stops request 11 and resets after 15 minutes',()=>tx(as
 for(const role of ['anon','authenticated'])for(const action of ['select * from text2sale_prospects','select * from prospect_capture_limits',"select capture_text2sale_prospect('{}','x')"])test(`${role} cannot access private prospects or bypass the server`,()=>tx(async()=>{await db.exec(`set local role ${role}`);await assert.rejects(db.exec(action),/permission denied/);}));
 class NextResponse extends Response {static json(value,init){return new NextResponse(JSON.stringify(value),init);}}
 function routeSetup({limited=false,fail=false}={}){
- let writes=0,received;
- const route=load('app/api/prospects/route.ts',{'next/server':{NextResponse},'node:crypto':{createHmac},'@/lib/prospect-capture':parser,'@supabase/supabase-js':{createClient:()=>({rpc:async(name,args)=>{writes++;received=args;return {data:!limited,error:fail?{}:null};}})}});
+ let writes=0,received;const alerts=[];
+ const route=load('app/api/prospects/route.ts',{'next/server':{NextResponse},'node:crypto':{createHmac},'@/lib/prospect-capture':parser,'@/lib/demo-alert':{sendDemoAlert:async request=>{alerts.push(request);return true;}},'@supabase/supabase-js':{createClient:()=>({rpc:async(name,args)=>{writes++;received=args;return {data:!limited,error:fail?{}:null};}})}});
  const request=(body=valid,origin='https://text2sale.com')=>({headers:new Headers({'origin':origin}),nextUrl:new URL('https://text2sale.com/api/prospects'),text:async()=>JSON.stringify(body)});
- return {...route,request,writes:()=>writes,received:()=>received};
+ return {...route,request,writes:()=>writes,received:()=>received,alerts:()=>alerts};
 }
 test('public capture saves sanitized data and returns no contact identifiers',async()=>{const s=routeSetup();const response=await s.POST(s.request());assert.equal(response.status,200);assert.deepEqual(await response.json(),{ok:true});assert.equal(s.writes(),1);assert.equal(s.received().ip_hash.length,64);assert.ok(!JSON.stringify(s.received()).includes('never-store'));});
+test('demo requests alert the owner once saved; other captures and failed saves do not',async()=>{const demo={...valid,kind:'inquiry',demo:true};let s=routeSetup();assert.equal((await s.POST(s.request(demo))).status,200);assert.equal(s.alerts().length,1);assert.equal(s.alerts()[0].email,'test@example.test');s=routeSetup();await s.POST(s.request());assert.equal(s.alerts().length,0);s=routeSetup();await s.POST(s.request({...valid,demo:true}));assert.equal(s.alerts().length,0);for(const options of [{limited:true},{fail:true}]){s=routeSetup(options);await s.POST(s.request(demo));assert.equal(s.alerts().length,0);}});
 test('cross-origin and honeypot submissions never write',async()=>{const s=routeSetup();assert.equal((await s.POST(s.request(valid,'https://unrelated.test'))).status,403);assert.equal((await s.POST(s.request({...valid,website:'spam'}))).status,200);assert.equal(s.writes(),0);});
 test('rate limit and unavailable storage do not falsely confirm capture',async()=>{for(const [options,status] of [[{limited:true},429],[{fail:true},503]]){const s=routeSetup(options);assert.equal((await s.POST(s.request())).status,status);}});
 
