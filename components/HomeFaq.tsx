@@ -48,9 +48,9 @@ export const HOME_FAQ: HomeFaqItem[] = [
 
 export default function HomeFaq() {
   return (
-    <section id="faq" className="border-b border-zinc-800 bg-black py-20">
+    <section id="faq" className="public-theme border-b border-zinc-800 bg-black py-20">
       <div className="mx-auto max-w-3xl px-6">
-        <h2 style={{ color: "#e8f5eb" }} className="text-3xl font-black tracking-tight md:text-4xl">Frequently asked questions</h2>
+        <h2 style={{ color: "#1e1b3a" }} className="text-3xl font-black tracking-tight md:text-4xl">Frequently asked questions</h2>
         <div className="mt-8 space-y-4">
           {HOME_FAQ.map((item) => (
             <div key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6">

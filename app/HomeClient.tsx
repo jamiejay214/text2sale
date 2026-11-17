@@ -224,25 +224,25 @@ export default function HomeClient({
 
   return (
     <main className="crm-theme marketing-site min-h-screen overflow-x-clip">
-      <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-500 px-4 py-3 text-center text-sm text-white">
+      <div className="bg-gradient-to-r from-violet-700 via-violet-600 to-violet-500 px-4 py-3 text-center text-sm text-white">
         {invited ? (
-          <>🎁 <strong>You&apos;ve been invited.</strong> Sign up with code <span className="font-mono font-bold text-lime-200">{referralCode}</span> and get <strong className="text-lime-200">$50 in credits</strong> after your first $50 deposit.{" "}
-            <button onClick={() => { setMode("signup"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Create my account</button></>
+          <>🎁 <strong>You&apos;ve been invited.</strong> Sign up with code <span className="font-mono font-bold text-amber-200">{referralCode}</span> and get <strong className="text-amber-200">$50 in credits</strong> after your first $50 deposit.{" "}
+            <button onClick={() => { setMode("signup"); setError(""); scrollToAuth(); }} className="ml-1 font-semibold underline underline-offset-2 hover:text-amber-200">Create my account</button></>
         ) : (
-          <>🎁 <strong>Refer a friend, get <span className="text-lime-200">$100 in credits</span>.</strong> Your friend gets $50 too when they add $50.{" "}
-            <Link href="/login" className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Log in to get your invite link</Link></>
+          <>🎁 <strong>Refer a friend, get <span className="text-amber-200">$100 in credits</span>.</strong> Your friend gets $50 too when they add $50.{" "}
+            <Link href="/login" className="ml-1 font-semibold underline underline-offset-2 hover:text-amber-200">Log in to get your invite link</Link></>
         )}
       </div>
       {header}
       <ApprovedHome onChoose={handleSelectPlan} />
       <AppointmentDemo />
       {depth}
-      <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
+      <section className="marketing-auth public-theme py-12 text-white"><div className="mx-auto max-w-6xl px-6">
         <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. Text2Sale covers texting registration and campaign fees.</p></details>
           {/* Sign-in / Sign-up form */}
           <div id="auth-form" className="mx-auto mt-16 max-w-xl">
             <div className="relative overflow-hidden rounded-3xl border border-zinc-800 bg-gradient-to-br from-zinc-900 via-zinc-900 to-zinc-950 p-8 shadow-2xl ring-1 ring-white/5" onKeyDown={handleKeyDown}>
-              <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-lime-300/15 blur-3xl" />
+              <div className="pointer-events-none absolute -top-16 -right-16 h-48 w-48 rounded-full bg-amber-300/15 blur-3xl" />
 
               <div className="relative">
                 <div className="mb-6">
@@ -259,7 +259,7 @@ export default function HomeClient({
                 {mode === "signup" && (
                   <p className="mb-6 text-sm text-zinc-400">
                     Already have an account?{" "}
-                    <Link href="/login" className="font-semibold text-lime-300 hover:text-lime-200">Log in</Link>
+                    <Link href="/login" className="font-semibold text-amber-300 hover:text-amber-200">Log in</Link>
                   </p>
                 )}
 
@@ -270,7 +270,7 @@ export default function HomeClient({
                       <input
                         value={loginEmail}
                         onChange={(e) => setLoginEmail(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
                         placeholder="you@example.com"
                         autoComplete="email"
                       />
@@ -278,7 +278,7 @@ export default function HomeClient({
                     <div>
                       <div className="mb-2 flex items-center justify-between gap-3">
                         <label className="block text-sm font-semibold text-zinc-200">Password</label>
-                        <Link href="/forgot-password" className="text-xs font-semibold text-lime-300 hover:text-lime-200">
+                        <Link href="/forgot-password" className="text-xs font-semibold text-amber-300 hover:text-amber-200">
                           Forgot password?
                         </Link>
                       </div>
@@ -286,7 +286,7 @@ export default function HomeClient({
                         type="password"
                         value={loginPassword}
                         onChange={(e) => setLoginPassword(e.target.value)}
-                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                        className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20"
                         placeholder="••••••••"
                         autoComplete="current-password"
                       />
@@ -299,21 +299,21 @@ export default function HomeClient({
                     <button
                       onClick={handleLogin}
                       disabled={loading}
-                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-400 px-5 py-4 font-bold text-emerald-950 shadow-xl shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-60"
+                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-500 via-amber-400 to-violet-400 px-5 py-4 font-bold text-violet-950 shadow-xl shadow-violet-500/20 transition hover:brightness-110 disabled:opacity-60"
                     >
                       {loading ? "Signing in..." : "Sign in → Dashboard"}
                     </button>
 
                     <div className="text-center text-sm text-zinc-500">
                       New here?{" "}
-                      <button onClick={() => { setMode("signup"); setError(""); }} className="font-semibold text-lime-300 hover:text-lime-200">
+                      <button onClick={() => { setMode("signup"); setError(""); }} className="font-semibold text-amber-300 hover:text-amber-200">
                         Create an account
                       </button>
                     </div>
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <div className="rounded-2xl border border-emerald-800/60 bg-emerald-950/30 px-4 py-3">
+                    <div className="rounded-2xl border border-violet-800/60 bg-violet-950/30 px-4 py-3">
                       <label className="flex items-center justify-between gap-3 text-sm font-semibold text-white">
                         Plan
                         <select value={selectedPlan} onChange={(e) => { if (isPlanKey(e.target.value)) handleSelectPlan(e.target.value); }} className="rounded-xl border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white">
@@ -323,51 +323,51 @@ export default function HomeClient({
                       <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. Includes a 7-day free trial: add a card at checkout, and ${PLANS[selectedPlan].price}/month is charged when the trial ends unless you cancel first.{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
                     </div>
 
-                    <p className="text-sm text-lime-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>
+                    <p className="text-sm text-amber-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>
                     {error && <p role="alert" className="rounded-xl bg-rose-950 p-3 text-rose-200">{error}</p>}
                     {signupStep === 1 ? <>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">First name</label>
-                        <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="Jane" />
+                        <input value={firstName} onChange={(e) => setFirstName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="Jane" />
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">Last name</label>
-                        <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="Doe" />
+                        <input value={lastName} onChange={(e) => setLastName(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="Doe" />
                       </div>
                     </div>
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-zinc-200">Email</label>
-                      <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="you@example.com" />
+                      <input value={signupEmail} onChange={(e) => setSignupEmail(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="you@example.com" />
                     </div>
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-zinc-200">Phone number</label>
-                      <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="(555) 123-4567" />
+                      <input value={phone} onChange={(e) => setPhone(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="(555) 123-4567" />
                     </div>
 
-                    <label className="flex gap-3 text-sm leading-6 text-zinc-200"><input type="checkbox" checked={followup} onChange={e => setFollowup(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-lime-300" />{FOLLOWUP_NOTICE}</label>
-                    <p className="text-xs text-zinc-300">This does not subscribe you to marketing texts or automated calls. <Link href="/privacy-policy" className="text-lime-200 underline">Privacy policy</Link></p>
-                    <button onClick={handleContactStep} disabled={loading} className="w-full rounded-2xl bg-lime-300 px-5 py-4 font-bold text-emerald-950 disabled:opacity-60">{loading ? "Saving…" : "Continue → Account security"}</button>
+                    <label className="flex gap-3 text-sm leading-6 text-zinc-200"><input type="checkbox" checked={followup} onChange={e => setFollowup(e.target.checked)} className="mt-1 h-5 w-5 shrink-0 accent-amber-300" />{FOLLOWUP_NOTICE}</label>
+                    <p className="text-xs text-zinc-300">This does not subscribe you to marketing texts or automated calls. <Link href="/privacy-policy" className="text-amber-200 underline">Privacy policy</Link></p>
+                    <button onClick={handleContactStep} disabled={loading} className="w-full rounded-full bg-violet-600 px-5 py-4 font-bold text-white disabled:opacity-60">{loading ? "Saving…" : "Continue → Account security"}</button>
                     </> : <>
-                    <p className="text-sm text-zinc-200">Contact details saved for {signupEmail}. <button type="button" onClick={() => { setSignupStep(1); setError(""); }} className="text-lime-200 underline">Edit</button></p>
+                    <p className="text-sm text-zinc-200">Contact details saved for {signupEmail}. <button type="button" onClick={() => { setSignupStep(1); setError(""); }} className="text-amber-200 underline">Edit</button></p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">Password</label>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="At least 8 characters" />
+                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="At least 8 characters" />
                       </div>
                       <div>
                         <label className="mb-2 block text-sm font-semibold text-zinc-200">Confirm</label>
-                        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="Repeat it" />
+                        <input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-white outline-none transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="Repeat it" />
                       </div>
                     </div>
 
                     <div>
                       <label className="mb-2 block text-sm font-semibold text-zinc-200">
-                        Referral Code <span className="ml-1 text-xs font-normal text-emerald-400">(Optional — add $50 and get $50 in credits)</span>
+                        Referral Code <span className="ml-1 text-xs font-normal text-violet-400">(Optional — add $50 and get $50 in credits)</span>
                       </label>
-                      <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20" placeholder="e.g. T2S-ABC123" />
+                      <input value={referralCode} onChange={(e) => setReferralCode(e.target.value.toUpperCase())} className="w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-4 py-3 font-mono uppercase tracking-wider text-white outline-none placeholder:normal-case placeholder:tracking-normal placeholder:text-zinc-500 transition focus:border-violet-500 focus:ring-2 focus:ring-violet-500/20" placeholder="e.g. T2S-ABC123" />
                     </div>
 
                     <label className="flex items-start gap-3 cursor-pointer">
@@ -375,14 +375,14 @@ export default function HomeClient({
                         type="checkbox"
                         checked={agreedToPrivacy}
                         onChange={(e) => setAgreedToPrivacy(e.target.checked)}
-                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-emerald-500"
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-500"
                       />
                       <span className="text-sm text-zinc-400">
                         I have read and agree to the{" "}
-                        <button type="button" onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }} className="font-semibold text-lime-300 underline hover:text-lime-200">
+                        <button type="button" onClick={(e) => { e.preventDefault(); setShowPrivacyPolicy(true); }} className="font-semibold text-amber-300 underline hover:text-amber-200">
                           Privacy Policy
                         </button>
-                        {" "}(<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-lime-300 underline hover:text-lime-200">full page</a>).
+                        {" "}(<a href="/privacy-policy" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline hover:text-amber-200">full page</a>).
                       </span>
                     </label>
 
@@ -391,14 +391,14 @@ export default function HomeClient({
                         type="checkbox"
                         checked={agreedToTerms}
                         onChange={(e) => setAgreedToTerms(e.target.checked)}
-                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-emerald-500"
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-600 bg-zinc-800 accent-violet-500"
                       />
                       <span className="text-sm text-zinc-400">
                         I have read and agree to be bound by the{" "}
-                        <button type="button" onClick={(e) => { e.preventDefault(); setShowTerms(true); }} className="font-semibold text-lime-300 underline hover:text-lime-200">
+                        <button type="button" onClick={(e) => { e.preventDefault(); setShowTerms(true); }} className="font-semibold text-amber-300 underline hover:text-amber-200">
                           Terms and Conditions
                         </button>
-                        {" "}(<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-lime-300 underline hover:text-lime-200">full page</a>).
+                        {" "}(<a href="/terms" target="_blank" rel="noopener noreferrer" className="text-amber-300 underline hover:text-amber-200">full page</a>).
                       </span>
                     </label>
 
@@ -422,7 +422,7 @@ export default function HomeClient({
                     <button
                       onClick={handleSignup}
                       disabled={loading}
-                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-400 px-5 py-4 font-bold text-emerald-950 shadow-xl shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-60"
+                      className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-violet-500 via-amber-400 to-violet-400 px-5 py-4 font-bold text-violet-950 shadow-xl shadow-violet-500/20 transition hover:brightness-110 disabled:opacity-60"
                     >
                       {loading ? "Creating account..." : "Create account → Start free trial"}
                     </button>
@@ -442,7 +442,7 @@ export default function HomeClient({
       {faqSection}
 
       {/* ═══════ SMS PROGRAM INFO (compliance) ═══════ */}
-      <section id="sms-program" className="border-b border-zinc-800 bg-zinc-950">
+      <section id="sms-program" className="public-theme border-b border-zinc-800 bg-zinc-950">
         <div className="mx-auto max-w-3xl px-6 py-12">
           <h2 className="text-2xl font-bold">SMS Program Information</h2>
           <div className="mt-6 space-y-4 text-sm leading-relaxed text-zinc-400">
@@ -452,12 +452,12 @@ export default function HomeClient({
               <p><strong className="text-white">Message Frequency:</strong> Message frequency varies by campaign. Users control how often messages are sent.</p>
               <p><strong className="text-white">Message &amp; Data Rates:</strong> Standard message and data rates may apply depending on your carrier.</p>
               <p><strong className="text-white">Opt-Out:</strong> Reply <span className="font-mono text-white">STOP</span> to any message to unsubscribe at any time.</p>
-              <p><strong className="text-white">Help:</strong> Reply <span className="font-mono text-white">HELP</span> for assistance, or email <span className="text-lime-300">support@text2sale.com</span>.</p>
+              <p><strong className="text-white">Help:</strong> Reply <span className="font-mono text-white">HELP</span> for assistance, or email <span className="text-amber-300">support@text2sale.com</span>.</p>
               <p><strong className="text-white">Carriers:</strong> Carriers are not liable for delayed or undelivered messages.</p>
             </div>
             <div className="flex gap-4 text-xs">
-              <a href="/privacy-policy" className="text-lime-300 hover:text-lime-200 underline">Privacy Policy</a>
-              <a href="/terms" className="text-lime-300 hover:text-lime-200 underline">Terms and Conditions</a>
+              <a href="/privacy-policy" className="text-amber-300 hover:text-amber-200 underline">Privacy Policy</a>
+              <a href="/terms" className="text-amber-300 hover:text-amber-200 underline">Terms and Conditions</a>
             </div>
           </div>
         </div>
@@ -490,7 +490,7 @@ export default function HomeClient({
             <div className="border-t border-zinc-800 px-6 py-4">
               <button
                 onClick={() => { setShowPrivacyPolicy(false); setAgreedToPrivacy(true); }}
-                className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-lg shadow-emerald-500/20 hover:brightness-110 transition"
+                className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-amber-400 px-5 py-3 font-bold text-violet-950 shadow-lg shadow-violet-500/20 hover:brightness-110 transition"
               >
                 I Have Read and Agree to the Privacy Policy
               </button>
@@ -526,7 +526,7 @@ export default function HomeClient({
             <div className="border-t border-zinc-800 px-6 py-4">
               <button
                 onClick={() => { setShowTerms(false); setAgreedToTerms(true); }}
-                className="w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-lime-400 px-5 py-3 font-bold text-emerald-950 shadow-lg shadow-emerald-500/20 hover:brightness-110 transition"
+                className="w-full rounded-2xl bg-gradient-to-r from-violet-500 to-amber-400 px-5 py-3 font-bold text-violet-950 shadow-lg shadow-violet-500/20 hover:brightness-110 transition"
               >
                 I Have Read and Agree to the Terms and Conditions
               </button>
@@ -536,7 +536,7 @@ export default function HomeClient({
       )}
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800 bg-zinc-950">
+      <footer className="public-theme border-t border-zinc-800 bg-zinc-950">
         {siteLinks}
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
           <div className="text-sm text-zinc-500">© {new Date().getFullYear()} Text2Sale. All rights reserved.</div>

@@ -27,11 +27,11 @@ export function renderOgCard({
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          backgroundColor: "#09090b",
+          backgroundColor: "#f8f4ff",
           padding: "72px",
           // Satori has no gradient shorthand support worth relying on, so the
           // accent is a solid bar rather than a background image.
-          borderTop: "16px solid #34d399",
+          borderTop: "16px solid #7c3aed",
         }}
       >
         <div style={{ display: "flex", flexDirection: "column" }}>
@@ -42,7 +42,7 @@ export function renderOgCard({
               fontWeight: 700,
               letterSpacing: "0.22em",
               textTransform: "uppercase",
-              color: "#6ee7b7",
+              color: "#6d28d9",
             }}
           >
             {eyebrow}
@@ -54,7 +54,7 @@ export function renderOgCard({
               fontSize: title.length > 70 ? 60 : 72,
               fontWeight: 800,
               lineHeight: 1.1,
-              color: "#ffffff",
+              color: "#1e1b3a",
             }}
           >
             {title}
@@ -67,10 +67,10 @@ export function renderOgCard({
             alignItems: "center",
             justifyContent: "space-between",
             fontSize: 28,
-            color: "#a1a1aa",
+            color: "#5f5a7a",
           }}
         >
-          <div style={{ display: "flex", fontWeight: 700, color: "#ffffff" }}>Text2Sale</div>
+          <div style={{ display: "flex", fontWeight: 700, color: "#6d28d9" }}>Text2Sale</div>
           {meta ? <div style={{ display: "flex" }}>{meta}</div> : null}
         </div>
       </div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { DEMO_NOTICE, captureProspect } from "@/lib/prospect-capture";
 
 const field =
-  "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20";
+  "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20";
 const label = "block text-sm font-bold text-zinc-200";
 
 const TEAM_SIZES = ["Just me", "2-5 people", "6-20 people", "More than 20"];
@@ -53,12 +53,12 @@ export default function DemoForm() {
 
   if (done) {
     return (
-      <div role="status" className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-8">
+      <div role="status" className="rounded-3xl border border-violet-400/30 bg-violet-400/10 p-8">
         <h2 className="text-2xl font-black text-white">Request received.</h2>
         <p className="mt-3 leading-7 text-zinc-300">We&apos;ll reach out at the email and phone number you gave us to set a time. In the meantime you can look over the plans or try a free tool.</p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <Link href="/pricing" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">See pricing</Link>
-          <Link href="/sms-cost-calculator" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">SMS cost calculator</Link>
+          <Link href="/pricing" className="rounded-full bg-violet-600 px-6 py-3 font-bold text-white hover:bg-violet-500">See pricing</Link>
+          <Link href="/sms-cost-calculator" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-violet-300">SMS cost calculator</Link>
         </div>
       </div>
     );
@@ -100,11 +100,11 @@ export default function DemoForm() {
         <input id="demo-website" tabIndex={-1} autoComplete="off" value={website} onChange={(event) => setWebsite(event.target.value)} />
       </div>
       <label htmlFor="demo-consent" className="flex gap-3 text-sm leading-6 text-zinc-300 sm:col-span-2">
-        <input id="demo-consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} required className="mt-1 h-5 w-5 shrink-0 accent-emerald-400" />
+        <input id="demo-consent" type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} required className="mt-1 h-5 w-5 shrink-0 accent-violet-400" />
         {DEMO_NOTICE}
       </label>
       {error && <p role="alert" className="text-sm font-bold text-rose-300 sm:col-span-2">{error}</p>}
-      <button type="submit" disabled={saving} className="rounded-2xl bg-emerald-400 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-300 disabled:opacity-60 sm:col-span-2 sm:justify-self-start">
+      <button type="submit" disabled={saving} className="rounded-full bg-violet-600 px-6 py-3 font-black text-white hover:bg-violet-500 disabled:opacity-60 sm:col-span-2 sm:justify-self-start">
         {saving ? "Sending…" : "Request my demo"}
       </button>
     </form>

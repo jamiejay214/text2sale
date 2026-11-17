@@ -75,7 +75,7 @@ export default function FollowUpCadenceGenerator() {
             setCopied(await copyText(plainText));
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-emerald-300 hover:text-emerald-200"
+          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-violet-300 hover:text-violet-200"
         >
           {copied ? "Copied" : "Copy cadence"}
         </button>
@@ -106,7 +106,7 @@ export default function FollowUpCadenceGenerator() {
         {steps.map((step, index) => (
           <li key={index} className="grid gap-2 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 sm:grid-cols-[7rem_1fr]">
             <div>
-              <p className="text-sm font-black text-emerald-300">Day {step.day}</p>
+              <p className="text-sm font-black text-violet-300">Day {step.day}</p>
               <p className="text-xs text-zinc-400">{step.when}</p>
             </div>
             <div className="min-w-0">

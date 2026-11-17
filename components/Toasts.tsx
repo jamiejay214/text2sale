@@ -71,7 +71,7 @@ export default function Toasts({ message }: { message: string }) {
     <div className="pointer-events-none fixed bottom-6 right-6 z-[90] flex flex-col gap-2">
       {items.map((t) => {
         const palette = {
-          success: "border-emerald-500/30 bg-emerald-500/10 text-emerald-200",
+          success: "border-violet-500/30 bg-violet-500/10 text-violet-200",
           error:   "border-red-500/30 bg-red-500/10 text-red-200",
           warn:    "border-amber-500/30 bg-amber-500/10 text-amber-200",
           info:    "border-zinc-700 bg-zinc-900 text-zinc-200",

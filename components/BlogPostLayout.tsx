@@ -94,19 +94,19 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
 
       <article className="mx-auto max-w-3xl px-6 py-16">
         <nav className="text-sm text-zinc-500">
-          <Link href="/" className="font-semibold text-emerald-300 hover:text-emerald-200">Text2Sale</Link>
+          <Link href="/" className="font-semibold text-violet-300 hover:text-violet-200">Text2Sale</Link>
           <span className="mx-2">/</span>
-          <Link href="/blog" className="font-semibold text-emerald-300 hover:text-emerald-200">Blog</Link>
+          <Link href="/blog" className="font-semibold text-violet-300 hover:text-violet-200">Blog</Link>
         </nav>
 
         <header className="mt-8">
           <div className="flex flex-wrap gap-2">
             {post.tags.map((tag) => {
-              const chip = "rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300";
+              const chip = "rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-300";
               // Only tags with their own archive page become links; the rest
               // stay plain so we never link into a 404.
               return getTagBySlug(tagSlug(tag)) ? (
-                <Link key={tag} href={`/blog/tag/${tagSlug(tag)}`} className={`${chip} transition hover:bg-emerald-400/20`}>
+                <Link key={tag} href={`/blog/tag/${tagSlug(tag)}`} className={`${chip} transition hover:bg-violet-400/20`}>
                   {tag}
                 </Link>
               ) : (
@@ -138,7 +138,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
           </figure>
         )}
 
-        <nav aria-label="In this guide" className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/40 p-6"><h2 className="font-bold text-emerald-200">In this guide</h2><ol className="mt-3 space-y-2">{post.sections.map((section,index)=><li key={section.heading}><a className="text-emerald-100 underline underline-offset-4" href={`#section-${index+1}`}>{section.heading}</a></li>)}</ol></nav>
+        <nav aria-label="In this guide" className="mt-8 rounded-2xl border border-violet-800 bg-violet-950/40 p-6"><h2 className="font-bold text-violet-200">In this guide</h2><ol className="mt-3 space-y-2">{post.sections.map((section,index)=><li key={section.heading}><a className="text-violet-100 underline underline-offset-4" href={`#section-${index+1}`}>{section.heading}</a></li>)}</ol></nav>
         <p className="mt-5 text-sm text-zinc-400">{BLOG_AUTHOR ? <>By <Link href={BLOG_AUTHOR.url ?? "/about"} className="underline">{BLOG_AUTHOR.name}</Link>, {BLOG_AUTHOR.role} at Text2Sale</> : <>Published by <Link href="/about" className="underline">Text2Sale</Link></>} · Updated <time dateTime={post.dateModified}>{formatDate(post.dateModified)}</time>. Product questions or corrections: <a href="mailto:support@text2sale.com" className="underline">support@text2sale.com</a>.</p>
         <div className="mt-10 space-y-5">
           {post.intro.map((p, i) => (
@@ -158,7 +158,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
               <ul className="mt-5 space-y-2">
                 {section.bullets.map((b) => (
                   <li key={b} className="flex gap-3 text-[17px] leading-7 text-zinc-200">
-                    <span className="mt-1 text-emerald-400">✓</span>
+                    <span className="mt-1 text-violet-400">✓</span>
                     <span>{b}</span>
                   </li>
                 ))}
@@ -168,12 +168,12 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
         ))}
 
         {post.keyTakeaways.length > 0 && (
-          <section className="mt-12 rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-6">
+          <section className="mt-12 rounded-3xl border border-violet-400/30 bg-violet-400/10 p-6">
             <h2 className="text-xl font-bold">Key takeaways</h2>
             <ul className="mt-4 space-y-2">
               {post.keyTakeaways.map((t) => (
                 <li key={t} className="flex gap-3 leading-7 text-zinc-200">
-                  <span className="mt-1 text-emerald-400">→</span>
+                  <span className="mt-1 text-violet-400">→</span>
                   <span>{t}</span>
                 </li>
               ))}
@@ -188,8 +188,8 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             Import leads, create follow-up campaigns, organize replies, and connect texting, calling, and appointments in one workspace.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
-            <Link href="/pricing" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Choose your plan</Link>
-            <Link href={landing.href} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">{landing.label}</Link>
+            <Link href="/pricing" className="rounded-full bg-violet-600 px-6 py-3 font-bold text-white hover:bg-violet-500">Choose your plan</Link>
+            <Link href={landing.href} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-violet-300">{landing.label}</Link>
           </div>
         </section>
 
@@ -198,8 +198,8 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             <h2 className="text-2xl font-black">Frequently asked questions</h2>
             <div className="mt-6 space-y-4">
               {post.faq.map((item) => (
-                <details key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 open:border-emerald-400/30">
-                  <summary className="cursor-pointer font-bold text-zinc-100 marker:text-emerald-400">{item.question}</summary>
+                <details key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 open:border-violet-400/30">
+                  <summary className="cursor-pointer font-bold text-zinc-100 marker:text-violet-400">{item.question}</summary>
                   <p className="mt-4 leading-7 text-zinc-400">{item.answer}</p>
                 </details>
               ))}
@@ -213,7 +213,7 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             <ul className="mt-4 space-y-3">
               {post.sources.map((source) => (
                 <li key={source.href}>
-                  <a href={source.href} className="text-sm font-semibold text-emerald-300 underline decoration-emerald-300/30 underline-offset-4 hover:text-emerald-200">
+                  <a href={source.href} className="text-sm font-semibold text-violet-300 underline decoration-violet-300/30 underline-offset-4 hover:text-violet-200">
                     {source.label}
                   </a>
                 </li>
@@ -227,12 +227,12 @@ export default function BlogPostLayout({ post }: { post: BlogPost }) {
             <h2 className="text-xl font-bold text-zinc-300">Keep reading</h2>
             <div className="mt-4 flex flex-wrap gap-3">
               {related.map((p) => (
-                <Link key={p.slug} href={`/blog/${p.slug}`} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-emerald-300 hover:text-emerald-300">
+                <Link key={p.slug} href={`/blog/${p.slug}`} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-300 hover:text-violet-300">
                   {p.title}
                 </Link>
               ))}
               {(post.relatedPages || []).map((p) => (
-                <Link key={p.href} href={p.href} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-emerald-300 hover:text-emerald-300">
+                <Link key={p.href} href={p.href} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-300 hover:text-violet-300">
                   {p.label}
                 </Link>
               ))}

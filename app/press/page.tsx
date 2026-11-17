@@ -13,8 +13,8 @@ export default function PressPage() {
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <section className="mx-auto max-w-4xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">← Text2Sale</Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Product facts</p>
+        <Link href="/" className="text-sm font-semibold text-violet-300 hover:text-violet-200">← Text2Sale</Link>
+        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-violet-300">Product facts</p>
         <h1 className="mt-4 text-5xl font-black tracking-tight">Text2Sale media & directory information</h1>
         <p className="mt-6 text-lg leading-8 text-zinc-300">
           This page provides concise, current information for software directories, reviewers, journalists, and partners describing Text2Sale.
@@ -35,7 +35,7 @@ export default function PressPage() {
 
           <section>
             <h2 className="text-2xl font-bold">Primary categories</h2>
-            <ul className="mt-3 list-disc space-y-2 pl-6 text-zinc-300 marker:text-emerald-400">
+            <ul className="mt-3 list-disc space-y-2 pl-6 text-zinc-300 marker:text-violet-400">
               <li>CRM software</li>
               <li>Sales engagement software</li>
               <li>SMS marketing software</li>
@@ -79,18 +79,18 @@ export default function PressPage() {
                 ["/ai-receptionist-for-insurance-agents", "AI receptionist"],
                 ["/blog", "Guides"],
               ].map(([href,label]) => (
-                <Link key={href} href={href} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-emerald-300 hover:text-emerald-300">
+                <Link key={href} href={href} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-violet-300 hover:text-violet-300">
                   {label}
                 </Link>
               ))}
             </div>
           </section>
 
-          <section className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-6">
+          <section className="rounded-3xl border border-violet-400/30 bg-violet-400/10 p-6">
             <h2 className="text-2xl font-bold">Verification & contact</h2>
             <p className="mt-3 leading-7 text-zinc-300">
               Official website: text2sale.com<br />
-              Support and listing verification: <a className="text-emerald-300" href="mailto:support@text2sale.com">support@text2sale.com</a>
+              Support and listing verification: <a className="text-violet-300" href="mailto:support@text2sale.com">support@text2sale.com</a>
             </p>
           </section>
         </div>

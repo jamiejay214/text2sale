@@ -1,54 +1,54 @@
-.t2s-depth{background:#fcfbf6;color:#192f2a;font:16px/1.6 Arial,Helvetica,sans-serif}
+.t2s-depth{background:#fcfbf6;color:#271745;font:16px/1.6 Arial,Helvetica,sans-serif}
 .t2s-depth *{box-sizing:border-box}
 .t2s-depth a{color:inherit}
 .t2s-depth section{padding:64px 0}
 .t2s-depth section[id]{scroll-margin-top:76px}
-.t2s-depth .sage{background:#e8eee5}
-.t2s-depth .dark{background:#123e30;color:#f9faef}
+.t2s-depth .sage{background:#f0eaf8}
+.t2s-depth .dark{background:linear-gradient(180deg,#f5efff,#ece2ff);color:#1e1b3a}
 .t2s-depth .w{width:min(1170px,91%);margin:auto}
-.t2s-depth .label{font:bold 11px/1.4 Arial;text-transform:uppercase;letter-spacing:.13em;color:#46715e}
-.t2s-depth .dark .label{color:#b3d4b4}
-.t2s-depth .label:before{content:'';display:inline-block;width:20px;height:2px;background:#4b8368;vertical-align:middle;margin-right:10px}
-.t2s-depth h2{font:400 clamp(32px,3.6vw,50px)/1.06 Georgia,serif;letter-spacing:-.045em;margin:12px 0 0;max-width:780px}
+.t2s-depth .label{font:bold 11px/1.4 Arial;text-transform:uppercase;letter-spacing:.13em;color:#7956b1}
+.t2s-depth .dark .label{color:#6d28d9}
+.t2s-depth .label:before{content:'';display:inline-block;width:20px;height:2px;background:#8b61d4;vertical-align:middle;margin-right:10px}
+.t2s-depth h2{font:800 clamp(30px,3.4vw,46px)/1.08 "Helvetica Neue",Arial,Helvetica,sans-serif;letter-spacing:-.035em;margin:12px 0 0;max-width:780px}
 .t2s-depth h3{font:700 17px/1.3 Arial;margin:0}
 .t2s-depth p{margin:0}
-.t2s-depth .sub{color:#46594d;font-size:17px;max-width:720px;margin-top:14px}
-.t2s-depth .dark .sub{color:#d0dfd1}
+.t2s-depth .sub{color:#604a81;font-size:17px;max-width:720px;margin-top:14px}
+.t2s-depth .dark .sub{color:#4b4566}
 .t2s-depth .grid{display:grid;gap:14px;margin-top:30px}
 .t2s-depth .g2{grid-template-columns:repeat(2,1fr)}
 .t2s-depth .g3{grid-template-columns:repeat(3,1fr)}
 .t2s-depth .g4{grid-template-columns:repeat(4,1fr)}
-.t2s-depth .tile{display:block;background:#fff;border:1px solid #cbd7cd;border-radius:10px;padding:20px;text-decoration:none}
-.t2s-depth a.tile:hover{border-color:#248462;box-shadow:0 8px 22px #264c3018}
+.t2s-depth .tile{display:block;background:#fff;border:1px solid #d9d1e3;border-radius:10px;padding:20px;text-decoration:none}
+.t2s-depth a.tile:hover{border-color:#8853f1;box-shadow:0 8px 22px #264c3018}
 .t2s-depth .tile img{width:44px;height:44px;display:block;margin-bottom:12px}
-.t2s-depth .tile p{color:#45574b;font-size:14.5px;margin-top:6px}
-.t2s-depth .step b{display:block;font:400 34px Georgia,serif;color:#248462;letter-spacing:-.04em}
+.t2s-depth .tile p{color:#5e487f;font-size:14.5px;margin-top:6px}
+.t2s-depth .step b{display:block;font:800 32px "Helvetica Neue",Arial,Helvetica,sans-serif;color:#8853f1;letter-spacing:-.04em}
 .t2s-depth .ba{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:30px}
 .t2s-depth .ba h3{padding-bottom:10px;border-bottom:2px solid;margin-bottom:6px}
 .t2s-depth .ba .before h3{color:#9b3d2c}
-.t2s-depth .ba .after h3{color:#1d6b4c}
+.t2s-depth .ba .after h3{color:#6e40ca}
 .t2s-depth .ba ul{list-style:none;margin:0;padding:0}
 .t2s-depth .ba li{padding:11px 14px 11px 40px;border-radius:8px;margin-top:8px;position:relative;font-size:15px}
 .t2s-depth .ba .before li{background:#f9ebe6}
-.t2s-depth .ba .after li{background:#e1f1e3}
+.t2s-depth .ba .after li{background:#f3e9ff}
 .t2s-depth .ba li:before{position:absolute;left:14px;font-weight:bold}
 .t2s-depth .ba .before li:before{content:"✕";color:#b0452f}
-.t2s-depth .ba .after li:before{content:"✓";color:#1d6b4c}
+.t2s-depth .ba .after li:before{content:"✓";color:#6e40ca}
 .t2s-depth .more{display:inline-block;margin-top:22px;font-weight:bold;font-size:14px;text-decoration:underline;text-underline-offset:5px}
-.t2s-depth .btn{display:inline-flex;align-items:center;background:#174f3e;color:#fff;padding:13px 22px;border-radius:6px;font:bold 15px/1.5 Arial;text-decoration:none}
-.t2s-depth .btn:hover{background:#0e3529}
-.t2s-depth .dark .btn{background:#d8eabf;color:#153b2b}
+.t2s-depth .btn{display:inline-flex;align-items:center;background:#533192;color:#fff;padding:13px 22px;border-radius:6px;font:bold 15px/1.5 Arial;text-decoration:none}
+.t2s-depth .btn:hover{background:#2b145b}
+.t2s-depth .dark .btn{background:#fbbf24;color:#1e0b3d}
 .t2s-depth .ghost{display:inline-flex;align-items:center;border:1px solid currentColor;padding:12px 22px;border-radius:6px;font:bold 15px/1.5 Arial;text-decoration:none}
 .t2s-depth .actions{display:flex;flex-wrap:wrap;gap:14px;margin-top:26px}
 .t2s-depth .split{display:grid;grid-template-columns:1fr 1fr;gap:6%;align-items:start}
 .t2s-depth .pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:22px}
-.t2s-depth .pills a{border:1px solid #a8baac;border-radius:999px;padding:7px 14px;font-size:14px;font-weight:650;text-decoration:none;background:#fbfcf8}
-.t2s-depth .pills a:hover{border-color:#248462;color:#1d6b4c}
+.t2s-depth .pills a{border:1px solid #c4abe6;border-radius:999px;padding:7px 14px;font-size:14px;font-weight:650;text-decoration:none;background:#fbfcf8}
+.t2s-depth .pills a:hover{border-color:#8853f1;color:#6e40ca}
 .t2s-depth .post{padding:0;overflow:hidden}
-.t2s-depth .post img{width:100%;height:auto;aspect-ratio:1200/630;margin:0;border-bottom:1px solid #cbd7cd}
+.t2s-depth .post img{width:100%;height:auto;aspect-ratio:1200/630;margin:0;border-bottom:1px solid #d9d1e3}
 .t2s-depth .post div{padding:16px 18px 20px}
-.t2s-depth .post small{color:#587363;font-size:12px}
-.t2s-depth .magnet{background:#0b241b;border:1px solid #2d5c49;border-radius:14px;padding:clamp(22px,3vw,36px)}
+.t2s-depth .post small{color:#7b5fa5;font-size:12px}
+.t2s-depth .magnet{background:#fff!important;border:1px solid #e6def6;box-shadow:0 14px 36px rgba(76,29,149,.08);border-radius:14px;padding:clamp(22px,3vw,36px)}
 @media(max-width:900px){.t2s-depth .g4{grid-template-columns:repeat(2,1fr)}.t2s-depth .g3{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:640px){.t2s-depth section{padding:42px 0}.t2s-depth .g2,.t2s-depth .g3,.t2s-depth .ba,.t2s-depth .split{grid-template-columns:1fr}.t2s-depth .g4{grid-template-columns:repeat(2,1fr)}.t2s-depth .tile{padding:16px}}
 

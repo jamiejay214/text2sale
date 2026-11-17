@@ -68,7 +68,7 @@ export default function UshaWelcomeModal({ open, firstName, onAnswer, busy }: Pr
             <button
               onClick={() => submit(true)}
               disabled={busy || choice !== null}
-              className="group flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-4 text-base font-bold text-white shadow-lg shadow-emerald-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              className="group flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-violet-500 to-green-500 px-4 py-4 text-base font-bold text-white shadow-lg shadow-violet-500/25 transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {choice === "yes" ? "Setting you up…" : "Yes, I'm with USHA"}
             </button>

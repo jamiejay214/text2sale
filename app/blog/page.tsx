@@ -58,8 +58,8 @@ export default function BlogIndexPage() {
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(listSchema) }} />
 
       <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">← Back to Text2Sale</Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Text2Sale Blog</p>
+        <Link href="/" className="text-sm font-semibold text-violet-300 hover:text-violet-200">← Back to Text2Sale</Link>
+        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-violet-300">Text2Sale Blog</p>
         <h1 className="mt-4 max-w-3xl text-5xl font-black tracking-tight md:text-6xl">
           Outreach playbooks for sales teams and businesses
         </h1>
@@ -75,7 +75,7 @@ export default function BlogIndexPage() {
             <Link
               key={tag.slug}
               href={`/blog/tag/${tag.slug}`}
-              className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:border-emerald-300 hover:text-emerald-300"
+              className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:border-violet-300 hover:text-violet-300"
             >
               {tag.label} <span className="text-zinc-500">{tag.count}</span>
             </Link>
@@ -89,22 +89,22 @@ export default function BlogIndexPage() {
             <Link
               key={post.slug}
               href={`/blog/${post.slug}`}
-              className="group flex flex-col rounded-3xl border border-zinc-800 bg-zinc-900/40 p-7 transition hover:border-emerald-400/40 hover:bg-zinc-900"
+              className="group flex flex-col rounded-3xl border border-zinc-800 bg-zinc-900/40 p-7 transition hover:border-violet-400/40 hover:bg-zinc-900"
             >
               <div className="flex flex-wrap gap-2">
                 {post.tags.slice(0, 2).map((tag) => (
-                  <span key={tag} className="rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
+                  <span key={tag} className="rounded-full border border-violet-400/30 bg-violet-400/10 px-3 py-1 text-xs font-semibold text-violet-300">
                     {tag}
                   </span>
                 ))}
               </div>
-              <h2 className="mt-4 text-2xl font-black tracking-tight group-hover:text-emerald-200">{post.title}</h2>
+              <h2 className="mt-4 text-2xl font-black tracking-tight group-hover:text-violet-200">{post.title}</h2>
               <p className="mt-3 flex-1 leading-7 text-zinc-400">{post.excerpt}</p>
               <p className="mt-5 text-sm text-zinc-500">
                 <time dateTime={post.datePublished}>{formatDate(post.datePublished)}</time>
                 <span className="mx-2">·</span>
                 {post.readMinutes} min read
-                <span className="ml-3 font-semibold text-emerald-300 group-hover:text-emerald-200">Read →</span>
+                <span className="ml-3 font-semibold text-violet-300 group-hover:text-violet-200">Read →</span>
               </p>
             </Link>
           ))}

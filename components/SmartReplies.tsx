@@ -105,7 +105,7 @@ export default function SmartReplies({ suggestions, sentiment, onPick, className
             onClick={() => onPick(s)}
             className={`group max-w-full rounded-xl border px-3 py-2 text-left text-xs text-zinc-200 transition-all hover:scale-[1.02] hover:border-violet-500/60 hover:bg-violet-500/10 hover:text-white ${
               sentiment?.tier === "ready"
-                ? "border-emerald-500/30 bg-emerald-500/5"
+                ? "border-violet-500/30 bg-violet-500/5"
                 : sentiment?.tier === "positive"
                 ? "border-sky-500/30 bg-sky-500/5"
                 : sentiment?.tier === "objection"

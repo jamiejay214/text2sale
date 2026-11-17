@@ -48,14 +48,14 @@ export default function TenDlcChecklist() {
           <span className="text-zinc-400">{done === TOTAL ? "Ready to submit" : `${TOTAL - done} to fix before you submit`}</span>
         </div>
         <div className="mt-2 h-3 overflow-hidden rounded-full bg-zinc-800">
-          <div className="h-full rounded-full bg-emerald-400 transition-all" style={{ width: `${(done / TOTAL) * 100}%` }} />
+          <div className="h-full rounded-full bg-violet-400 transition-all" style={{ width: `${(done / TOTAL) * 100}%` }} />
         </div>
       </div>
 
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         {GROUPS.map((group) => (
           <fieldset key={group.title} className="min-w-0 rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4">
-            <legend className="px-1 text-sm font-black uppercase tracking-[0.14em] text-emerald-300">{group.title}</legend>
+            <legend className="px-1 text-sm font-black uppercase tracking-[0.14em] text-violet-300">{group.title}</legend>
             <div className="space-y-4">
               {group.items.map((item) => (
                 <label key={item.id} htmlFor={`tendlc-${item.id}`} className="flex cursor-pointer gap-3">
@@ -64,7 +64,7 @@ export default function TenDlcChecklist() {
                     type="checkbox"
                     checked={!!checked[item.id]}
                     onChange={(event) => setChecked({ ...checked, [item.id]: event.target.checked })}
-                    className="mt-1 h-4 w-4 shrink-0 accent-emerald-400"
+                    className="mt-1 h-4 w-4 shrink-0 accent-violet-400"
                   />
                   <span>
                     <span className="block text-sm font-bold leading-5 text-white">{item.label}</span>

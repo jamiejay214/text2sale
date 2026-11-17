@@ -69,8 +69,8 @@ export default function ThankYouPage() {
     <div className="public-theme relative min-h-screen overflow-hidden bg-zinc-950 text-white">
       {/* ambient gradient glow */}
       <div className="pointer-events-none absolute inset-0 -z-10">
-        <div className="absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2 rounded-full bg-lime-300/15 blur-[120px]" />
-        <div className="absolute bottom-0 right-0 h-[400px] w-[600px] rounded-full bg-emerald-500/10 blur-[120px]" />
+        <div className="absolute left-1/2 top-0 h-[500px] w-[800px] -translate-x-1/2 rounded-full bg-amber-300/15 blur-[120px]" />
+        <div className="absolute bottom-0 right-0 h-[400px] w-[600px] rounded-full bg-violet-500/10 blur-[120px]" />
       </div>
 
       <div className="mx-auto flex min-h-screen max-w-3xl flex-col items-center justify-center px-6 py-16">
@@ -80,8 +80,8 @@ export default function ThankYouPage() {
 
         {/* success check animation */}
         <div className="relative mb-8">
-          <div className="absolute inset-0 animate-ping rounded-full bg-emerald-500/40" />
-          <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-lg shadow-emerald-500/40">
+          <div className="absolute inset-0 animate-ping rounded-full bg-violet-500/40" />
+          <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-violet-500 to-violet-600 shadow-lg shadow-violet-500/40">
             <svg
               className="h-10 w-10 text-white"
               fill="none"
@@ -112,7 +112,7 @@ export default function ThankYouPage() {
         {/* next steps */}
         <div className="mt-12 grid w-full gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-300/15 text-xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300/15 text-xl">
               1️⃣
             </div>
             <h3 className="mt-4 font-semibold">Register your business (10DLC)</h3>
@@ -121,7 +121,7 @@ export default function ThankYouPage() {
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-300/15 text-xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300/15 text-xl">
               2️⃣
             </div>
             <h3 className="mt-4 font-semibold">Buy a phone number</h3>
@@ -130,7 +130,7 @@ export default function ThankYouPage() {
             </p>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5 backdrop-blur">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-lime-300/15 text-xl">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300/15 text-xl">
               3️⃣
             </div>
             <h3 className="mt-4 font-semibold">Launch a campaign</h3>
@@ -144,7 +144,7 @@ export default function ThankYouPage() {
         <div className="mt-12 flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
           <Link
             href="/dashboard?tab=settings&subtab=10dlc"
-            className="rounded-2xl bg-gradient-to-r from-emerald-500 to-lime-400 px-8 py-4 text-sm font-semibold text-emerald-950 shadow-lg shadow-emerald-500/20 transition hover:brightness-110"
+            className="rounded-2xl bg-gradient-to-r from-violet-500 to-amber-400 px-8 py-4 text-sm font-semibold text-violet-950 shadow-lg shadow-violet-500/20 transition hover:brightness-110"
           >
             Start 10DLC Registration →
           </Link>
@@ -160,7 +160,7 @@ export default function ThankYouPage() {
           Need help getting started? Email{" "}
           <a
             href="mailto:support@text2sale.com"
-            className="text-zinc-400 hover:text-lime-300"
+            className="text-zinc-400 hover:text-amber-300"
           >
             support@text2sale.com
           </a>

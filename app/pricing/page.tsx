@@ -119,13 +119,13 @@ export default function PricingPage() {
 
 
   return (
-    <main className="min-h-screen bg-[#060806] text-zinc-100">
+    <main className="public-theme min-h-screen bg-zinc-950 text-zinc-100">
       <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
 
         <header className="mx-auto max-w-4xl py-16 text-center sm:py-20">
-          <p className="text-sm font-black uppercase tracking-[0.24em] text-emerald-300">Pricing</p>
+          <p className="text-sm font-black uppercase tracking-[0.24em] text-violet-300">Pricing</p>
           <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-6xl">
             Pay for the tools you use, then only for what you send.
           </h1>
@@ -141,12 +141,12 @@ export default function PricingPage() {
             return (
               <article
                 key={key}
-                className={`flex flex-col rounded-3xl border p-7 ${featured ? "border-emerald-300/60 bg-emerald-300/10" : "border-zinc-800 bg-zinc-900/60"}`}
+                className={`flex flex-col rounded-3xl border p-7 ${featured ? "border-violet-300/60 bg-violet-300/10" : "border-zinc-800 bg-zinc-900/60"}`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <h2 className="text-xl font-black text-white">{plan.name}</h2>
                   {featured && (
-                    <span className="rounded-full bg-lime-300 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-emerald-950">
+                    <span className="rounded-full bg-violet-600 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-white">
                       Save {money(COMPLETE_SAVINGS)}/mo
                     </span>
                   )}
@@ -158,7 +158,7 @@ export default function PricingPage() {
                 </p>
                 <ul className="mt-6 flex-1 space-y-2 text-sm leading-6 text-zinc-200">
                   {plan.includes.map((item) => (
-                    <li key={item} className="flex gap-2"><span className="text-emerald-300" aria-hidden>✓</span>{item}</li>
+                    <li key={item} className="flex gap-2"><span className="text-violet-300" aria-hidden>✓</span>{item}</li>
                   ))}
                   {plan.excludes.map((item) => (
                     <li key={item} className="flex gap-2 text-zinc-500"><span aria-hidden>–</span>Not included: {item}</li>
@@ -166,7 +166,7 @@ export default function PricingPage() {
                 </ul>
                 <Link
                   href={`/?signup=1&plan=${key}#auth-form`}
-                  className={`mt-7 rounded-xl px-5 py-3 text-center font-black ${featured ? "bg-emerald-300 text-zinc-950 hover:bg-emerald-200" : "border border-zinc-600 text-white hover:border-emerald-300"}`}
+                  className={`mt-7 rounded-xl px-5 py-3 text-center font-black ${featured ? "bg-violet-600 text-white hover:bg-violet-500" : "border border-zinc-600 text-white hover:border-violet-300"}`}
                 >
                   Start with {plan.name.replace("Text2Sale ", "")}
                 </Link>
@@ -201,7 +201,7 @@ export default function PricingPage() {
                 <li key={ex.label} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 px-5 py-4 text-sm">
                   <div className="flex justify-between gap-4">
                     <span className="font-bold text-white">{ex.label}</span>
-                    <span className="font-black text-emerald-300">{money(ex.total)}</span>
+                    <span className="font-black text-violet-300">{money(ex.total)}</span>
                   </div>
                   <p className="mt-1 text-zinc-400">{ex.detail}</p>
                 </li>
@@ -209,14 +209,14 @@ export default function PricingPage() {
             </ul>
             <p className="mt-4 text-sm text-zinc-400">
               Long or emoji-heavy messages use more segments.{" "}
-              <Link href="/sms-character-counter" className="font-bold text-emerald-300 hover:text-emerald-200">Check a message with the SMS counter</Link>.
+              <Link href="/sms-character-counter" className="font-bold text-violet-300 hover:text-violet-200">Check a message with the SMS counter</Link>.
             </p>
           </div>
         </section>
 
         <section className="mx-auto max-w-4xl border-t border-zinc-800 py-16">
-          <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Pricing questions</p>
-          <p className="mt-4 leading-7 text-zinc-300">Comparing plans for an insurance team? See how the <Link className="font-bold text-emerald-300 underline" href="/predictive-dialer-for-insurance-agents">predictive dialer works through a call list</Link> and how the <Link className="font-bold text-emerald-300 underline" href="/ai-receptionist-for-insurance-agents">AI receptionist handles inbound calls</Link>.</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-violet-300">Pricing questions</p>
+          <p className="mt-4 leading-7 text-zinc-300">Comparing plans for an insurance team? See how the <Link className="font-bold text-violet-300 underline" href="/predictive-dialer-for-insurance-agents">predictive dialer works through a call list</Link> and how the <Link className="font-bold text-violet-300 underline" href="/ai-receptionist-for-insurance-agents">AI receptionist handles inbound calls</Link>.</p>
           <div className="mt-7 space-y-4">
             {faq.map((item) => (
               <details key={item.question} className="group rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
@@ -227,14 +227,14 @@ export default function PricingPage() {
           </div>
         </section>
 
-        <section className="mb-12 rounded-[2rem] border border-emerald-300/20 bg-emerald-300/10 p-8 text-center sm:p-12">
+        <section className="mb-12 rounded-[2rem] border border-violet-300/20 bg-violet-300/10 p-8 text-center sm:p-12">
           <h2 className="text-3xl font-black text-white">Ready to work your leads?</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-7 text-zinc-200">
             Import opted-in leads, run follow-up campaigns, call, and book appointments from one workspace.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link href="/?signup=1&plan=complete#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Start free trial</Link>
-            <Link href="/sales-team-texting-crm" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-emerald-300">For sales teams &amp; businesses</Link>
+            <Link href="/?signup=1&plan=complete#auth-form" className="rounded-full bg-violet-600 px-6 py-3 font-black text-white hover:bg-violet-500">Start free trial</Link>
+            <Link href="/sales-team-texting-crm" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-violet-300">For sales teams &amp; businesses</Link>
           </div>
         </section>
       </div>

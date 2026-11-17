@@ -53,7 +53,7 @@ const OUTCOME_LABEL: Record<string, string> = {
 };
 
 const OUTCOME_TONE: Record<string, string> = {
-  booked: "bg-emerald-900/40 text-emerald-300",
+  booked: "bg-violet-900/40 text-violet-300",
   message_taken: "bg-cyan-900/40 text-cyan-300",
   transferred: "bg-violet-900/40 text-violet-300",
   declined: "bg-zinc-800 text-zinc-400",
@@ -447,7 +447,7 @@ If they sound like they're in pain today, offer the very first opening.`}
       {(note || error) && (
         <div
           className={`rounded-2xl px-4 py-3 text-sm ${
-            error ? "bg-red-950/40 text-red-300" : "bg-emerald-950/40 text-emerald-300"
+            error ? "bg-red-950/40 text-red-300" : "bg-violet-950/40 text-violet-300"
           }`}
         >
           {error || note}

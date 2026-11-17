@@ -59,13 +59,13 @@ export default function SmsCharacterCounterPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[#060806] text-zinc-100">
+    <main className="public-theme min-h-screen bg-zinc-950 text-zinc-100">
       <MarketingHeader />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8 sm:py-12">
 
         <header className="mx-auto max-w-4xl py-16 text-center sm:py-24">
-          <p className="text-sm font-black uppercase tracking-[0.24em] text-emerald-300">Write smarter campaign messages</p>
+          <p className="text-sm font-black uppercase tracking-[0.24em] text-violet-300">Write smarter campaign messages</p>
           <h1 className="mt-5 text-4xl font-black tracking-tight text-white sm:text-6xl">
             Know how many SMS segments you will send before you launch.
           </h1>
@@ -90,7 +90,7 @@ export default function SmsCharacterCounterPage() {
         </section>
 
         <section className="mx-auto max-w-4xl border-t border-zinc-800 py-16">
-          <p className="text-sm font-black uppercase tracking-[0.2em] text-emerald-300">Frequently asked questions</p>
+          <p className="text-sm font-black uppercase tracking-[0.2em] text-violet-300">Frequently asked questions</p>
           <div className="mt-7 space-y-4">
             {faq.map((item) => (
               <details key={item.question} className="group rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
@@ -101,14 +101,14 @@ export default function SmsCharacterCounterPage() {
           </div>
         </section>
 
-        <section className="mb-12 rounded-[2rem] border border-emerald-300/20 bg-emerald-300/10 p-8 text-center sm:p-12">
+        <section className="mb-12 rounded-[2rem] border border-violet-300/20 bg-violet-300/10 p-8 text-center sm:p-12">
           <h2 className="text-3xl font-black text-white">Build the full campaign in Text2Sale.</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-7 text-zinc-200">
             Import leads, map fields, add multi-step follow-up, manage replies, call prospects, and book appointments from one workspace.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link href="/?signup=1#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Start free trial</Link>
-            <Link href="/bulk-sms-software" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-emerald-300">Explore bulk SMS</Link>
+            <Link href="/?signup=1#auth-form" className="rounded-full bg-violet-600 px-6 py-3 font-black text-white hover:bg-violet-500">Start free trial</Link>
+            <Link href="/bulk-sms-software" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-violet-300">Explore bulk SMS</Link>
           </div>
         </section>
       </div>

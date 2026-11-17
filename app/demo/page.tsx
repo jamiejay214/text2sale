@@ -22,7 +22,7 @@ export default function DemoPage() {
       <MarketingHeader />
       <section className="mx-auto grid max-w-6xl gap-12 px-6 py-16 lg:grid-cols-[1fr_1.1fr] lg:py-20">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Book a demo</p>
+          <p className="text-sm font-bold uppercase tracking-[0.25em] text-violet-300">Book a demo</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight md:text-5xl">See Text2Sale work a lead list like yours.</h1>
           <p className="mt-6 text-lg leading-8 text-zinc-300">
             A short walkthrough with a person, not a recorded video. Tell us how you follow up today and we&apos;ll show the same steps in Text2Sale: texting a list, handling replies, dialing callbacks and letting the AI receptionist take incoming calls.
@@ -31,7 +31,7 @@ export default function DemoPage() {
           <ol className="mt-4 space-y-5">
             {STEPS.map((step, index) => (
               <li key={step.title} className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-400 font-black text-zinc-950">{index + 1}</span>
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-600 font-black text-white">{index + 1}</span>
                 <div>
                   <h3 className="font-bold text-white">{step.title}</h3>
                   <p className="mt-1 leading-7 text-zinc-400">{step.body}</p>
@@ -42,7 +42,7 @@ export default function DemoPage() {
         </div>
         <div>
           <DemoForm />
-          <p className="mt-4 text-sm leading-6 text-zinc-500">Prefer email? Write to <a className="font-semibold text-emerald-300" href="mailto:support@text2sale.com?subject=Demo%20request">support@text2sale.com</a>.</p>
+          <p className="mt-4 text-sm leading-6 text-zinc-500">Prefer email? Write to <a className="font-semibold text-violet-300" href="mailto:support@text2sale.com?subject=Demo%20request">support@text2sale.com</a>.</p>
         </div>
       </section>
       <MarketingFooter />
