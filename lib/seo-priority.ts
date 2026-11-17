@@ -28,7 +28,6 @@ export const PRIORITY_PAGES: PriorityPage[] = [
   { path: "/insurance-lead-follow-up-software", updated: "2026-10-28", priority: 0.8 },
   { path: "/ai-for-insurance-agents", updated: "2026-10-28", priority: 0.8 },
   { path: "/10dlc-compliant-texting", updated: "2026-09-27", priority: 0.8 },
-  { path: "/med-spa", updated: "2026-11-16", priority: 0.7 },
   { path: "/real-estate-texting-crm", updated: "2026-10-20", priority: 0.7 },
   { path: "/solar-sales-texting-crm", updated: "2026-10-20", priority: 0.7 },
   { path: "/roofing", updated: "2026-10-21", priority: 0.6 },

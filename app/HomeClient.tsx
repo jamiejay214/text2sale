@@ -8,7 +8,6 @@ import { authFetch } from "@/lib/auth-fetch";
 import Logo from "@/components/Logo";
 import AppointmentDemo from "@/components/AppointmentDemo";
 import ApprovedHome from "@/components/ApprovedHome";
-import MedSpaHome from "@/components/MedSpaHome";
 import { captureProspect, FOLLOWUP_NOTICE } from "@/lib/prospect-capture";
 import { LEGAL_TERMS_SECTIONS, LEGAL_PRIVACY_SECTIONS, LEGAL_EFFECTIVE_DATE } from "@/lib/legal-text";
 import { isPlanKey, PLAN_KEYS, PLANS, USAGE_RATES, type PlanKey } from "@/lib/plans";
@@ -18,7 +17,6 @@ export default function HomeClient({
   siteLinks,
   header,
   depth,
-  variant,
 }: {
   /** Shared sticky site header, rendered on the server. */
   header?: React.ReactNode;
@@ -26,8 +24,6 @@ export default function HomeClient({
   depth?: React.ReactNode;
   faqSection: React.ReactNode;
   siteLinks: React.ReactNode;
-  /** Industry landing pages reuse this signup form under their own marketing section. */
-  variant?: "medspa";
 }) {
   const router = useRouter();
 
@@ -227,7 +223,6 @@ export default function HomeClient({
 
   return (
     <main className="crm-theme marketing-site min-h-screen overflow-x-clip">
-      {(!variant || invited) && (
       <div className="bg-gradient-to-r from-emerald-700 via-emerald-600 to-emerald-500 px-4 py-3 text-center text-sm text-white">
         {invited ? (
           <>🎁 <strong>You&apos;ve been invited.</strong> Sign up with code <span className="font-mono font-bold text-lime-200">{referralCode}</span> and get <strong className="text-lime-200">$50 in credits</strong> after your first $50 deposit.{" "}
@@ -237,17 +232,10 @@ export default function HomeClient({
             <Link href="/login" className="ml-1 font-semibold underline underline-offset-2 hover:text-lime-200">Log in to get your invite link</Link></>
         )}
       </div>
-      )}
-      {variant === "medspa" ? (
-        <MedSpaHome onLogin={() => { setMode("login"); setError(""); scrollToAuth(); }} onChoose={handleSelectPlan} />
-      ) : (
-        <>
-          {header}
-          <ApprovedHome onChoose={handleSelectPlan} />
-          <AppointmentDemo />
-          {depth}
-        </>
-      )}
+      {header}
+      <ApprovedHome onChoose={handleSelectPlan} />
+      <AppointmentDemo />
+      {depth}
       <section className="marketing-auth bg-[#0b241b] py-12 text-white"><div className="mx-auto max-w-6xl px-6">
         <details className="mx-auto max-w-4xl text-sm"><summary className="cursor-pointer">Detailed usage rates</summary><p className="mt-2">Outbound calls ${USAGE_RATES.outboundCallPerMin}/min · inbound ${USAGE_RATES.inboundCallPerMin}/min · forwarded ${USAGE_RATES.forwardedCallPerMin}/min · transfers to cell ${USAGE_RATES.transferredToCellPerMin}/min · AI receptionist ${USAGE_RATES.aiReceptionistPerMin}/min · local number ${USAGE_RATES.localNumberMonthly.toFixed(2)}/month. Calls are billed per started minute. Text2Sale covers texting registration and campaign fees.</p></details>
           {/* Sign-in / Sign-up form */}

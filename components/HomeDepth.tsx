@@ -90,7 +90,7 @@ const AI: Card[] = [
 
 const INDUSTRY_ICONS: Record<string, string> = {
   "/insurance-agents": "insurance", "/health-insurance": "health", "/life-insurance": "life", "/medicare": "medicare",
-  "/recruiters": "recruiting", "/med-spa": "med-spa", "/solar": "solar", "/real-estate": "real-estate", "/roofing": "roofing",
+  "/recruiters": "recruiting", "/roofing": "roofing",
   "/health-insurance-texting-crm": "health", "/life-insurance-texting-crm": "life", "/final-expense-texting-crm": "final-expense",
   "/medicare-agent-texting-crm": "medicare", "/auto-insurance-texting-crm": "auto", "/real-estate-texting-crm": "real-estate",
   "/mortgage-broker-texting-crm": "mortgage", "/solar-sales-texting-crm": "solar", "/recruiting-texting-crm": "recruiting",

@@ -11,7 +11,7 @@ import FoundingAgentOffer from "@/components/FoundingAgentOffer";
 const industries = {
   "Sales Teams": { heading: "Turn more conversations into opportunities.", body: "Bring your sales outreach, lead follow-up, and appointment booking into one workspace, whether you sell on your own or with a team.", href: "/sales-team-texting-crm" },
   Insurance: { heading: "Make the most of every lead you've earned.", body: "Keep eligible insurance inquiries organized, follow up with context, and move interested prospects toward an agent conversation.", href: "/insurance-agents" },
-  "Real Estate": { heading: "Turn interest into real conversations.", body: "Keep buyer and seller inquiries in one place, coordinate follow-up, and stay close to your next opportunity.", href: "/real-estate" },
+  "Real Estate": { heading: "Turn interest into real conversations.", body: "Keep buyer and seller inquiries in one place, coordinate follow-up, and stay close to your next opportunity.", href: "/real-estate-texting-crm" },
   "Home Services": { heading: "From first inquiry to the next appointment.", body: "Organize requests, coordinate estimate follow-up, and keep customer conversations moving.", href: "/roofing" },
 } as const;
 type Industry = keyof typeof industries;
