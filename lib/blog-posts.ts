@@ -23,6 +23,8 @@ import { BLOG_POSTS_17 } from "./blog-posts-17";
 import { BLOG_POSTS_18 } from "./blog-posts-18";
 import { BLOG_POSTS_19 } from "./blog-posts-19";
 
+import { PRUNED_SLUGS } from "./blog-pruned";
+import { BLOG_REWRITES } from "./blog-rewrites";
 import { FIELD_GUIDES_1 } from "./field-guides/proof-approvals";
 import { FIELD_GUIDES_2 } from "./field-guides/rental-and-site-quotes";
 import { FIELD_GUIDES_3 } from "./field-guides/proposal-scope";
@@ -8255,9 +8257,17 @@ export const BLOG_POSTS: BlogPost[] = [
 // They stay reachable at their URLs but carry a noindex tag and are left out
 // of the blog index, tag archives, sitemap, RSS feed, llms.txt and internal
 // link suggestions, so search engines judge the site on its own subject.
+// Rewritten long-form versions replace the original entry with the same slug,
+// so URLs, internal links and publish dates carry over.
+for (const rewrite of BLOG_REWRITES) {
+  const index = BLOG_POSTS.findIndex((post) => post.slug === rewrite.slug);
+  if (index >= 0) BLOG_POSTS[index] = rewrite;
+}
+
 const OFF_NICHE_SLUGS = new Set<string>([
   ...[FIELD_GUIDES_1, FIELD_GUIDES_2, FIELD_GUIDES_3, FIELD_GUIDES_4, FIELD_GUIDES_5, FIELD_GUIDES_6].flat().map((post) => post.slug),
   "how-to-apply-for-an-ein",
+  ...PRUNED_SLUGS,
   // Texting guides for businesses Text2Sale is not built for: local retail,
   // restaurants, clinics, schools, congregations, online stores and internal
   // staff messaging. Kept: insurance, real estate, mortgage, solar, home
