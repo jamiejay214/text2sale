@@ -5,10 +5,13 @@ import { useEffect, useState } from "react";
 import Logo from "@/components/Logo";
 import { supabase } from "@/lib/supabase";
 import { trackCheckout, type VerifiedCheckout } from "@/lib/track-checkout";
+import { trialEndLabel } from "@/lib/trial";
 
 export default function ThankYouPage() {
   const [firstName, setFirstName] = useState("");
   const [paymentState, setPaymentState] = useState<"checking" | "verified" | "unverified">("checking");
+  const [trialEnds, setTrialEnds] = useState<string | null>(null);
+  const [trial, setTrial] = useState(false);
 
   useEffect(() => {
     const firstNameTimer = window.setTimeout(() => {
@@ -36,6 +39,10 @@ export default function ThankYouPage() {
         const checkout: VerifiedCheckout = await response.json();
         if (controller.signal.aborted) return;
         setPaymentState(checkout.verified ? "verified" : "unverified");
+        if (checkout.verified && checkout.trial) {
+          setTrial(true);
+          setTrialEnds(trialEndLabel(checkout.trialEndsAt));
+        }
         if (!checkout.verified || !checkout.trackable || !/^(www\.)?text2sale\.com$/.test(window.location.hostname)) return;
         let attempts = 0;
         function reportWhenReady() {
@@ -96,7 +103,9 @@ export default function ThankYouPage() {
         </h1>
         <p className="mt-4 max-w-xl text-center text-lg text-zinc-400">
           {paymentState === "checking" ? "Checking your payment confirmation…" : paymentState === "verified"
-            ? "Your payment is confirmed. Complete messaging setup to prepare your first campaign."
+            ? trial
+              ? `Your 7-day free trial has started. Your card is charged ${trialEnds ? `on ${trialEnds}` : "when the trial ends"} unless you cancel before then. Set up your workspace now; texting registration starts after your first payment.`
+              : "Your payment is confirmed. Complete messaging setup to prepare your first campaign."
             : "We could not verify a completed payment from this link. Open your dashboard to check your subscription before trying another payment."}
         </p>
 

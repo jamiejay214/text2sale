@@ -52,7 +52,9 @@ export async function GET(req: NextRequest) {
   for (const profile of profiles) {
     const entitled =
       !!profile.free_subscription ||
-      ["active", "canceling"].includes(String(profile.subscription_status || ""));
+      // Trial numbers cost us monthly too; a trial that ends unpaid has its
+      // numbers released (lib/release-numbers.ts).
+      ["active", "canceling", "trialing"].includes(String(profile.subscription_status || ""));
     if (!entitled) continue;
 
     const ownedNumbers = (profile.owned_numbers as unknown[]) || [];

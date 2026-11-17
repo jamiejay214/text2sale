@@ -4,7 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { requireSameUser } from "@/lib/auth-guard";
 import { ensureVoiceRouting } from "@/lib/telnyx-voice";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
-import { canCall, isActiveSubscriber } from "@/lib/entitlements";
+import { canCall, isActiveSubscriber, isTrialing } from "@/lib/entitlements";
 import { isOwnerEmail } from "@/lib/owner";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
@@ -36,7 +36,11 @@ export async function POST(req: NextRequest) {
       .select("email, plan, paused, subscription_status, free_subscription, messaging_status, a2p_registration")
       .eq("id", userId)
       .maybeSingle();
-    if (!buyer || buyer.paused || !(isActiveSubscriber(buyer) || isOwnerEmail(buyer.email))) {
+    // A Dialer or Complete free trial may buy numbers to call from: calling
+    // needs no 10DLC. Numbers bought in a trial that ends unpaid are
+    // released (stripe-webhook, lib/release-numbers.ts).
+    const trialCaller = isTrialing(buyer) && canCall(buyer);
+    if (!buyer || buyer.paused || !(isActiveSubscriber(buyer) || trialCaller || isOwnerEmail(buyer.email))) {
       return NextResponse.json({ success: false, error: "Start your subscription before adding phone numbers." }, { status: 402 });
     }
 

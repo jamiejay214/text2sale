@@ -76,7 +76,7 @@ function smsRoute({
     "next/server": { NextResponse },
     "@/lib/workspace-auth": { getWorkspaceUserId: async () => authenticated ? "client" : null },
     "@/lib/ein-certificate-storage": { hasEINCertificate: async () => true },
-    "@/lib/entitlements": { canText: () => true },
+    "@/lib/entitlements": { canText: () => true, isTrialing: () => false },
     "@supabase/supabase-js": { createClient: () => client },
     "@/lib/quiet-hours": {
       inferTimezone: () => "America/New_York",

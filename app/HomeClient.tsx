@@ -190,7 +190,8 @@ export default function HomeClient({
 
     // A database-triggered welcome email is queued for this new account.
 
-    // No free workspace access: new accounts go straight to paid checkout.
+    // New accounts go straight to checkout, which collects a card and starts
+    // the 7-day free trial (app/api/create-subscription).
     // If Supabase requires email confirmation first, verification is the only
     // step allowed before payment.
     if (result.requiresEmailConfirmation) {
@@ -319,7 +320,7 @@ export default function HomeClient({
                           {PLAN_KEYS.map((key) => <option key={key} value={key}>{PLANS[key].name} · ${PLANS[key].price}/month</option>)}
                         </select>
                       </label>
-                      <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. Payment is required right after account creation; there is no free trial.{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
+                      <p className="mt-1 text-xs text-zinc-400">{PLANS[selectedPlan].tagline}. Includes a 7-day free trial: add a card at checkout, and ${PLANS[selectedPlan].price}/month is charged when the trial ends unless you cancel first.{selectedPlan === "dialer" ? " Dialer-only accounts don't need texting (10DLC) registration." : ""}</p>
                     </div>
 
                     <p className="text-sm text-lime-200">Step {signupStep} of 2 · {signupStep === 1 ? "Your contact details" : "Secure your account"}</p>
@@ -423,7 +424,7 @@ export default function HomeClient({
                       disabled={loading}
                       className="group relative w-full overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-500 via-lime-400 to-emerald-400 px-5 py-4 font-bold text-emerald-950 shadow-xl shadow-emerald-500/20 transition hover:brightness-110 disabled:opacity-60"
                     >
-                      {loading ? "Creating account..." : "Create account → Secure checkout"}
+                      {loading ? "Creating account..." : "Create account → Start free trial"}
                     </button>
                     <div className="text-center text-[11px] text-zinc-500">
                       By creating an account you agree to all terms above. Cancel anytime.

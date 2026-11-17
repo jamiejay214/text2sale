@@ -54,7 +54,7 @@ export default function SeoLandingPage({
   eyebrow,
   title,
   description,
-  primaryCta = "Sign Up",
+  primaryCta = "Start free trial",
   primaryHref = "/?signup=1#auth-form",
   customHero,
   afterHero,
@@ -220,7 +220,7 @@ export default function SeoLandingPage({
               ))}
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Get started</Link>
+              <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Start free trial</Link>
               <Link href="/demo" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">Book a demo</Link>
               <Link href="/insurance-text-templates" className="px-2 py-3 font-bold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">More free templates</Link>
             </div>

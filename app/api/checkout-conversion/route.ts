@@ -21,6 +21,18 @@ export async function POST(req: NextRequest) {
     if (session.metadata?.userId !== auth.user.id) {
       return NextResponse.json({ error: "Checkout not found" }, { status: 404, headers });
     }
+    // A free-trial checkout collects a card and charges nothing today. It is
+    // confirmed but not reported as a purchase (no value to report).
+    if (session.mode === "subscription" && session.metadata?.type === "subscription" &&
+        session.status === "complete" && session.payment_status === "no_payment_required" &&
+        !session.amount_total && session.subscription) {
+      const subId = typeof session.subscription === "string" ? session.subscription : session.subscription.id;
+      const sub = await stripe.subscriptions.retrieve(subId);
+      if (sub.status === "trialing" && sub.trial_end) {
+        return NextResponse.json({ verified: true, trial: true, trialEndsAt: new Date(sub.trial_end * 1000).toISOString(),
+          trackable: false, eventId: "", value: 0, currency: "USD" }, { headers });
+      }
+    }
     if (session.mode !== "subscription" || session.metadata?.type !== "subscription" ||
         session.status !== "complete" || session.payment_status !== "paid" ||
         !session.amount_total || session.amount_total <= 0 || session.currency !== "usd") {

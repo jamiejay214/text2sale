@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { CALL_RATE_OUTBOUND_PER_MIN } from "@/lib/call-pricing";
 import { toE164 } from "@/lib/browser-calls";
 import { isEntitled } from "@/lib/messaging-status";
+import { isTrialing } from "@/lib/entitlements";
 import { callingAccess } from "@/lib/calling-access";
 
 // ─── POST /api/calls/log ─────────────────────────────────────────────────────
@@ -47,7 +48,8 @@ export async function POST(req: NextRequest) {
     if (!owned?.length) {
       return NextResponse.json({ error: "You can only call from your own business number." }, { status: 403 });
     }
-    if (!profile || profile.paused || !isEntitled(profile)) {
+    // Calling works in a Dialer/Complete free trial: minutes come from the wallet.
+    if (!profile || profile.paused || !(isEntitled(profile) || isTrialing(profile))) {
       return NextResponse.json({ error: "An active account and subscription are required to call." }, { status: 403 });
     }
     if ((Number(profile.wallet_balance) || 0) < CALL_RATE_OUTBOUND_PER_MIN) {

@@ -1,5 +1,7 @@
 export type VerifiedCheckout = {
   verified: boolean; trackable: boolean; eventId: string; value: number; currency: string;
+  /** A free-trial signup: card on file, nothing charged yet. Never reported as a purchase. */
+  trial?: boolean; trialEndsAt?: string;
 };
 type Pixel = (...args: unknown[]) => void;
 const reported = new Set<string>();

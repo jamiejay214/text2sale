@@ -82,7 +82,7 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
         name: `${s(r.first_name)} ${s(r.last_name)}`.trim() || s(r.email) || "User",
         email: nz(r.email),
         phone: nz(r.phone),
-        detail: r.free_subscription ? "Comped account" : s(r.subscription_status) === "active" ? "Paying subscriber" : "Signup",
+        detail: r.free_subscription ? "Comped account" : s(r.subscription_status) === "active" ? "Paying subscriber" : s(r.subscription_status) === "trialing" ? "Free trial" : "Signup",
         location: null,
         source: null,
         status: nz(r.subscription_status),

@@ -1,6 +1,6 @@
 import { getWorkspaceUserId as getAuthedUserId } from "@/lib/workspace-auth";
 import { NextRequest, NextResponse } from "next/server";
-import { canText } from "@/lib/entitlements";
+import { canText, isTrialing } from "@/lib/entitlements";
 import { createClient } from "@supabase/supabase-js";
 import { inferTimezone, isQuietHours } from "@/lib/quiet-hours";
 import { sanitizeForSms, hasNonGsmChars, countSegments } from "@/lib/sms-text";
@@ -123,6 +123,10 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
 
+    // No texting in the free trial: 10DLC registration starts with the first payment.
+    if (profileCfg && !profileCfg.paused && isTrialing(profileCfg)) {
+      return NextResponse.json({ success: false, trial: true, error: "Texting turns on after your free trial. Your first payment starts your texting registration, and you can send once carriers approve it (about 4 business days)." }, { status: 403 });
+    }
     if (!profileCfg || profileCfg.paused || (!profileCfg.free_subscription && !["active","canceling"].includes(profileCfg.subscription_status))) {
       return NextResponse.json({success:false,error:"An active account and subscription are required."},{status:403});
     }

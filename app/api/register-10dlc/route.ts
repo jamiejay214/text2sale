@@ -3,7 +3,7 @@ import { NextRequest, NextResponse, after } from "next/server";
 import { requireSameUser } from "@/lib/auth-guard";
 import { advanceUser, createServiceClient, PROFILE_COLUMNS, type ProfileRow, type Registration } from "@/lib/messaging-driver";
 import { validateBusinessDetails } from "@/lib/business-details";
-import { canText } from "@/lib/entitlements";
+import { canText, isTrialing, planIncludes } from "@/lib/entitlements";
 import { isEntitled, isMessagingStatus, type MessagingStatus } from "@/lib/messaging-status";
 import { assignNumberToCampaign } from "@/lib/telnyx-10dlc";
 import { getUniqueSlug, toSlug } from "@/lib/business-site";
@@ -80,7 +80,20 @@ export async function POST(req: NextRequest) {
           { status: 402 }
         );
       }
-      if (!isEntitled(profile)) {
+      // In the free trial the details are accepted and saved, and the
+      // activation driver holds them (it only spends for paying accounts,
+      // lib/messaging-driver.ts) until the first payment releases them.
+      if (isTrialing(profile) && !planIncludes(profile, "texting")) {
+        return NextResponse.json(
+          {
+            success: false,
+            upgrade: "texting",
+            error: "Your plan doesn't include texting. Upgrade to Text2Sale Complete (or Text) first, then register for texting.",
+          },
+          { status: 402 }
+        );
+      }
+      if (!isEntitled(profile) && !isTrialing(profile)) {
         return NextResponse.json(
           {
             success: false,

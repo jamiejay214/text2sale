@@ -55,10 +55,21 @@ export async function GET(req: NextRequest) {
   const awaiting = reg.awaiting ?? null;
   const entitled = isEntitled(data);
   const inFlight = (PENDING_STATUSES as string[]).includes(status);
-  const needsSubscription = inFlight && !entitled;
+  const trialing = !data.free_subscription && data.subscription_status === "trialing";
+  const needsSubscription = inFlight && !entitled && !trialing;
 
   let copy = statusCopy(status, awaiting);
-  if (needsSubscription) {
+  if (inFlight && trialing) {
+    // Details are saved; registration (which Text2Sale pays for) waits for
+    // the first payment at the end of the free trial.
+    copy = {
+      headline: "Registration starts when your trial ends",
+      detail:
+        "Your business details are saved. Texting registration starts automatically after your first payment at the end of your 7-day free trial. Carrier approval averages about four business days after that.",
+      progress: copy.progress,
+      needsCustomerAction: false,
+    };
+  } else if (needsSubscription) {
     // Nothing is bought for an account that isn't paying; say why it's quiet.
     copy = {
       headline: "Your subscription needs attention",

@@ -241,3 +241,10 @@ test('overflow: a failed transfer hands the agent\'s dialer back and falls throu
   assert.equal(w.dialer_sessions[1].agent_state, 'wrap');
   assert.equal(w.dialer_sessions[1].inbound_from, null);
 });
+
+test('free trial: a Dialer trial gets its calls routed; a Text trial does not', async () => {
+  const { routeInboundCall } = load(async (url) => url.includes('/telephony_credentials/') ? ok({ data: { sip_username: 'gencredABC' } }) : ok());
+  const trial = { ...base, email: 'agent@example.com', subscription_status: 'trialing', owned_numbers: owned({ forwardEnabled: true, forwardTo: '3055551234' }) };
+  assert.equal(await routeInboundCall(db({ ...trial, plan: { key: 'dialer' } }), call), 'forward');
+  assert.equal(await routeInboundCall(db({ ...trial, plan: { key: 'text' } }), call), null);
+});

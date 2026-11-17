@@ -11,6 +11,13 @@
 // the texting plan and stay on Text. The owner account keeps everything,
 // separately from customer plans. Admin-comped accounts (free_subscription)
 // keep the plan they were given.
+//
+// Free trial (subscription_status "trialing", lib/trial.ts): the card is on
+// file but nothing has been charged yet. A trial unlocks the dashboard and
+// the plan's features for setup, and calling (Dialer, Complete) works since
+// call minutes come from the prepaid wallet. Texting does not send during a
+// trial: the send routes require a paid subscription (isEntitled), and 10DLC
+// registration, which Text2Sale pays for, starts after the first charge.
 
 import { isOwnerEmail } from "./owner";
 import { isPlanKey, PLANS, type Capability, type PlanKey } from "./plans";
@@ -39,11 +46,21 @@ export function isActiveSubscriber(profile: PlanProfile | null | undefined): boo
   return profile.subscription_status === "active" || profile.subscription_status === "canceling";
 }
 
+/** In the free trial: card on file, first charge not taken yet. */
+export function isTrialing(profile: PlanProfile | null | undefined): boolean {
+  return !!profile && !profile.free_subscription && profile.subscription_status === "trialing";
+}
+
+/** Whether the account's plan includes a feature, whether or not it is paying. */
+export function planIncludes(profile: PlanProfile | null | undefined, capability: Capability, now: Date = new Date()): boolean {
+  return PLANS[planKeyOf(profile, now)].capabilities.includes(capability);
+}
+
 export function can(profile: PlanProfile | null | undefined, capability: Capability, now: Date = new Date()): boolean {
   if (!profile) return false;
   if (isOwnerEmail(profile.email)) return true;
-  if (!isActiveSubscriber(profile)) return false;
-  return PLANS[planKeyOf(profile, now)].capabilities.includes(capability);
+  if (!isActiveSubscriber(profile) && !isTrialing(profile)) return false;
+  return planIncludes(profile, capability, now);
 }
 
 /** Texting inbox, campaigns, SMS sends and AI text replies. */
@@ -58,7 +75,8 @@ export function entitlementsOf(profile: PlanProfile | null | undefined, now: Dat
   return {
     plan,
     planName: PLANS[plan].name,
-    active: isActiveSubscriber(profile) || isOwnerEmail(profile?.email),
+    active: isActiveSubscriber(profile) || isTrialing(profile) || isOwnerEmail(profile?.email),
+    trial: isTrialing(profile),
     texting: canText(profile, now),
     calling: canCall(profile, now),
   };
