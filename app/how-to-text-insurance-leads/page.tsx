@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "How to Text Insurance Leads | SMS Follow-Up Guide | Text2Sale",
+  title: "How to Text Insurance Leads: SMS Guide | Text2Sale",
   description: "Learn how to text insurance leads effectively. Best practices for SMS follow-up, campaign timing, AI replies, and converting leads into calls using a texting CRM.",
   alternates: { canonical: "/how-to-text-insurance-leads" },
 };

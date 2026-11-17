@@ -15,7 +15,6 @@ export const metadata: Metadata = {
     "SMS CRM",
     "sales outreach CRM",
     "business texting software",
-    "TCPA compliant SMS",
     "10DLC texting",
     "bulk SMS software",
     "sales texting platform",

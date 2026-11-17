@@ -121,6 +121,8 @@ export default function HomeDepth() {
   const industries = SITE_PAGES.filter((page) => page.group === "industry");
   const tools = SITE_PAGES.filter((page) => page.group === "tool");
   const compare = SITE_PAGES.filter((page) => page.group === "compare");
+  // The guide pages are no longer in the site-wide menu, so link them here.
+  const guides = SITE_PAGES.filter((page) => page.group === "guide" && page.path !== "/about" && page.path !== "/press");
   const posts = getAllPosts().slice(0, 6);
 
   return (
@@ -293,6 +295,11 @@ export default function HomeDepth() {
               </Link>
             ))}
           </div>
+          <ul className="guide-links">
+            {guides.map((page) => (
+              <li key={page.path}><Link href={page.path}>{page.label}</Link></li>
+            ))}
+          </ul>
           <Link className="more" href="/blog">Browse every guide →</Link>
         </div>
       </section>

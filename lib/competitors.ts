@@ -149,7 +149,7 @@ export const COMPETITORS: Competitor[] = [
     slug: "gohighlevel",
     name: "GoHighLevel",
     pricingUrl: "https://www.gohighlevel.com/pricing",
-    metaTitle: "Text2Sale vs GoHighLevel (2026): Pricing & Features for Agents",
+    metaTitle: "Text2Sale vs GoHighLevel (2026) for Insurance Agents",
     metaDescription:
       "Text2Sale vs GoHighLevel compared: plan prices, usage costs, texting, dialing, AI and setup time. Which one fits insurance agents versus marketing agencies.",
     headline: "Text2Sale vs GoHighLevel: an all-in-one agency platform or a focused lead follow-up tool?",
@@ -197,7 +197,7 @@ export const COMPETITORS: Competitor[] = [
     slug: "twilio",
     name: "Twilio",
     pricingUrl: "https://www.twilio.com/en-us/sms/pricing/us",
-    metaTitle: "Text2Sale vs Twilio (2026): Build It Yourself or Ready-to-Use CRM?",
+    metaTitle: "Text2Sale vs Twilio (2026): Ready-Made SMS CRM",
     metaDescription:
       "Text2Sale vs Twilio compared: per-message costs, carrier fees, numbers, and what you get out of the box versus what you have to build with an API.",
     headline: "Text2Sale vs Twilio: raw messaging API or a ready-to-use texting and dialing CRM?",

@@ -1455,7 +1455,7 @@ export const BLOG_POSTS_2: BlogPost[] = [
   },
   {
     slug: "health-insurance-lead-qualifying-texts",
-    metaTitle: "Qualifying Questions to Text a Health Insurance Lead | Text2Sale",
+    metaTitle: "Health Insurance Lead Qualifying Texts | Text2Sale",
     title: "The qualifying questions to text a health insurance lead before you call",
     description:
       "A few well-chosen texts can tell you whether a health insurance lead is a Marketplace fit, a private plan fit, or not a fit at all — before you spend time on a call. What to ask, and what to leave for the phone.",

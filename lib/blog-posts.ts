@@ -56,7 +56,7 @@ export type BlogPost = {
 export const BLOG_POSTS: BlogPost[] = [
   {
     slug: "how-fast-to-text-insurance-leads",
-    metaTitle: "How Fast Should You Text a New Insurance Lead? (Speed-to-Lead) | Text2Sale",
+    metaTitle: "How Fast to Text a New Insurance Lead | Text2Sale",
     title: "How fast should you text a new insurance lead?",
     description:
       "Speed-to-lead decides whether you reach an insurance lead or your competitor does. Here is the data on response windows and how to text every lead within 5 minutes automatically.",
@@ -303,7 +303,7 @@ export const BLOG_POSTS: BlogPost[] = [
 
   {
     slug: "tcpa-compliance-texting-leads",
-    metaTitle: "TCPA Compliance for Texting Leads: What Agents Need to Know | Text2Sale",
+    metaTitle: "TCPA Rules for Texting Leads: Agent Guide | Text2Sale",
     title: "TCPA compliance for texting leads: what agents need to know",
     description:
       "A practical guide to texting leads without TCPA headaches: consent, identification, opt-out handling, quiet hours, and the records you should keep.",

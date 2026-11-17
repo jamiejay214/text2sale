@@ -8,7 +8,7 @@ import type { BlogPost } from "./blog-posts";
 export const BLOG_POSTS_5: BlogPost[] = [
   {
     slug: "best-texting-crm-for-insurance-agents-2026",
-    metaTitle: "How to Choose a Texting CRM for Insurance Agents (2026 Checklist) | Text2Sale",
+    metaTitle: "Texting CRM for Insurance Agents: 2026 Checklist | Text2Sale",
     title: "How to choose a texting CRM for insurance agents: 2026 buyer's checklist",
     description:
       "Compare the features insurance agents need in a texting CRM: fast lead response, calling, campaigns, compliance, calendar booking, and a shared inbox.",
@@ -925,7 +925,7 @@ export const BLOG_POSTS_5: BlogPost[] = [
   },
   {
     slug: "crm-for-purchased-insurance-leads",
-    metaTitle: "CRM for Purchased Insurance Leads: Workflow Guide | Text2Sale",
+    metaTitle: "CRM for Purchased Insurance Leads | Text2Sale",
     title: "How to manage purchased insurance leads in one CRM",
     description:
       "A complete workflow for receiving purchased insurance leads, preserving consent context, texting quickly, calling, following up, and measuring vendors.",

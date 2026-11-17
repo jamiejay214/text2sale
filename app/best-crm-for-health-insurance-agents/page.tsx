@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import SeoLandingPage from "@/components/SeoLandingPage";
 
 export const metadata: Metadata = {
-  title: "Best CRM for Health Insurance Agents: What to Look For | Text2Sale",
+  title: "Best CRM for Health Insurance Agents | Text2Sale",
   description:
     "How to choose a CRM for health insurance agents: speed to lead, texting, dialing, appointment booking, opt-out handling, and the features that actually close more policies.",
   alternates: { canonical: "/best-crm-for-health-insurance-agents" },
