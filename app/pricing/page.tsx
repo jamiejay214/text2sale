@@ -233,7 +233,7 @@ export default function PricingPage() {
             Import opted-in leads, run follow-up campaigns, call, and book appointments from one workspace.
           </p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link href="/?signup=1&plan=complete#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Get started</Link>
+            <Link href="/?signup=1&plan=complete#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Start free trial</Link>
             <Link href="/sales-team-texting-crm" className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-emerald-300">For sales teams &amp; businesses</Link>
           </div>
         </section>

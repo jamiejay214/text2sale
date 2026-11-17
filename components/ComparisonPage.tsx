@@ -75,7 +75,7 @@ export default function ComparisonPage({ competitor }: { competitor: Competitor 
             <li>✓ Month to month</li>
           </ul>
           <div className="mt-6 flex flex-wrap gap-3">
-            <Link href="/?signup=1#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Get started</Link>
+            <Link href="/?signup=1#auth-form" className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Start free trial</Link>
             <Link href="/demo" className="rounded-2xl border border-zinc-600 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">Book a demo</Link>
           </div>
         </div>

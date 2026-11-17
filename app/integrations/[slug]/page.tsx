@@ -29,7 +29,7 @@ export default async function IntegrationPage({ params }: { params: Promise<{ sl
       eyebrow={page.eyebrow}
       title={page.title}
       description={page.description}
-      primaryCta="Get started"
+      primaryCta="Start free trial"
       secondaryCta="All integrations"
       secondaryHref="/integrations"
       sections={page.sections}

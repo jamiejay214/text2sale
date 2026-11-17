@@ -120,7 +120,7 @@ export default function ToolPage({
           <h2 className="text-3xl font-black text-white">{ctaTitle}</h2>
           <p className="mx-auto mt-4 max-w-2xl leading-7 text-zinc-200">{ctaBody}</p>
           <div className="mt-7 flex flex-wrap justify-center gap-3">
-            <Link href="/?signup=1#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Get started</Link>
+            <Link href="/?signup=1#auth-form" className="rounded-xl bg-emerald-300 px-6 py-3 font-black text-zinc-950 hover:bg-emerald-200">Start free trial</Link>
             <Link href={ctaHref} className="rounded-xl border border-zinc-600 px-6 py-3 font-black text-white hover:border-emerald-300">{ctaLabel}</Link>
           </div>
         </section>
