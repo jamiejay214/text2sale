@@ -1,7 +1,7 @@
 // ── Search priority pages ──────────────────────────────────────────────────
 // The sitemap lists only these URLs. Google had crawled 6 of ~450 sitemap
 // URLs (Search Console, Nov 2026), so the sitemap now points crawlers at the
-// pages that sell to insurance agents. Every other page stays live and
+// money, insurance and core industry pages. Every other page stays live and
 // indexable; it is simply held out of the sitemap until these are indexed.
 //
 // `updated` is the date the page's content last changed (from git history,
@@ -29,6 +29,9 @@ export const PRIORITY_PAGES: PriorityPage[] = [
   { path: "/ai-for-insurance-agents", updated: "2026-10-28", priority: 0.8 },
   { path: "/10dlc-compliant-texting", updated: "2026-09-27", priority: 0.8 },
   { path: "/med-spa", updated: "2026-11-16", priority: 0.7 },
+  { path: "/real-estate-texting-crm", updated: "2026-10-20", priority: 0.7 },
+  { path: "/solar-sales-texting-crm", updated: "2026-10-20", priority: 0.7 },
+  { path: "/roofing", updated: "2026-10-21", priority: 0.6 },
 
   // Insurance guides and tools
   { path: "/best-crm-for-health-insurance-agents", updated: "2026-10-28", priority: 0.8 },
@@ -46,6 +49,8 @@ export const PRIORITY_PAGES: PriorityPage[] = [
 
   // Blog hub and on-topic insurance posts
   { path: "/blog", updated: "2026-11-16", priority: 0.7 },
+  { path: "/blog/car-dealership-text-message-marketing", updated: "2026-09-21", priority: 0.5 },
+  { path: "/blog/home-services-text-marketing", updated: "2026-09-21", priority: 0.5 },
   { path: "/blog/how-fast-to-text-insurance-leads", updated: "2026-05-12", priority: 0.7 },
   { path: "/blog/tcpa-compliance-texting-leads", updated: "2026-06-02", priority: 0.7 },
   { path: "/blog/sms-vs-cold-calling-leads", updated: "2026-05-05", priority: 0.7 },

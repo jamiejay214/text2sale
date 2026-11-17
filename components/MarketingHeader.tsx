@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 // One header for every public page: sticky, with a short menu into the
-// insurance product pages, comparisons and key guides. Built on
+// product pages, industries, comparisons and key guides. Built on
 // hover/focus-within and <details>, so it needs no client JavaScript and
 // every link is in the server-rendered HTML.
 //
@@ -24,16 +24,25 @@ const MENUS: Menu[] = [
     ] }],
   },
   {
-    label: "Insurance",
-    columns: [{ links: [
-      { href: "/insurance-agents", label: "All insurance agents" },
-      { href: "/health-insurance-texting-crm", label: "Health insurance" },
-      { href: "/crm-for-aca-agents", label: "ACA agents" },
-      { href: "/life-insurance", label: "Life insurance" },
-      { href: "/final-expense-texting-crm", label: "Final expense" },
-      { href: "/medicare-agent-texting-crm", label: "Medicare" },
-      { href: "/auto-insurance-texting-crm", label: "Auto insurance" },
-    ] }],
+    label: "Industries",
+    columns: [
+      { heading: "Insurance", links: [
+        { href: "/insurance-agents", label: "All insurance agents" },
+        { href: "/health-insurance-texting-crm", label: "Health insurance" },
+        { href: "/crm-for-aca-agents", label: "ACA agents" },
+        { href: "/life-insurance", label: "Life insurance" },
+        { href: "/final-expense-texting-crm", label: "Final expense" },
+        { href: "/medicare-agent-texting-crm", label: "Medicare" },
+        { href: "/auto-insurance-texting-crm", label: "Auto insurance" },
+      ] },
+      { heading: "More industries", links: [
+        { href: "/real-estate-texting-crm", label: "Real estate" },
+        { href: "/solar-sales-texting-crm", label: "Solar" },
+        { href: "/roofing", label: "Home services" },
+        { href: "/blog/car-dealership-text-message-marketing", label: "Car dealerships" },
+        { href: "/med-spa", label: "Med spas" },
+      ] },
+    ],
   },
   {
     label: "Compare",

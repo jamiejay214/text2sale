@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-// Footer links on every public page. Kept to the core insurance pages: this
+// Footer links on every public page. Kept to the core pages: this
 // used to list all ~76 landing pages on every page, spreading crawl attention
 // across pages Google had not indexed. Other pages are reached from links in
 // page bodies, the blog and the hub pages (/insurance-agents, /blog).
@@ -16,13 +16,15 @@ const COLUMNS: { heading: string; links: { href: string; label: string }[] }[] =
     ],
   },
   {
-    heading: "Insurance",
+    heading: "Industries",
     links: [
       { href: "/insurance-agents", label: "Insurance agents" },
       { href: "/health-insurance-texting-crm", label: "Health insurance" },
-      { href: "/crm-for-aca-agents", label: "ACA agents" },
       { href: "/life-insurance", label: "Life insurance" },
-      { href: "/final-expense-texting-crm", label: "Final expense" },
+      { href: "/real-estate-texting-crm", label: "Real estate" },
+      { href: "/solar-sales-texting-crm", label: "Solar" },
+      { href: "/roofing", label: "Home services" },
+      { href: "/med-spa", label: "Med spas" },
     ],
   },
   {
