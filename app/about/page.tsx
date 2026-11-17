@@ -30,10 +30,10 @@ export default function AboutPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
       />
       <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
+        <Link href="/" className="text-sm font-semibold text-violet-300 hover:text-violet-200">
           ← Back to Text2Sale
         </Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">About Text2Sale</p>
+        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-violet-300">About Text2Sale</p>
         <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">
           Built to turn lead follow-up into booked conversations.
         </h1>
@@ -65,7 +65,7 @@ export default function AboutPage() {
           </p>
 
           <h2 className="mt-12 text-3xl font-black">Product facts</h2>
-          <ul className="mt-5 list-disc space-y-3 pl-6 leading-7 text-zinc-300 marker:text-emerald-400">
+          <ul className="mt-5 list-disc space-y-3 pl-6 leading-7 text-zinc-300 marker:text-violet-400">
             <li>Web-based CRM at text2sale.com</li>
             <li>Mass SMS campaigns and two-way messaging</li>
             <li>Manual, power, and predictive dialing</li>

@@ -73,7 +73,7 @@ const DISPOSITION_BUTTONS: Array<{
   tone: string;
   icon: string;
 }> = [
-  { key: "interested",     label: "Interested",      sub: "I",   tone: "from-emerald-500 to-green-500", icon: "🔥" },
+  { key: "interested",     label: "Interested",      sub: "I",   tone: "from-violet-500 to-green-500", icon: "🔥" },
   { key: "voicemail",      label: "Voicemail",       sub: "V",   tone: "from-indigo-500 to-purple-500", icon: "📭" },
   { key: "callback",       label: "Callback",        sub: "C",   tone: "from-sky-500 to-cyan-500",      icon: "↩️" },
   { key: "not_interested", label: "Not interested",  sub: "N",   tone: "from-amber-500 to-orange-500",  icon: "✋" },
@@ -222,7 +222,7 @@ export default function PowerDialer(props: Props) {
 
   const statusTone = (() => {
     if (!activeCall) return "from-violet-500 to-fuchsia-500";
-    if (activeCall.status === "answered")   return "from-emerald-500 to-green-500";
+    if (activeCall.status === "answered")   return "from-violet-500 to-green-500";
     if (activeCall.status === "ringing")    return "from-violet-500 to-fuchsia-500";
     if (activeCall.status === "initiating") return "from-sky-500 to-cyan-500";
     if (activeCall.status === "failed")     return "from-red-500 to-rose-500";
@@ -249,7 +249,7 @@ export default function PowerDialer(props: Props) {
               </div>
               {/* Live auto-advance state */}
               <div className="ml-3 hidden items-center gap-2 rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1 text-[11px] text-zinc-300 md:flex">
-                <span className={`h-1.5 w-1.5 rounded-full ${paused ? "bg-amber-400" : "bg-emerald-400 animate-pulse"}`}></span>
+                <span className={`h-1.5 w-1.5 rounded-full ${paused ? "bg-amber-400" : "bg-violet-400 animate-pulse"}`}></span>
                 {paused ? "Paused" : autoAdvance ? "Auto-advancing" : "Manual mode"}
               </div>
             </div>
@@ -268,7 +268,7 @@ export default function PowerDialer(props: Props) {
                 onClick={() => onPausedChange(!paused)}
                 className={`rounded-full px-3 py-1.5 text-[11px] font-semibold ${
                   paused
-                    ? "bg-emerald-500 text-white hover:bg-emerald-400"
+                    ? "bg-violet-500 text-white hover:bg-violet-400"
                     : "bg-amber-500 text-black hover:bg-amber-400"
                 }`}
               >
@@ -381,7 +381,7 @@ export default function PowerDialer(props: Props) {
                   <button
                     onClick={() => entry && onStart(entry, selectedFromNumber)}
                     disabled={!selectedFromNumber || paused || entry.dnc}
-                    className="col-span-2 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-500 px-4 py-4 text-base font-bold text-white shadow-lg shadow-emerald-500/30 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="col-span-2 rounded-2xl bg-gradient-to-r from-violet-500 to-green-500 px-4 py-4 text-base font-bold text-white shadow-lg shadow-violet-500/30 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {entry.dnc ? "Skip — DNC flagged" : "Dial now (Space)"}
                   </button>

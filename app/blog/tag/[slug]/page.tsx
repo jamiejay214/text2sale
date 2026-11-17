@@ -97,14 +97,14 @@ export default async function BlogTagPage({
 
       <section className="mx-auto max-w-5xl px-6 pt-16">
         <nav className="text-sm text-zinc-500">
-          <Link href="/" className="font-semibold text-emerald-300 hover:text-emerald-200">Text2Sale</Link>
+          <Link href="/" className="font-semibold text-violet-300 hover:text-violet-200">Text2Sale</Link>
           <span className="mx-2">/</span>
-          <Link href="/blog" className="font-semibold text-emerald-300 hover:text-emerald-200">Blog</Link>
+          <Link href="/blog" className="font-semibold text-violet-300 hover:text-violet-200">Blog</Link>
           <span className="mx-2">/</span>
           <span className="text-zinc-400">{tag.label}</span>
         </nav>
 
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Topic</p>
+        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-violet-300">Topic</p>
         <h1 className="mt-4 max-w-3xl text-4xl font-black tracking-tight md:text-5xl">{tag.label}</h1>
         {intro ? (
           intro.intro.map((paragraph, i) => (
@@ -123,7 +123,7 @@ export default async function BlogTagPage({
           {intro?.landing && (
             <>
               <span className="mx-2">·</span>
-              <Link href={intro.landing.href} className="font-semibold text-emerald-300 hover:text-emerald-200">
+              <Link href={intro.landing.href} className="font-semibold text-violet-300 hover:text-violet-200">
                 {intro.landing.label} →
               </Link>
             </>
@@ -137,15 +137,15 @@ export default async function BlogTagPage({
             <Link
               key={post.slug}
               href={`/blog/${post.slug}`}
-              className="group flex flex-col rounded-3xl border border-zinc-800 bg-zinc-900/40 p-7 transition hover:border-emerald-400/40 hover:bg-zinc-900"
+              className="group flex flex-col rounded-3xl border border-zinc-800 bg-zinc-900/40 p-7 transition hover:border-violet-400/40 hover:bg-zinc-900"
             >
-              <h2 className="text-2xl font-black tracking-tight group-hover:text-emerald-200">{post.title}</h2>
+              <h2 className="text-2xl font-black tracking-tight group-hover:text-violet-200">{post.title}</h2>
               <p className="mt-3 flex-1 leading-7 text-zinc-400">{post.excerpt}</p>
               <p className="mt-5 text-sm text-zinc-500">
                 <time dateTime={post.datePublished}>{formatDate(post.datePublished)}</time>
                 <span className="mx-2">·</span>
                 {post.readMinutes} min read
-                <span className="ml-3 font-semibold text-emerald-300 group-hover:text-emerald-200">Read →</span>
+                <span className="ml-3 font-semibold text-violet-300 group-hover:text-violet-200">Read →</span>
               </p>
             </Link>
           ))}
@@ -159,14 +159,14 @@ export default async function BlogTagPage({
             <Link
               key={t.slug}
               href={`/blog/tag/${t.slug}`}
-              className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:border-emerald-300 hover:text-emerald-300"
+              className="rounded-full border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 transition hover:border-violet-300 hover:text-violet-300"
             >
               {t.label} <span className="text-zinc-500">{t.count}</span>
             </Link>
           ))}
           <Link
             href="/blog"
-            className="rounded-full border border-emerald-400/40 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-400/10"
+            className="rounded-full border border-violet-400/40 px-4 py-2 text-sm font-semibold text-violet-300 hover:bg-violet-400/10"
           >
             All guides →
           </Link>

@@ -22,11 +22,11 @@ export default function SmsCostCalculator() {
     return { ...analysis, segments, totalSegments, cost: totalSegments * rate, perContact: segments * Math.max(steps, 0) * rate };
   }, [message, contacts, steps, rate]);
 
-  const input = "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20";
+  const input = "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20";
 
   return (
-    <div className="rounded-[2rem] border border-emerald-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
-      <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Free tool</p>
+    <div className="rounded-[2rem] border border-violet-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-violet-950/30 sm:p-8">
+      <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-300">Free tool</p>
       <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">SMS segment & campaign cost calculator</h2>
 
       <label htmlFor="sms-cost-message" className="mt-7 block text-sm font-bold text-zinc-200">Your message</label>

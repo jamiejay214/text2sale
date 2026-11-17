@@ -272,7 +272,7 @@ export default function HomeDepth() {
             <h2>Get 30 insurance follow-up texts you can send today.</h2>
             <p className="sub">First-touch texts, quote follow-ups, no-show recoveries and old-lead reactivation messages, written to be edited in a minute. Enter your name and email and the full pack unlocks.</p>
           </div>
-          <div className="magnet">
+          <div className="magnet public-theme">
             <LeadMagnet />
           </div>
         </div>

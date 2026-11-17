@@ -6,14 +6,14 @@ import type { ReactNode } from "react";
 // styling of SmsCharacterCounter.
 
 export const inputClass =
-  "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20";
+  "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20";
 
 export function ToolCard({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return (
-    <div className="rounded-[2rem] border border-emerald-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
+    <div className="rounded-[2rem] border border-violet-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-violet-950/30 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Free tool</p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-300">Free tool</p>
           <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">{title}</h2>
         </div>
         {action}

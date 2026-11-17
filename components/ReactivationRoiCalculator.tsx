@@ -46,16 +46,16 @@ export default function ReactivationRoiCalculator() {
     return { contacted, replies, appointments, sales, revenue, textCost, roi: textCost > 0 ? revenue / textCost : 0 };
   }, [values]);
 
-  const input = "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20";
+  const input = "mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20";
 
   return (
-    <div className="rounded-[2rem] border border-emerald-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
+    <div className="rounded-[2rem] border border-violet-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-violet-950/30 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Free tool</p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-300">Free tool</p>
           <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">Lead reactivation ROI calculator</h2>
         </div>
-        <button type="button" onClick={() => setValues(DEFAULTS)} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-emerald-300 hover:text-emerald-200">
+        <button type="button" onClick={() => setValues(DEFAULTS)} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-violet-300 hover:text-violet-200">
           Reset example
         </button>
       </div>
@@ -95,8 +95,8 @@ export default function ReactivationRoiCalculator() {
         ))}
       </div>
 
-      <div className="mt-5 rounded-2xl border border-emerald-300/30 bg-emerald-300/10 p-5">
-        <p className="text-xs font-bold uppercase tracking-[0.14em] text-emerald-200">Return on texting spend</p>
+      <div className="mt-5 rounded-2xl border border-violet-300/30 bg-violet-300/10 p-5">
+        <p className="text-xs font-bold uppercase tracking-[0.14em] text-violet-200">Return on texting spend</p>
         <p className="mt-2 text-3xl font-black text-white">{result.roi > 0 ? `${result.roi.toFixed(1)}x` : "—"}</p>
         <p className="mt-2 text-sm leading-6 text-zinc-300">
           Revenue divided by outbound texting cost at ${STANDARD_SMS_RATE_PER_SEGMENT} per one-segment text. It does not include your software plan, agent time or what you originally paid for the leads.

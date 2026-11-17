@@ -72,7 +72,7 @@ export default function CallHud({ call, onHangup, onClose, onMute, onUnmute }: P
   const statusMeta: Record<CallHudState["status"], { label: string; tint: string; pulse: boolean }> = {
     initiating: { label: "Starting call…", tint: "from-sky-500 to-cyan-500", pulse: true },
     ringing: { label: call?.browserMode ? "Calling…" : "Ringing your phone…", tint: "from-violet-500 to-fuchsia-500", pulse: true },
-    answered: { label: "On the line", tint: "from-emerald-500 to-green-500", pulse: true },
+    answered: { label: "On the line", tint: "from-violet-500 to-green-500", pulse: true },
     completed: { label: "Call ended", tint: "from-zinc-500 to-zinc-600", pulse: false },
     "no-answer": { label: "No answer", tint: "from-amber-500 to-orange-500", pulse: false },
     busy: { label: "Busy", tint: "from-amber-500 to-orange-500", pulse: false },

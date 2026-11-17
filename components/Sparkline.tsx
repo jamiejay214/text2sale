@@ -13,8 +13,8 @@ type Props = {
   values: number[];
   width?: number;
   height?: number;
-  stroke?: string;        // e.g. "#34d399" (emerald-400)
-  fill?: string;          // matching translucent color, e.g. "rgba(52,211,153,0.18)"
+  stroke?: string;        // e.g. "#c9b1ea" (violet-400)
+  fill?: string;          // matching translucent color, e.g. "rgba(201,177,234,0.18)"
   strokeWidth?: number;
   className?: string;
 };

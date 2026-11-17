@@ -13,7 +13,7 @@ export default function TermsPage() {
   return (
     <main className="public-theme min-h-screen bg-zinc-950 text-white">
       <div className="mx-auto max-w-3xl px-6 py-16">
-        <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm text-lime-300 hover:text-lime-200">
+        <Link href="/" className="mb-8 inline-flex items-center gap-2 text-sm text-amber-300 hover:text-amber-200">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           Back to {LEGAL_COMPANY}
         </Link>

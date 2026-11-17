@@ -27,8 +27,8 @@ type Particle = {
 };
 
 const COLORS = [
-  "#10b981", // emerald
-  "#34d399", // emerald-light
+  "#b790f1", // emerald
+  "#c9b1ea", // emerald-light
   "#f59e0b", // amber
   "#ef4444", // red
   "#8b5cf6", // violet
@@ -218,7 +218,7 @@ export default function WinCelebration({ active, message, onDone }: Props) {
     <div className="pointer-events-none fixed inset-0 z-[200]">
       {/* DRAMATIC animated background — multiple color wash layers */}
       <div className="absolute inset-0 animate-[winBg_10s_ease-in-out_forwards]">
-        <div className="absolute inset-0 bg-gradient-to-br from-emerald-600 via-violet-600 to-pink-600" />
+        <div className="absolute inset-0 bg-gradient-to-br from-violet-600 via-violet-600 to-pink-600" />
         <div className="absolute inset-0 bg-gradient-to-tr from-amber-500/60 via-transparent to-cyan-500/60" />
       </div>
 

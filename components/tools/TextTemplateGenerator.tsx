@@ -132,17 +132,17 @@ export default function TextTemplateGenerator() {
                   setTimeout(() => setCopiedIndex(null), 1500);
                 }
               }}
-              className="shrink-0 rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-emerald-300 hover:text-emerald-200"
+              className="shrink-0 rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-violet-300 hover:text-violet-200"
             >
               {copiedIndex === index ? "Copied" : "Copy"}
             </button>
           </li>
         ))}
       </ul>
-      <div className="mt-6 rounded-2xl border border-emerald-300/30 p-4">
+      <div className="mt-6 rounded-2xl border border-violet-300/30 p-4">
         <h3 className="font-bold text-white">Share these examples with your team</h3>
         <p className="mt-1 text-sm text-zinc-300">The link opens this situation and insurance product. Your name and agency stay on this page.</p>
-        <button type="button" className="mt-3 rounded-xl bg-emerald-300 px-4 py-2 font-bold text-zinc-950" onClick={async () => {
+        <button type="button" className="mt-3 rounded-full bg-violet-600 px-4 py-2 font-bold text-white" onClick={async () => {
           const url = new URL("/insurance-text-templates", window.location.origin);
           url.hash = new URLSearchParams({ scenario, product }).toString();
           setShareStatus(await copyText(url.href) ? "Link copied" : url.href);

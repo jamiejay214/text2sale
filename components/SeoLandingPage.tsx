@@ -126,20 +126,20 @@ export default function SeoLandingPage({
       )}
 
       {customHero ?? <section className="mx-auto max-w-5xl px-6 py-20">
-        <Link href="/" className="text-sm font-semibold text-emerald-300 hover:text-emerald-200">
+        <Link href="/" className="text-sm font-semibold text-violet-300 hover:text-violet-200">
           ← Back to Text2Sale
         </Link>
-        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">{eyebrow}</p>
+        <p className="mt-10 text-sm font-bold uppercase tracking-[0.25em] text-violet-300">{eyebrow}</p>
         <h1 className="mt-4 max-w-4xl text-5xl font-black tracking-tight md:text-6xl">{title}</h1>
         <p className="mt-6 max-w-3xl text-lg leading-8 text-zinc-300">{description}</p>
         <div className="mt-8 flex flex-wrap gap-3">
-          <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">
+          <Link href={primaryHref} className="rounded-full bg-violet-600 px-6 py-3 font-bold text-white hover:bg-violet-500">
             {primaryCta}
           </Link>
-          <Link href={secondaryHref} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">
+          <Link href={secondaryHref} className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-violet-300">
             {secondaryCta}
           </Link>
-          <Link href="/demo" className="px-2 py-3 font-bold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">
+          <Link href="/demo" className="px-2 py-3 font-bold text-violet-300 underline underline-offset-4 hover:text-violet-200">
             Book a demo
           </Link>
         </div>
@@ -167,7 +167,7 @@ export default function SeoLandingPage({
               <li key={step.title} className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-5">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={`/home/icons/${step.icon}.svg`} alt={`${step.title} icon`} width={48} height={48} loading="lazy" className="rounded-xl" />
-                <p className="mt-4 text-xs font-bold uppercase tracking-widest text-emerald-300">Step {index + 1}</p>
+                <p className="mt-4 text-xs font-bold uppercase tracking-widest text-violet-300">Step {index + 1}</p>
                 <h3 className="mt-1 text-lg font-bold">{step.title}</h3>
                 <p className="mt-2 text-sm leading-6 text-zinc-400">{step.body}</p>
               </li>
@@ -195,7 +195,7 @@ export default function SeoLandingPage({
                 </p>
               ))}
               {part.bullets && part.bullets.length > 0 && (
-                <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-zinc-300 marker:text-emerald-400">
+                <ul className="mt-4 list-disc space-y-2 pl-6 leading-7 text-zinc-300 marker:text-violet-400">
                   {part.bullets.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
@@ -214,15 +214,15 @@ export default function SeoLandingPage({
             <div className="mt-8 grid gap-4 md:grid-cols-2">
               {extras.templates.map((template) => (
                 <figure key={template.label} className="rounded-3xl border border-zinc-800 bg-zinc-950 p-5">
-                  <figcaption className="text-xs font-bold uppercase tracking-widest text-emerald-300">{template.label}</figcaption>
-                  <blockquote className="mt-3 rounded-2xl rounded-bl-sm bg-emerald-400/10 px-4 py-3 leading-7 text-zinc-100">{template.text}</blockquote>
+                  <figcaption className="text-xs font-bold uppercase tracking-widest text-violet-300">{template.label}</figcaption>
+                  <blockquote className="mt-3 rounded-2xl rounded-bl-sm bg-violet-400/10 px-4 py-3 leading-7 text-zinc-100">{template.text}</blockquote>
                 </figure>
               ))}
             </div>
             <div className="mt-8 flex flex-wrap gap-3">
-              <Link href={primaryHref} className="rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300">Start free trial</Link>
-              <Link href="/demo" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-emerald-300">Book a demo</Link>
-              <Link href="/insurance-text-templates" className="px-2 py-3 font-bold text-emerald-300 underline underline-offset-4 hover:text-emerald-200">More free templates</Link>
+              <Link href={primaryHref} className="rounded-full bg-violet-600 px-6 py-3 font-bold text-white hover:bg-violet-500">Start free trial</Link>
+              <Link href="/demo" className="rounded-2xl border border-zinc-700 px-6 py-3 font-bold text-zinc-100 hover:border-violet-300">Book a demo</Link>
+              <Link href="/insurance-text-templates" className="px-2 py-3 font-bold text-violet-300 underline underline-offset-4 hover:text-violet-200">More free templates</Link>
             </div>
           </div>
         </section>
@@ -243,7 +243,7 @@ export default function SeoLandingPage({
 
       {noteTitle && noteBody && (
         <section className="mx-auto max-w-5xl px-6 pb-10">
-          <div className="rounded-3xl border border-emerald-400/30 bg-emerald-400/10 p-6">
+          <div className="rounded-3xl border border-violet-400/30 bg-violet-400/10 p-6">
             <h2 className="text-2xl font-bold">{noteTitle}</h2>
             <p className="mt-3 leading-7 text-zinc-300">{noteBody}</p>
           </div>
@@ -255,8 +255,8 @@ export default function SeoLandingPage({
           <h2 className="text-3xl font-black">Frequently asked questions</h2>
           <div className="mt-8 space-y-4">
             {faq.map((item) => (
-              <details key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 open:border-emerald-400/30">
-                <summary className="cursor-pointer font-bold text-zinc-100 marker:text-emerald-400">
+              <details key={item.question} className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-6 open:border-violet-400/30">
+                <summary className="cursor-pointer font-bold text-zinc-100 marker:text-violet-400">
                   {item.question}
                 </summary>
                 <p className="mt-4 leading-7 text-zinc-400">{item.answer}</p>
@@ -274,7 +274,7 @@ export default function SeoLandingPage({
               <Link
                 key={page.href}
                 href={page.href}
-                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-emerald-300 hover:text-emerald-300"
+                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-300 hover:text-violet-300"
               >
                 {page.label}
               </Link>
@@ -292,14 +292,14 @@ export default function SeoLandingPage({
             <Link
               key={post.href}
               href={post.href}
-              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-emerald-300 hover:text-emerald-300"
+              className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-300 hover:border-violet-300 hover:text-violet-300"
             >
               {post.label}
             </Link>
           ))}
           <Link
             href="/blog"
-            className="rounded-xl border border-emerald-400/40 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-400/10"
+            className="rounded-xl border border-violet-400/40 px-4 py-2 text-sm font-semibold text-violet-300 hover:bg-violet-400/10"
           >
             All guides →
           </Link>

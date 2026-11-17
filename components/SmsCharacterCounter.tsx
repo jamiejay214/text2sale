@@ -40,16 +40,16 @@ export default function SmsCharacterCounter() {
   const result = useMemo(() => analyzeMessage(message), [message]);
 
   return (
-    <div className="rounded-[2rem] border border-emerald-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
+    <div className="rounded-[2rem] border border-violet-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-violet-950/30 sm:p-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Free tool</p>
+          <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-300">Free tool</p>
           <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">SMS character & segment counter</h2>
         </div>
         <button
           type="button"
           onClick={() => setMessage(SAMPLE)}
-          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-emerald-300 hover:text-emerald-200"
+          className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-bold text-zinc-200 transition hover:border-violet-300 hover:text-violet-200"
         >
           Load an example
         </button>
@@ -64,7 +64,7 @@ export default function SmsCharacterCounter() {
         onChange={(event) => setMessage(event.target.value)}
         placeholder="Type your campaign message here..."
         rows={7}
-        className="mt-2 w-full resize-y rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-4 text-base leading-7 text-white outline-none placeholder:text-zinc-500 focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20"
+        className="mt-2 w-full resize-y rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-4 text-base leading-7 text-white outline-none placeholder:text-zinc-500 focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20"
       />
 
       <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-live="polite">

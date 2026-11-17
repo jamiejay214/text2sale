@@ -67,8 +67,8 @@ export default function QuietHoursChecker() {
   const open = local ? local.hour >= start && local.hour < rule.end : null;
 
   return (
-    <div className="rounded-[2rem] border border-emerald-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-emerald-950/30 sm:p-8">
-      <p className="text-sm font-bold uppercase tracking-[0.18em] text-emerald-300">Free tool</p>
+    <div className="rounded-[2rem] border border-violet-400/20 bg-zinc-950/80 p-5 shadow-2xl shadow-violet-950/30 sm:p-8">
+      <p className="text-sm font-bold uppercase tracking-[0.18em] text-violet-300">Free tool</p>
       <h2 className="mt-2 text-2xl font-black text-white sm:text-3xl">Can I text or call this lead right now?</h2>
 
       <label htmlFor="quiet-hours-state" className="mt-7 block text-sm font-bold text-zinc-200">Lead&apos;s state</label>
@@ -76,7 +76,7 @@ export default function QuietHoursChecker() {
         id="quiet-hours-state"
         value={state}
         onChange={(event) => setState(event.target.value)}
-        className="mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-emerald-300 focus:ring-2 focus:ring-emerald-300/20 sm:max-w-sm"
+        className="mt-2 w-full rounded-2xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-violet-300 focus:ring-2 focus:ring-violet-300/20 sm:max-w-sm"
       >
         {STATES.map((code) => (
           <option key={code} value={code}>{STATE_NAMES[code]}</option>
@@ -92,7 +92,7 @@ export default function QuietHoursChecker() {
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Allowed window today</p>
           <p className="mt-2 text-xl font-black text-white">{hourLabel(start)} – {hourLabel(rule.end)}</p>
         </div>
-        <div className={`rounded-2xl border p-4 ${open === null ? "border-zinc-800 bg-zinc-900/80" : open ? "border-emerald-300/40 bg-emerald-300/10" : "border-rose-300/40 bg-rose-300/10"}`}>
+        <div className={`rounded-2xl border p-4 ${open === null ? "border-zinc-800 bg-zinc-900/80" : open ? "border-violet-300/40 bg-violet-300/10" : "border-rose-300/40 bg-rose-300/10"}`}>
           <p className="text-xs font-bold uppercase tracking-[0.14em] text-zinc-400">Status</p>
           <p className="mt-2 text-xl font-black text-white">
             {open === null ? "Checking…" : open ? "Inside the window" : local!.hour < start ? `Wait until ${hourLabel(start)}` : "Closed until tomorrow"}

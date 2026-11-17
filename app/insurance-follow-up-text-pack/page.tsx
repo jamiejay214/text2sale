@@ -17,7 +17,7 @@ function Group({ group }: { group: TextGroup }) {
     <section className="rounded-3xl border border-zinc-800 bg-zinc-900/60 p-6">
       <h2 className="text-2xl font-black text-white">{group.title}</h2>
       <p className="mt-1 text-sm text-zinc-400">{group.when}</p>
-      <ol className="mt-5 list-decimal space-y-3 pl-6 leading-7 text-zinc-200 marker:font-bold marker:text-emerald-300">
+      <ol className="mt-5 list-decimal space-y-3 pl-6 leading-7 text-zinc-200 marker:font-bold marker:text-violet-300">
         {group.texts.map((text) => <li key={text}>{text} Reply STOP to opt out.</li>)}
       </ol>
     </section>
@@ -31,7 +31,7 @@ export default function Page() {
       <MarketingHeader />
       <article className="mx-auto max-w-4xl space-y-8 px-6 py-16">
         <header>
-          <p className="text-sm font-bold uppercase tracking-[0.25em] text-emerald-300">Free resource</p>
+          <p className="text-sm font-bold uppercase tracking-[0.25em] text-violet-300">Free resource</p>
           <h1 className="mt-4 text-4xl font-black tracking-tight md:text-6xl">30 insurance follow-up texts that sound like a person</h1>
           <p className="mt-6 text-lg leading-8 text-zinc-300">
             Ready-to-send texts for every stage of a lead: first contact, missed calls, aged leads, quotes, appointments and clients. Each one names your agency, asks one easy question and includes opt-out language. Swap in your details where you see {"{first}"}, {"{agent}"}, {"{agency}"}, {"{product}"} and {"{time}"}.
@@ -44,7 +44,7 @@ export default function Page() {
           <div className="space-y-8">
             {rest.map((group) => <Group key={group.title} group={group} />)}
             <p className="leading-7 text-zinc-300">
-              Want these personalized? Use the <Link className="text-emerald-300 underline" href="/insurance-text-templates">text template generator</Link>, or load them as a sequence with the <Link className="text-emerald-300 underline" href="/follow-up-cadence-generator">follow-up cadence generator</Link>.
+              Want these personalized? Use the <Link className="text-violet-300 underline" href="/insurance-text-templates">text template generator</Link>, or load them as a sequence with the <Link className="text-violet-300 underline" href="/follow-up-cadence-generator">follow-up cadence generator</Link>.
             </p>
           </div>
         </ResourceGate>
@@ -52,7 +52,7 @@ export default function Page() {
         <section className="space-y-3 leading-7 text-zinc-300">
           <h2 className="text-2xl font-black text-white">How to use these texts</h2>
           <p>Only text leads whose consent covers texts from your business, keep messages inside the lead&apos;s local quiet hours, and stop all automation the moment someone opts out. Send to small batches first and watch replies and opt-outs before scaling.</p>
-          <p>See also: <Link className="text-emerald-300 underline" href="/how-to-text-aged-leads">how to text aged leads</Link> · <Link className="text-emerald-300 underline" href="/quiet-hours-checker">quiet hours checker</Link> · <Link className="text-emerald-300 underline" href="/aged-lead-reactivation-playbook">aged lead reactivation playbook</Link></p>
+          <p>See also: <Link className="text-violet-300 underline" href="/how-to-text-aged-leads">how to text aged leads</Link> · <Link className="text-violet-300 underline" href="/quiet-hours-checker">quiet hours checker</Link> · <Link className="text-violet-300 underline" href="/aged-lead-reactivation-playbook">aged lead reactivation playbook</Link></p>
         </section>
 
         <NewsletterSignup />

@@ -7,7 +7,7 @@ import SiteLinks from "@/components/SiteLinks";
 // links pointing at them.
 export default function MarketingFooter() {
   return (
-    <footer className="border-t border-zinc-800 bg-zinc-950 text-white">
+    <footer className="public-theme border-t border-zinc-800 bg-zinc-950 text-white">
       <SiteLinks />
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 sm:flex-row">
         <div className="text-sm text-zinc-500">© {new Date().getFullYear()} Text2Sale. All rights reserved.</div>

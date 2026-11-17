@@ -68,24 +68,24 @@ export default function AppointmentDemo() {
     setRunning(true);
   };
   return (
-    <section id="ai-booking-demo" className="border-y border-emerald-800 bg-[#0b241b] px-6 py-16 text-white">
+    <section id="ai-booking-demo" className="public-theme border-y border-violet-100 px-6 py-16 text-white">
       <div className="mx-auto grid max-w-6xl gap-10 md:grid-cols-2">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-widest text-lime-200">From old lead to next appointment</p>
+          <p className="text-sm font-semibold uppercase tracking-widest text-amber-200">From old lead to next appointment</p>
           <h2 className="mt-4 text-3xl font-bold md:text-4xl">Watch AI Book an Appointment</h2>
-          <p className="mt-5 text-base leading-7 text-emerald-100">See the flow: start a conversation, work through objections, offer a time, and confirm the appointment.</p>
-          <p className="mt-4 text-sm leading-6 text-emerald-200">Illustrative, scripted demo. No messages are sent and no real appointment is created. Your live workflow uses your instructions, connected calendar, and availability.</p>
-          <button type="button" onClick={play} className="mt-6 rounded-xl bg-lime-300 px-6 py-3 font-bold text-emerald-950">{hasPlayed ? "Play another example" : "Play appointment demo"}</button>
-          <Link className="ml-4 mt-6 inline-block font-semibold text-lime-200 underline" href="/?signup=1#auth-form">Start Texting Leads</Link>
+          <p className="mt-5 text-base leading-7 text-violet-100">See the flow: start a conversation, work through objections, offer a time, and confirm the appointment.</p>
+          <p className="mt-4 text-sm leading-6 text-violet-200">Illustrative, scripted demo. No messages are sent and no real appointment is created. Your live workflow uses your instructions, connected calendar, and availability.</p>
+          <button type="button" onClick={play} className="mt-6 rounded-full bg-violet-600 px-6 py-3 font-bold text-white">{hasPlayed ? "Play another example" : "Play appointment demo"}</button>
+          <Link className="ml-4 mt-6 inline-block font-semibold text-amber-200 underline" href="/?signup=1#auth-form">Start Texting Leads</Link>
         </div>
-        <div className="rounded-2xl border border-emerald-700 bg-emerald-950 p-5">
-          <p className="mb-4 text-sm font-semibold text-emerald-200">{label} · Example {scenarioIndex + 1} of {scenarios.length}</p>
+        <div className="rounded-2xl border border-violet-700 bg-violet-950 p-5">
+          <p className="mb-4 text-sm font-semibold text-violet-200">{label} · Example {scenarioIndex + 1} of {scenarios.length}</p>
           <div aria-live="polite" aria-atomic="false" className="space-y-3">
-            {step === 0 && <p className="text-base text-emerald-100">Press play to follow the conversation.</p>}
-            {messages.slice(0, step).map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.speaker === AI ? "bg-emerald-800" : "ml-8 bg-white/10"}`}><span className="block font-semibold text-lime-200">{message.speaker}</span>{message.text}</div>)}
-            {complete && <p className="rounded-xl border border-lime-300 p-4 font-semibold text-lime-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Added to Google Calendar</span></p>}
+            {step === 0 && <p className="text-base text-violet-100">Press play to follow the conversation.</p>}
+            {messages.slice(0, step).map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.speaker === AI ? "bg-violet-800" : "ml-8 bg-white/10"}`}><span className="block font-semibold text-amber-200">{message.speaker}</span>{message.text}</div>)}
+            {complete && <p className="rounded-xl border border-amber-300 p-4 font-semibold text-amber-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Added to Google Calendar</span></p>}
           </div>
-          {running && !complete && <button type="button" onClick={() => { setStep(messages.length); setRunning(false); }} className="mt-4 text-sm text-lime-200 underline">Show full conversation</button>}
+          {running && !complete && <button type="button" onClick={() => { setStep(messages.length); setRunning(false); }} className="mt-4 text-sm text-amber-200 underline">Show full conversation</button>}
         </div>
       </div>
     </section>
