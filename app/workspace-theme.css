@@ -1,43 +1,43 @@
 /* Text2Sale: one visual language across the live CRM, billing, and owner console. */
 .crm-theme {
-  --crm-accent: #176449;
-  --crm-lime: #d6f584;
-  --crm-ink: #153c30;
+  --crm-accent: #673cbd;
+  --crm-lime: #ffdf75;
+  --crm-ink: #331b63;
 }
 .crm-theme.t2s-light {
-  --t2s-canvas: #f5f7f3;
+  --t2s-canvas: #faf4ff;
   --t2s-panel: #fff;
-  --t2s-panel-2: #f2f5ef;
-  --t2s-panel-3: #edf1e9;
-  --t2s-line: #dde5d9;
-  --t2s-line-strong: #c6d4c1;
-  background: #f5f7f3;
-  color: #193e31;
+  --t2s-panel-2: #f8f2ff;
+  --t2s-panel-3: #f4edfb;
+  --t2s-line: #e8dff2;
+  --t2s-line-strong: #dfc5ff;
+  background: #faf4ff;
+  color: #351d65;
 }
 .crm-theme.admin-console {
-  background: #0b1f18;
-  color: #f4faf5;
+  background: #170535;
+  color: #fcf6ff;
 }
 .crm-theme.admin-console ::selection {
-  background: #d9f779;
-  color: #153f32;
+  background: #ffe070;
+  color: #361c69;
 }
 .crm-theme:not(.marketing-site) [class*="bg-violet-6"],
 .crm-theme:not(.marketing-site) [class*="bg-violet-5"],
 .crm-theme:not(.marketing-site) [class*="bg-gradient-to-"][class*="from-violet"],
 .crm-theme:not(.marketing-site) button[class*="bg-gradient-to-"][class*="from-cyan"] {
   background-image: none !important;
-  background-color: #176449 !important;
+  background-color: #673cbd !important;
   color: #fff !important;
   box-shadow: none !important;
 }
 .crm-theme:not(.marketing-site) [class*="text-violet-"],
 .crm-theme:not(.marketing-site) [class*="text-fuchsia-"] {
-  color: #7bd9a7;
+  color: #d5bcf5;
 }
 .crm-theme.t2s-light:not(.marketing-site) [class*="text-violet-"],
 .crm-theme.t2s-light:not(.marketing-site) [class*="text-fuchsia-"] {
-  color: #176449 !important;
+  color: #673cbd !important;
 }
 .crm-theme:not(.marketing-site) [class*="shadow-violet-"],
 .crm-theme:not(.marketing-site) [class*="shadow-cyan-"] {
@@ -53,7 +53,7 @@
 .crm-theme:not(.marketing-site) input:focus-visible,
 .crm-theme:not(.marketing-site) textarea:focus-visible,
 .crm-theme:not(.marketing-site) select:focus-visible {
-  outline: 2px solid #79b494;
+  outline: 2px solid #bc95f6;
   outline-offset: 2px;
 }
 .workspace-app {
@@ -68,13 +68,13 @@
   position: fixed;
   inset: 0 auto 0 0;
   width: 238px;
-  background: #112e25;
-  color: #d5dfd7;
+  background: #25124c;
+  color: #e1dae9;
   z-index: 45;
   display: flex;
   flex-direction: column;
   padding: 27px 16px 14px;
-  border-right: 1px solid #294639;
+  border-right: 1px solid #4b3375;
 }
 .workspace-brand {
   display: inline-flex;
@@ -92,13 +92,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: #d6f584;
-  color: #163c2c;
+  background: #ffdf75;
+  color: #321967;
   border-radius: 9px;
 }
 .brand-dot {
   margin-left: -8px;
-  color: #d6f584;
+  color: #ffdf75;
 }
 .workspace-sidebar > .workspace-brand {
   padding-left: 8px;
@@ -107,15 +107,15 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  background: #1c3c30;
-  border: 1px solid #345141;
+  background: #341d5f;
+  border: 1px solid #573d84;
   border-radius: 12px;
   padding: 12px 10px;
   margin: 27px 0 12px;
 }
 .workspace-avatar {
-  background: #d6f584;
-  color: #173c2e;
+  background: #ffdf75;
+  color: #331a64;
   width: 32px;
   height: 32px;
   border-radius: 9px;
@@ -132,19 +132,19 @@
   text-overflow: ellipsis;
   overflow: hidden;
   white-space: nowrap;
-  color: #f0f5ec;
+  color: #f7f1ff;
 }
 .workspace-identity small {
   display: block;
   font-size: 10px;
-  color: #a1b5a5;
+  color: #bfa4e4;
   margin-top: 3px;
 }
 .workspace-sidebar nav {
   flex: 1;
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: #355642 transparent;
+  scrollbar-color: #5c3e90 transparent;
 }
 .workspace-nav-group {
   margin-top: 18px;
@@ -153,7 +153,7 @@
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 1.8px;
-  color: #92a899;
+  color: #b297d7;
   margin: 0 11px 7px;
 }
 .workspace-nav-group button,
@@ -168,35 +168,35 @@
   text-align: left;
   padding: 9px 11px;
   font-size: 12px;
-  color: #bdd0c1;
+  color: #dac1fa;
   cursor: pointer;
   transition: background 0.15s;
 }
 .workspace-nav-group button:hover,
 .workspace-sidebar-footer button:hover {
-  background: #234535;
+  background: #4a2f7a;
   color: #fff;
 }
 .workspace-nav-group button.is-active {
-  background: #d6f584;
-  color: #153b2a;
+  background: #ffdf75;
+  color: #311867;
   font-weight: 650;
 }
 .workspace-unread {
   margin-left: auto;
   font-size: 10px;
-  background: #234e37;
-  color: #e1f7cf;
+  background: #523191;
+  color: #f6ecff;
   padding: 1px 6px;
   border-radius: 5px;
 }
 .workspace-ai-badge {
   margin-left: auto;
-  border: 1px solid #587644;
+  border: 1px solid #8051d7;
   border-radius: 6px;
   padding: 2px 5px;
-  background: #203f2f;
-  color: #d9f779;
+  background: #371f66;
+  color: #ffe070;
   display: inline-flex;
   align-items: center;
   gap: 3px;
@@ -206,12 +206,12 @@
   letter-spacing: .04em;
 }
 .workspace-nav-group button.is-active .workspace-ai-badge {
-  border-color: #4d6a34;
-  background: #153b2a;
-  color: #d9f779;
+  border-color: #7243d0;
+  background: #311867;
+  color: #ffe070;
 }
 .workspace-sidebar-footer {
-  border-top: 1px solid #304b3c;
+  border-top: 1px solid #51387b;
   margin-top: 15px;
   padding-top: 10px;
 }
@@ -221,9 +221,9 @@
   position: sticky;
   top: 0;
   z-index: 35;
-  background: rgba(17, 35, 28, 0.95);
+  background: rgba(36,28,48, 0.95);
   backdrop-filter: blur(14px);
-  border-bottom: 1px solid #314439;
+  border-bottom: 1px solid #4a356b;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -231,24 +231,24 @@
 }
 .t2s-light .workspace-topbar {
   background: rgba(255, 255, 255, 0.96);
-  border-color: #e0e6dc;
+  border-color: #e8e1f1;
 }
 .workspace-page-label {
   display: flex;
   gap: 12px;
   align-items: center;
   font-size: 12px;
-  color: #91a898;
+  color: #b296d9;
 }
 .t2s-light .workspace-page-label {
-  color: #6b7c70;
+  color: #7e738c;
 }
 .workspace-page-label strong {
-  color: #e8f0e3;
+  color: #f3eafe;
   font-weight: 550;
 }
 .t2s-light .workspace-page-label strong {
-  color: #244532;
+  color: #4a2e7d;
 }
 .workspace-divider {
   margin: 0 12px;
@@ -265,7 +265,7 @@
   align-items: center;
   border: 0;
   background: none;
-  color: #88998d;
+  color: #9b90a9;
   font-size: 12px;
   cursor: pointer;
 }
@@ -288,12 +288,12 @@
 }
 .t2s-light .workspace-balance {
   background: #f2f6ec;
-  color: #194a33;
+  color: #4d2c90;
 }
 .workspace-balance small {
   display: block;
   font-size: 9px;
-  color: #7d987f;
+  color: #a381d6;
   text-align: left;
 }
 .workspace-balance strong {
@@ -321,7 +321,7 @@
 }
 .workspace-intro small {
   display: block;
-  color: #6e8b77;
+  color: #9575c3;
   font-size: 10px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
@@ -334,7 +334,7 @@
   font-weight: 650;
 }
 .workspace-intro p {
-  color: #7b8c80;
+  color: #8e839c;
   margin-top: 9px;
   font-size: 13px;
 }
@@ -352,12 +352,12 @@
 }
 .calling-unavailable p {
   line-height: 1.8;
-  color: #849382;
+  color: #9d84c0;
   font-size: 14px;
 }
 .calling-unavailable button {
   margin-top: 22px;
-  background: #176449;
+  background: #673cbd;
   color: #fff;
   border-radius: 9px;
   padding: 11px 18px;

@@ -26,7 +26,7 @@ const isoDate = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(
 /** Dark text on a light button color, white on a dark one (matches the sent email). */
 const textOn = (hex: string) => {
   const n = parseInt(hex.slice(1), 16) || 0;
-  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.6 ? "#0b3b2c" : "#ffffff";
+  return (0.299 * ((n >> 16) & 255) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255 > 0.6 ? "#301669" : "#ffffff";
 };
 
 /** Next weekday morning: a good default send time for a campaign. */
@@ -38,7 +38,7 @@ function defaultSendDate(): string {
 }
 
 const blankCard = (): EmailDesign => ({
-  theme: "dark", brandColor: "#34d399", logoUrl: null, eyebrow: "", headline: "", bullets: ["", "", ""], problemTitle: "", problem: "",
+  theme: "dark", brandColor: "#c9b1ea", logoUrl: null, eyebrow: "", headline: "", bullets: ["", "", ""], problemTitle: "", problem: "",
   solutionTitle: "", solution: "", offerLabel: "", offerTitle: "", offerSubtitle: "", offerValue: "", ctaText: "", ctaUrl: "",
 });
 
@@ -90,7 +90,7 @@ export default function EmailComposer({
   const fileInput = useRef<HTMLInputElement>(null);
   const [previewMode,setPreviewMode] = useState<"desktop"|"phone"|null>(null);
   const [useLogo, setUseLogo] = useState(true);
-  const [brandColor, setBrandColor] = useState(d?.brandColor || "#34d399");
+  const [brandColor, setBrandColor] = useState(d?.brandColor || "#c9b1ea");
   const [footerName, setFooterName] = useState((d || footerDefaults)?.footerName || "");
   const [footerAddress, setFooterAddress] = useState((d || footerDefaults)?.footerAddress || "");
   const [footerNote, setFooterNote] = useState((d || footerDefaults)?.footerNote || "");

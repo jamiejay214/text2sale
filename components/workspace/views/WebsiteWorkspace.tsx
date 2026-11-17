@@ -46,7 +46,7 @@ type SiteData = {
 };
 
 const TEMPLATES: Array<{ id: BusinessSiteTemplate; name: string; description: string; primary: string; accent: string }> = [
-  { id: "studio", name: "Modern studio", description: "Warm, premium, and conversion focused", primary: "#153f32", accent: "#d9f779" },
+  { id: "studio", name: "Modern studio", description: "Warm, premium, and conversion focused", primary: "#361c69", accent: "#ffe070" },
   { id: "trust", name: "Trusted advisor", description: "Calm, established, and professional", primary: "#173c66", accent: "#8fd7ff" },
   { id: "bold", name: "Bold growth", description: "Confident, high-energy, and memorable", primary: "#4b2b80", accent: "#ffcb65" },
 ];
@@ -56,7 +56,7 @@ function contrast(hex: string) {
   const r = parseInt(value.slice(0, 2), 16);
   const g = parseInt(value.slice(2, 4), 16);
   const b = parseInt(value.slice(4, 6), 16);
-  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.57 ? "#10231a" : "#ffffff";
+  return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 > 0.57 ? "#1a0a3b" : "#ffffff";
 }
 
 function WebsitePreview({ data, config, mobile }: { data: SiteData; config: BusinessSiteConfig; mobile: boolean }) {

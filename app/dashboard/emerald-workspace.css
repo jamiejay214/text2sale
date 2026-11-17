@@ -1,18 +1,18 @@
 /* The emerald workspace is intentionally scoped: customer websites keep their own brand. */
 .emerald-workspace {
-  --v2-accent:#dcefe6; --v2-green:#16634b; --v2-green-2:#16634b;
-  --v2-ink:#17352b; --v2-muted:#5c7067; --v2-line:#dce7e1;
-  --v2-canvas:#f1f7f4; --v2-panel:#fff;
-  --crm-accent:#16634b; --crm-lime:#dcefe6;
+  --v2-accent:#f1e7fd; --v2-green:#663db9; --v2-green-2:#663db9;
+  --v2-ink:#2c1855; --v2-muted:#72677f; --v2-line:#e8e2f0;
+  --v2-canvas:#faf3ff; --v2-panel:#fff;
+  --crm-accent:#663db9; --crm-lime:#f1e7fd;
   background:var(--v2-canvas); color:var(--v2-ink);
 }
 .emerald-workspace.t2s-dark {
-  --v2-accent:#274f40; --v2-green:#a2e1c3; --v2-green-2:#a2e1c3;
-  --v2-ink:#ecf6f0; --v2-muted:#adbbb4; --v2-line:#30483c;
-  --v2-canvas:#101d17; --v2-panel:#192b22;
+  --v2-accent:#543788; --v2-green:#e2c9ff; --v2-green-2:#e2c9ff;
+  --v2-ink:#f8f1ff; --v2-muted:#bcb5c6; --v2-line:#4e3773;
+  --v2-canvas:#1e1727; --v2-panel:#231342;
 }
-.emerald-workspace ::selection { background:#16634b; color:#fff; }
-.emerald-workspace :is(button,input,textarea,select,a):focus-visible { outline:2px solid #27845f; outline-offset:3px; }
+.emerald-workspace ::selection { background:#663db9; color:#fff; }
+.emerald-workspace :is(button,input,textarea,select,a):focus-visible { outline:2px solid #8852f3; outline-offset:3px; }
 .emerald-workspace .workspace-sidebar { background:var(--v2-panel); color:var(--v2-ink); border-right:1px solid var(--v2-line); padding:24px 14px 14px; }
 .emerald-workspace .workspace-brand { color:var(--v2-ink); padding-left:10px; }
 .emerald-workspace .workspace-brand .t2s-logo { color:var(--v2-ink); }
@@ -23,7 +23,7 @@
 .emerald-workspace .workspace-nav-group p { color:var(--v2-muted); font-size:10px; letter-spacing:.12em; margin:18px 12px 7px; }
 .emerald-workspace .workspace-nav-group button { color:var(--v2-muted); min-height:39px; padding:9px 12px; border-radius:8px; font-size:12px; }
 .emerald-workspace .workspace-nav-group button:hover { background:var(--v2-canvas); color:var(--v2-ink); }
-.emerald-workspace .workspace-nav-group button.is-active { background:#16634b; color:#fff; box-shadow:0 3px 8px #16634b18; }
+.emerald-workspace .workspace-nav-group button.is-active { background:#663db9; color:#fff; box-shadow:0 3px 8px #16634b18; }
 .emerald-workspace .workspace-sidebar-footer { border-color:var(--v2-line); }
 .emerald-workspace .workspace-sidebar-footer button { color:var(--v2-muted); }
 .emerald-workspace .workspace-topbar { background:var(--v2-panel); border-color:var(--v2-line); min-height:72px; padding:12px 28px; backdrop-filter:none; }
@@ -40,7 +40,7 @@
 .emerald-workspace .v2-panel-head { padding:18px 20px; }
 .emerald-workspace .v2-panel-head :is(h2,h3) { font-size:14px; letter-spacing:-.2px; }
 .emerald-workspace .v2-btn { border-radius:8px; min-height:39px; font-size:12px; }
-.emerald-workspace .v2-btn-primary { background:#16634b; border-color:#16634b; color:#fff; }
+.emerald-workspace .v2-btn-primary { background:#663db9; border-color:#663db9; color:#fff; }
 .emerald-workspace .v2-btn-accent { background:var(--v2-accent); border-color:var(--v2-line); color:var(--v2-ink); }
 .emerald-workspace .v2-avatar { background:var(--v2-accent); color:var(--v2-ink); border-radius:50%; }
 .emerald-workspace .v2-metric-card { min-height:128px; padding:20px; }
@@ -71,7 +71,7 @@
 .emerald-modebar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:20px; padding-bottom:16px; border-bottom:1px solid var(--v2-line); }
 .emerald-modebar > div { display:flex; gap:5px; padding:4px; border:1px solid var(--v2-line); border-radius:10px; background:var(--v2-panel); }
 .emerald-modebar button { background:transparent; color:var(--v2-muted); border:0; padding:10px 16px; border-radius:7px; font-size:12px; font-weight:600; cursor:pointer; }
-.emerald-modebar button.is-active { background:#16634b; color:white; }
+.emerald-modebar button.is-active { background:#663db9; color:white; }
 .emerald-workspace button:disabled { cursor:not-allowed; opacity:.5; }
 .emerald-call-workspace { display:grid; grid-template-columns:minmax(220px,.9fr) minmax(320px,1.5fr) minmax(240px,1fr); gap:18px; align-items:start; }
 .emerald-call-workspace[hidden],.emerald-predictive[hidden] { display:none; }
@@ -151,8 +151,8 @@
  .emerald-workspace .v2-inbox-shell,.emerald-workspace .v2-inbox-shell.is-contact-open { grid-template-columns:minmax(0,1fr); }
 }
 .emerald-workspace .v2-billing-grid { grid-template-columns:minmax(280px,360px) minmax(0,1fr); }
-.emerald-workspace .v2-wallet-hero { background:#16634b; text-align:left; }
-.emerald-workspace .v2-wallet-hero > span { margin-left:0; background:#dcefe6; }
+.emerald-workspace .v2-wallet-hero { background:#663db9; text-align:left; }
+.emerald-workspace .v2-wallet-hero > span { margin-left:0; background:#f1e7fd; }
 .emerald-workspace .v2-wallet-hero strong { font-size:40px; }
 .emerald-workspace :is(.v2-settings-row,.v2-usage-panel article) strong { font-size:13px; }
 .emerald-workspace :is(.v2-settings-row,.v2-usage-panel article) small { font-size:11px; }
@@ -164,12 +164,12 @@
  .emerald-workspace .v2-inbox-shell,.emerald-workspace .v2-inbox-shell.is-contact-open { height:auto; min-height:0; }
  .emerald-workspace .v2-billing-grid { grid-template-columns:minmax(0,1fr); }
 }
-.emerald-workspace .v2-next-step-card { background:#16634b; color:#fff; border-color:#16634b; }
+.emerald-workspace .v2-next-step-card { background:#663db9; color:#fff; border-color:#663db9; }
 .emerald-workspace .v2-next-step-card :is(h2,h3,strong) { color:#fff; }
-.emerald-workspace .v2-next-step-card :is(p,small) { color:#d9eee3; }
-.emerald-workspace .v2-next-step-card .v2-btn-accent { background:#fff; color:#16634b; }
+.emerald-workspace .v2-next-step-card :is(p,small) { color:#efe5fb; }
+.emerald-workspace .v2-next-step-card .v2-btn-accent { background:#fff; color:#663db9; }
 .emerald-workspace :is(.v2-empty-state > span,.v2-node-count,.v2-first-optout,.v2-spin-help) { background:var(--v2-accent); color:var(--v2-ink); border-color:var(--v2-line); }
-.emerald-workspace .v2-first-optout button { background:#16634b; color:#fff; }
+.emerald-workspace .v2-first-optout button { background:#663db9; color:#fff; }
 .emerald-workspace .v2-page-header > div:first-child { flex:1; min-width:0; }
 .emerald-workspace .v2-page-actions { flex-shrink:0; }
 .emerald-workspace .v2-empty > span { background:var(--v2-accent); color:var(--v2-green); }

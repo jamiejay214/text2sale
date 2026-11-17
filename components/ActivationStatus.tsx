@@ -118,7 +118,7 @@ export default function ActivationStatus({
   const needsFunds = state.status === "AWAITING_PAYMENT" && state.amountNeeded > 0;
 
   const accent = isActive
-    ? "border-emerald-400/40 bg-emerald-400/10"
+    ? "border-violet-400/40 bg-violet-400/10"
     : isProblem
       ? "border-red-400/40 bg-red-400/10"
       : "border-zinc-800 bg-zinc-900/40";
@@ -139,14 +139,14 @@ export default function ActivationStatus({
             <li
               key={st.key}
               className={`flex items-center gap-1.5 ${
-                st.state === "done" ? "text-emerald-300" : st.state === "pending" ? "text-zinc-600" : "text-zinc-300"
+                st.state === "done" ? "text-violet-300" : st.state === "pending" ? "text-zinc-600" : "text-zinc-300"
               }`}
             >
               <span
                 aria-hidden="true"
                 className={`inline-flex h-4 w-4 items-center justify-center rounded-full text-[10px] font-bold ${
                   st.state === "done"
-                    ? "bg-emerald-400 text-zinc-950"
+                    ? "bg-violet-400 text-zinc-950"
                     : st.state === "pending"
                       ? "bg-zinc-800 text-zinc-600"
                       : st.state === "failed"
@@ -173,7 +173,7 @@ export default function ActivationStatus({
             aria-label="Texting activation progress"
           >
             <div
-              className="h-full rounded-full bg-emerald-400 transition-all duration-700"
+              className="h-full rounded-full bg-violet-400 transition-all duration-700"
               style={{ width: `${state.progress}%` }}
             />
           </div>
@@ -186,7 +186,7 @@ export default function ActivationStatus({
       )}
 
       {isActive && state.activeNumber && (
-        <p className="mt-5 text-lg font-bold text-emerald-300">{state.activeNumber}</p>
+        <p className="mt-5 text-lg font-bold text-violet-300">{state.activeNumber}</p>
       )}
 
       {state.websiteNote && (
@@ -216,7 +216,7 @@ export default function ActivationStatus({
           <button
             type="button"
             onClick={() => onAddFunds?.(state.amountNeeded)}
-            className="mt-4 rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300"
+            className="mt-4 rounded-2xl bg-violet-400 px-6 py-3 font-bold text-zinc-950 hover:bg-violet-300"
           >
             Add funds
           </button>
@@ -227,7 +227,7 @@ export default function ActivationStatus({
         <button
           type="button"
           onClick={() => onStart?.()}
-          className="mt-6 rounded-2xl bg-emerald-400 px-6 py-3 font-bold text-zinc-950 hover:bg-emerald-300"
+          className="mt-6 rounded-2xl bg-violet-400 px-6 py-3 font-bold text-zinc-950 hover:bg-violet-300"
         >
           Activate texting
         </button>
