@@ -78,14 +78,14 @@ export default function AppointmentDemo() {
           <button type="button" onClick={play} className="mt-6 rounded-full bg-violet-600 px-6 py-3 font-bold text-white">{hasPlayed ? "Play another example" : "Play appointment demo"}</button>
           <Link className="ml-4 mt-6 inline-block font-semibold text-amber-200 underline" href="/?signup=1#auth-form">Start Texting Leads</Link>
         </div>
-        <div className="rounded-2xl border border-violet-700 bg-violet-950 p-5">
-          <p className="mb-4 text-sm font-semibold text-violet-200">{label} · Example {scenarioIndex + 1} of {scenarios.length}</p>
+        <div className="rounded-2xl border border-violet-300 bg-[#2e1a6b] p-5 shadow-xl shadow-violet-900/20">
+          <p className="mb-4 text-sm font-semibold !text-violet-200">{label} · Example {scenarioIndex + 1} of {scenarios.length}</p>
           <div aria-live="polite" aria-atomic="false" className="space-y-3">
-            {step === 0 && <p className="text-base text-violet-100">Press play to follow the conversation.</p>}
-            {messages.slice(0, step).map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.speaker === AI ? "bg-violet-800" : "ml-8 bg-white/10"}`}><span className="block font-semibold text-amber-200">{message.speaker}</span>{message.text}</div>)}
-            {complete && <p className="rounded-xl border border-amber-300 p-4 font-semibold text-amber-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Added to Google Calendar</span></p>}
+            {step === 0 && <p className="text-base !text-violet-100">Press play to follow the conversation.</p>}
+            {messages.slice(0, step).map((message, index) => <div key={index} className={`rounded-xl p-3 text-sm leading-6 ${message.speaker === AI ? "bg-[#5b32c9] !text-white" : "ml-8 bg-white !text-[#1e1b3a]"}`}><span className={`block font-semibold ${message.speaker === AI ? "!text-amber-200" : "!text-[#6d28d9]"}`}>{message.speaker}</span>{message.text}</div>)}
+            {complete && <p className="rounded-xl border border-amber-300 p-4 font-semibold !text-amber-200">Appointment confirmed · {booked}<br /><span className="text-sm font-normal">Added to Google Calendar</span></p>}
           </div>
-          {running && !complete && <button type="button" onClick={() => { setStep(messages.length); setRunning(false); }} className="mt-4 text-sm text-amber-200 underline">Show full conversation</button>}
+          {running && !complete && <button type="button" onClick={() => { setStep(messages.length); setRunning(false); }} className="mt-4 text-sm !text-amber-200 underline">Show full conversation</button>}
         </div>
       </div>
     </section>
