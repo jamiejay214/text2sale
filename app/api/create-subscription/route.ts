@@ -5,6 +5,7 @@ import { authenticate, requireSameUser } from "@/lib/auth-guard";
 import { planShape, toPlanKey } from "@/lib/packages";
 import { prepareWelcomeCode } from "@/lib/stripe-welcome-offer";
 import { ensurePlanPrice } from "@/lib/stripe-plans";
+import { TRIAL_DAYS } from "@/lib/trial";
 
 // CLIENT UPDATE NEEDED: dashboard must send Authorization header
 
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
 
-    if (profile?.subscription_status === "active") {
+    if (["active", "trialing", "canceling"].includes(String(profile?.subscription_status))) {
       return NextResponse.json(
         { success: false, error: "You already have an active subscription" },
         { status: 400 }
@@ -86,6 +87,11 @@ export async function POST(req: NextRequest) {
 
     const price = await ensurePlanPrice(stripe, pkg);
 
+    // 7-day free trial, once per customer: anyone who has had a subscription
+    // before (paid, trialed or canceled) pays from day one.
+    const previous = await stripe.subscriptions.list({ customer: customerId, status: "all", limit: 1 });
+    const trial = previous.data.length === 0;
+
     const { data: claim, error: claimError } = await supabase.from("welcome_offer_claims")
       .select("email").eq("email", auth.user.email?.trim().toLowerCase() || "").maybeSingle();
     if (claimError) throw new Error("Could not check your subscription offer. Please retry.");
@@ -98,6 +104,9 @@ export async function POST(req: NextRequest) {
       line_items: [{ price: price.id, quantity: 1 }],
       mode: "subscription",
       allow_promotion_codes: allowCode,
+      // A card is collected even for the trial; Stripe charges it when the
+      // trial ends, and cancels the trial if no card is on file by then.
+      payment_method_collection: "always",
       success_url: `${appUrl}/thank-you?session_id={CHECKOUT_SESSION_ID}&plan=${pkg}`,
       cancel_url: `${appUrl}/dashboard?subscription=cancelled`,
       metadata: {
@@ -110,6 +119,12 @@ export async function POST(req: NextRequest) {
           userId,
           package: pkg,
         },
+        ...(trial
+          ? {
+              trial_period_days: TRIAL_DAYS,
+              trial_settings: { end_behavior: { missing_payment_method: "cancel" as const } },
+            }
+          : {}),
       },
     });
 

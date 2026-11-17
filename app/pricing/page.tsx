@@ -12,7 +12,7 @@ const rate = (n: number) => `$${n}`;
 
 export const metadata: Metadata = {
   title: "Text2Sale Pricing: Texting CRM & Dialer Plans",
-  description: `Text2Sale plans: Text ${money(PLANS.text.price)}/mo, Dialer ${money(PLANS.dialer.price)}/mo, Complete ${money(PLANS.complete.price)}/mo per user. Texts from ${rate(USAGE_RATES.smsPerSegment)} per segment, pay-as-you-go wallet, no free trial.`,
+  description: `Text2Sale plans: Text ${money(PLANS.text.price)}/mo, Dialer ${money(PLANS.dialer.price)}/mo, Complete ${money(PLANS.complete.price)}/mo per user. Texts from ${rate(USAGE_RATES.smsPerSegment)} per segment, pay-as-you-go wallet, 7-day free trial.`,
   alternates: { canonical: "/pricing" },
   openGraph: {
     title: "Text2Sale Pricing",
@@ -44,7 +44,7 @@ const examples = [
 const faq = [
   {
     question: "Is there a free trial?",
-    answer: "No. Payment is taken right after you create your account. You choose Text, Dialer, or Complete during signup.",
+    answer: "Yes, 7 days. You choose Text, Dialer, or Complete and add a card at signup; the first monthly payment is taken when the trial ends unless you cancel before then. During the trial you can set up your workspace and import contacts, and Dialer and Complete can buy a number and make calls (call minutes come from your prepaid wallet). Texting registration starts after your first payment, so texts can send once carriers approve it, about 4 business days later.",
   },
   {
     question: "What does the monthly plan include, and what costs extra?",
@@ -130,7 +130,7 @@ export default function PricingPage() {
             Pay for the tools you use, then only for what you send.
           </h1>
           <p className="mx-auto mt-6 max-w-3xl text-lg leading-8 text-zinc-300">
-            Pick texting, dialing, or both. Usage comes out of a prepaid wallet at the rates below. No free trial, and nothing is unlimited.
+            Pick texting, dialing, or both. Start with a 7-day free trial. Usage comes out of a prepaid wallet at the rates below, and nothing is unlimited.
           </p>
         </header>
 

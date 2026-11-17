@@ -33,7 +33,7 @@ export default function FoundingAgentOffer() {
           {" · "}
           <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${SUPPORT_EMAIL}&su=${SUBJECT}`} target="_blank" rel="noopener noreferrer" className="font-semibold text-lime-200 underline underline-offset-2">Open in Gmail</a>
         </p>
-        <p className="mt-4 text-sm leading-6 text-emerald-200">Support confirms availability and enrollment before priority onboarding is promised. This is a request, not an automatic reservation. There is no free trial.</p>
+        <p className="mt-4 text-sm leading-6 text-emerald-200">Support confirms availability and enrollment before priority onboarding is promised. This is a request, not an automatic reservation.</p>
       </div>
     </section>
   );

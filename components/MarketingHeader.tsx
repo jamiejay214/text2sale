@@ -117,7 +117,7 @@ export default function MarketingHeader() {
 
         <Link href="/login" className="hidden rounded-lg px-3 py-2 text-sm font-semibold text-emerald-50 hover:bg-white/10 sm:block">Log in</Link>
         <Link href="/demo" className="hidden rounded-xl border border-emerald-300/60 px-4 py-2 text-sm font-bold text-emerald-50 hover:bg-white/10 md:block">Book a demo</Link>
-        <Link href={SIGNUP_HREF} className="whitespace-nowrap rounded-xl bg-emerald-300 px-4 py-2 text-sm font-bold text-emerald-950 hover:bg-emerald-200">Get started</Link>
+        <Link href={SIGNUP_HREF} className="whitespace-nowrap rounded-xl bg-emerald-300 px-4 py-2 text-sm font-bold text-emerald-950 hover:bg-emerald-200">Start free trial</Link>
 
         <details className="group/menu lg:hidden">
           <summary aria-label="Open menu" className="flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-lg border border-emerald-700 [&::-webkit-details-marker]:hidden">
@@ -139,7 +139,7 @@ export default function MarketingHeader() {
             <Link href="/pricing" className="block border-b border-emerald-900 py-3 text-base font-semibold text-white">Pricing</Link>
             <Link href="/login" className="block border-b border-emerald-900 py-3 text-base font-semibold text-white">Log in</Link>
             <div className="mt-4 grid gap-3">
-              <Link href={SIGNUP_HREF} className="rounded-xl bg-emerald-300 px-4 py-3 text-center font-bold text-emerald-950">Get started</Link>
+              <Link href={SIGNUP_HREF} className="rounded-xl bg-emerald-300 px-4 py-3 text-center font-bold text-emerald-950">Start free trial</Link>
               <Link href="/demo" className="rounded-xl border border-emerald-300/60 px-4 py-3 text-center font-bold text-emerald-50">Book a demo</Link>
             </div>
           </div>

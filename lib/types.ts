@@ -19,7 +19,7 @@ export type Profile = {
   usage_history: UsageHistoryItem[];
   owned_numbers: OwnedNumber[];
   plan: Plan;
-  subscription_status: "active" | "canceling" | "past_due" | "inactive";
+  subscription_status: "active" | "trialing" | "canceling" | "past_due" | "inactive";
   // Admin-granted comp — when true, user is treated as subscribed even without
   // an active Stripe subscription, and Stripe webhooks won't override the flag.
   free_subscription: boolean;
@@ -183,6 +183,10 @@ export type Plan = {
   /** A downgrade booked for the next renewal, and when it takes effect. */
   pendingKey?: "text" | "dialer" | "complete" | null;
   pendingAt?: string | null;
+  /** End of the free trial (ISO), while the subscription is trialing. */
+  trialEndsAt?: string | null;
+  /** The trial is set to end without a charge. */
+  trialCancels?: boolean;
 };
 
 export type UsageHistoryItem = {

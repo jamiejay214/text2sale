@@ -66,7 +66,7 @@ const content = {
     },
     {
       "question": "Is there a free trial?",
-      "answer": "No. Payment is required at signup. Plans are $39.99/month (Text), $89.99 (Dialer) or $119.99 (Complete), with calling, messaging and AI usage charged separately."
+      "answer": "Yes. New accounts get a 7-day free trial. You add a card at signup, and the first monthly payment is taken when the trial ends unless you cancel before then. Plans are $39.99/month (Text), $89.99 (Dialer) or $119.99 (Complete), with calling, messaging and AI usage charged separately."
     }
   ],
   "relatedPages": [

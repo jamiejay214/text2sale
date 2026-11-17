@@ -13,7 +13,7 @@
 import { CALL_RATE_FORWARD_PER_MIN, CALL_RATE_INBOUND_PER_MIN } from "./call-pricing";
 import { isEntitled } from "./messaging-status";
 import { toE164 } from "./browser-calls";
-import { canCall } from "./entitlements";
+import { canCall, isTrialing } from "./entitlements";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type Db = any;
@@ -150,7 +150,8 @@ export async function routeInboundCall(
   call: { ccid: string; rowId: string; userId: string; callerNumber: string; businessNumber: string }
 ): Promise<InboundRoute | null> {
   const profile = await loadRoutingProfile(db, call.userId);
-  if (!profile || profile.paused || !isEntitled(profile)) return null;
+  // Paying, or a Dialer/Complete free trial (calls are paid from the wallet).
+  if (!profile || profile.paused || !(isEntitled(profile) || (isTrialing(profile) && canCall(profile)))) return null;
   const balance = Number(profile.wallet_balance) || 0;
 
   let route: InboundRoute | null = null;

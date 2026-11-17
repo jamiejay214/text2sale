@@ -156,6 +156,8 @@ export function computePipeline(p: PipelineInput, nowMs: number = Date.now()): P
       state: "done",
       detail: p.free_subscription ? "Comped by admin" : subStatus === "canceling" ? "Active (cancels at period end)" : "Paying",
     });
+  } else if (subStatus === "trialing") {
+    steps.push({ key: "subscription", label: LABELS.subscription, state: "waiting", detail: "Free trial · registration starts after the first payment" });
   } else if (subStatus === "past_due") {
     steps.push({ key: "subscription", label: LABELS.subscription, state: "waiting", detail: "Payment failed" });
     alerts.push({ level: "warn", code: "past_due", message: "Subscription payment failed — setup is paused until it clears." });

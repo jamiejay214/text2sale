@@ -45,6 +45,18 @@ export async function POST(req: NextRequest) {
       .eq("id", userId)
       .single();
 
+    // Canceling during the free trial ends it now: nothing has been charged
+    // and nothing will be. Numbers the trial bought are released by the
+    // customer.subscription.deleted webhook.
+    if (profile?.stripe_subscription_id && profile.subscription_status === "trialing") {
+      await stripe.subscriptions.cancel(profile.stripe_subscription_id);
+      await supabase
+        .from("profiles")
+        .update({ subscription_status: "inactive" })
+        .eq("id", userId);
+      return NextResponse.json({ success: true, trialEnded: true });
+    }
+
     if (!profile?.stripe_subscription_id || profile.subscription_status !== "active") {
       return NextResponse.json(
         { success: false, error: "No active subscription found" },

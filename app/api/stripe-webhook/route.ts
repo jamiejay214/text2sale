@@ -8,6 +8,7 @@ import { NUMBER_MONTHLY_FEE } from "@/lib/telnyx-10dlc";
 import { receiptEmail } from "@/lib/customer-emails";
 import { sendCustomerEmail } from "@/lib/customer-email-send";
 import { notifyCommand } from "@/lib/command-notify";
+import { releaseAccountNumbers } from "@/lib/release-numbers";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -303,7 +304,12 @@ export async function POST(req: NextRequest) {
       const status = subscription.status; // active, past_due, canceled, etc.
 
       if (userId) {
-        const subStatus = subscription.cancel_at_period_end
+        // A trial stays "trialing" even when set to cancel: "canceling"
+        // counts as paid (lib/messaging-status.ts isEntitled) and would start
+        // the 10DLC registration Text2Sale pays for.
+        const subStatus = status === "trialing"
+          ? "trialing"
+          : subscription.cancel_at_period_end
           ? "canceling"
           : status === "active"
             ? "active"
@@ -322,6 +328,13 @@ export async function POST(req: NextRequest) {
           stripe_subscription_id: subscription.id,
         };
         if (!current?.free_subscription) update.subscription_status = subStatus;
+
+        // The trial's end date and whether it is set to cancel, for the
+        // dashboard notice; cleared once the first payment is taken.
+        const trialEndsAt = status === "trialing" && subscription.trial_end
+          ? new Date(subscription.trial_end * 1000).toISOString()
+          : null;
+        const trialCancels = !!trialEndsAt && subscription.cancel_at_period_end;
 
         // The plan paid for (Text, Dialer, Complete) is stamped on the
         // subscription. A downgrade booked for renewal keeps today's plan
@@ -345,6 +358,12 @@ export async function POST(req: NextRequest) {
         // accounts an admin has comped.
         if (!current?.free_subscription && !current?.free_ai_plan) {
           update.ai_plan = subStatus === "active" || subStatus === "canceling";
+        }
+        if (!current?.free_subscription) {
+          const plan = (update.plan || current?.plan || {}) as Record<string, unknown>;
+          if ((plan.trialEndsAt ?? null) !== trialEndsAt || !!plan.trialCancels !== trialCancels) {
+            update.plan = { ...plan, trialEndsAt, trialCancels };
+          }
         }
         await supabase.from("profiles").update(update).eq("id", userId);
 
@@ -376,6 +395,18 @@ export async function POST(req: NextRequest) {
         // No subscription, no AI plan — unless an admin comped it.
         if (!current?.free_subscription && !current?.free_ai_plan) update.ai_plan = false;
         await supabase.from("profiles").update(update).eq("id", userId);
+
+        // A trial that ended without a payment: release the numbers it
+        // bought, which would otherwise cost Text2Sale every month.
+        const endedInTrial = !!subscription.trial_end && !!subscription.ended_at &&
+          subscription.ended_at <= subscription.trial_end;
+        if (endedInTrial && !current?.free_subscription) {
+          const released = await releaseAccountNumbers(supabase, userId).catch((e) => {
+            console.error("[stripe-webhook] trial number release failed:", e);
+            return [] as string[];
+          });
+          if (released.length) console.log(`[stripe-webhook] released ${released.length} trial number(s) for ${userId}`);
+        }
       }
     }
 
@@ -384,7 +415,11 @@ export async function POST(req: NextRequest) {
       const invoice = event.data.object as Stripe.Invoice;
       const subDetails = invoice.parent?.subscription_details;
 
-      if (subDetails) {
+      // The $0 invoice that opens a free trial is not a payment: no receipt,
+      // no history entry, and number fees wait for the first real charge.
+      const trialOpening = (invoice.amount_paid || 0) === 0 && invoice.billing_reason === "subscription_create";
+
+      if (subDetails && !trialOpening) {
         const userId = subDetails.metadata?.userId;
 
         if (userId) {

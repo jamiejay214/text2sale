@@ -38,7 +38,7 @@ type AccountRecord = {
   walletBalance?: number;
   ownedNumbers?: OwnedNumber[];
   role?: "user" | "admin" | "manager";
-  subscriptionStatus?: "active" | "canceling" | "past_due" | "inactive";
+  subscriptionStatus?: "active" | "trialing" | "canceling" | "past_due" | "inactive";
   freeSubscription?: boolean;
   aiPlan?: boolean;
   freeAiPlan?: boolean;
@@ -216,6 +216,7 @@ function timeAgo(dateStr: string) {
 function subStatusBadge(status?: string) {
   switch (status) {
     case "active": return { label: "Active", cls: "bg-emerald-900 text-emerald-300" };
+    case "trialing": return { label: "Free trial", cls: "bg-sky-900 text-sky-300" };
     case "canceling": return { label: "Canceling", cls: "bg-amber-900 text-amber-300" };
     case "past_due": return { label: "Past Due", cls: "bg-red-900 text-red-300" };
     default: return { label: "Inactive", cls: "bg-zinc-700 text-zinc-400" };

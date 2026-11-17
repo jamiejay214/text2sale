@@ -65,7 +65,7 @@ export async function POST(req: NextRequest) {
   if (profile.free_subscription) {
     return NextResponse.json({ success: false, error: "Your plan is managed by our team. Message support to change it." }, { status: 403 });
   }
-  if (!profile.stripe_subscription_id || !["active", "canceling"].includes(String(profile.subscription_status))) {
+  if (!profile.stripe_subscription_id || !["active", "canceling", "trialing"].includes(String(profile.subscription_status))) {
     return NextResponse.json({ success: false, needsSubscription: true, error: "Start your subscription first." }, { status: 402 });
   }
 
@@ -81,6 +81,42 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "We couldn't load your subscription. Please try again." }, { status: 502 });
   }
   const item = sub.items.data[0];
+
+  // In the free trial nothing has been charged, so any switch takes effect
+  // now with no proration; the first payment at the end of the trial is at
+  // the new plan's price.
+  if (item && sub.status === "trialing" && sub.trial_end) {
+    const chargeOn = new Date(sub.trial_end * 1000).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "America/New_York" });
+    if (target === current) return NextResponse.json({ success: true, unchanged: true });
+    if (!body.confirm) {
+      return NextResponse.json({
+        success: true,
+        preview: {
+          direction: isUpgrade(current, target) ? "upgrade" : "downgrade",
+          from: PLANS[current],
+          plan: PLANS[target],
+          dueNow: 0,
+          trial: true,
+          renewsAt: new Date(sub.trial_end * 1000).toISOString(),
+          message: `You're in your free trial, so ${PLANS[target].name} starts now and nothing is charged today. Your first payment of $${PLANS[target].price}/month is on ${chargeOn}.`,
+        },
+      });
+    }
+    try {
+      const price = await ensurePlanPrice(stripe, target);
+      await stripe.subscriptions.update(sub.id, {
+        items: [{ id: item.id, price: price.id }],
+        proration_behavior: "none",
+        metadata: { ...(sub.metadata || {}), userId, package: target },
+      });
+    } catch (e) {
+      console.error("[change-plan] trial switch failed:", e instanceof Error ? e.message : e);
+      return NextResponse.json({ success: false, error: "We couldn't update your plan. Please try again." }, { status: 502 });
+    }
+    await db.from("profiles").update({ plan: { ...plan, ...planShape(target, messageCost), pendingKey: null, pendingAt: null } }).eq("id", userId);
+    return NextResponse.json({ success: true, plan: target });
+  }
+
   if (!item || sub.status !== "active") {
     return NextResponse.json({ success: false, error: "Your subscription isn't active. Update your payment method first." }, { status: 402 });
   }

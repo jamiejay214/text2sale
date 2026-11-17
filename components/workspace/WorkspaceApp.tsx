@@ -8,7 +8,9 @@ import WorkspaceNavigation, { SettingsNav, type WorkspaceTab } from "@/component
 import { getSession, logoutUser } from "@/lib/auth";
 import { authFetch } from "@/lib/auth-fetch";
 import { isOwnerEmail } from "@/lib/owner";
-import { canCall, canText } from "@/lib/entitlements";
+import { canCall, canText, isTrialing, planKeyOf } from "@/lib/entitlements";
+import { PLANS } from "@/lib/plans";
+import { trialEndLabel } from "@/lib/trial";
 import PlanPicker from "./PlanPicker";
 import { supabase } from "@/lib/supabase";
 import { fetchProfile } from "@/lib/supabase-data";
@@ -82,8 +84,10 @@ export default function WorkspaceApp() {
   const impersonateId = searchParams.get("impersonate") || "";
   const activeTab = requestedTab && VALID_TABS.has(requestedTab) ? requestedTab : "overview";
   const settingsTab = searchParams.get("subtab") || "numbers";
+  // The free trial unlocks the workspace for setup (lib/entitlements.ts).
+  const trial = isTrialing(profile);
   const subscribed =
-    !!profile?.free_subscription ||
+    !!profile?.free_subscription || trial ||
     ["active", "canceling"].includes(String(profile?.subscription_status || ""));
   const aiAccess = subscribed || !!profile?.free_ai_plan;
   // What the plan includes (lib/entitlements.ts): Text → texting, Dialer →
@@ -327,7 +331,7 @@ export default function WorkspaceApp() {
       <main className="crm-theme workspace-v2 t2s-light v2-entry-loading">
         <div className="v2-error-card">
           <strong>Choose your Text2Sale plan</strong>
-          <p>Your account is created. Pick a plan to unlock the workspace; there is no free trial. You can upgrade or switch later.</p>
+          <p>Your account is created. Pick a plan to start your 7-day free trial. Your card is charged when the trial ends unless you cancel first. You can switch plans anytime.</p>
           <PlanPicker profile={profile} onProfile={setProfile} />
           <button onClick={logout}>Sign out</button>
         </div>
@@ -362,6 +366,7 @@ export default function WorkspaceApp() {
             <button onClick={() => router.push(isOwnerEmail(viewerEmail) ? "/admin" : "/dashboard?tab=settings&subtab=team")}>Exit account</button>
           </div>
         )}
+        {trial && <TrialNotice profile={profile} />}
         <SettingsNav activeTab={activeTab} settingsTab={settingsTab} onNavigate={navigate} textingEnabled={textingEnabled} />
         {view}
       </section>
@@ -369,3 +374,24 @@ export default function WorkspaceApp() {
     </main>
   );
 }
+
+/** Free-trial status: when the first payment is, and what works until then. */
+function TrialNotice({ profile }: { profile: Profile }) {
+  const ends = trialEndLabel(profile.plan?.trialEndsAt);
+  const plan = PLANS[planKeyOf(profile)];
+  if (profile.plan?.trialCancels) {
+    return <div role="status" className="v2-notice">Your free trial ends{ends ? ` on ${ends}` : ""}. It&apos;s set to cancel, so you won&apos;t be charged.</div>;
+  }
+  const calling = plan.capabilities.includes("calling");
+  const texting = plan.capabilities.includes("texting");
+  return (
+    <div role="status" className="v2-notice">
+      <span>
+        <strong>Free trial.</strong> Your first payment of ${plan.price}/month for {plan.name} is{ends ? ` on ${ends}` : " when the trial ends"}.
+        {calling ? " Calling works now: buy a number and add funds for minutes." : ""}
+        {texting ? " Texting registration starts after your first payment, and texts can send once carriers approve it (about 4 business days)." : ""}
+      </span>
+    </div>
+  );
+}
+

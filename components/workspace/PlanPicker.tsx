@@ -20,6 +20,8 @@ type Preview = {
   renewsAt?: string;
   message: string;
   lost?: string[];
+  /** Switch made during the free trial: takes effect now, nothing charged. */
+  trial?: boolean;
 };
 
 export default function PlanPicker({
@@ -34,7 +36,7 @@ export default function PlanPicker({
   highlight?: "texting" | "calling";
   onMessagingSetup?: () => void;
 }) {
-  const subscribed = !!profile.free_subscription || ["active", "canceling"].includes(String(profile.subscription_status || ""));
+  const subscribed = !!profile.free_subscription || ["active", "canceling", "trialing"].includes(String(profile.subscription_status || ""));
   const current = planKeyOf(profile);
   const pending = profile.plan?.pendingKey || null;
   const [busy, setBusy] = useState<PlanKey | "">("");
@@ -126,17 +128,18 @@ export default function PlanPicker({
       {profile.free_subscription && <p className="v2-plan-note">Your plan is managed by our team. Message support to change it.</p>}
       {preview && (
         <div className="v2-plan-confirm" role="dialog" aria-label={`Confirm ${preview.data.plan.name}`}>
-          <strong>{preview.data.direction === "upgrade" ? `Upgrade to ${preview.data.plan.name}` : preview.data.direction === "downgrade" ? `Switch to ${preview.data.plan.name} at renewal` : `Stay on ${preview.data.plan.name}`}</strong>
+          <strong>{preview.data.trial ? `Switch to ${preview.data.plan.name}` : preview.data.direction === "upgrade" ? `Upgrade to ${preview.data.plan.name}` : preview.data.direction === "downgrade" ? `Switch to ${preview.data.plan.name} at renewal` : `Stay on ${preview.data.plan.name}`}</strong>
           <p>{preview.data.message}</p>
           {preview.data.lost?.length ? <ul>{preview.data.lost.map((line) => <li key={line}>{line}</li>)}</ul> : null}
           <div className="v2-pd-actions">
             <button className="v2-btn v2-btn-primary" disabled={!!busy} onClick={() => void change(preview.key, true)}>
-              {busy ? "Working…" : preview.data.direction === "upgrade" ? `Pay${typeof preview.data.dueNow === "number" ? ` $${preview.data.dueNow.toFixed(2)}` : ""} and upgrade` : "Confirm"}
+              {busy ? "Working…" : preview.data.trial ? "Confirm" : preview.data.direction === "upgrade" ? `Pay${typeof preview.data.dueNow === "number" ? ` $${preview.data.dueNow.toFixed(2)}` : ""} and upgrade` : "Confirm"}
             </button>
             <button className="v2-btn" disabled={!!busy} onClick={() => setPreview(null)}>Cancel</button>
           </div>
         </div>
       )}
+      {!subscribed && !profile.free_subscription && <p className="v2-plan-note">New accounts start with a 7-day free trial. Your card is charged when the trial ends unless you cancel first.</p>}
       <p className="v2-plan-note">Subscriptions cover the software. Calls, texts, AI minutes and phone numbers are paid from your prepaid wallet; Text2Sale covers messaging registration and campaign fees.</p>
     </div>
   );
