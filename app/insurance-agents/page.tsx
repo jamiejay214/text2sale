@@ -89,6 +89,10 @@ const content = {
     {
       "href": "/insurance-text-templates",
       "label": "Free insurance text templates"
+    },
+    {
+      "href": "https://trustedquotes.org",
+      "label": "Trusted Quotes"
     }
   ],
   "blogTags": [

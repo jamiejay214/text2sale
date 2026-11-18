@@ -20,10 +20,10 @@ export default function WelcomeOffer() {
     }, 6500);
     return () => { active = false; clearTimeout(timer); };
   }, []);
-  return <dialog ref={dialog} aria-labelledby="welcome-offer-title" className="fixed inset-0 m-auto w-[min(92vw,26rem)] rounded-3xl border border-violet-300/30 bg-zinc-950 p-7 text-white shadow-2xl backdrop:bg-black/65">
-    <button type="button" aria-label="Close offer" onClick={() => dialog.current?.close()} className="float-right px-2 text-2xl">×</button>
+  return <dialog ref={dialog} aria-labelledby="welcome-offer-title" className="fixed inset-0 m-auto w-[min(92vw,26rem)] rounded-3xl border border-violet-200 bg-white p-7 text-[#1e1b3a] shadow-2xl shadow-violet-900/20 backdrop:bg-violet-950/40">
+    <button type="button" aria-label="Close offer" onClick={() => dialog.current?.close()} className="float-right px-2 text-2xl text-[#5f5a7a] hover:text-[#1e1b3a]">×</button>
     <h2 id="welcome-offer-title" className="pr-6 text-3xl font-bold">{code ? "Your discount code is ready" : "Get 10% off your first month today!"}</h2>
-    {code ? <div aria-live="polite"><p className="my-4">Enter <strong className="text-amber-300">{code}</strong> at subscription checkout using the email you just entered. Regular monthly pricing starts in month two.</p><a className="underline" href="/pricing">View plans</a></div> :
+    {code ? <div aria-live="polite"><p className="my-4">Enter <strong className="text-violet-700">{code}</strong> at subscription checkout using the email you just entered. Regular monthly pricing starts in month two.</p><a className="font-semibold text-violet-700 underline" href="/pricing">View plans</a></div> :
     <form className="mt-4 space-y-4" onSubmit={async e => {
       e.preventDefault();
       if (busy) return;
@@ -37,10 +37,10 @@ export default function WelcomeOffer() {
       finally { setBusy(false); }
     }}>
       <p>Enter your email to unlock your subscription discount.</p>
-      <label className="block">Email address<input name="email" required type="email" maxLength={254} autoComplete="email" className="mt-1 block w-full rounded-lg border border-zinc-600 bg-zinc-900 p-3"/></label>
+      <label className="block">Email address<input name="email" required type="email" maxLength={254} autoComplete="email" className="mt-1 block w-full rounded-lg border border-violet-200 bg-white p-3 text-[#1e1b3a]"/></label>
       <label className="flex items-start gap-2 text-sm"><input type="checkbox" name="marketing" className="mt-1"/>{MARKETING_NOTICE}</label>
-      {error && <p role="alert">{error}</p>}
-      <button disabled={busy} className="w-full rounded-full bg-violet-600 p-3 font-bold text-white">{busy ? "Saving…" : "Get my code"}</button>
+      {error && <p role="alert" className="text-red-600">{error}</p>}
+      <button disabled={busy} className="w-full rounded-full bg-violet-600 p-3 font-bold text-white hover:bg-violet-500 disabled:opacity-60">{busy ? "Saving…" : "Get my code"}</button>
     </form>}
   </dialog>;
 }
