@@ -11,6 +11,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { signupStep, type SignupStep } from "./signup-step";
 
 function mainClient(): SupabaseClient {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -48,6 +49,8 @@ export type LeadRow = {
   status: string | null; // funnel step for partials, sub status for signups
   hot: boolean; // worth contacting now (e.g. abandoned with contact info)
   at: string;
+  /** Text2Sale accounts only: how far they got (account, checkout, trial, paying). */
+  step?: SignupStep;
 };
 
 export type LeadsResult = {
@@ -71,18 +74,20 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
   try {
     const { data } = await main
       .from("profiles")
-      .select("first_name, last_name, email, phone, subscription_status, role, free_subscription, created_at")
+      .select("first_name, last_name, email, phone, subscription_status, role, free_subscription, created_at, stripe_customer_id, stripe_subscription_id, usage_history, plan")
       .order("created_at", { ascending: false })
       .limit(limitPer);
     for (const r of data || []) {
       if (s(r.role) === "admin") continue; // skip the owner account
+      const step = signupStep(r);
       leads.push({
         business: "text2sale",
         kind: "signup",
         name: `${s(r.first_name)} ${s(r.last_name)}`.trim() || s(r.email) || "User",
         email: nz(r.email),
         phone: nz(r.phone),
-        detail: r.free_subscription ? "Comped account" : s(r.subscription_status) === "active" ? "Paying subscriber" : s(r.subscription_status) === "trialing" ? "Free trial" : "Signup",
+        step,
+        detail: step.label,
         location: null,
         source: null,
         status: nz(r.subscription_status),
@@ -100,7 +105,7 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
   if (prospectError) throw new Error("Text2Sale prospects are temporarily unavailable. Please retry.");
   const emails = (prospects || []).map(r => r.email);
   const { data: matched, error: matchError } = emails.length ? await main.from("profiles")
-    .select("first_name,last_name,email,phone,subscription_status,role,free_subscription,created_at").in("email", emails) : { data: [], error: null };
+    .select("first_name,last_name,email,phone,subscription_status,role,free_subscription,created_at,stripe_customer_id,stripe_subscription_id,usage_history,plan").in("email", emails) : { data: [], error: null };
   if (matchError) throw new Error("Signup status could not be loaded. Please retry.");
   for (const r of prospects || []) {
     const profile = (matched || []).find(p => s(p.email).toLowerCase() === s(r.email).toLowerCase());
@@ -115,7 +120,8 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
       kind: profile ? "signup" : r.kind === "signup" ? "partial" : "lead",
       name: profile ? `${s(profile.first_name)} ${s(profile.last_name)}`.trim() || s(r.name) : s(r.name),
       email: nz(r.email), phone: nz(profile?.phone) || nz(r.phone),
-      detail: profile ? (profile.free_subscription ? "Comped account" : ["active", "canceling"].includes(s(profile.subscription_status)) ? "Paying subscriber" : "Account created · payment/setup pending")
+      step: profile ? signupStep(profile) : undefined,
+      detail: profile ? signupStep(profile).label
         : r.kind === "signup" ? "Contact details saved · account not created" : [nz(r.industry), nz(r.message)].filter(Boolean).join(" · ") || "Website inquiry",
       location: null,
       status: profile ? nz(profile.subscription_status) : nz(r.status),
