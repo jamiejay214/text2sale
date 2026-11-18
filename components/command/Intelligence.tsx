@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Panel, BarList, Donut, type Bar } from "./CommandKit";
 import type { LeadRow, LeadsResult } from "@/lib/leads-intel";
+import { signupStep, type SignupStep } from "@/lib/signup-step";
 import ProspectActions from "./ProspectActions";
 import WelcomeAudience from "./WelcomeAudience";
 
@@ -258,8 +259,8 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
     if (leadSearch.trim()) qs.set("q", leadSearch.trim());
     if (demo) {
       const rows = (leadsData?.leads || []).filter((l) => (!business || l.business === business) && (!kind || l.kind === kind));
-      const header = ["business", "kind", "name", "email", "phone", "detail", "location", "source", "status", "created_at"];
-      const csv = [header.join(","), ...rows.map((l) => [l.business, l.kind, l.name, l.email, l.phone, l.detail, l.location, l.source, l.status, l.at].map((v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
+      const header = ["business", "kind", "name", "email", "phone", "detail", "location", "source", "status", "step", "created_at"];
+      const csv = [header.join(","), ...rows.map((l) => [l.business, l.kind, l.name, l.email, l.phone, l.detail, l.location, l.source, l.status, l.step?.label, l.at].map((v) => { const s = v == null ? "" : String(v); return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; }).join(","))].join("\n");
       triggerDownload(csv, `leads_${business || "all"}_${kind || "all"}.csv`);
       return;
     }
@@ -273,7 +274,7 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
   const effectiveLeadFilter: "all" | "recoverable" | LeadRow["business"] = isAll ? leadFilter : (scope as LeadRow["business"]);
   const filteredLeads = (leadsData?.leads || []).filter((l) =>
     effectiveLeadFilter === "all" ? true : effectiveLeadFilter === "recoverable" ? l.kind === "partial" && l.hot : l.business === effectiveLeadFilter
-  ).filter(l => (leadStage === "all" || l.kind === leadStage) &&
+  ).filter(l => (leadStage === "all" || (leadStage === "nocard" ? l.kind === "signup" && !!l.step && !l.step.finished && l.step.key !== "cancelled" : l.kind === leadStage)) &&
     [l.name,l.email,l.phone,l.detail,l.source,l.campaign,l.notes].join(" ").toLowerCase().includes(leadSearch.toLowerCase().trim()));
   const recoverable = (leadsData?.leads || []).filter(l => (isAll || l.business === scope) && l.kind === "partial" && l.hot).length;
 
@@ -345,7 +346,7 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
         )}
         <div className="mb-4 flex flex-wrap gap-3">
           <input aria-label="Search leads" placeholder="Search name, email, phone or campaign" value={leadSearch} onChange={e => setLeadSearch(e.target.value)} className="min-w-56 flex-1 rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-white" />
-          <select aria-label="Lead stage" value={leadStage} onChange={e => setLeadStage(e.target.value)} className="rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-white"><option value="all">All stages</option><option value="lead">Inquiries</option><option value="partial">Unfinished</option><option value="signup">Signed up</option></select>
+          <select aria-label="Lead stage" value={leadStage} onChange={e => setLeadStage(e.target.value)} className="rounded-lg border border-white/20 bg-slate-950 px-3 py-2 text-sm text-white"><option value="all">All stages</option><option value="lead">Inquiries</option><option value="partial">Unfinished</option><option value="signup">Signed up</option><option value="nocard">Signed up, no card yet</option></select>
         </div>
         {leadsError && <p role="alert" className="mb-4 text-sm text-rose-200">{leadsError}</p>}
         <p className="mb-3 text-xs text-slate-300">Latest leads · Refreshes every minute · {filteredLeads.length} shown</p>
@@ -698,8 +699,9 @@ function LeadInbox({ leads, token, demo, onSaved }: { leads: LeadRow[]; token?: 
               <span className="rounded px-1.5 py-0.5 text-[9px] font-medium" style={{ background: `${LEAD_BIZ_COLOR[l.business]}18`, color: LEAD_BIZ_COLOR[l.business] }}>{LEAD_BIZ_LABEL[l.business]}</span>
               <span className="ml-auto text-[10px] text-white/35">{timeAgo(l.at)}</span>
             </div>
+            {l.step && <StepBar step={l.step} />}
             <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-white/50">
-              <span className="break-words">{l.detail}</span>
+              {!l.step && <span className="break-words">{l.detail}</span>}
               {l.location && <span>📍 {l.location}</span>}
               {l.source && <span>Source: {l.source}</span>}
               {l.campaign && <span>Campaign: {l.campaign}</span>}
@@ -717,6 +719,32 @@ function LeadInbox({ leads, token, demo, onSaved }: { leads: LeadRow[]; token?: 
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/** Four dots: account created, opened checkout, card/trial, paying. */
+const STEP_NAMES = ["Account", "Checkout", "Card / trial", "Paying"];
+const STEP_TONE: Record<SignupStep["tone"], string> = { todo: "#94a3b8", warn: "#fbbf24", trial: "#38bdf8", good: "#34d399", bad: "#fb7185" };
+function StepBar({ step }: { step: SignupStep }) {
+  const color = STEP_TONE[step.tone];
+  return (
+    <div className="mt-1.5" aria-label={`Signup progress: ${step.label}`}>
+      <div className="flex items-center gap-1.5">
+        {STEP_NAMES.map((name, i) => {
+          const reached = i < step.n;
+          return (
+            <div key={name} className="flex items-center gap-1.5">
+              <span className="flex items-center gap-1 text-[10px]" style={{ color: reached ? color : "rgba(255,255,255,0.25)" }}>
+                <span className="inline-block h-2 w-2 rounded-full" style={{ background: reached ? color : "transparent", border: `1px solid ${reached ? color : "rgba(255,255,255,0.25)"}` }} />
+                {name}
+              </span>
+              {i < STEP_NAMES.length - 1 && <span className="h-px w-3" style={{ background: i + 1 < step.n ? color : "rgba(255,255,255,0.15)" }} />}
+            </div>
+          );
+        })}
+      </div>
+      <p className="mt-1 text-[11px] font-medium" style={{ color }}>{step.label}</p>
     </div>
   );
 }
@@ -781,7 +809,10 @@ function demoLeads(): LeadsResult {
     counts: { text2sale: 2, aibusinessgrowth: 1, trustedquotes: 4, recoverable: 3 },
     leads: [
       { business: "trustedquotes", kind: "partial", name: "Maria Gomez", email: "maria.g@gmail.com", phone: "+18135550142", detail: "ACA / Marketplace · stopped at step 4", location: "Tampa, FL", source: "facebook", status: "abandoned", hot: true, at: new Date(now - 9 * 60_000).toISOString() },
-      { business: "text2sale", kind: "signup", name: "Derek Yount", email: "derek@northernlegacyia.com", phone: "+15155550199", detail: "Paying subscriber", location: null, source: null, status: "active", hot: false, at: new Date(now - 40 * 60_000).toISOString() },
+      { business: "text2sale", kind: "signup", name: "Derek Yount", email: "derek@northernlegacyia.com", phone: "+15155550199", detail: "Paying subscriber", step: signupStep({ subscription_status: "active" }), location: null, source: null, status: "active", hot: false, at: new Date(now - 40 * 60_000).toISOString() },
+      { business: "text2sale", kind: "signup", name: "Sample Trial", email: "trial@example.com", phone: "+13055550111", detail: "", step: signupStep({ subscription_status: "trialing", plan: { trialEndsAt: new Date(now + 6 * 86_400_000).toISOString() } }), location: null, source: "direct", status: "trialing", hot: false, at: new Date(now - 3 * 3_600_000).toISOString() },
+      { business: "text2sale", kind: "signup", name: "Sample Checkout", email: "checkout@example.com", phone: "+13055550122", detail: "", step: signupStep({ subscription_status: "inactive", stripe_customer_id: "cus_x" }), location: null, source: "direct", status: "inactive", hot: false, at: new Date(now - 20 * 3_600_000).toISOString() },
+      { business: "text2sale", kind: "signup", name: "Sample Account Only", email: "account@example.com", phone: null, detail: "", step: signupStep({ subscription_status: "inactive" }), location: null, source: "direct", status: "inactive", hot: false, at: new Date(now - 26 * 3_600_000).toISOString() },
       { business: "trustedquotes", kind: "partial", name: "James Whitfield", email: null, phone: "+19045550173", detail: "Medicare · stopped at step 2", location: "Jacksonville, FL", source: "google", status: "abandoned", hot: true, at: new Date(now - 2 * 3600_000).toISOString() },
       { business: "aibusinessgrowth", kind: "lead", name: "Priya Nair", email: "priya@claritydental.co", phone: "+14155550121", detail: "Clarity Dental · Dental · wants AI front desk", location: null, source: "linkedin", status: "new", hot: true, at: new Date(now - 5 * 3600_000).toISOString() },
       { business: "trustedquotes", kind: "partial", name: "Abandoned quote", email: "shopper8842@yahoo.com", phone: null, detail: "ACA / Marketplace · stopped at step 3", location: "Orlando, FL", source: "tiktok", status: "abandoned", hot: true, at: new Date(now - 8 * 3600_000).toISOString() },
