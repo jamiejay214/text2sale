@@ -52,9 +52,9 @@ test('lead inbox deduplicates completed signups and keeps unfinished/inquiry lea
  {id:'three',name:'Inquiry',email:'inquiry@example.test',kind:'inquiry',status:'do_not_contact',source:'direct',created_at:'2026-10-09'},
  ],website_leads:[]};
  const client={from(table){return {select(){return this;},order(){return this;},limit(){return this;},in(){return this;},then(resolve){return Promise.resolve({data:rows[table]||[],error:null}).then(resolve);}};}};
- const {getAllLeads}=load('lib/leads-intel.ts',{'@supabase/supabase-js':{createClient:()=>client}});
+ const {getAllLeads}=load('lib/leads-intel.ts',{'@supabase/supabase-js':{createClient:()=>client},'./signup-step':load('lib/signup-step.ts')});
  const result=await getAllLeads();assert.equal(result.counts.text2sale,3);
- const joined=result.leads.filter(l=>l.email==='joined@example.test');assert.equal(joined.length,1);assert.equal(joined[0].kind,'signup');assert.equal(joined[0].id,'one');
+ const joined=result.leads.filter(l=>l.email==='joined@example.test');assert.equal(joined.length,1);assert.equal(joined[0].kind,'signup');assert.equal(joined[0].id,'one'); assert.equal(joined[0].step.key,'paying');assert.equal(joined[0].step.n,4);
  assert.equal(result.leads.find(l=>l.id==='two').kind,'partial');assert.equal(result.leads.find(l=>l.id==='two').hot,true);assert.equal(result.leads.find(l=>l.id==='three').hot,false);
 });
 
