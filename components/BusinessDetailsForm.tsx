@@ -244,8 +244,21 @@ export default function BusinessDetailsForm({
             onChange={(e) => onChange({ ein: formatEin(e.target.value) })}
           />
           {einBad && <p className="mt-1 text-[10px] text-red-400">EIN must be 9 digits (XX-XXXXXXX).</p>}
+          <p className="mt-1 text-[10px] text-zinc-600">No EIN yet? It&apos;s free from the IRS and takes about 10 minutes. See how to get one below.</p>
         </div>
       </div>
+
+      <details className="rounded-lg border border-violet-200 px-3 py-2 text-xs" style={{ background: "#f8f5ff", color: "#2e2a4a" }}>
+        <summary className="cursor-pointer font-semibold text-violet-700">Don&apos;t have an EIN? How to get one (free)</summary>
+        <ol className="mt-2 list-decimal space-y-1 pl-5">
+          <li>Go to <a href="https://www.irs.gov/businesses/small-businesses-self-employed/apply-for-an-employer-identification-number-ein-online" target="_blank" rel="noopener noreferrer" className="font-semibold text-violet-700 underline">the official IRS EIN application</a>. It is free. Never pay a site that charges for it.</li>
+          <li>Have ready: your business&apos;s exact legal name, type (LLC, corporation, etc.), address, start date, and the owner&apos;s name and Social Security number (or ITIN).</li>
+          <li>If you have an LLC or corporation, register it with your state first so the names match.</li>
+          <li>Answer the questions, submit, and choose to receive your confirmation letter online.</li>
+          <li>You get the 9-digit number right away. Save the confirmation letter (CP 575) as a PDF, then enter the EIN above and upload the letter under Messaging setup.</li>
+        </ol>
+        <p className="mt-2">The IRS online application is open weekdays only (7am to 10pm ET). <a href="/blog/how-to-apply-for-an-ein" target="_blank" rel="noopener" className="font-semibold text-violet-700 underline">Full step-by-step guide</a></p>
+      </details>
 
       <div>
         <label className={LABEL}>Industry *</label>
