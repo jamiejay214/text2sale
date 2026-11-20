@@ -63,6 +63,17 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full antialiased">
       <head>
+        <Script id="microsoft-clarity" strategy="afterInteractive">
+          {`
+if (["text2sale.com", "www.text2sale.com"].includes(location.hostname)) {
+    (function(c,l,a,r,i,t,y){
+        c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};
+        t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;
+        y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);
+    })(window, document, "clarity", "script", "zgriloxid9");
+}
+          `}
+        </Script>
         {/* Meta Pixel ONLY on text2sale.com. Compliance sites (custom
             domains like northernlegacyia.info) get a clean head so carriers
             don't flag the opt-in page. Homepage structured data lives in
