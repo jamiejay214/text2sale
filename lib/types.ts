@@ -187,6 +187,8 @@ export type Plan = {
   trialEndsAt?: string | null;
   /** The trial is set to end without a charge. */
   trialCancels?: boolean;
+  /** A paid plan set to end (ISO): the last day of access, when it is canceling. */
+  endsAt?: string | null;
 };
 
 export type UsageHistoryItem = {
