@@ -65,17 +65,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Cancel at period end (user keeps access until billing period ends)
-    await stripe.subscriptions.update(profile.stripe_subscription_id, {
+    const updated = await stripe.subscriptions.update(profile.stripe_subscription_id, {
       cancel_at_period_end: true,
     });
+    const endTs = updated.cancel_at ?? updated.items?.data?.[0]?.current_period_end;
+    const endsAt = endTs ? new Date(endTs * 1000).toISOString() : null;
 
     // Update profile
+    const { data: row } = await supabase.from("profiles").select("plan").eq("id", userId).single();
     await supabase
       .from("profiles")
-      .update({ subscription_status: "canceling" })
+      .update({ subscription_status: "canceling", plan: { ...((row?.plan as object) || {}), endsAt } })
       .eq("id", userId);
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, endsAt });
   } catch (error: unknown) {
     const errMsg = error instanceof Error ? error.message : "Unknown error";
     console.error("Cancel subscription error:", errMsg);
