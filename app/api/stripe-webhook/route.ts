@@ -361,14 +361,8 @@ export async function POST(req: NextRequest) {
         }
         if (!current?.free_subscription) {
           const plan = (update.plan || current?.plan || {}) as Record<string, unknown>;
-          // When a paid plan is set to end, the last day of access.
-          const periodEnd = subscription.items?.data?.[0]?.current_period_end;
-          const endTs = subscription.cancel_at ?? periodEnd;
-          const endsAt = status !== "trialing" && subscription.cancel_at_period_end && endTs
-            ? new Date(endTs * 1000).toISOString()
-            : null;
-          if ((plan.trialEndsAt ?? null) !== trialEndsAt || !!plan.trialCancels !== trialCancels || (plan.endsAt ?? null) !== endsAt) {
-            update.plan = { ...plan, trialEndsAt, trialCancels, endsAt };
+          if ((plan.trialEndsAt ?? null) !== trialEndsAt || !!plan.trialCancels !== trialCancels) {
+            update.plan = { ...plan, trialEndsAt, trialCancels };
           }
         }
         await supabase.from("profiles").update(update).eq("id", userId);
