@@ -93,6 +93,10 @@ const content = {
     {
       "href": "https://trustedquotes.org",
       "label": "Trusted Quotes"
+    },
+    {
+      "href": "https://myaffordablehealthquotes.org",
+      "label": "My Affordable Health Quotes"
     }
   ],
   "blogTags": [
