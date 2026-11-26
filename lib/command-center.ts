@@ -5,6 +5,8 @@
 //   • aibusinessgrowth — the website_* tables inside the same Supabase project
 //   • trustedquotes    — a SEPARATE Supabase project (its visitor count is
 //                        behind RLS, so we read it with its own service key)
+//   • myaffordablehealthquotes — shares the TrustedQuotes project; every
+//                        visitors/leads/partial_leads row carries a `site` tag
 //
 // Everything runs server-side with service-role keys so RLS never hides data.
 // Each business is wrapped in try/catch: if one source is down or unconfigured
@@ -19,7 +21,7 @@ export type DayPoint = { date: string; value: number };
 export type FeedItem = { kind: string; title: string; subtitle: string; at: string };
 
 export type BusinessMetrics = {
-  id: "text2sale" | "aibusinessgrowth" | "trustedquotes";
+  id: "text2sale" | "aibusinessgrowth" | "trustedquotes" | "myaffordablehealthquotes";
   name: string;
   domain: string;
   color: string;
@@ -103,8 +105,10 @@ const startOfToday = () => easternMidnight();
 const daysAgo = (n: number) => new Date(Date.now() - n * DAY).toISOString();
 
 // ── small aggregators ────────────────────────────────────────────────────────
-async function visitCharts(sb: SupabaseClient, biz: BusinessMetrics) {
-  const { data, error } = await sb.rpc("command_visit_charts");
+async function visitCharts(sb: SupabaseClient, biz: BusinessMetrics, site?: string) {
+  const { data, error } = site
+    ? await sb.rpc("command_visit_charts_site", { p_site: site })
+    : await sb.rpc("command_visit_charts");
   if (error || !data) throw new Error("Visit charts unavailable");
   biz.trafficByDay = byDay([]).map(d => ({ ...d, value: data.daily?.[d.date] ?? 0 }));
   biz.topPages = data.series?.pages ?? [];
@@ -169,10 +173,12 @@ async function countSince(
   sb: SupabaseClient,
   table: string,
   sinceCol: string,
-  sinceIso?: string
+  sinceIso?: string,
+  site?: string
 ): Promise<number> {
   let q = sb.from(table).select("id", { count: "exact", head: true });
   if (sinceIso) q = q.gte(sinceCol, sinceIso);
+  if (site) q = q.eq("site", site);
   const { count, error } = await q;
   if (error || count == null) throw new Error(table + " count unavailable");
   return count;
@@ -394,27 +400,34 @@ async function buildAiBusinessGrowth(): Promise<BusinessMetrics> {
   return biz;
 }
 
-// ── trustedquotes (separate Supabase project) ────────────────────────────────
-async function buildTrustedQuotes(): Promise<BusinessMetrics> {
+// ── insurance quote sites (TrustedQuotes' Supabase project, split by `site`) ──
+type QuoteSite = { id: "trustedquotes" | "myaffordablehealthquotes"; name: string; domain: string; color: string };
+export const QUOTE_SITES: QuoteSite[] = [
+  { id: "trustedquotes", name: "Trusted Quotes", domain: "trustedquotes.org", color: "#34d399" },
+  { id: "myaffordablehealthquotes", name: "My Affordable Health Quotes", domain: "myaffordablehealthquotes.org", color: "#f59e0b" },
+];
+
+async function buildQuoteSite(site: QuoteSite): Promise<BusinessMetrics> {
   const sb = tqClient();
   if (!sb) {
     return emptyBiz(
-      "trustedquotes", "Trusted Quotes", "trustedquotes.org", "#34d399",
+      site.id, site.name, site.domain, site.color,
       false, "Add TRUSTEDQUOTES_SERVICE_ROLE_KEY to .env.local to connect live data"
     );
   }
-  const biz = emptyBiz("trustedquotes", "Trusted Quotes", "trustedquotes.org", "#34d399", true);
+  const biz = emptyBiz(site.id, site.name, site.domain, site.color, true);
   try {
-    const [visToday, visWeek, visTotal, leads, leadsWeek, partials] = await Promise.all([
-      countSince(sb, "visitors", "created_at", startOfToday()),
-      countSince(sb, "visitors", "created_at", daysAgo(7)),
-      countSince(sb, "visitors", "created_at"),
-      countSince(sb, "leads", "created_at"),
-      countSince(sb, "leads", "created_at", daysAgo(7)),
-      countSince(sb, "partial_leads", "created_at"),
+    const [visToday, visWeek, visTotal, leads, leadsWeek, leadsToday, partials] = await Promise.all([
+      countSince(sb, "visitors", "created_at", startOfToday(), site.id),
+      countSince(sb, "visitors", "created_at", daysAgo(7), site.id),
+      countSince(sb, "visitors", "created_at", undefined, site.id),
+      countSince(sb, "leads", "created_at", undefined, site.id),
+      countSince(sb, "leads", "created_at", daysAgo(7), site.id),
+      countSince(sb, "leads", "created_at", startOfToday(), site.id),
+      countSince(sb, "partial_leads", "created_at", undefined, site.id),
     ]);
 
-    await visitCharts(sb, biz);
+    await visitCharts(sb, biz, site.id);
 
     biz.kpis = {
       revenue: 0,
@@ -427,26 +440,26 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
       customers: 0, // A quote request is not a payment.
       conversionRate: visTotal ? (leads / visTotal) * 100 : 0,
     };
-    biz.extra = { partialLeads: partials, completedLeads: leads };
-    biz.funnel = [
-      { label: "Visitors", value: visTotal },
-      { label: "Started", value: partials },
-      { label: "Leads", value: leads },
-    ];
+    biz.extra = {
+      partialLeads: partials, completedLeads: leads, leadsToday,
+      conversionWeek: visWeek ? (leadsWeek / visWeek) * 100 : 0,
+    };
+    biz.funnel = partials
+      ? [{ label: "Visitors", value: visTotal }, { label: "Started", value: partials }, { label: "Leads", value: leads }]
+      : [{ label: "Visitors", value: visTotal }, { label: "Leads", value: leads }];
 
-    // NOTE: the `leads` table has NO `state` column (it has zip/who/
-    // current_status). Selecting `state` here silently errored before, which
-    // left the Trusted Quotes live feed permanently empty. Fixed columns:
+    // NOTE: the `leads` table has NO `state` column (it has zip/who/current_status).
     const { data: recentLeads } = await sb
       .from("leads")
-      .select("created_at, first_name, last_name, coverage_type, current_status, zip, source")
+      .select("created_at, first_name, last_name, coverage_type, current_status, zip, source, ref_detail, ref_source, utm_campaign")
+      .eq("site", site.id)
       .order("created_at", { ascending: false })
       .limit(8).throwOnError();
     biz.recent = (recentLeads || []).map((l) => ({
       kind: "lead",
       title: `${(l.first_name as string) || ""} ${(l.last_name as string) || ""}`.trim() || "New lead",
       subtitle:
-        [l.coverage_type, l.current_status].filter(Boolean).join(" · ") ||
+        [l.coverage_type, l.ref_detail || l.ref_source || "direct", l.utm_campaign].filter(Boolean).join(" · ") ||
         [l.zip, l.source].filter(Boolean).join(" · ") ||
         "Quote request",
       at: l.created_at as string,
@@ -457,8 +470,6 @@ async function buildTrustedQuotes(): Promise<BusinessMetrics> {
   }
   return biz;
 }
-
-
 
 function mergeSeries(list: Series[], limit = 8): Series {
   const m = new Map<string, number>();
@@ -508,12 +519,12 @@ async function source(id: BusinessMetrics["id"], name: string, domain: string, c
 }
 
 export async function buildOverview(): Promise<Overview> {
-  const [t2s, aibg, tq] = await Promise.all([
+  const [t2s, aibg, ...quoteSites] = await Promise.all([
     source("text2sale", "Text2Sale", "text2sale.com", "#a855f7", buildText2Sale),
     source("aibusinessgrowth", "AI Business Growth", "aibusinessgrowth.net", "#22d3ee", buildAiBusinessGrowth),
-    source("trustedquotes", "Trusted Quotes", "trustedquotes.org", "#34d399", buildTrustedQuotes),
+    ...QUOTE_SITES.map((q) => source(q.id, q.name, q.domain, q.color, () => buildQuoteSite(q))),
   ]);
-  const businesses = [t2s, aibg, tq];
+  const businesses = [t2s, aibg, ...quoteSites];
 
   const geo: Record<string, number> = {};
   for (const b of businesses) for (const [k, n] of Object.entries(b.geo)) geo[k] = (geo[k] || 0) + n;

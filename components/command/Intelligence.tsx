@@ -95,8 +95,8 @@ const BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", abg: "AI Bus
 const BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", abg: "#22d3ee", tq: "#34d399" };
 
 // Leads inbox uses full business ids from the API
-const LEAD_BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", aibusinessgrowth: "#22d3ee", trustedquotes: "#34d399" };
-const LEAD_BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", aibusinessgrowth: "AI Biz Growth", trustedquotes: "Trusted Quotes" };
+const LEAD_BIZ_COLOR: Record<string, string> = { text2sale: "#a78bfa", aibusinessgrowth: "#22d3ee", trustedquotes: "#34d399", myaffordablehealthquotes: "#f59e0b" };
+const LEAD_BIZ_LABEL: Record<string, string> = { text2sale: "Text2Sale", aibusinessgrowth: "AI Biz Growth", trustedquotes: "Trusted Quotes", myaffordablehealthquotes: "MyAffordableHQ" };
 
 
 function timeAgo(s: string) {
@@ -121,7 +121,7 @@ const SEV: Record<Finding["severity"], { color: string; bg: string }> = {
 };
 const IMPACT: Record<Idea["effort"], string> = { low: "#34d399", medium: "#fbbf24", high: "#fb7185" };
 
-type Scope = "all" | "text2sale" | "aibusinessgrowth" | "trustedquotes";
+type Scope = "all" | "text2sale" | "aibusinessgrowth" | "trustedquotes" | "myaffordablehealthquotes";
 
 export default function Intelligence({ token, accent, demo, scope = "all", bizName }: { token: string | null; accent: string; demo: boolean; scope?: Scope; bizName?: string }) {
   const isAll = scope === "all";
@@ -328,6 +328,7 @@ export default function Intelligence({ token, accent, demo, scope = "all", bizNa
               { id: "text2sale", label: `Text2Sale${leadsData ? ` (${leadsData.counts.text2sale})` : ""}` },
               { id: "aibusinessgrowth", label: `AI Biz Growth${leadsData ? ` (${leadsData.counts.aibusinessgrowth})` : ""}` },
               { id: "trustedquotes", label: `Trusted Quotes${leadsData ? ` (${leadsData.counts.trustedquotes})` : ""}` },
+              { id: "myaffordablehealthquotes", label: `MyAffordableHQ${leadsData ? ` (${leadsData.counts.myaffordablehealthquotes ?? 0})` : ""}` },
             ] as const).map((f) => (
               <button
                 key={f.id}
@@ -806,7 +807,7 @@ function demoLeads(): LeadsResult {
   const now = Date.now();
   return {
     generatedAt: new Date().toISOString(),
-    counts: { text2sale: 2, aibusinessgrowth: 1, trustedquotes: 4, recoverable: 3 },
+    counts: { text2sale: 2, aibusinessgrowth: 1, trustedquotes: 4, myaffordablehealthquotes: 0, recoverable: 3 },
     leads: [
       { business: "trustedquotes", kind: "partial", name: "Maria Gomez", email: "maria.g@gmail.com", phone: "+18135550142", detail: "ACA / Marketplace · stopped at step 4", location: "Tampa, FL", source: "facebook", status: "abandoned", hot: true, at: new Date(now - 9 * 60_000).toISOString() },
       { business: "text2sale", kind: "signup", name: "Derek Yount", email: "derek@northernlegacyia.com", phone: "+15155550199", detail: "Paying subscriber", step: signupStep({ subscription_status: "active" }), location: null, source: null, status: "active", hot: false, at: new Date(now - 40 * 60_000).toISOString() },
