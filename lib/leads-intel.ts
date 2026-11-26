@@ -38,7 +38,7 @@ export type LeadRow = {
   notes?: string;
   followup?: string;
   campaign?: string | null;
-  business: "text2sale" | "aibusinessgrowth" | "trustedquotes";
+  business: "text2sale" | "aibusinessgrowth" | "trustedquotes" | "myaffordablehealthquotes";
   kind: "signup" | "lead" | "partial";
   name: string;
   email: string | null;
@@ -55,7 +55,7 @@ export type LeadRow = {
 
 export type LeadsResult = {
   generatedAt: string;
-  counts: { text2sale: number; aibusinessgrowth: number; trustedquotes: number; recoverable: number };
+  counts: { text2sale: number; aibusinessgrowth: number; trustedquotes: number; myaffordablehealthquotes: number; recoverable: number };
   leads: LeadRow[];
 };
 
@@ -159,19 +159,19 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
     try {
       const { data } = await tq
         .from("leads")
-        .select("first_name, last_name, email, phone, coverage_type, current_status, zip, source, created_at")
+        .select("first_name, last_name, email, phone, coverage_type, current_status, zip, source, site, ref_detail, ref_source, created_at")
         .order("created_at", { ascending: false })
         .limit(limitPer);
       for (const r of data || []) {
         leads.push({
-          business: "trustedquotes",
+          business: r.site === "myaffordablehealthquotes" ? "myaffordablehealthquotes" : "trustedquotes",
           kind: "lead",
           name: `${s(r.first_name)} ${s(r.last_name)}`.trim() || "Lead",
           email: nz(r.email),
           phone: nz(r.phone),
           detail: [nz(r.coverage_type), nz(r.current_status)].filter(Boolean).join(" · ") || "Quote request",
           location: nz(r.zip),
-          source: nz(r.source),
+          source: nz(r.ref_detail) || nz(r.ref_source) || nz(r.source),
           status: nz(r.current_status),
           hot: !!(nz(r.email) || nz(r.phone)),
           at: s(r.created_at),
@@ -183,14 +183,14 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
     try {
       const { data } = await tq
         .from("partial_leads")
-        .select("first_name, last_name, email, phone, coverage_type, city, state, highest_step, reached_step, completed, ref_source, utm_source, created_at")
+        .select("first_name, last_name, email, phone, coverage_type, city, state, highest_step, reached_step, completed, ref_source, utm_source, site, created_at")
         .eq("completed", false)
         .order("created_at", { ascending: false })
         .limit(limitPer);
       for (const r of data || []) {
         const hasContact = !!(nz(r.email) || nz(r.phone));
         leads.push({
-          business: "trustedquotes",
+          business: r.site === "myaffordablehealthquotes" ? "myaffordablehealthquotes" : "trustedquotes",
           kind: "partial",
           name: `${s(r.first_name)} ${s(r.last_name)}`.trim() || "Abandoned quote",
           email: nz(r.email),
@@ -210,6 +210,7 @@ export async function getAllLeads(limitPer = 40): Promise<LeadsResult> {
     text2sale: leads.filter((l) => l.business === "text2sale").length,
     aibusinessgrowth: leads.filter((l) => l.business === "aibusinessgrowth").length,
     trustedquotes: leads.filter((l) => l.business === "trustedquotes").length,
+    myaffordablehealthquotes: leads.filter((l) => l.business === "myaffordablehealthquotes").length,
     recoverable: leads.filter((l) => l.kind === "partial" && l.hot).length,
   };
 

@@ -21,6 +21,7 @@ import Notifications from "@/components/command/Notifications";
 import USMapChart from "@/components/USMapChart";
 
 type Scope = "all" | BusinessMetrics["id"];
+const isQuoteSite = (s: Scope) => s === "trustedquotes" || s === "myaffordablehealthquotes";
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 function timeAgo(s: string) {
@@ -93,7 +94,13 @@ function makeDemo(): Overview {
     recent: [{ kind: "lead", title: "John Carter", subtitle: "Health · FL", at: new Date(Date.now() - 9e5).toISOString() }],
     extra: { partialLeads: 43, completedLeads: 12 },
   };
-  const businesses = [t2s, aibg, tq];
+  const mahq: BusinessMetrics = {
+    ...tq, id: "myaffordablehealthquotes", name: "My Affordable Health Quotes", domain: "myaffordablehealthquotes.org", color: "#f59e0b",
+    kpis: { ...tq.kpis, visitors: 120, visitorsToday: 9, visitorsWeek: 60, leads: 4, leadsWeek: 3, conversionRate: 3.3 },
+    funnel: [{ label: "Visitors", value: 120 }, { label: "Leads", value: 4 }],
+    extra: { partialLeads: 0, completedLeads: 4, leadsToday: 1, conversionWeek: 5 },
+  };
+  const businesses = [t2s, aibg, tq, mahq];
   const geo: Record<string, number> = {};
   for (const b of businesses) for (const [k, n] of Object.entries(b.geo)) geo[k] = (geo[k] || 0) + n;
   return {
@@ -141,7 +148,7 @@ export default function CommandCenterPage() {
   const [err, setErr] = useState<string | null>(null);
   const [scope, setScope] = useState<Scope>(() => {
     const requested = params.get("biz");
-    return requested === "text2sale" || requested === "trustedquotes" || requested === "aibusinessgrowth" ? requested : "all";
+    return requested === "text2sale" || requested === "trustedquotes" || requested === "aibusinessgrowth" || requested === "myaffordablehealthquotes" ? requested : "all";
   });
   const [updatedAt, setUpdatedAt] = useState<Date | null>(null);
   const [clock, setClock] = useState(new Date());
@@ -392,7 +399,7 @@ export default function CommandCenterPage() {
   const ctx =
     scope === "aibusinessgrowth"
       ? { label: "Sales", value: Number(vm.biz?.extra.sales || 0), icon: <ShoppingBag className="h-4 w-4" />, color: "#818cf8" }
-      : scope === "trustedquotes"
+      : isQuoteSite(scope)
       ? { label: "Partial Leads", value: Number(vm.biz?.extra.partialLeads || 0), icon: <FileText className="h-4 w-4" />, color: "#818cf8" }
       : { label: "Messages", value: vm.messages, icon: <MessageSquare className="h-4 w-4" />, color: "#818cf8" };
 
@@ -507,13 +514,17 @@ export default function CommandCenterPage() {
         </div>
         {/* KPI row */}
         <div className="mb-5 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-          <StatTile label={scope === "all" || scope === "text2sale" ? "CRM revenue collected" : "Revenue tracking"} value={scope === "trustedquotes" || scope === "aibusinessgrowth" ? null : vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={scope === "trustedquotes" || scope === "aibusinessgrowth" ? "No payment source connected" : vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} />
+          <StatTile label={scope === "all" || scope === "text2sale" ? "CRM revenue collected" : "Revenue tracking"} value={isQuoteSite(scope) || scope === "aibusinessgrowth" ? null : vm.revenue} prefix="$" color="#34d399" icon={<DollarSign className="h-4 w-4" />} sub={isQuoteSite(scope) || scope === "aibusinessgrowth" ? "No payment source connected" : vm.mrr > 0 ? `$${Math.round(vm.revenueToday).toLocaleString()} today · $${Math.round(vm.mrr).toLocaleString()}/mo MRR` : `$${Math.round(vm.revenueToday).toLocaleString()} today`} />
           <StatTile label={scope === "all" ? "Site traffic" : scope === "text2sale" ? "Unique visitors" : "Visits"} value={vm.visitors} color="#22d3ee" icon={<Users className="h-4 w-4" />} sub={`${vm.visitorsWeek.toLocaleString()} last 7 days${scope === "text2sale" ? " · Since Oct 6" : ""}`} spark={vm.traffic} />
           <StatTile label={scope === "text2sale" ? "Visitors today (ET)" : "Site traffic today (ET)"} value={vm.visitorsToday} color="#38bdf8" icon={<TrendingUp className="h-4 w-4" />} spark={vm.traffic} />
           <StatTile label="Leads" value={vm.leads} color="#a855f7" icon={<Target className="h-4 w-4" />} />
-          <StatTile label={scope === "trustedquotes" ? "Completed quotes" : scope === "aibusinessgrowth" ? "Purchase events" : "Paying CRM customers"} value={scope === "trustedquotes" ? Number(vm.biz?.extra.completedLeads ?? 0) : scope === "aibusinessgrowth" ? Number(vm.biz?.extra.purchases ?? 0) : vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} sub={(scope === "all" || scope === "text2sale") && vm.activeSubscribers > vm.customers ? `+${vm.activeSubscribers - vm.customers} comped` : undefined} />
+          <StatTile label={isQuoteSite(scope) ? "Completed quotes" : scope === "aibusinessgrowth" ? "Purchase events" : "Paying CRM customers"} value={isQuoteSite(scope) ? Number(vm.biz?.extra.completedLeads ?? 0) : scope === "aibusinessgrowth" ? Number(vm.biz?.extra.purchases ?? 0) : vm.customers} color="#fb7185" icon={<Zap className="h-4 w-4" />} sub={(scope === "all" || scope === "text2sale") && vm.activeSubscribers > vm.customers ? `+${vm.activeSubscribers - vm.customers} comped` : undefined} />
           <StatTile label={ctx.label} value={ctx.value} color={ctx.color} icon={ctx.icon} />
         </div>
+
+        {(scope === "all" || isQuoteSite(scope)) && (
+          <SiteComparison sites={overview.businesses.filter((b) => isQuoteSite(b.id))} onPick={(id) => setScope(id)} />
+        )}
 
         {/* Main grid */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
@@ -616,7 +627,7 @@ export default function CommandCenterPage() {
         </>
 
         <footer className="mt-8 flex items-center justify-between border-t border-white/5 pt-4 text-[11px] text-white/30">
-          <span>Command Center · text2sale · aibusinessgrowth · trustedquotes · <a href="/command/install" className="hover:text-white/60">Install tracker on other sites →</a></span>
+          <span>Command Center · text2sale · aibusinessgrowth · trustedquotes · myaffordablehealthquotes · <a href="/command/install" className="hover:text-white/60">Install tracker on other sites →</a></span>
           <span className="flex items-center gap-1"><Radio className="h-3 w-3" /> Auto-refresh 45s</span>
         </footer>
       </div>
@@ -629,6 +640,67 @@ function Mini({ label, value }: { label: string; value: string }) {
     <div className="rounded-lg bg-white/[0.03] py-1.5">
       <div className="font-mono text-xs font-semibold text-white">{value}</div>
       <div className="text-[9px] uppercase tracking-wide text-white/35">{label}</div>
+    </div>
+  );
+}
+
+// Head-to-head for the two insurance quote sites: who turns visitors into leads best.
+function SiteComparison({ sites, onPick }: { sites: BusinessMetrics[]; onPick: (id: Scope) => void }) {
+  if (sites.length < 2) return null;
+  const pct = (v: number) => `${v.toFixed(1)}%`;
+  const rows: { label: string; get: (b: BusinessMetrics) => number; fmt: (v: number) => string }[] = [
+    { label: "Visits today", get: (b) => b.kpis.visitorsToday, fmt: (v) => v.toLocaleString() },
+    { label: "Visits · 7 days", get: (b) => b.kpis.visitorsWeek, fmt: (v) => v.toLocaleString() },
+    { label: "Leads today", get: (b) => Number(b.extra.leadsToday || 0), fmt: (v) => v.toLocaleString() },
+    { label: "Leads · 7 days", get: (b) => b.kpis.leadsWeek, fmt: (v) => v.toLocaleString() },
+    { label: "Conversion · 7 days", get: (b) => Number(b.extra.conversionWeek || 0), fmt: pct },
+    { label: "Leads · all time", get: (b) => b.kpis.leads, fmt: (v) => v.toLocaleString() },
+    { label: "Conversion · all time", get: (b) => b.kpis.conversionRate, fmt: pct },
+  ];
+  // Overall winner: more leads this week; ties go to the better 7-day conversion rate.
+  const score = (b: BusinessMetrics) => b.kpis.leadsWeek * 1000 + Number(b.extra.conversionWeek || 0);
+  const best = sites.reduce((a, b) => (score(b) > score(a) ? b : a));
+  const tied = sites.every((b) => score(b) === score(best));
+  return (
+    <div className="mb-5">
+      <Panel title="Insurance sites — head to head" glow="#f59e0b" right={<span className="text-[11px] text-white/50">{tied ? "Even so far" : `${best.name} leads this week`}</span>}>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[420px] text-sm">
+            <thead>
+              <tr className="text-left text-[11px] uppercase tracking-wide text-white/40">
+                <th className="py-2 pr-3 font-medium">Last 7 days unless noted</th>
+                {sites.map((b) => (
+                  <th key={b.id} className="py-2 pr-3 text-right font-medium">
+                    <button onClick={() => onPick(b.id)} className="inline-flex items-center gap-1.5 hover:text-white" title={b.online ? b.domain : b.note}>
+                      <span className="h-2 w-2 rounded-full" style={{ background: b.color }} />
+                      <span className="normal-case text-white/80">{b.domain}</span>
+                    </button>
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const vals = sites.map(r.get);
+                const max = Math.max(...vals);
+                return (
+                  <tr key={r.label} className="border-t border-white/5">
+                    <td className="py-2 pr-3 text-white/60">{r.label}</td>
+                    {sites.map((b, i) => {
+                      const win = max > 0 && vals[i] === max && vals.filter((v) => v === max).length === 1;
+                      return (
+                        <td key={b.id} className={`py-2 pr-3 text-right font-mono ${win ? "font-bold" : "text-white/70"}`} style={win ? { color: b.color } : undefined}>
+                          {r.fmt(vals[i])}{win ? " ▲" : ""}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
     </div>
   );
 }
